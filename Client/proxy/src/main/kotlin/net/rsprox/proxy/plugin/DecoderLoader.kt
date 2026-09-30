@@ -1,0 +1,489 @@
+package net.rsprox.proxy.plugin
+
+import com.github.michaelbull.logging.InlineLogger
+import net.rsprot.compression.HuffmanCodec
+import net.rsprox.cache.api.Cache
+import net.rsprox.cache.api.CacheProvider
+import net.rsprox.protocol.v223.ClientPacketDecoderServiceV223
+import net.rsprox.protocol.v223.GameClientProtProviderV223
+import net.rsprox.protocol.v223.GameServerProtProviderV223
+import net.rsprox.protocol.v223.ServerPacketDecoderServiceV223
+import net.rsprox.protocol.v224.ClientPacketDecoderServiceV224
+import net.rsprox.protocol.v224.GameClientProtProviderV224
+import net.rsprox.protocol.v224.GameServerProtProviderV224
+import net.rsprox.protocol.v224.ServerPacketDecoderServiceV224
+import net.rsprox.protocol.v225.ClientPacketDecoderServiceV225
+import net.rsprox.protocol.v225.GameClientProtProviderV225
+import net.rsprox.protocol.v225.GameServerProtProviderV225
+import net.rsprox.protocol.v225.ServerPacketDecoderServiceV225
+import net.rsprox.protocol.v226.ClientPacketDecoderServiceV226
+import net.rsprox.protocol.v226.GameClientProtProviderV226
+import net.rsprox.protocol.v226.GameServerProtProviderV226
+import net.rsprox.protocol.v226.ServerPacketDecoderServiceV226
+import net.rsprox.protocol.v227.ClientPacketDecoderServiceV227
+import net.rsprox.protocol.v227.GameClientProtProviderV227
+import net.rsprox.protocol.v227.GameServerProtProviderV227
+import net.rsprox.protocol.v227.ServerPacketDecoderServiceV227
+import net.rsprox.protocol.v228.ClientPacketDecoderServiceV228
+import net.rsprox.protocol.v228.GameClientProtProviderV228
+import net.rsprox.protocol.v228.GameServerProtProviderV228
+import net.rsprox.protocol.v228.ServerPacketDecoderServiceV228
+import net.rsprox.protocol.v229.ClientPacketDecoderServiceV229
+import net.rsprox.protocol.v229.GameClientProtProviderV229
+import net.rsprox.protocol.v229.GameServerProtProviderV229
+import net.rsprox.protocol.v229.ServerPacketDecoderServiceV229
+import net.rsprox.protocol.v230.ClientPacketDecoderServiceV230
+import net.rsprox.protocol.v230.GameClientProtProviderV230
+import net.rsprox.protocol.v230.GameServerProtProviderV230
+import net.rsprox.protocol.v230.ServerPacketDecoderServiceV230
+import net.rsprox.protocol.v231.ClientPacketDecoderServiceV231
+import net.rsprox.protocol.v231.GameClientProtProviderV231
+import net.rsprox.protocol.v231.GameServerProtProviderV231
+import net.rsprox.protocol.v231.ServerPacketDecoderServiceV231
+import net.rsprox.protocol.v232.ClientPacketDecoderServiceV232
+import net.rsprox.protocol.v232.GameClientProtProviderV232
+import net.rsprox.protocol.v232.GameServerProtProviderV232
+import net.rsprox.protocol.v232.ServerPacketDecoderServiceV232
+import net.rsprox.protocol.v233.ClientPacketDecoderServiceV233
+import net.rsprox.protocol.v233.GameClientProtProviderV233
+import net.rsprox.protocol.v233.GameServerProtProviderV233
+import net.rsprox.protocol.v233.ServerPacketDecoderServiceV233
+import net.rsprox.protocol.v234.ClientPacketDecoderServiceV234
+import net.rsprox.protocol.v234.GameClientProtProviderV234
+import net.rsprox.protocol.v234.GameServerProtProviderV234
+import net.rsprox.protocol.v234.ServerPacketDecoderServiceV234
+import net.rsprox.protocol.v235.ClientPacketDecoderServiceV235
+import net.rsprox.protocol.v235.GameClientProtProviderV235
+import net.rsprox.protocol.v235.GameServerProtProviderV235
+import net.rsprox.protocol.v235.ServerPacketDecoderServiceV235
+import net.rsprox.protocol.v236.ClientPacketDecoderServiceV236
+import net.rsprox.protocol.v236.GameClientProtProviderV236
+import net.rsprox.protocol.v236.GameServerProtProviderV236
+import net.rsprox.protocol.v236.ServerPacketDecoderServiceV236
+import net.rsprox.protocol.v237.ClientPacketDecoderServiceV237
+import net.rsprox.protocol.v237.GameClientProtProviderV237
+import net.rsprox.protocol.v237.GameServerProtProviderV237
+import net.rsprox.protocol.v237.ServerPacketDecoderServiceV237
+import net.rsprox.protocol.v238.ClientPacketDecoderServiceV238
+import net.rsprox.protocol.v238.GameClientProtProviderV238
+import net.rsprox.protocol.v238.GameServerProtProviderV238
+import net.rsprox.protocol.v238.ServerPacketDecoderServiceV238
+import net.rsprox.protocol.v239.ClientPacketDecoderServiceV239
+import net.rsprox.protocol.v239.GameClientProtProviderV239
+import net.rsprox.protocol.v239.GameServerProtProviderV239
+import net.rsprox.protocol.v239.ServerPacketDecoderServiceV239
+import net.rsprox.protocol.v240.ClientPacketDecoderServiceV240
+import net.rsprox.protocol.v240.GameClientProtProviderV240
+import net.rsprox.protocol.v240.GameServerProtProviderV240
+import net.rsprox.protocol.v240.ServerPacketDecoderServiceV240
+import net.rsprox.proxy.huffman.HuffmanProvider
+import net.rsprox.transcriber.legacy.LegacyClientProt
+import net.rsprox.transcriber.legacy.LegacyServerProt
+import net.rsprox.transcriber.prot.GameClientProt
+import net.rsprox.transcriber.prot.GameServerProt
+import java.util.concurrent.Callable
+import java.util.concurrent.ForkJoinPool
+import kotlin.system.exitProcess
+import kotlin.time.measureTimedValue
+
+public class DecoderLoader {
+    private data class RevisionKey(
+        val revision: Int?,
+        val cache: Cache,
+    )
+
+    private fun key(
+        revision: Int?,
+        cache: CacheProvider,
+    ): RevisionKey {
+        return RevisionKey(
+            revision,
+            cache.get(),
+        )
+    }
+
+    private val decoders: MutableMap<RevisionKey, RevisionDecoder> = mutableMapOf()
+
+    @Synchronized
+    public fun load(
+        cache: CacheProvider,
+        revision: Int? = null,
+    ) {
+        val key = key(revision, cache)
+        if (revision != null && key in decoders) {
+            return
+        }
+        val huffmanCodec = HuffmanProvider.get()
+        val pool = ForkJoinPool.commonPool()
+        val tasks = mutableListOf<Callable<RevisionDecoder>>()
+        // Load the classes in parallel here to speed up the process, especially over time as we
+        // get more and more modules; there are about 230 classes per module, and our JDK supports
+        // parallel class-loading, so it significantly speeds the process up.
+        val loadJobs = buildLoadJobs(huffmanCodec, cache)
+        if (revision == null) {
+            val missingJobs =
+                loadJobs.filter {
+                    key(it.key, cache) !in decoders
+                }
+            tasks += missingJobs.values
+        } else {
+            tasks += loadJobs[revision] ?: error("Revision $revision decoder not found!")
+        }
+        if (tasks.isEmpty()) return
+        val (results, time) =
+            measureTimedValue {
+                pool.invokeAll(tasks)
+            }
+        logger.debug { "Finished loading decoders in $time" }
+        for (result in results) {
+            val plugin = result.get()
+            decoders[key(plugin.revision, cache)] = plugin
+        }
+        validateProtNames()
+    }
+
+    private fun validateProtNames() {
+        var errorCount = 0
+        for ((rev, decoder) in decoders) {
+            for (serverProt in decoder.gameServerProtProvider.allProts()) {
+                val name = LegacyServerProt[serverProt.toString()]
+                val prot = serverProtOrNull(name)
+                if (prot == null) {
+                    errorCount++
+                    logger.error {
+                        "Revision $rev defines invalid server prot: $serverProt"
+                    }
+                }
+            }
+
+            for (clientProt in decoder.gameClientProtProvider.allProts()) {
+                val name = LegacyClientProt[clientProt.toString()]
+                val prot = clientProtOrNull(name)
+                if (prot == null) {
+                    errorCount++
+                    logger.error {
+                        "Revision $rev defines invalid client prot: $clientProt"
+                    }
+                }
+            }
+        }
+        if (errorCount > 0) {
+            logger.error {
+                "Unable to proceed with binary decoding - invalid prots detected."
+            }
+            exitProcess(-1)
+        }
+    }
+
+    private fun serverProtOrNull(name: String): GameServerProt? {
+        return try {
+            GameServerProt.valueOf(name)
+        } catch (_: IllegalArgumentException) {
+            return null
+        }
+    }
+
+    private fun clientProtOrNull(name: String): GameClientProt? {
+        return try {
+            GameClientProt.valueOf(name)
+        } catch (_: IllegalArgumentException) {
+            return null
+        }
+    }
+
+    private fun buildLoadJobs(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): Map<Int, Callable<RevisionDecoder>> {
+        return mapOf(
+            223 to Callable { loadRevision223(huffmanCodec, cache) },
+            224 to Callable { loadRevision224(huffmanCodec, cache) },
+            225 to Callable { loadRevision225(huffmanCodec, cache) },
+            226 to Callable { loadRevision226(huffmanCodec, cache) },
+            227 to Callable { loadRevision227(huffmanCodec, cache) },
+            228 to Callable { loadRevision228(huffmanCodec, cache) },
+            229 to Callable { loadRevision229(huffmanCodec, cache) },
+            230 to Callable { loadRevision230(huffmanCodec, cache) },
+            231 to Callable { loadRevision231(huffmanCodec, cache) },
+            232 to Callable { loadRevision232(huffmanCodec, cache) },
+            233 to Callable { loadRevision233(huffmanCodec, cache) },
+            234 to Callable { loadRevision234(huffmanCodec, cache) },
+            235 to Callable { loadRevision235(huffmanCodec, cache) },
+            236 to Callable { loadRevision236(huffmanCodec, cache) },
+            237 to Callable { loadRevision237(huffmanCodec, cache) },
+            238 to Callable { loadRevision238(huffmanCodec, cache) },
+            239 to Callable { loadRevision239(huffmanCodec, cache) },
+            240 to Callable { loadRevision240(huffmanCodec, cache) },
+        )
+    }
+
+    private fun loadRevision223(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 223 decoders" }
+        return RevisionDecoder(
+            223,
+            ClientPacketDecoderServiceV223(huffmanCodec),
+            ServerPacketDecoderServiceV223(huffmanCodec, cache),
+            GameClientProtProviderV223,
+            GameServerProtProviderV223,
+        )
+    }
+
+    private fun loadRevision224(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 224 decoders" }
+        return RevisionDecoder(
+            224,
+            ClientPacketDecoderServiceV224(huffmanCodec),
+            ServerPacketDecoderServiceV224(huffmanCodec, cache),
+            GameClientProtProviderV224,
+            GameServerProtProviderV224,
+        )
+    }
+
+    private fun loadRevision225(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 225 decoders" }
+        return RevisionDecoder(
+            225,
+            ClientPacketDecoderServiceV225(huffmanCodec),
+            ServerPacketDecoderServiceV225(huffmanCodec, cache),
+            GameClientProtProviderV225,
+            GameServerProtProviderV225,
+        )
+    }
+
+    private fun loadRevision226(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 226 decoders" }
+        return RevisionDecoder(
+            226,
+            ClientPacketDecoderServiceV226(huffmanCodec),
+            ServerPacketDecoderServiceV226(huffmanCodec, cache),
+            GameClientProtProviderV226,
+            GameServerProtProviderV226,
+        )
+    }
+
+    private fun loadRevision227(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 227 decoders" }
+        return RevisionDecoder(
+            227,
+            ClientPacketDecoderServiceV227(huffmanCodec),
+            ServerPacketDecoderServiceV227(huffmanCodec, cache),
+            GameClientProtProviderV227,
+            GameServerProtProviderV227,
+        )
+    }
+
+    private fun loadRevision228(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 228 decoders" }
+        return RevisionDecoder(
+            228,
+            ClientPacketDecoderServiceV228(huffmanCodec),
+            ServerPacketDecoderServiceV228(huffmanCodec, cache),
+            GameClientProtProviderV228,
+            GameServerProtProviderV228,
+        )
+    }
+
+    private fun loadRevision229(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 229 decoders" }
+        return RevisionDecoder(
+            229,
+            ClientPacketDecoderServiceV229(huffmanCodec),
+            ServerPacketDecoderServiceV229(huffmanCodec, cache),
+            GameClientProtProviderV229,
+            GameServerProtProviderV229,
+        )
+    }
+
+    private fun loadRevision230(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 230 decoders" }
+        return RevisionDecoder(
+            230,
+            ClientPacketDecoderServiceV230(huffmanCodec),
+            ServerPacketDecoderServiceV230(huffmanCodec, cache),
+            GameClientProtProviderV230,
+            GameServerProtProviderV230,
+        )
+    }
+
+    private fun loadRevision231(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 231 decoders" }
+        return RevisionDecoder(
+            231,
+            ClientPacketDecoderServiceV231(huffmanCodec),
+            ServerPacketDecoderServiceV231(huffmanCodec, cache),
+            GameClientProtProviderV231,
+            GameServerProtProviderV231,
+        )
+    }
+
+    private fun loadRevision232(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 232 decoders" }
+        return RevisionDecoder(
+            232,
+            ClientPacketDecoderServiceV232(huffmanCodec),
+            ServerPacketDecoderServiceV232(huffmanCodec, cache),
+            GameClientProtProviderV232,
+            GameServerProtProviderV232,
+        )
+    }
+
+    private fun loadRevision233(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 233 decoders" }
+        return RevisionDecoder(
+            233,
+            ClientPacketDecoderServiceV233(huffmanCodec),
+            ServerPacketDecoderServiceV233(huffmanCodec, cache),
+            GameClientProtProviderV233,
+            GameServerProtProviderV233,
+        )
+    }
+
+    private fun loadRevision234(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 234 decoders" }
+        return RevisionDecoder(
+            234,
+            ClientPacketDecoderServiceV234(huffmanCodec),
+            ServerPacketDecoderServiceV234(huffmanCodec, cache),
+            GameClientProtProviderV234,
+            GameServerProtProviderV234,
+        )
+    }
+
+    private fun loadRevision235(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 235 decoders" }
+        return RevisionDecoder(
+            235,
+            ClientPacketDecoderServiceV235(huffmanCodec),
+            ServerPacketDecoderServiceV235(huffmanCodec, cache),
+            GameClientProtProviderV235,
+            GameServerProtProviderV235,
+        )
+    }
+
+    private fun loadRevision236(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 236 decoders" }
+        return RevisionDecoder(
+            236,
+            ClientPacketDecoderServiceV236(huffmanCodec),
+            ServerPacketDecoderServiceV236(huffmanCodec, cache),
+            GameClientProtProviderV236,
+            GameServerProtProviderV236,
+        )
+    }
+
+    private fun loadRevision237(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 237 decoders" }
+        return RevisionDecoder(
+            237,
+            ClientPacketDecoderServiceV237(huffmanCodec),
+            ServerPacketDecoderServiceV237(huffmanCodec, cache),
+            GameClientProtProviderV237,
+            GameServerProtProviderV237,
+        )
+    }
+
+    private fun loadRevision238(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 238 decoders" }
+        return RevisionDecoder(
+            238,
+            ClientPacketDecoderServiceV238(huffmanCodec),
+            ServerPacketDecoderServiceV238(huffmanCodec, cache),
+            GameClientProtProviderV238,
+            GameServerProtProviderV238,
+        )
+    }
+
+    private fun loadRevision239(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 239 decoders" }
+        return RevisionDecoder(
+            239,
+            ClientPacketDecoderServiceV239(huffmanCodec),
+            ServerPacketDecoderServiceV239(huffmanCodec, cache),
+            GameClientProtProviderV239,
+            GameServerProtProviderV239,
+        )
+    }
+
+    private fun loadRevision240(
+        huffmanCodec: HuffmanCodec,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        logger.debug { "Loading revision 240 decoders" }
+        return RevisionDecoder(
+            240,
+            ClientPacketDecoderServiceV240(huffmanCodec),
+            ServerPacketDecoderServiceV240(huffmanCodec, cache),
+            GameClientProtProviderV240,
+            GameServerProtProviderV240,
+        )
+    }
+
+    public fun getDecoder(
+        revision: Int,
+        cache: CacheProvider,
+    ): RevisionDecoder {
+        return decoders.getValue(key(revision, cache))
+    }
+
+    public fun getDecoderOrNull(
+        revision: Int,
+        cache: CacheProvider,
+    ): RevisionDecoder? {
+        return decoders[key(revision, cache)]
+    }
+
+    private companion object {
+        private val logger = InlineLogger()
+    }
+}

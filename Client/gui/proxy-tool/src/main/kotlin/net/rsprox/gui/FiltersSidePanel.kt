@@ -1,0 +1,552 @@
+package net.rsprox.gui
+
+import com.formdev.flatlaf.extras.components.FlatButton
+import com.formdev.flatlaf.extras.components.FlatButton.ButtonType
+import com.formdev.flatlaf.extras.components.FlatLabel
+import com.formdev.flatlaf.extras.components.FlatSeparator
+import com.formdev.flatlaf.extras.components.FlatTabbedPane
+import com.formdev.flatlaf.extras.components.FlatTriStateCheckBox
+import net.miginfocom.swing.MigLayout
+import net.rsprox.gui.components.RegexFilterPanel
+import net.rsprox.gui.dialogs.Dialogs
+import net.rsprox.proxy.ProxyService
+import net.rsprox.shared.StreamDirection
+import net.rsprox.shared.filters.PropertyFilter
+import net.rsprox.shared.filters.ProtCategory
+import net.rsprox.shared.filters.RegexFilter
+import java.awt.BorderLayout
+import java.awt.event.ActionListener
+import java.awt.event.FocusEvent
+import java.awt.event.FocusListener
+import java.awt.event.ItemEvent
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
+import javax.swing.BorderFactory
+import javax.swing.BoxLayout
+import javax.swing.DefaultComboBoxModel
+import javax.swing.Icon
+import javax.swing.JCheckBox
+import javax.swing.JComboBox
+import javax.swing.JComponent
+import javax.swing.JMenuItem
+import javax.swing.JOptionPane
+import javax.swing.JPanel
+import javax.swing.JPopupMenu
+import javax.swing.JScrollPane
+import javax.swing.JTextField
+import javax.swing.ScrollPaneConstants
+import javax.swing.SwingUtilities
+import javax.swing.UIManager
+import javax.swing.event.DocumentEvent
+import javax.swing.event.DocumentListener
+
+public class FiltersSidePanel(
+    private val proxyService: ProxyService,
+) : JPanel() {
+    private val presetsBoxModel = DefaultComboBoxModel<String>()
+    private val presetsBox = JComboBox(presetsBoxModel)
+    private val copyButton = createControlButton(AppIcons.Copy, "Copy selected preset into new preset")
+    private val createButton = createControlButton(AppIcons.Add, "Create new preset from default filters")
+    private val deleteButton = createControlButton(AppIcons.Delete, "Delete selected preset")
+    private val checkboxes = hashMapOf<PropertyFilter, JCheckBox>()
+    private val incomingPanel = FiltersPanel(StreamDirection.SERVER_TO_CLIENT)
+    private val outgoingPanel = FiltersPanel(StreamDirection.CLIENT_TO_SERVER)
+    private val regexPanel =
+        JPanel().apply {
+            layout = BorderLayout()
+            border = BorderFactory.createEmptyBorder(0, 0, 0, 0)
+        }
+
+    private val searchBox = JTextField(SEARCH)
+
+    init {
+        layout = MigLayout("fill, ins panel, wrap 1, hidemode 3", "[grow]", "[][][][22][grow, fill]")
+
+        presetsBox.addItemListener { e ->
+            if (e.stateChange != ItemEvent.SELECTED) return@addItemListener
+            proxyService.filterSetStore.setActive(presetsBox.selectedIndex)
+            updateButtonState()
+            updateFilterState()
+            buildRegexPanel()
+        }
+
+        createButton.addActionListener {
+            val name =
+                Dialogs.showInputString(parent = createButton, "Create new preset", "Enter preset name")
+                    ?: return@addActionListener
+            if (presetsBoxModel.getIndexOf(name) != -1) {
+                Dialogs.showError(parent = this, message = "Preset with name '$name' already exists.")
+                return@addActionListener
+            }
+            proxyService.filterSetStore.create(name)
+            populatePresets()
+            presetsBoxModel.selectedItem = name
+        }
+
+        deleteButton.addActionListener {
+            val selectedIndex = presetsBox.selectedIndex
+            if (selectedIndex == -1) return@addActionListener
+            val presetName = presetsBox.selectedItem as String
+            val result =
+                JOptionPane.showConfirmDialog(
+                    deleteButton,
+                    "Are you sure you want to delete the selected preset?",
+                    "Delete '$presetName' preset",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.WARNING_MESSAGE,
+                )
+            if (result != JOptionPane.YES_OPTION) return@addActionListener
+            proxyService.filterSetStore.delete(selectedIndex)
+            populatePresets()
+        }
+
+        copyButton.addActionListener {
+            val selectedIndex = presetsBox.selectedIndex
+            if (selectedIndex == -1) return@addActionListener
+            val name =
+                Dialogs.showInputString(parent = copyButton, "Copy preset", "Enter new preset name")
+                    ?: return@addActionListener
+            if (presetsBoxModel.getIndexOf(name) != -1) {
+                Dialogs.showError(parent = this, message = "Preset with name '$name' already exists.")
+                return@addActionListener
+            }
+            val filterSet = proxyService.filterSetStore.get(selectedIndex) ?: return@addActionListener
+            val newFilterSet = proxyService.filterSetStore.create(name)
+            for (property in PropertyFilter.entries) {
+                newFilterSet[property] = filterSet[property]
+            }
+            populatePresets()
+            presetsBoxModel.selectedItem = name
+        }
+
+        add(FlatLabel().apply { text = "Presets:" })
+
+        add(presetsBox, "growx")
+
+        val controlPanel =
+            JPanel().apply {
+                layout = MigLayout("insets 0", "[grow][grow][grow]", "[32px]")
+                add(copyButton, "grow, hmin 32px")
+                add(createButton, "grow, hmin 32px")
+                add(deleteButton, "grow, hmin 32px")
+            }
+
+        add(controlPanel, "growx")
+
+        searchBox.addFocusListener(
+            object : FocusListener {
+                override fun focusGained(e: FocusEvent?) {
+                    val text = searchBox.text ?: ""
+                    if (text == SEARCH) {
+                        searchBox.text = ""
+                    }
+                }
+
+                override fun focusLost(e: FocusEvent?) {
+                    if (searchBox.text.isNullOrEmpty()) {
+                        searchBox.text = SEARCH
+                        checkboxes.forEach { (_, checkbox) ->
+                            val parent = checkbox.parent
+                            if (!parent.isVisible) {
+                                parent.isVisible = true
+                            }
+                        }
+                        incomingPanel.refreshHeaderPanelStatus()
+                        outgoingPanel.refreshHeaderPanelStatus()
+                    }
+                }
+            },
+        )
+        searchBox.document.addDocumentListener(
+            object : DocumentListener {
+                override fun insertUpdate(e: DocumentEvent?) {
+                    search()
+                }
+
+                override fun removeUpdate(e: DocumentEvent?) {
+                    search()
+                }
+
+                override fun changedUpdate(e: DocumentEvent?) {
+                    search()
+                }
+
+                private fun search() {
+                    val keyword = searchBox.text.lowercase().trim()
+                    if (keyword.contentEquals(SEARCH.lowercase())) {
+                        return
+                    }
+                    val splitSearch = keyword.split(' ', '_')
+                    checkboxes.forEach { (filter, checkbox) ->
+                        val searchTerms = filter.searchTerms
+                        checkbox.parent.isVisible = splitSearch.all { it in searchTerms }
+                    }
+                    incomingPanel.refreshHeaderPanelStatus()
+                    outgoingPanel.refreshHeaderPanelStatus()
+                }
+            },
+        )
+        add(searchBox, "growx, wmin 230px")
+
+        val tabbedGroup = FlatTabbedPane()
+        tabbedGroup.addTab("Incoming", incomingPanel.wrapWithBorderlessScrollPane())
+        tabbedGroup.addTab("Outgoing", outgoingPanel.wrapWithBorderlessScrollPane())
+        tabbedGroup.addTab("Regex", regexPanel.wrapWithBorderlessScrollPane())
+
+        tabbedGroup.addMouseListener(
+            object : MouseAdapter() {
+                override fun mousePressed(e: MouseEvent) {
+                    if (!SwingUtilities.isRightMouseButton(e)) return
+                    if (presetsBox.selectedIndex == 0) return
+                    val tabIndex = tabbedGroup.ui.tabForCoordinate(tabbedGroup, e.x, e.y)
+                    if (tabIndex == -1) return
+                    val panel = if (tabIndex == 0) incomingPanel else outgoingPanel
+                    val menu = JPopupMenu()
+                    val enableAll = JMenuItem("Enable All")
+                    val disableAll = JMenuItem("Disable All")
+                    enableAll.addActionListener { panel.setAll(true) }
+                    disableAll.addActionListener { panel.setAll(false) }
+                    menu.add(enableAll)
+                    menu.add(disableAll)
+                    menu.show(e.component, e.x, e.y)
+                }
+            },
+        )
+
+        add(tabbedGroup, "grow, pushy")
+
+        populatePresets()
+        updateButtonState()
+        updateFilterState()
+    }
+
+    private fun buildRegexPanel() {
+        regexPanel.removeAll()
+
+        val regexFiltersContainer = JPanel()
+        regexFiltersContainer.layout = MigLayout("ins 5", "[grow, fill]", "[]")
+        regexFiltersContainer.border = BorderFactory.createEmptyBorder(0, 0, 0, 0)
+        regexPanel.add(regexFiltersContainer, BorderLayout.CENTER)
+
+        val actionsPanel = JPanel(BorderLayout())
+        actionsPanel.border = BorderFactory.createEmptyBorder(5, 5, 5, 5)
+
+        // Add the title label.
+        val regexLabel =
+            FlatLabel().apply {
+                text = "Regex Filters"
+                labelType = FlatLabel.LabelType.large
+                isEnabled = presetsBox.selectedIndex != 0
+            }
+        actionsPanel.add(regexLabel, BorderLayout.WEST)
+
+        // Add the add new filter button.
+        actionsPanel.add(
+            FlatButton().apply {
+                icon = AppIcons.Add
+                toolTipText = "Add new regex filter"
+                addActionListener {
+                    val filterStore = proxyService.filterSetStore.getActive()
+                    val regexFilter = RegexFilter("prot_name", Regex(""), true)
+                    filterStore.addRegexFilter(regexFilter)
+                    regexFiltersContainer.addRegexFilterPanel(regexFilter)
+
+                    regexPanel.revalidate()
+                    regexPanel.repaint()
+                }
+                isEnabled = presetsBox.selectedIndex != 0
+            },
+            BorderLayout.EAST,
+        )
+        regexPanel.add(actionsPanel, BorderLayout.NORTH)
+
+        // Add the stored regex filters.
+        val active = proxyService.filterSetStore.getActive()
+        active.getRegexFilters().forEach { regexFilter ->
+            regexFiltersContainer.addRegexFilterPanel(regexFilter)
+        }
+
+        revalidate()
+    }
+
+    private fun JPanel.addRegexFilterPanel(filter: RegexFilter) {
+        val filterStore = proxyService.filterSetStore.getActive()
+        val regexFilterPanel = RegexFilterPanel(filterStore, filter)
+        add(regexFilterPanel, "wrap", 0)
+    }
+
+    private fun updateFilterState() {
+        val active = proxyService.filterSetStore.getActive()
+        val selectedIndex = presetsBox.selectedIndex
+        for ((property, checkbox) in checkboxes) {
+            checkbox.isSelected = active[property]
+            if (selectedIndex == 0) {
+                checkbox.toolTipText = "Create a new preset to change the filters"
+            } else {
+                checkbox.toolTipText = property.tooltip
+            }
+        }
+        incomingPanel.updateAllHeaderCheckboxes()
+        outgoingPanel.updateAllHeaderCheckboxes()
+    }
+
+    private fun updateButtonState() {
+        val selectedIndex = presetsBox.selectedIndex
+        if (selectedIndex == -1) return
+        deleteButton.isEnabled = selectedIndex != 0
+        checkboxes.values.forEach { it.isEnabled = selectedIndex != 0 }
+    }
+
+    private fun populatePresets() {
+        val oldSelectedItem = presetsBox.selectedItem
+        val activeIndex = if (oldSelectedItem == null) getActiveFilterSetIndex() else -1
+        presetsBoxModel.removeAllElements()
+        for (i in 0 until proxyService.filterSetStore.size) {
+            val filterSet = proxyService.filterSetStore.get(i) ?: continue
+            presetsBoxModel.addElement(filterSet.getName())
+        }
+        if (oldSelectedItem != null) {
+            val selectedIndex = presetsBoxModel.getIndexOf(oldSelectedItem)
+            if (selectedIndex == -1) {
+                presetsBox.selectedIndex = presetsBoxModel.size - 1
+            } else {
+                presetsBox.selectedIndex = selectedIndex
+            }
+        } else {
+            if (activeIndex != -1) {
+                presetsBox.selectedIndex = activeIndex
+            } else {
+                presetsBox.selectedIndex = presetsBoxModel.size - 1
+            }
+        }
+    }
+
+    private fun getActiveFilterSetIndex(): Int {
+        val active = proxyService.filterSetStore.getActive()
+        for (i in 0 until proxyService.filterSetStore.size) {
+            val filterSet = proxyService.filterSetStore.get(i) ?: continue
+            if (active === filterSet) {
+                return i
+            }
+        }
+        return -1
+    }
+
+    private fun createControlButton(
+        icon: Icon,
+        tooltip: String,
+    ) = FlatButton().apply {
+        this.buttonType = ButtonType.square
+        this.icon = icon
+        this.toolTipText = tooltip
+        isFocusPainted = false
+    }
+
+    private inner class FiltersPanel(
+        private val direction: StreamDirection,
+    ) : JPanel() {
+        private val headerCheckboxes = hashMapOf<ProtCategory, FlatTriStateCheckBox>()
+
+        init {
+            layout = MigLayout("flowy, ins 0, gap 0", "[grow]", "[]")
+
+            val filteredProperties =
+                PropertyFilter.entries
+                    .filter { it.direction == direction }
+                    .groupBy { it.category }
+
+            for ((category, properties) in filteredProperties) {
+                add(createCategoryPanel(category, properties), "growx")
+            }
+        }
+
+        fun refreshHeaderPanelStatus() {
+            val properties =
+                PropertyFilter.entries
+                    .filter { it.direction == direction }
+                    .groupBy { it.category }
+                    .values
+                    .flatten()
+            for ((category, checkbox) in headerCheckboxes) {
+                val props = properties.filter { it.category == category }
+                val visible = props.any { checkboxes.getValue(it).parent.isVisible }
+                checkbox.parent.isVisible = visible
+                checkbox.parent.parent.isVisible = visible
+                val separators =
+                    checkbox.parent.parent.components
+                        .filterIsInstance<FlatSeparator>()
+                for (separator in separators) {
+                    separator.isVisible = visible
+                }
+            }
+        }
+
+        private fun createCategoryPanel(
+            category: ProtCategory,
+            properties: List<PropertyFilter>,
+        ) = JPanel().apply {
+            layout = BoxLayout(this, BoxLayout.Y_AXIS)
+
+            val content = JPanel()
+            content.border = null
+            content.layout = BoxLayout(content, BoxLayout.Y_AXIS)
+            for (property in properties) {
+                content.add(createPropertyFilterPanel(category, properties, property))
+            }
+
+            add(createCategoryHeaderPanel(content, category, properties))
+            add(FlatSeparator())
+
+            add(content)
+
+            updateHeaderCheckbox(category, properties)
+        }
+
+        private fun createCategoryHeaderPanel(
+            content: JPanel,
+            category: ProtCategory,
+            properties: List<PropertyFilter>,
+        ) = JPanel(BorderLayout()).apply {
+            val toggle = FlatButton()
+            toggle.toolTipText = "Collapse"
+            toggle.icon = AppIcons.Collapse
+            toggle.buttonType = ButtonType.toolBarButton
+
+            val collapseAction =
+                ActionListener {
+                    content.isVisible = !content.isVisible
+                    toggle.icon = if (content.isVisible) AppIcons.Collapse else AppIcons.Expand
+                    toggle.toolTipText = if (content.isVisible) "Collapse" else "Expand"
+                }
+
+            toggle.addActionListener(collapseAction)
+            add(toggle, BorderLayout.WEST)
+
+            val label = FlatLabel()
+            label.text = category.label
+            label.labelType = FlatLabel.LabelType.large
+            label.toolTipText = category.label
+            add(label, BorderLayout.CENTER)
+
+            val checkbox = FlatTriStateCheckBox()
+            checkbox.border = BorderFactory.createEmptyBorder(0, 0, 0, 7)
+            checkbox.isAllowIndeterminate = false
+
+            checkbox.addActionListener {
+                val active = proxyService.filterSetStore.getActive()
+                for (property in properties) {
+                    checkboxes[property]?.isSelected = checkbox.isSelected
+                    active[property] = checkbox.isSelected
+                }
+                updateButtonState()
+                updateHeaderCheckbox(category, properties)
+            }
+            add(checkbox, BorderLayout.EAST)
+            headerCheckboxes[category] = checkbox
+
+            label.addMouseListener(
+                object : MouseAdapter() {
+                    override fun mouseEntered(e: MouseEvent?) {
+                        label.foreground = UIManager.getColor("Label.selectedForeground")
+                    }
+
+                    override fun mouseExited(e: MouseEvent?) {
+                        label.foreground = UIManager.getColor("Label.foreground")
+                    }
+
+                    override fun mouseReleased(e: MouseEvent) {
+                        if (SwingUtilities.isLeftMouseButton(e) &&
+                            e.x >= 0 &&
+                            e.x <= label.width &&
+                            e.y >= 0 &&
+                            e.y <= label.height
+                        ) {
+                            collapseAction.actionPerformed(null)
+                        }
+                    }
+                },
+            )
+        }
+
+        private fun updateHeaderCheckbox(
+            category: ProtCategory,
+            properties: List<PropertyFilter>,
+        ) {
+            val checkbox = headerCheckboxes[category] ?: return
+
+            val active = proxyService.filterSetStore.getActive()
+            val allSelected = properties.all { active[it] }
+            val allUnselected = properties.none { active[it] }
+            checkbox.isEnabled = presetsBox.selectedIndex != 0
+            if (presetsBox.selectedIndex == 0) {
+                checkbox.toolTipText = "Create a new preset to change the filters"
+            } else {
+                checkbox.toolTipText = null
+            }
+            checkbox.state =
+                when {
+                    allSelected -> FlatTriStateCheckBox.State.SELECTED
+                    allUnselected -> FlatTriStateCheckBox.State.UNSELECTED
+                    else -> FlatTriStateCheckBox.State.INDETERMINATE
+                }
+        }
+
+        fun updateAllHeaderCheckboxes() {
+            for (category in headerCheckboxes.keys) {
+                val properties = PropertyFilter.entries.filter { it.direction == direction && it.category == category }
+                updateHeaderCheckbox(category, properties)
+            }
+        }
+
+        private fun createPropertyFilterPanel(
+            category: ProtCategory,
+            properties: List<PropertyFilter>,
+            property: PropertyFilter,
+        ) = JPanel().apply {
+            layout = BorderLayout()
+            border = BorderFactory.createEmptyBorder(5, 5, 5, 5)
+
+            val checkbox = JCheckBox()
+            checkbox.addActionListener {
+                val active = proxyService.filterSetStore.getActive()
+                active[property] = checkbox.isSelected
+                updateHeaderCheckbox(category, properties)
+            }
+            add(checkbox, BorderLayout.EAST)
+
+            val label = FlatLabel()
+            label.labelType = FlatLabel.LabelType.large
+            label.text = property.label
+            label.toolTipText = property.tooltip
+            add(label, BorderLayout.CENTER)
+
+            checkboxes[property] = checkbox
+        }
+
+        fun setAll(selected: Boolean) {
+            val active = proxyService.filterSetStore.getActive()
+            for ((property, checkbox) in checkboxes) {
+                if (property.direction != direction) continue
+                checkbox.isSelected = selected
+                active[property] = selected
+            }
+            for ((_, headerCheckbox) in headerCheckboxes) {
+                headerCheckbox.isSelected = selected
+            }
+        }
+    }
+
+    private companion object {
+        private const val SEARCH: String = "Search filters..."
+
+        private fun JComponent.wrapWithBorderlessScrollPane(
+            verticalPolicy: Int = ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
+        ) = JScrollPane(this).apply {
+            horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+            verticalScrollBarPolicy = verticalPolicy
+            verticalScrollBar.unitIncrement = 16
+
+            border = null
+        }
+    }
+}

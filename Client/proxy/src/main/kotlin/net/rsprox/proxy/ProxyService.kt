@@ -1,0 +1,1649 @@
+package net.rsprox.proxy
+
+import com.github.michaelbull.logging.InlineLogger
+import io.netty.bootstrap.ServerBootstrap
+import io.netty.buffer.ByteBufAllocator
+import io.netty.buffer.Unpooled
+import io.netty.channel.Channel
+import net.rsprot.buffer.extensions.toJagByteBuf
+import net.rsprox.cache.Js5MasterIndex
+import net.rsprox.cache.clientscript.RSProxArchiveClientScriptIndex
+import net.rsprox.cache.rs3.Rs3LiveCacheResolver
+import net.rsprox.cache.store.ReplayDiskCacheProvider
+import net.rsprox.cache.store.ReplayDiskCacheStore
+import net.rsprox.patch.NativeClientType
+import net.rsprox.patch.PatchResult
+import net.rsprox.patch.native.NativePatchCriteria
+import net.rsprox.patch.native.NativePatcher
+import net.rsprox.proxy.accounts.DefaultJagexAccountStore
+import net.rsprox.proxy.binary.BinaryBlob
+import net.rsprox.proxy.binary.BinaryHeader
+import net.rsprox.proxy.binary.credentials.BinaryCredentials
+import net.rsprox.proxy.binary.credentials.BinaryCredentialsStore
+import net.rsprox.proxy.binary.isOldSchoolRuneScape
+import net.rsprox.proxy.binary.isRuneScape3
+import net.rsprox.proxy.bootstrap.BootstrapFactory
+import net.rsprox.proxy.config.*
+import net.rsprox.proxy.config.ProxyProperty.Companion.APP_HEIGHT
+import net.rsprox.proxy.config.ProxyProperty.Companion.APP_MAXIMIZED
+import net.rsprox.proxy.config.ProxyProperty.Companion.APP_POSITION_X
+import net.rsprox.proxy.config.ProxyProperty.Companion.APP_POSITION_Y
+import net.rsprox.proxy.config.ProxyProperty.Companion.APP_THEME
+import net.rsprox.proxy.config.ProxyProperty.Companion.APP_WIDTH
+import net.rsprox.proxy.config.ProxyProperty.Companion.BINARY_WRITE_INTERVAL_SECONDS
+import net.rsprox.proxy.config.ProxyProperty.Companion.BIND_TIMEOUT_SECONDS
+import net.rsprox.proxy.config.ProxyProperty.Companion.FILTERS_STATUS
+import net.rsprox.proxy.config.ProxyProperty.Companion.JAV_CONFIG_ENDPOINT
+import net.rsprox.proxy.config.ProxyProperty.Companion.PROXY_PORT_MIN
+import net.rsprox.proxy.config.ProxyProperty.Companion.RUNELITE_RSPROX_CONNECTION
+import net.rsprox.proxy.config.ProxyProperty.Companion.SELECTED_CLIENT
+import net.rsprox.proxy.config.ProxyProperty.Companion.SELECTED_PROXY_TARGET
+import net.rsprox.proxy.config.ProxyProperty.Companion.WORLDLIST_ENDPOINT
+import net.rsprox.proxy.connection.ClientTypeDictionary
+import net.rsprox.proxy.connection.ProxyConnectionContainer
+import net.rsprox.proxy.downloader.JagexNativeClientDownloader
+import net.rsprox.proxy.downloader.LostCityNativeClientDownloader
+import net.rsprox.proxy.exceptions.MissingLibraryException
+import net.rsprox.proxy.filters.DefaultPropertyFilterSetStore
+import net.rsprox.proxy.futures.asCompletableFuture
+import net.rsprox.proxy.http.GamePackProvider
+import net.rsprox.proxy.http.REPLAY_WORLDLIST_ENDPOINT
+import net.rsprox.proxy.huffman.HuffmanProvider
+import net.rsprox.proxy.plugin.DecoderLoader
+import net.rsprox.proxy.replay.ReplayCacheProvider
+import net.rsprox.proxy.replay.ReplaySession
+import net.rsprox.proxy.replay.ReplayTimeline
+import net.rsprox.proxy.replay.ReplayTranscriber
+import net.rsprox.proxy.replay.ReplayTranscript
+import net.rsprox.proxy.rs3.Rs3ClientHandle
+import net.rsprox.proxy.rs3.Rs3LaunchProgress
+import net.rsprox.proxy.rs3.Rs3LaunchTracker
+import net.rsprox.proxy.rs3.Rs3SessionMonitor
+import net.rsprox.proxy.rs3.config.Rs3JavConfig
+import net.rsprox.proxy.rs3.gameval.Rs3GamevalLookup
+import net.rsprox.proxy.rs3.launcher.Rs3OfficialLauncher
+import net.rsprox.proxy.rs3.relay.Rs3Endpoint
+import net.rsprox.proxy.rs3.relay.Rs3RelayPorts
+import net.rsprox.proxy.rs3.relay.Rs3RelayServer
+import net.rsprox.proxy.rs3.relay.Rs3RoutingNamespace
+import net.rsprox.proxy.rsa.Rs3ProxyRsaKeyProvider
+import net.rsprox.proxy.rsa.publicKey
+import net.rsprox.proxy.rsa.readOrGenerateRsaKey
+import net.rsprox.proxy.runelite.RSProxArchiveBootstrap
+import net.rsprox.proxy.runelite.RSProxArchiveBootstrapDictionary
+import net.rsprox.proxy.runelite.RuneliteLauncher
+import net.rsprox.proxy.settings.DefaultSettingSetStore
+import net.rsprox.proxy.target.ALT_PROXY_TARGETS_FILE
+import net.rsprox.proxy.target.PROXY_TARGETS_FILE
+import net.rsprox.proxy.target.ProxyTarget
+import net.rsprox.proxy.target.ProxyTargetConfig
+import net.rsprox.proxy.target.ProxyTargetImportResult
+import net.rsprox.proxy.target.ProxyTargetImporter
+import net.rsprox.proxy.target.ProxyTargetSourceRegistry
+import net.rsprox.proxy.target.YamlProxyTargetConfig
+import net.rsprox.proxy.unix.UnixSocketConnection
+import net.rsprox.proxy.util.*
+import net.rsprox.proxy.worlds.LocalAddressRanges
+import net.rsprox.shared.SessionMonitor
+import net.rsprox.shared.account.JagexAccountStore
+import net.rsprox.shared.account.JagexCharacter
+import net.rsprox.shared.filters.PropertyFilterSetStore
+import net.rsprox.shared.settings.SettingSetStore
+import net.rsprox.shared.symbols.SymbolDictionaryProvider
+import org.bouncycastle.crypto.params.RSAPrivateCrtKeyParameters
+import org.newsclub.net.unix.AFUNIXServerSocket
+import org.newsclub.net.unix.AFUNIXSocketAddress
+import java.io.File
+import java.io.IOException
+import java.math.BigInteger
+import java.net.URL
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.Path
+import java.time.Instant
+import java.util.*
+import java.util.concurrent.Callable
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ForkJoinPool
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.stream.Collectors
+import kotlin.concurrent.thread
+import kotlin.io.path.*
+import kotlin.properties.Delegates
+import kotlin.system.exitProcess
+
+@Suppress("DuplicatedCode")
+public class ProxyService(
+    private val allocator: ByteBufAllocator,
+) {
+    public val decoderLoader: DecoderLoader = DecoderLoader()
+    private lateinit var bootstrapFactory: BootstrapFactory
+    private lateinit var serverBootstrap: ServerBootstrap
+    private lateinit var replayServerChannel: Channel
+    public lateinit var operatingSystem: OperatingSystem
+        private set
+    private lateinit var rsa: RSAPrivateCrtKeyParameters
+    public lateinit var jagexAccountStore: JagexAccountStore
+        private set
+    public lateinit var filterSetStore: PropertyFilterSetStore
+        private set
+    public lateinit var settingsStore: SettingSetStore
+        private set
+    private var properties: ProxyProperties by Delegates.notNull()
+    private var availablePort: Int = -1
+    private var initialPort: Int = -1
+    private val processes = ConcurrentHashMap<Int, List<ProcessHandle>>()
+    private val connections: ProxyConnectionContainer = ProxyConnectionContainer()
+    private lateinit var credentials: BinaryCredentialsStore
+    private var rspsModulus: String? = null
+    public lateinit var proxyTargets: List<ProxyTargetConfig>
+        private set
+    private val currentProxyTarget: ProxyTargetConfig
+        get() = proxyTargets[getSelectedProxyTarget()]
+
+    public fun start(
+        rspsJavConfigUrl: String?,
+        rspsModulus: String?,
+        progressCallback: ProgressCallback,
+    ) {
+        this.rspsModulus = rspsModulus
+        logger.info { "Starting proxy service" }
+        progressCallback.update(0.05, "Proxy", "Loading RSProx (1/15)")
+        createConfigurationDirectories(CONFIGURATION_PATH)
+        createConfigurationDirectories(BINARY_PATH)
+        createConfigurationDirectories(CLIENTS_DIRECTORY)
+        createConfigurationDirectories(TEMP_CLIENTS_DIRECTORY)
+        createConfigurationDirectories(CACHES_DIRECTORY)
+        createConfigurationDirectories(FILTERS_DIRECTORY)
+        createConfigurationDirectories(SETTINGS_DIRECTORY)
+        createConfigurationDirectories(SOCKETS_DIRECTORY)
+        createConfigurationDirectories(SIGN_KEY_DIRECTORY)
+        createConfigurationDirectories(BINARY_CREDENTIALS_FOLDER)
+        createConfigurationDirectories(RUNELITE_LAUNCHER_REPO_DIRECTORY)
+        progressCallback.update(0.10, "Proxy", "Loading RSProx (2/15)")
+        loadProperties()
+        this.availablePort = properties.getProperty(PROXY_PORT_MIN)
+        this.initialPort = availablePort
+        this.bootstrapFactory = BootstrapFactory(allocator, properties)
+        progressCallback.update(0.15, "Proxy", "Loading RSProx (3/15)")
+        try {
+            ProxyTargetSourceRegistry.syncFromExistingConfig()
+        } catch (t: Throwable) {
+            logger.error(t) {
+                "Unable to synchronize proxy target sources from configuration"
+            }
+        }
+        try {
+            refreshProxyTargetsFromSources()
+        } catch (t: Throwable) {
+            logger.error(t) {
+                "Unable to refresh proxy targets from stored sources"
+            }
+        }
+        this.proxyTargets = loadProxyTargetConfigs(rspsJavConfigUrl)
+        val jobs = mutableListOf<Callable<Boolean>>()
+        jobs += createJob(progressCallback) { HuffmanProvider.load() }
+        jobs += createJob(progressCallback) { Rs3GamevalLookup.start() }
+        jobs += createJob(progressCallback) { this.rsa = loadRsa() }
+        jobs +=
+            createJob(progressCallback) { this.jagexAccountStore = DefaultJagexAccountStore.load(JAGEX_ACCOUNTS_FILE) }
+        jobs +=
+            createJob(progressCallback) { this.filterSetStore = DefaultPropertyFilterSetStore.load(FILTERS_DIRECTORY) }
+        jobs += createJob(progressCallback) { this.settingsStore = DefaultSettingSetStore.load(SETTINGS_DIRECTORY) }
+
+        jobs += createJob(progressCallback) { this.credentials = BinaryCredentialsStore.read() }
+
+        this.operatingSystem = getOperatingSystem()
+        logger.debug { "Proxy launched on $operatingSystem" }
+        if (operatingSystem == OperatingSystem.SOLARIS) {
+            throw IllegalStateException("Operating system not supported for native: $operatingSystem")
+        }
+        jobs += createJob(progressCallback) { deleteTemporaryClients() }
+        jobs += createJob(progressCallback) { deleteTemporaryRuneLiteJars() }
+        jobs += createJob(progressCallback) { transferFakeCertificate() }
+        jobs += createJob(progressCallback) { setShutdownHook() }
+        totalJobs.set(jobs.size + 3)
+        val results = ForkJoinPool.commonPool().invokeAll(jobs)
+        check(results.all { it.get() }) {
+            "Unable to boot RSProx"
+        }
+        recategorizeBinaries(progressCallback)
+    }
+
+    private val completedJobs = AtomicInteger(0)
+    private val totalJobs = AtomicInteger(0)
+
+    private inline fun createJob(
+        progressCallback: ProgressCallback,
+        crossinline block: () -> Unit,
+    ): Callable<Boolean> {
+        return Callable {
+            try {
+                block()
+                val num = completedJobs.incrementAndGet()
+                val percentage = num.toDouble() / totalJobs.get()
+                progressCallback.update(
+                    0.10 + percentage,
+                    "Proxy",
+                    "Loading RSProx ($num/${totalJobs.get()})",
+                )
+                return@Callable true
+            } catch (t: Throwable) {
+                logger.error(t) {
+                    "Unable to load RSProx"
+                }
+                return@Callable false
+            }
+        }
+    }
+
+    private fun loadProxyTargetConfigs(overriddenJavConfig: String?): List<ProxyTargetConfig> {
+        val oldschool =
+            ProxyTargetConfig(
+                id = 0,
+                name = YamlProxyTargetConfig.DEFAULT_NAME,
+                javConfigUrl = overriddenJavConfig ?: "https://oldschool.config.runescape.com/jav_config.ws",
+                modulus = null,
+                varpCount = YamlProxyTargetConfig.DEFAULT_VARP_COUNT,
+                revision = "latest_supported",
+                runeliteBootstrapUrl = null,
+                runeliteBootstrapCommitHash = null,
+                runeliteGamepackUrl = null,
+                binaryFolder = "Old School RuneScape",
+                gameServerPort = ProxyTargetConfig.DEFAULT_GAME_SERVER_PORT,
+            )
+        try {
+            val path = if (PROXY_TARGETS_FILE.exists()) PROXY_TARGETS_FILE else ALT_PROXY_TARGETS_FILE
+            val yamlTargets = YamlProxyTargetConfig.load(path)
+            val customTargets =
+                yamlTargets.entries.mapIndexedNotNull { index, yaml ->
+                    yaml.mapToProxyTargetConfig(index)
+                }
+            return listOf(oldschool) + customTargets
+        } catch (e: Exception) {
+            logger.error(e) {
+                "Unable to load proxy target configs"
+            }
+            return listOf(oldschool)
+        }
+    }
+
+    private fun refreshProxyTargetsFromSources() {
+        val entries = ProxyTargetSourceRegistry.entries()
+        if (entries.isEmpty()) {
+            return
+        }
+
+        val importer = ProxyTargetImporter()
+        val groupedByUrl = entries.entries.groupBy { it.value }
+        for ((url, associatedNames) in groupedByUrl) {
+            try {
+                val result = importer.import(URL(url))
+                ProxyTargetSourceRegistry.replaceForUrl(url, result.importedTargets)
+            } catch (t: Throwable) {
+                val namesDescription = associatedNames.joinToString(", ") { it.key }
+                logger.error(t) {
+                    "Unable to refresh proxy targets from $url ($namesDescription)"
+                }
+            }
+        }
+    }
+
+    private fun YamlProxyTargetConfig.mapToProxyTargetConfig(index: Int): ProxyTargetConfig? {
+        val config =
+            try {
+                JavConfig(URL(this.javConfigUrl))
+            } catch (e: Exception) {
+                logger.error(e) {
+                    "Unable to load proxy target ${this.name}"
+                }
+                return null
+            }
+        val revision = config.getRevision()
+        val commitHash =
+            this.runeliteBootstrapCommitHash
+                ?: getBootstrapCommitHash(revision)
+        val gamepackUrl = this.runeliteGamepackUrl ?: getGamepackUrl(revision)
+        val revisionString = this.revision?.substringBefore('.')
+        if (revisionString != null) {
+            check(revisionString.toInt() == revision) {
+                "Revision in jav-config mismatches with supplied revision: $revision vs $revisionString"
+            }
+        }
+        val binaryFolder =
+            if (!exportBinaries) {
+                null
+            } else {
+                binaryFolder ?: name
+            }
+        return ProxyTargetConfig(
+            id = index + 1,
+            name = this.name,
+            javConfigUrl = this.javConfigUrl,
+            modulus = this.modulus,
+            varpCount = this.varpCount,
+            revision = this.revision,
+            runeliteBootstrapUrl = runeliteBootstrapUrl,
+            runeliteBootstrapCommitHash = commitHash,
+            runeliteGamepackUrl = gamepackUrl,
+            binaryFolder = binaryFolder,
+            gameServerPort = this.gameServerPort,
+        )
+    }
+
+    private fun getGamepackUrl(revision: Int): String? {
+        if (revision > 228) {
+            return null
+        }
+        return "https://github.com/runetech/osrs-gamepacks/raw/refs/heads/master/gamepacks/osrs-$revision.jar"
+    }
+
+    private fun getBootstrapCommitHash(revision: Int): String? {
+        return when (revision) {
+            223 -> "b7c08f2a08be75cfbdb3a11b870b5a82c480267f"
+            224 -> "94578497efe13939b032f161d4a0d146b2123d01"
+            225 -> "84c5b3531c55657fdb66a90da7c6a723236cf32e"
+            226 -> "73cc7fff3224e5abdba9f3594f39899fdfdff4b2"
+            227 -> "96ae421d77c3e967faf5758b446d274770a9b453"
+            228 -> "dc197f1c305c712fcf496d8a2c3c0d02f3824d18"
+            229 -> "793a9df1ed8cdef5d6a324aeec0629fa0346d32b"
+            230 -> "34a480a260a68aaeb8d505b8c2cf17d8fbed9c30"
+            231 -> "8d2e0c60ecec85cffd7a84196aabf4effde55132"
+            232 -> "89ed5837e047eeaa3d5528f6b684f0264d9d5a60"
+            233 -> "cea91b9921a3647683ba8a5c22ec75c752c91b07"
+            234 -> "8e9f9cce7a5cbe205f7a7a84f8e329d25e810f5d"
+            235 -> "205a25ff767fdfe8a461a18e1541ef20a90b0120"
+            236 -> "0357970b30978614936a80b725a27bdc538bef24"
+            237 -> "34b84f8f8a37f1c615d5d99db2fce7df3a269c45"
+            238 -> "350ac50d2be83c72b3e35169bc52cb2a1fc53ce3"
+            239 -> "c95f866eaa693da187bf986cdf9c8f23b555ed4c"
+            240 -> "c8f9b14be8bd3fae44fa830381795cdfd32aa95f"
+            else -> null
+        }
+    }
+
+    private fun getBootstrap(
+        timestamp: Long,
+        revision: Int,
+    ): RSProxArchiveBootstrap? {
+        val timestampInstant = Instant.ofEpochMilli(timestamp)
+        return try {
+            val bootstrap = RSProxArchiveBootstrapDictionary.find(timestamp, revision)
+            if (bootstrap == null) {
+                logger.warn {
+                    "No revision $revision RuneLite bootstrap found in RSProx Archive for replay timestamp $timestampInstant"
+                }
+            } else {
+                logger.info {
+                    "Resolved revision ${bootstrap.gameRevision} RuneLite ${bootstrap.runeliteVersion} " +
+                        "bootstrap commit ${bootstrap.commitSha} dated ${bootstrap.committedAt} " +
+                        "for replay timestamp $timestampInstant"
+                }
+            }
+            bootstrap
+        } catch (e: Exception) {
+            logger.error(e) {
+                "Unable to resolve revision $revision RuneLite bootstrap from RSProx Archive for replay timestamp $timestampInstant"
+            }
+            null
+        }
+    }
+
+    public fun updateCredentials(
+        name: String,
+        userId: Long,
+        userHash: Long,
+    ) {
+        this.credentials.append(BinaryCredentials(name, userId, userHash))
+    }
+
+    private fun recategorizeBinaries(progressCallback: ProgressCallback) {
+        val binaries =
+            BINARY_PATH
+                .walk()
+                .filter { it.isRegularFile(LinkOption.NOFOLLOW_LINKS) }
+                .filter { it.extension == "bin" }
+                .filter { it.parent == BINARY_PATH }
+                .toList()
+        if (binaries.isEmpty()) {
+            return
+        }
+        progressCallback.update(95.0, "Proxy", "Loading binary headers")
+        logger.info {
+            "Re-categorizing ${binaries.size} x binary file."
+        }
+
+        val dummyUserUid = UserUid(0, 0)
+        val dummyHash = dummyUserUid.hash
+        var loadCount = 0
+
+        for (path in binaries) {
+            val buf = Unpooled.wrappedBuffer(path.readBytes()).toJagByteBuf()
+            try {
+                progressCallback.update(
+                    95.0,
+                    "Proxy",
+                    "Re-categorizing binary headers",
+                    "${++loadCount}/${binaries.size}",
+                )
+                val header = BinaryHeader.decode(buf)
+
+                val isDummy = header.accountHash.contentEquals(dummyHash)
+                // Use some relatively naive heuristics to re-categorize the binaries
+                // Any future binaries will be placed according to the proxy target's name used.
+                val directory =
+                    when {
+                        header.worldId >= 300 && !isDummy -> {
+                            "Old School RuneScape"
+                        }
+                        !isDummy -> {
+                            "Unknown"
+                        }
+                        else -> {
+                            "Private Server"
+                        }
+                    }
+                val newPath = BINARY_PATH.resolve(directory).resolve(path.fileName)
+                newPath.createDirectories()
+                path.moveTo(newPath, overwrite = true)
+
+                val transcript = path.resolveSibling("${path.nameWithoutExtension}.txt")
+                if (transcript.exists(LinkOption.NOFOLLOW_LINKS)) {
+                    val newTranscript = BINARY_PATH.resolve(directory).resolve(transcript.fileName)
+                    transcript.moveTo(newTranscript, overwrite = true)
+                }
+            } catch (_: Exception) {
+                // Assume the file isn't a binary, but just another .bin file;
+                // headers should never fail to decode.
+            }
+        }
+    }
+
+    private fun transferFakeCertificate() {
+        if (FAKE_CERTIFICATE_FILE.exists(LinkOption.NOFOLLOW_LINKS)) {
+            return
+        }
+        logger.debug { "Copying fake certificate" }
+        val resource =
+            ProxyService::class.java
+                .getResourceAsStream("fake-cert.jks")
+                ?.readAllBytes()
+                ?: throw IllegalStateException("Unable to find fake-cert.jks")
+        FAKE_CERTIFICATE_FILE.writeBytes(resource)
+    }
+
+    public fun getAppTheme(): String {
+        return properties.getPropertyOrNull(APP_THEME) ?: "RuneLite"
+    }
+
+    public fun getAppWidth(): Int {
+        return properties.getPropertyOrNull(APP_WIDTH) ?: 800
+    }
+
+    public fun getAppHeight(): Int {
+        return properties.getPropertyOrNull(APP_HEIGHT) ?: 600
+    }
+
+    public fun setAppMaximized(maximized: Boolean) {
+        properties.setProperty(APP_MAXIMIZED, maximized)
+        properties.saveProperties(PROPERTIES_FILE)
+    }
+
+    public fun getAppMaximized(): Boolean? {
+        return properties.getPropertyOrNull(APP_MAXIMIZED)
+    }
+
+    public fun setFiltersStatus(status: Int) {
+        properties.setProperty(FILTERS_STATUS, status)
+        properties.saveProperties(PROPERTIES_FILE)
+    }
+
+    public fun getFiltersStatus(): Int {
+        return properties.getPropertyOrNull(FILTERS_STATUS) ?: 0
+    }
+
+    public fun setSelectedClient(index: Int) {
+        properties.setProperty(SELECTED_CLIENT, index)
+        properties.saveProperties(PROPERTIES_FILE)
+    }
+
+    public fun getSelectedClient(): Int {
+        return properties.getPropertyOrNull(SELECTED_CLIENT) ?: 0
+    }
+
+    public fun getSelectedProxyTarget(): Int {
+        val lastSelected = properties.getPropertyOrNull(SELECTED_PROXY_TARGET) ?: 0
+        if (lastSelected in proxyTargets.indices) {
+            return lastSelected
+        }
+        return 0
+    }
+
+    public fun setSelectedProxyTarget(index: Int) {
+        properties.setProperty(SELECTED_PROXY_TARGET, index)
+        properties.saveProperties(PROPERTIES_FILE)
+    }
+
+    public fun importProxyTargets(path: Path): ProxyTargetImportResult {
+        val importer = ProxyTargetImporter()
+        val result = importer.import(path)
+        if (result.importedTargets.isNotEmpty()) {
+            ProxyTargetSourceRegistry.remove(result.importedTargets)
+        }
+        return result
+    }
+
+    public fun importProxyTargets(url: URL): ProxyTargetImportResult {
+        val importer = ProxyTargetImporter()
+        val result = importer.import(url)
+        if (result.importedTargets.isNotEmpty()) {
+            ProxyTargetSourceRegistry.replaceForUrl(url.toString(), result.importedTargets)
+        }
+        return result
+    }
+
+    public fun setAppSize(
+        width: Int,
+        height: Int,
+    ) {
+        properties.setProperty(APP_WIDTH, width)
+        properties.setProperty(APP_HEIGHT, height)
+        properties.saveProperties(PROPERTIES_FILE)
+    }
+
+    public fun getAppPositionX(): Int? {
+        return properties.getPropertyOrNull(APP_POSITION_X)
+    }
+
+    public fun getAppPositionY(): Int? {
+        return properties.getPropertyOrNull(APP_POSITION_Y)
+    }
+
+    public fun setAppPosition(
+        x: Int,
+        y: Int,
+    ) {
+        properties.setProperty(APP_POSITION_X, x)
+        properties.setProperty(APP_POSITION_Y, y)
+        properties.saveProperties(PROPERTIES_FILE)
+    }
+
+    public fun setAppTheme(theme: String) {
+        properties.setProperty(APP_THEME, theme)
+        properties.saveProperties(PROPERTIES_FILE)
+    }
+
+    private fun setShutdownHook() {
+        Runtime.getRuntime().addShutdownHook(
+            Thread {
+                if (hasAliveProcesses()) {
+                    logger.debug {
+                        "Unsafe shutdown detected - attempting to shut down gracefully"
+                    }
+                    try {
+                        killAliveProcesses()
+                    } finally {
+                        safeShutdown()
+                    }
+                }
+            },
+        )
+    }
+
+    private fun hasAliveProcesses(): Boolean {
+        return processes.values.any { processList ->
+            processList.any { it.isAlive }
+        }
+    }
+
+    public fun killAliveProcess(port: Int) {
+        removeSessionMonitor(port)
+        val processList = processes.remove(port) ?: return
+        for (process in processList) {
+            try {
+                kill(process)
+            } catch (t: Throwable) {
+                logger.error(t) {
+                    "Unable to destroy process on port $port: ${process.info()}"
+                }
+                continue
+            }
+            logger.info {
+                "Destroyed process on port $port: ${process.info()}"
+            }
+        }
+    }
+
+    private fun kill(process: ProcessHandle) {
+        for (descendant in process.descendants()) {
+            kill(descendant)
+        }
+        process.destroyForcibly()
+    }
+
+    @Suppress("SameParameterValue")
+    private fun launchDaemonWatcherThread(
+        timeout: Long,
+        unit: TimeUnit,
+    ) {
+        thread(isDaemon = true) {
+            Thread.sleep(unit.toMillis(timeout))
+            // Print to system.err as logger will not necessarily flush it due to caching
+            System.err.println("Process is still alive after $timeout ${unit.name.lowercase()} - forcibly killing it.")
+            exitProcess(-1)
+        }
+    }
+
+    private fun killAliveProcesses() {
+        if (processes.isNotEmpty()) {
+            // It is possible for the below process to get stuck in a weird state
+            // which requires taskkill to be performed. This is not particularly user-friendly,
+            // so we shall launch a separate daemon thread to forcibly exit the application after
+            // a long enough time period
+            launchDaemonWatcherThread(5, TimeUnit.SECONDS)
+        }
+        for (port in processes.keys.toSet()) {
+            killAliveProcess(port)
+        }
+    }
+
+    public fun safeShutdown() {
+        for (connection in connections.listConnections()) {
+            closeActiveChannel(connection.clientChannel)
+            closeActiveChannel(connection.serverChannel)
+            try {
+                connection.blob.close()
+                connection.blob.shutdown()
+            } catch (t: Throwable) {
+                logger.error(t) {
+                    "Unable to close blob ${connection.blob}"
+                }
+            }
+        }
+        killAliveProcesses()
+        SymbolDictionaryProvider.stop()
+    }
+
+    private fun closeActiveChannel(channel: Channel) {
+        try {
+            if (channel.isActive) {
+                channel.close()
+            }
+        } catch (t: Throwable) {
+            logger.error(t) {
+                "Unable to close channel $channel"
+            }
+        }
+    }
+
+    private fun deleteTemporaryClients() {
+        val files =
+            TEMP_CLIENTS_DIRECTORY
+                .toFile()
+                .walkTopDown()
+                .filter { it.isFile }
+        for (file in files) {
+            try {
+                file.delete()
+            } catch (t: Throwable) {
+                // Doesn't really matter, we're just deleting to avoid growing infinitely
+                continue
+            }
+        }
+    }
+
+    private fun deleteTemporaryRuneLiteJars() {
+        val path = Path(System.getProperty("user.home"), ".runelite", "repository2")
+        if (!path.exists(LinkOption.NOFOLLOW_LINKS)) return
+        val files = path.toFile().walkTopDown()
+        val namesToDelete =
+            listOf(
+                "client",
+                "injected-client",
+                "runelite-api",
+            )
+        for (file in files) {
+            if (!file.isFile) {
+                continue
+            }
+            val match = namesToDelete.any { file.name.startsWith(it) }
+            if (!match) continue
+            if (!file.name.endsWith("-patched.jar")) continue
+            file.delete()
+        }
+    }
+
+    public fun launchRuneLiteClient(
+        sessionMonitor: SessionMonitor<BinaryHeader>,
+        character: JagexCharacter?,
+        port: Int,
+        target: ProxyTarget,
+    ) {
+        try {
+            launchProxyServer(this.bootstrapFactory, target, rsa, port)
+        } catch (t: Throwable) {
+            logger.error(t) { "Unable to bind network port $port for native client." }
+            return
+        }
+        this.connections.addSessionMonitor(port, sessionMonitor)
+        ClientTypeDictionary[port] = "RuneLite (${operatingSystem.shortName})"
+        launchJavaProcess(
+            port,
+            operatingSystem,
+            character,
+            target,
+        )
+    }
+
+    public fun loadReplaySession(path: Path): ReplaySession =
+        checkNotNull(
+            loadReplaySession(path) {
+                error("A local disk cache is required for this replay.")
+            },
+        )
+
+    public fun loadReplaySession(
+        path: Path,
+        manualCacheSelector: (Js5MasterIndex) -> ReplayDiskCacheStore?,
+    ): ReplaySession? {
+        val binary = BinaryBlob.decode(path, filterSetStore, settingsStore)
+        require(
+            !binary.header.isRuneScape3(),
+        ) { "RS3 binary recording is supported; RS3 replay is not implemented yet." }
+        val masterIndex =
+            Js5MasterIndex.trimmed(
+                binary.header.revision,
+                binary.header.js5MasterIndex,
+            )
+        val cacheStore =
+            if (binary.header.isOldSchoolRuneScape()) {
+                checkNotNull(ReplayDiskCacheProvider().get(masterIndex)) {
+                    "Unable to locate RSProx Archive or OpenRS2 disk cache for replay revision " +
+                        "${binary.header.revision}"
+                }
+            } else {
+                manualCacheSelector(masterIndex) ?: return null
+            }
+        decoderLoader.load(ReplayCacheProvider, binary.header.revision)
+        val decoder = decoderLoader.getDecoder(binary.header.revision, ReplayCacheProvider)
+        val timeline =
+            ReplayTimeline.fromBinaryStream(
+                binary.header,
+                binary.stream,
+                decoder.gameClientProtProvider,
+                decoder.gameServerProtProvider,
+            )
+        return ReplaySession(timeline, decoder, cacheStore)
+    }
+
+    public fun transcribeReplaySession(replaySession: ReplaySession): ReplayTranscript {
+        return ReplayTranscriber(decoderLoader, filterSetStore, settingsStore).transcribe(replaySession)
+    }
+
+    public fun launchReplayRuneLiteClient(
+        replaySession: ReplaySession,
+        character: JagexCharacter?,
+        port: Int,
+    ) {
+        check(replaySession.tryReserveClientLaunch()) {
+            "A replay client has already been launched for this dump."
+        }
+        try {
+            (replaySession.cacheStore as? ReplayDiskCacheStore)?.open()
+            val target = initializeReplayHttpServer(port, replaySession)
+            initializeUnixSocketConnection(target.httpPort)?.let(replaySession::attachUnixSocketConnection)
+            launchReplayServer(replaySession, port)
+            // Clear out existing trackers
+            ClientTypeDictionary.remove(port)
+            this.connections.removeSessionMonitor(port)
+            removeConnection(port)
+            ClientTypeDictionary[port] = "Replay RuneLite (${operatingSystem.shortName})"
+            launchJavaProcess(
+                port,
+                operatingSystem,
+                character,
+                target,
+                useFakeJagexAccount = true,
+                onProcessExit = replaySession::handleLaunchedClientProcessExit,
+            )
+        } catch (t: Throwable) {
+            replaySession.clearClientLaunchReservation()
+            throw t
+        }
+    }
+
+    public fun launchReplayNativeClient(
+        replaySession: ReplaySession,
+        port: Int,
+    ) {
+        check(replaySession.tryReserveClientLaunch()) {
+            "A replay client has already been launched for this dump."
+        }
+        try {
+            (replaySession.cacheStore as? ReplayDiskCacheStore)?.open()
+            val target = initializeReplayHttpServer(port, replaySession)
+            launchReplayServer(replaySession, port)
+            launchNativeClientProcess(
+                os = operatingSystem,
+                rsa = rsa,
+                character = null,
+                port = port,
+                target = target,
+                clientTypeLabel = "Replay Native (${operatingSystem.shortName})",
+                registerConnectionInfo = false,
+                sessionMonitor = null,
+                worldListEndpoint = REPLAY_WORLDLIST_ENDPOINT,
+                onProcessExit = replaySession::handleLaunchedClientProcessExit,
+            )
+        } catch (t: Throwable) {
+            replaySession.clearClientLaunchReservation()
+            throw t
+        }
+    }
+
+    public fun allocatePort(): Int {
+        return allocatePorts(1)
+    }
+
+    @Synchronized
+    private fun allocatePorts(count: Int): Int {
+        require(count > 0)
+        check(availablePort in 1024..65535 && count <= 65536 - availablePort) { "Proxy port range exhausted" }
+        val first = availablePort
+        availablePort += count
+        return first
+    }
+
+    private fun portOffset(port: Int): Int {
+        check(this.initialPort != -1)
+        return port - this.initialPort
+    }
+
+    public fun initializeHttpServer(port: Int): ProxyTarget {
+        val sessionId = portOffset(port)
+        val target =
+            ProxyTarget(
+                currentProxyTarget,
+                GamePackProvider(currentProxyTarget.runeliteGamepackUrl),
+                sessionId,
+            )
+        target.load(properties, bootstrapFactory)
+        initializeUnixSocketConnection(target.httpPort)
+        return target
+    }
+
+    public fun initializeReplayHttpServer(
+        port: Int,
+        replaySession: ReplaySession,
+    ): ProxyTarget {
+        val sessionId = portOffset(port)
+        val header = replaySession.timeline.header
+        val revision = header.revision
+        val timestamp = header.timestamp
+        val replayConfig =
+            currentProxyTarget.copy(
+                id = REPLAY_PROXY_TARGET_ID,
+                name = "Replay ${header.revision}.${header.subRevision}",
+                revision = "${header.revision}.${header.subRevision}",
+                runeliteBootstrapCommitHash =
+                    getBootstrap(timestamp, revision)?.commitSha
+                        ?: getBootstrapCommitHash(revision),
+                runeliteGamepackUrl = getGamepackUrl(revision),
+                binaryFolder = null,
+                javConfigUrl = "https://cdn.rsprox.net/jav_config.ws",
+            )
+        val target =
+            ProxyTarget(
+                replayConfig,
+                GamePackProvider(replayConfig.runeliteGamepackUrl),
+                sessionId,
+                rewriteJagexAuth = true,
+            )
+        target.load(properties, bootstrapFactory)
+        return target
+    }
+
+    private fun initializeUnixSocketListener(port: Int): UnixSocketConnection {
+        return UnixSocketConnection(port)
+    }
+
+    private fun initializeUnixSocketConnection(port: Int): UnixSocketConnection? {
+        if (properties.getPropertyOrNull(RUNELITE_RSPROX_CONNECTION) != true) {
+            return null
+        }
+        return connections.getUnixConnectionOrNull(port)
+            ?: initializeUnixSocketListener(port).also { connection ->
+                connection.start()
+                connections.addUnixConnection(port, connection)
+            }
+    }
+
+    public fun launchNativeClient(
+        sessionMonitor: SessionMonitor<BinaryHeader>,
+        character: JagexCharacter?,
+        port: Int,
+        proxyTarget: ProxyTarget,
+    ) {
+        launchNativeClient(
+            operatingSystem,
+            rsa,
+            sessionMonitor,
+            character,
+            port,
+            proxyTarget,
+        )
+    }
+
+    private fun launchNativeClient(
+        os: OperatingSystem,
+        rsa: RSAPrivateCrtKeyParameters,
+        sessionMonitor: SessionMonitor<BinaryHeader>,
+        character: JagexCharacter?,
+        port: Int,
+        target: ProxyTarget,
+    ) {
+        try {
+            launchProxyServer(this.bootstrapFactory, target, rsa, port)
+        } catch (t: Throwable) {
+            logger.error(t) { "Unable to bind network port $port for native client." }
+            return
+        }
+        launchNativeClientProcess(
+            os = os,
+            rsa = rsa,
+            character = character,
+            port = port,
+            target = target,
+            clientTypeLabel = "Native (${os.shortName})",
+            registerConnectionInfo = true,
+            sessionMonitor = sessionMonitor,
+        )
+    }
+
+    public fun launchRs3Client(
+        sessionMonitor: Rs3SessionMonitor,
+        character: JagexCharacter?,
+        upstreamJavConfigUrl: String = JagexNativeClientDownloader.DEFAULT_RS3_JAV_CONFIG_URL,
+        onProgress: (Rs3LaunchProgress) -> Unit = {},
+    ): Rs3ClientHandle {
+        val renderer =
+            when (JagexNativeClientDownloader.rs3BinaryType(upstreamJavConfigUrl)) {
+                2 -> "OpenGL"
+                10 -> "Vulkan"
+                else -> error("Unsupported RS3 renderer")
+            }
+        val clientName = "RS3 Native ($renderer)"
+        val primaryPort = allocatePorts(2)
+        val progress = Rs3LaunchTracker(primaryPort, onProgress)
+        progress.update(Rs3LaunchProgress("Preparing RuneScape 3"))
+        val localPorts = Rs3RelayPorts(primaryPort, primaryPort + 1)
+        val proxyKey = Rs3ProxyRsaKeyProvider.readOrGenerate()
+        val modulusHex = Rs3ProxyRsaKeyProvider.publicModulusHex(proxyKey)
+
+        val patchedGameBinaryPath =
+            synchronized(JagexNativeClientDownloader) {
+                progress.update(Rs3LaunchProgress("Checking client download"))
+                val downloaded =
+                    JagexNativeClientDownloader.download(
+                        NativeClientType.RS3_WIN,
+                        upstreamJavConfigUrl,
+                        progress::update,
+                    )
+                val extension = if (downloaded.extension.isNotEmpty()) ".${downloaded.extension}" else ""
+                val stamp = System.currentTimeMillis()
+                val path =
+                    TEMP_CLIENTS_DIRECTORY.resolve(
+                        "${downloaded.nameWithoutExtension}-rs3-$primaryPort-$stamp$extension",
+                    )
+                downloaded.copyTo(path, overwrite = false)
+                path
+            }
+
+        val patcher = NativePatcher()
+        progress.update(Rs3LaunchProgress("Patching client"))
+        val gameCriteria =
+            NativePatchCriteria
+                .Builder(NativeClientType.RS3_WIN)
+                .rsaModulus(modulusHex)
+                .rs3LoginPorts(localPorts.primary, localPorts.alternate)
+                .rs3WindowTitle()
+                .build()
+        val gameClientPatchResult = patcher.patch(patchedGameBinaryPath, gameCriteria)
+        check(gameClientPatchResult is PatchResult.Success) {
+            "Failed to patch RS3 game client"
+        }
+        val originalModulusHex =
+            checkNotNull(gameClientPatchResult.oldModulus) {
+                "Failed to capture original RS3 modulus from game client"
+            }
+
+        progress.update(Rs3LaunchProgress("Loading server configuration"))
+        val upstreamConfig = Rs3JavConfig(URL(upstreamJavConfigUrl))
+        val targets = upstreamConfig.captureUpstreamTargets()
+        require(targets.revision == 950) {
+            "Mapped RS3 routing is currently verified only for the live revision-950 profile"
+        }
+        // Bootstrap on the launch worker, before relay event loops see any game packets.
+        val cacheResolver = Rs3LiveCacheResolver(upstreamConfig.captureJs5ConnectionInfo())
+        progress.update(Rs3LaunchProgress("Connecting to the JS5 definition service"))
+        val packetDefinitions =
+            cacheResolver.loadPacketDefinitions { stage, completed, total ->
+                progress.update(Rs3LaunchProgress(stage, completed.toLong(), total.toLong()))
+            }
+        progress.update(Rs3LaunchProgress("Loading script signatures"))
+        val clientScripts =
+            RSProxArchiveClientScriptIndex
+                .forRuneScape(targets.revision, cacheResolver.masterIndexSnapshot)
+                .also { it.preload() }
+
+        progress.update(Rs3LaunchProgress("Starting proxy listeners"))
+        val relayServer =
+            Rs3RelayServer(
+                localPorts = localPorts,
+                proxyPrivateKey = proxyKey,
+                sessionMonitor = sessionMonitor,
+                realServerModulusHex = originalModulusHex,
+                revision = targets.revision,
+                packetDefinitions = packetDefinitions,
+                clientScripts = clientScripts,
+                masterIndex = cacheResolver.masterIndexSnapshot,
+                clientName = clientName,
+                resolveUpstream = {
+                    val fresh = Rs3JavConfig(URL(upstreamJavConfigUrl)).captureUpstreamTargets()
+                    fresh.lobbyHost to fresh.lobbyPort
+                },
+                filterSetStore = this.filterSetStore,
+                settingSetStore = this.settingsStore,
+            )
+        var namespace: Rs3RoutingNamespace? = null
+        var handle: Rs3ClientHandle? = null
+        var launcher: Rs3OfficialLauncher? = null
+        try {
+            val lease =
+                Rs3RoutingNamespace.acquire(CONFIGURATION_PATH.resolve("rs3-routing-target"), localPorts)
+            namespace = lease
+            val lobby = Rs3Endpoint.Lobby(targets.lobbyId)
+            val routes =
+                localPorts.routes(
+                    lease.addresses,
+                    lobby,
+                    targets.lobbyHost,
+                    targets.lobbyPort,
+                    targets.lobbyAlternatePort,
+                )
+            relayServer.registerRoutes(routes).get(20, TimeUnit.SECONDS)
+            val host = lease.addresses.address(lobby).hostAddress
+            ClientTypeDictionary[localPorts.primary] = "RS3 ($renderer, ${operatingSystem.shortName})"
+            ClientTypeDictionary[localPorts.alternate] = "RS3 ($renderer, ${operatingSystem.shortName})"
+            val running =
+                Rs3ClientHandle(relayServer, modulusHex, localPorts.primary) {
+                    try {
+                        launcher?.close()
+                    } finally {
+                        processes.remove(localPorts.primary)
+                        ClientTypeDictionary.remove(localPorts.primary)
+                        ClientTypeDictionary.remove(localPorts.alternate)
+                        lease.close()
+                    }
+                }
+            handle = running
+            val rewritten =
+                upstreamConfig.rewriteLobbyEndpoint(host, localPorts.primary, localPorts.alternate)
+            val officialLauncher =
+                if (operatingSystem == OperatingSystem.WINDOWS) {
+                    Rs3OfficialLauncher.prepare(
+                        CONFIGURATION_PATH.resolve("rs3-launcher"),
+                        patchedGameBinaryPath,
+                        rewritten,
+                        host,
+                        progress::update,
+                    )
+                } else {
+                    null
+                }
+            launcher = officialLauncher
+            val clientArgs = officialLauncher?.arguments ?: rewritten.toClientArgs()
+
+            progress.update(Rs3LaunchProgress("Starting client process"))
+            launchExecutable(
+                port = localPorts.primary,
+                path = officialLauncher?.executable ?: patchedGameBinaryPath,
+                operatingSystem = operatingSystem,
+                character = character,
+                args = clientArgs,
+                onProcessExit = {
+                    try {
+                        officialLauncher?.close()
+                    } finally {
+                        running.shutdown()
+                    }
+                },
+                onProcessStart =
+                    officialLauncher?.let { native ->
+                        { parent ->
+                            native.attach(parent) { child -> processes[localPorts.primary] = listOf(child, parent) }
+                        }
+                    },
+            )
+        } catch (t: Throwable) {
+            try {
+                launcher?.close()
+            } catch (closeFailure: Exception) {
+                t.addSuppressed(closeFailure)
+            }
+            val running = handle
+            if (running != null) {
+                running.shutdown()
+            } else {
+                val lease = namespace
+                relayServer.shutdown().whenComplete { _, _ -> lease?.close() }
+            }
+            throw t
+        }
+
+        progress.complete()
+        return checkNotNull(handle)
+    }
+
+    private fun Rs3JavConfig.toClientArgs(): List<String> {
+        val prefix = "param="
+        val args = mutableListOf<String>()
+        text
+            .lineSequence()
+            .filter { it.startsWith(prefix) }
+            .forEach { line ->
+                val rest = line.substring(prefix.length)
+                val eq = rest.indexOf('=')
+                if (eq == -1) return@forEach
+                args += rest.substring(0, eq) // key
+                args += rest.substring(eq + 1) // value
+            }
+        return args
+    }
+
+    private fun launchNativeClientProcess(
+        os: OperatingSystem,
+        rsa: RSAPrivateCrtKeyParameters,
+        character: JagexCharacter?,
+        port: Int,
+        target: ProxyTarget,
+        clientTypeLabel: String,
+        registerConnectionInfo: Boolean,
+        sessionMonitor: SessionMonitor<BinaryHeader>?,
+        worldListEndpoint: String = properties.getProperty(WORLDLIST_ENDPOINT),
+        onProcessExit: (() -> Unit)? = null,
+    ) {
+        val javConfigEndpoint = properties.getProperty(JAV_CONFIG_ENDPOINT)
+        val nativeClientType =
+            when (os) {
+                OperatingSystem.WINDOWS, OperatingSystem.UNIX -> NativeClientType.WIN
+                OperatingSystem.MAC -> NativeClientType.MAC
+                else -> throw IllegalStateException()
+            }
+        val targetRev = target.config.revision
+        val binary =
+            if (targetRev == null || targetRev == "latest_supported") {
+                // JagexNativeClientDownloader.download(nativeClientType)
+                getHistoricNativeClient("240.1", nativeClientType)
+            } else {
+                getHistoricNativeClient(targetRev, nativeClientType)
+            }
+        val extension = if (binary.extension.isNotEmpty()) ".${binary.extension}" else ""
+        val stamp = System.currentTimeMillis()
+        val patched = TEMP_CLIENTS_DIRECTORY.resolve("${binary.nameWithoutExtension}-$stamp$extension")
+        binary.copyTo(patched, overwrite = true)
+
+        // For now, directly just download, patch and launch the C++ client
+        val patcher = NativePatcher()
+        val criteriaBuilder =
+            NativePatchCriteria
+                .Builder(nativeClientType)
+                .acceptAllLoopbackAddresses()
+                .rsaModulus(rsa.publicKey.modulus.toString(16))
+                .javConfig("http://127.0.0.1:${target.httpPort}/$javConfigEndpoint")
+                .worldList("http://127.0.0.1:${target.httpPort}/$worldListEndpoint")
+                .port(port)
+        val revConst = targetRev?.substringBefore('.')?.toIntOrNull()
+        if (revConst == null || revConst <= 231) {
+            if (target.config.varpCount != YamlProxyTargetConfig.DEFAULT_VARP_COUNT) {
+                criteriaBuilder.varpCount(
+                    YamlProxyTargetConfig.DEFAULT_VARP_COUNT,
+                    target.config.varpCount,
+                )
+            }
+        }
+        if (target.config.name != YamlProxyTargetConfig.DEFAULT_NAME) {
+            criteriaBuilder.name(target.config.name)
+        }
+        val criteria = criteriaBuilder.build()
+        val result =
+            patcher.patch(
+                patched,
+                criteria,
+            )
+        check(result is PatchResult.Success) {
+            "Failed to patch"
+        }
+        checkNotNull(result.oldModulus)
+        if (registerConnectionInfo) {
+            val targetModulus =
+                target.config.modulus
+                    ?: rspsModulus
+                    ?: result.oldModulus
+            registerConnection(
+                ConnectionInfo(
+                    ClientType.Native,
+                    os,
+                    port,
+                    BigInteger(targetModulus, 16),
+                ),
+            )
+        }
+        if (worldListEndpoint == REPLAY_WORLDLIST_ENDPOINT) {
+            ClientTypeDictionary.remove(port)
+            this.connections.removeSessionMonitor(port)
+        }
+        ClientTypeDictionary[port] = clientTypeLabel
+        if (sessionMonitor != null) {
+            this.connections.addSessionMonitor(port, sessionMonitor)
+        }
+        launchExecutable(
+            port = port,
+            path = result.outputPath,
+            operatingSystem = os,
+            character = character,
+            onProcessExit = onProcessExit,
+        )
+    }
+
+    private fun removeSessionMonitor(port: Int) {
+        this.connections.removeSessionMonitor(port)
+    }
+
+    private fun getHistoricNativeClient(
+        version: String,
+        type: NativeClientType,
+    ): Path {
+        return LostCityNativeClientDownloader.download(
+            CLIENTS_DIRECTORY,
+            type,
+            version,
+        )
+    }
+
+    private fun launchJavaProcess(
+        port: Int,
+        operatingSystem: OperatingSystem,
+        character: JagexCharacter?,
+        target: ProxyTarget,
+        useStoredCredentials: Boolean = true,
+        useFakeJagexAccount: Boolean = false,
+        onProcessExit: (() -> Unit)? = null,
+    ) {
+        val timestamp = System.currentTimeMillis()
+        val socketFile = SOCKETS_DIRECTORY.resolve("$timestamp.socket").toFile()
+        val socket = AFUNIXServerSocket.newInstance()
+        logger.debug {
+            "Binding an AF UNIX Socket to ${socketFile.name}"
+        }
+        socket.bind(AFUNIXSocketAddress.of(socketFile))
+        try {
+            val javConfigEndpoint = properties.getProperty(JAV_CONFIG_ENDPOINT)
+            val launcher = RuneliteLauncher()
+            val clientJvmArgs =
+                if (useFakeJagexAccount) {
+                    val replayAuthTrustStore =
+                        checkNotNull(target.replayAuthTrustStore) {
+                            "Replay auth truststore has not been initialized."
+                        }
+                    val replayAuthTrustStorePassword =
+                        checkNotNull(target.replayAuthTrustStorePassword) {
+                            "Replay auth truststore password has not been initialized."
+                        }
+                    listOf(
+                        "-Djavax.net.ssl.trustStore=$replayAuthTrustStore",
+                        "-Djavax.net.ssl.trustStorePassword=$replayAuthTrustStorePassword",
+                    )
+                } else {
+                    emptyList()
+                }
+            val args =
+                launcher.getLaunchArgs(
+                    port,
+                    rsa.publicKey.modulus.toString(16),
+                    javConfig = "http://127.0.0.1:${target.httpPort}/$javConfigEndpoint",
+                    socket = timestamp.toString(),
+                    target = target,
+                    clientJvmArgs = clientJvmArgs,
+                )
+
+            createProcess(
+                args,
+                directory = null,
+                path = null,
+                port = port,
+                character,
+                operatingSystem,
+                ClientType.RuneLite,
+                target = target,
+                useStoredCredentials = useStoredCredentials,
+                useFakeJagexAccount = useFakeJagexAccount,
+                onProcessExit = onProcessExit,
+            )
+            logger.debug { "Waiting for client to connect to the server socket..." }
+            if (target.gamePackProvider.gamepackUrl != null) {
+                logger.debug { "Prefetching gamepack from ${target.gamePackProvider.gamepackUrl}" }
+                target.gamePackProvider.prefetch()
+            } else {
+                logger.debug { "Skipping gamepack prefetching" }
+            }
+            val channel = socket.accept()
+            logger.debug { "Client connected to server socket successfully." }
+            logger.debug { "Requesting old rsa modulus from the client..." }
+            val output = channel.outputStream
+            output.write("old-rsa-modulus:".encodeToByteArray())
+            output.flush()
+            val input = channel.inputStream
+
+            val buf = ByteArray(socket.receiveBufferSize)
+            val read = input.read(buf)
+            val oldModulus = String(buf, 0, read)
+            logger.debug { "Old RSA modulus received from the client: ${oldModulus.substring(0, 16)}..." }
+            val targetModulus =
+                target.config.modulus
+                    ?: rspsModulus
+                    ?: oldModulus
+            registerConnection(
+                ConnectionInfo(
+                    ClientType.RuneLite,
+                    operatingSystem,
+                    port,
+                    BigInteger(targetModulus, 16),
+                ),
+            )
+            socket.close()
+        } finally {
+            socket.close()
+            socketFile.delete()
+        }
+    }
+
+    private fun wrapForOperatingSystem(
+        operatingSystem: OperatingSystem,
+        executablePath: String,
+        extraArgs: List<String> = emptyList(),
+    ): List<String> {
+        return when (operatingSystem) {
+            OperatingSystem.WINDOWS -> listOf(executablePath) + extraArgs
+            OperatingSystem.UNIX -> {
+                val protonFilePath = CONFIGURATION_PATH.absolutePathString() + "/protonpath"
+                val protonFile = Path(protonFilePath)
+                if (protonFile.exists()) {
+                    listOf(protonFile.readText().trim(), "run", executablePath) + extraArgs
+                } else {
+                    listOf("wine", executablePath) + extraArgs
+                }
+            }
+            OperatingSystem.MAC, OperatingSystem.SOLARIS ->
+                throw IllegalStateException("$operatingSystem is not applicable here - handle it at the call site.")
+        }
+    }
+
+    private fun usingProton(): Boolean {
+        val protonFilePath = CONFIGURATION_PATH.absolutePathString() + "/protonpath"
+        return Path(protonFilePath).exists()
+    }
+
+    private fun launchExecutable(
+        port: Int,
+        path: Path,
+        operatingSystem: OperatingSystem,
+        character: JagexCharacter?,
+        args: List<String> = emptyList(),
+        onProcessExit: (() -> Unit)? = null,
+        onProcessStart: ((ProcessHandle) -> Unit)? = null,
+    ) {
+        when (operatingSystem) {
+            OperatingSystem.WINDOWS, OperatingSystem.UNIX -> {
+                val directory = path.parent.toFile()
+                val absolutePath = path.absolutePathString()
+                try {
+                    createProcess(
+                        wrapForOperatingSystem(operatingSystem, absolutePath, args),
+                        directory,
+                        path,
+                        port,
+                        character,
+                        operatingSystem,
+                        ClientType.Native,
+                        proton = operatingSystem == OperatingSystem.UNIX && usingProton(),
+                        onProcessExit = onProcessExit,
+                        onProcessStart = onProcessStart,
+                    )
+                } catch (e: IOException) {
+                    if (operatingSystem == OperatingSystem.UNIX) {
+                        throw RuntimeException("wine is required to run the enhanced client on unix", e)
+                    }
+                    throw e
+                }
+            }
+
+            OperatingSystem.MAC -> {
+                // The patched file is at /.rsprox/clients/osclient.app/Contents/MacOS/osclient-patched
+                // We need to however execute the /.rsprox/clients/osclient.app "file"
+                val rootDirection = path.parent.parent.parent
+                val absolutePath = "${File.separator}${rootDirection.absolutePathString()}"
+                createProcess(
+                    listOf("open", "-W", absolutePath) + args,
+                    null,
+                    path,
+                    port,
+                    character,
+                    operatingSystem,
+                    ClientType.Native,
+                    onProcessExit = onProcessExit,
+                    onProcessStart = onProcessStart,
+                )
+            }
+
+            OperatingSystem.SOLARIS -> throw IllegalStateException("Solaris not supported yet.")
+        }
+    }
+
+    private fun createProcess(
+        command: List<String>,
+        directory: File?,
+        path: Path?,
+        port: Int,
+        character: JagexCharacter?,
+        operatingSystem: OperatingSystem,
+        clientType: ClientType,
+        proton: Boolean = false,
+        target: ProxyTarget? = null,
+        useStoredCredentials: Boolean = true,
+        useFakeJagexAccount: Boolean = false,
+        onProcessExit: (() -> Unit)? = null,
+        onProcessStart: ((ProcessHandle) -> Unit)? = null,
+    ) {
+        logger.debug { "Attempting to create process $command" }
+        val builder =
+            ProcessBuilder()
+                .inheritIO()
+                .command(command)
+        if (directory != null) {
+            builder.directory(directory)
+        }
+        if (proton) {
+            val pfxFolder = CONFIGURATION_PATH.absolutePathString() + "/proton_pfx"
+            val pfxPath = Path(pfxFolder)
+            if (pfxPath.notExists()) pfxPath.createDirectory()
+            // half sure steam doesn't even work properly if in any other loc so kind of safe to hardcode
+            builder.environment()["STEAM_COMPAT_CLIENT_INSTALL_PATH"] =
+                System.getProperty("user.home ") + "/.steam/steam"
+            builder.environment()["STEAM_COMPAT_DATA_PATH"] = pfxFolder
+        }
+        if (useFakeJagexAccount) {
+            builder.environment()["JX_CHARACTER_ID"] = FAKE_REPLAY_CHARACTER_ID
+            builder.environment()["JX_SESSION_ID"] = FAKE_REPLAY_SESSION_ID
+            builder.environment()["JX_REFRESH_TOKEN"] = ""
+            builder.environment()["JX_DISPLAY_NAME"] = FAKE_REPLAY_DISPLAY_NAME
+            builder.environment()["JX_ACCESS_TOKEN"] = ""
+        } else if (useStoredCredentials && character != null) {
+            val account = jagexAccountStore.accounts.firstOrNull { it.characters.contains(character) }
+            if (account != null) {
+                builder.environment()["JX_CHARACTER_ID"] = character.accountId.toString()
+                builder.environment()["JX_SESSION_ID"] = account.sessionId
+                builder.environment()["JX_REFRESH_TOKEN"] = ""
+                builder.environment()["JX_DISPLAY_NAME"] = character.displayName ?: ""
+                builder.environment()["JX_ACCESS_TOKEN"] = ""
+            }
+        } else if (useStoredCredentials && target != null && target.config.id == 0) {
+            builder.environment().putAll(
+                Properties().let { props ->
+                    val runeliteCreds =
+                        File(System.getProperty("user.home"), ".runelite")
+                            .resolve("credentials.properties")
+                    if (!runeliteCreds.exists()) {
+                        logger.info { "(Jagex Account) RuneLite credentials could not be located in: $runeliteCreds" }
+                        logger.info { "(Jagex Account) Using regular username/e-mail & password login box" }
+                        emptyMap()
+                    } else {
+                        runeliteCreds.inputStream().use {
+                            props.load(it)
+                        }
+                        props.stringPropertyNames().associateWith { props.getProperty(it) }
+                    }
+                },
+            )
+        }
+        val process = builder.start()
+        // Wait for up to half a second for the process to launch, after which we can determine if it's still alive
+        process.waitFor(500, TimeUnit.MILLISECONDS)
+        // If the process encountered an error during the launching (e.g. exe couldn't be launched), the failure
+        // case will be hit here. The 500 millisecond wait time is a requirement to hit it, otherwise it'll still
+        // be alive by the time it hits that.
+        if (!process.isAlive) {
+            if (operatingSystem == OperatingSystem.WINDOWS && clientType == ClientType.Native) {
+                checkVisualCPlusPlusRedistributable()
+            }
+            throw IllegalStateException("Unable to launch process: $path, error code: ${process.waitFor()}")
+        }
+        if (path != null) logger.debug { "Successfully launched $path" }
+        processes[port] = process.children().collect(Collectors.toList()) + process.toHandle()
+        if (onProcessExit != null) {
+            process
+                .toHandle()
+                .onExit()
+                .thenRun(onProcessExit)
+        }
+        onProcessStart?.invoke(process.toHandle())
+    }
+
+    private fun checkVisualCPlusPlusRedistributable() {
+        val rootPath = Path(System.getenv("SYSTEMROOT") ?: return)
+        val vcomp140 = rootPath.resolve("System32").resolve("vcomp140.dll")
+        if (vcomp140.notExists()) {
+            throw MissingLibraryException(
+                "VCOMP140.dll is missing. " +
+                    "Install Visual C++ Redistributable to obtain the necessary libraries via " +
+                    "https://www.microsoft.com/en-ca/download/details.aspx?id=48145",
+            )
+        }
+    }
+
+    private fun createConfigurationDirectories(path: Path) {
+        runCatching("Unable to create configuration directory: $path") {
+            Files.createDirectories(path)
+        }
+    }
+
+    private fun loadProperties() {
+        runCatching("Unable to load proxy properties") {
+            this.properties = ProxyProperties(PROPERTIES_FILE)
+            logger.debug { "Loaded proxy properties:" }
+            for ((key, value) in this.properties.entryPairList()) {
+                logger.debug { "$key=$value" }
+            }
+        }
+    }
+
+    private fun loadRsa(): RSAPrivateCrtKeyParameters {
+        return runCatching("Unable to load or generate RSA parameters") {
+            readOrGenerateRsaKey()
+        }
+    }
+
+    private fun launchProxyServer(
+        factory: BootstrapFactory,
+        target: ProxyTarget,
+        rsa: RSAPrivateCrtKeyParameters,
+        port: Int,
+    ) {
+        val serverBootstrap =
+            factory.createServerBootStrap(
+                target,
+                rsa,
+                decoderLoader,
+                properties.getProperty(BINARY_WRITE_INTERVAL_SECONDS),
+                connections,
+                filterSetStore,
+                settingsStore,
+            )
+        val timeoutSeconds = properties.getProperty(BIND_TIMEOUT_SECONDS).toLong()
+        serverBootstrap
+            .bind(port)
+            .asCompletableFuture()
+            .orTimeout(timeoutSeconds, TimeUnit.SECONDS)
+            .join()
+        this.serverBootstrap = serverBootstrap
+        logger.debug { "Proxy server bound to port $port" }
+    }
+
+    private fun launchReplayServer(
+        replaySession: ReplaySession,
+        port: Int,
+    ) {
+        if (this::replayServerChannel.isInitialized) {
+            this.replayServerChannel
+                .close()
+                .asCompletableFuture()
+                .join()
+        }
+        val serverBootstrap = bootstrapFactory.createReplayServerBootstrap(rsa, replaySession)
+        val timeoutSeconds = properties.getProperty(BIND_TIMEOUT_SECONDS).toLong()
+        this.replayServerChannel =
+            serverBootstrap
+                .bind(port)
+                .also { future ->
+                    future
+                        .asCompletableFuture()
+                        .orTimeout(timeoutSeconds, TimeUnit.SECONDS)
+                        .join()
+                }.channel()
+        this.serverBootstrap = serverBootstrap
+    }
+
+    public companion object {
+        private val logger = InlineLogger()
+        private const val REPLAY_PROXY_TARGET_ID = LocalAddressRanges.REPLAY_TARGET_ID
+        private val PROPERTIES_FILE = CONFIGURATION_PATH.resolve("proxy.properties")
+        private const val FAKE_REPLAY_CHARACTER_ID = "0"
+        private const val FAKE_REPLAY_SESSION_ID = "JX_REPLAY_SESSION"
+        private const val FAKE_REPLAY_DISPLAY_NAME = "Replay Session"
+
+        private inline fun <T> runCatching(
+            errorMessage: String,
+            block: () -> T,
+        ): T {
+            try {
+                return block()
+            } catch (t: Throwable) {
+                logger.error(t) {
+                    errorMessage
+                }
+                exitProcess(-1)
+            }
+        }
+    }
+}

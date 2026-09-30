@@ -1,0 +1,70 @@
+package net.rsprox.cache.api.type
+
+import net.rsprox.cache.api.type.util.Ops
+
+@Suppress("SpellCheckingInspection")
+public interface NpcType {
+    public val id: Int
+    public val name: String
+    public val size: Int
+    public val category: Int
+    public val model: List<Int>
+    public val headmodel: List<Int>
+    public val readyanim: Int
+    public val turnleftanim: Int
+    public val turnrightanim: Int
+    public val walkanim: Int
+    public val walkanimback: Int
+    public val walkanimleft: Int
+    public val walkanimright: Int
+    public val runanim: Int
+    public val runanimback: Int
+    public val runanimleft: Int
+    public val runanimright: Int
+    public val crawlanim: Int
+    public val crawlanimback: Int
+    public val crawlanimleft: Int
+    public val crawlanimright: Int
+    public val recolsource: List<Int>
+    public val recoldest: List<Int>
+    public val retexsource: List<Int>
+    public val retexdest: List<Int>
+    public val ops: Ops
+    public val minimap: Boolean
+    public val vislevel: Int
+    public val resizeh: Int
+    public val resizev: Int
+    public val renderPriority: Int
+    public val ambient: Int
+    public val contrast: Int
+    public val turnspeed: Int
+    public val multinpc: List<Int>
+    public val multivarbit: Int
+    public val multivar: Int
+    public val active: Boolean
+    public val walksmoothing: Boolean
+    public val follower: Boolean
+    public val lowpriorityops: Boolean
+    public val headicongroups: List<Int>
+    public val headiconindices: List<Int>
+    public val overlayheight: Int
+    public val stat: List<Int>
+    public val params: Map<Int, Any>
+    public val footprintSize: Int
+    public var readyanimduringanim: Boolean
+    public val worldOverlapTint: Boolean
+    public val worldOverlapTintColour: Int
+    public val zbuffer: Boolean
+    public val bgsound: Int
+    public val bgsoundMindelay: Int
+    public val bgsoundMaxdelay: Int
+    public val bgsoundRange: Int
+    public val bgsoundSize: Int
+    public val randomsound: List<Int>
+    public val bgsounddropoffeasing: Int
+    public val bgsoundfadeEaseintype: Int
+    public val bgsoundfadeEaseinduration: Int
+    public val bgsoundfadeEaseouttype: Int
+    public val bgsoundfadeEaseoutduration: Int
+    public val crossworldsound: Int
+}
