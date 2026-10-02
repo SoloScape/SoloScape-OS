@@ -1,12 +1,13 @@
 package org.rsmod.api.combat.formulas.accuracy.ranged
 
 import com.google.inject.Inject
+import dev.openrune.definition.type.VarBitType
+import dev.openrune.types.ItemServerType
+import dev.openrune.types.NpcServerType
 import org.rsmod.api.combat.commons.styles.RangedAttackStyle
 import org.rsmod.api.combat.commons.types.RangedAttackType
 import org.rsmod.api.combat.formulas.test_npcs
-import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.stats
-import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.player.back
 import org.rsmod.api.player.feet
 import org.rsmod.api.player.front
@@ -25,9 +26,6 @@ import org.rsmod.api.testing.params.TestWithArgs
 import org.rsmod.api.testing.params.testArgsOfSingleParam
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.inv.InvObj
-import org.rsmod.game.type.npc.UnpackedNpcType
-import org.rsmod.game.type.obj.ObjType
-import org.rsmod.game.type.varbit.VarBitType
 
 class PvNRangedAccuracyTest {
     @TestWithArgs(MatchupProvider::class)
@@ -74,7 +72,7 @@ class PvNRangedAccuracyTest {
 
     data class Matchup(
         val expectedAccuracy: Double,
-        val npc: UnpackedNpcType = test_npcs.man,
+        val npc: NpcServerType = test_npcs.man,
         val npcCurrHp: Int = 1,
         val npcMaxHp: Int = 1,
         val blockType: RangedAttackType? = null,
@@ -98,29 +96,29 @@ class PvNRangedAccuracyTest {
         val attackStyle: RangedAttackStyle? = null,
         val specMultiplier: Double = 1.0,
     ) {
-        fun withNpcTarget(npc: UnpackedNpcType) = copy(npc = npc)
+        fun withNpcTarget(npc: NpcServerType) = copy(npc = npc)
 
-        fun withHelm(obj: ObjType?) = copy(hat = obj?.let(::InvObj))
+        fun withHelm(obj: ItemServerType?) = copy(hat = obj?.let(::InvObj))
 
-        fun withCape(obj: ObjType?) = copy(back = obj?.let(::InvObj))
+        fun withCape(obj: ItemServerType?) = copy(back = obj?.let(::InvObj))
 
-        fun withAmulet(obj: ObjType?) = copy(front = obj?.let(::InvObj))
+        fun withAmulet(obj: ItemServerType?) = copy(front = obj?.let(::InvObj))
 
-        fun withAmmo(obj: ObjType?) = copy(quiver = obj?.let(::InvObj))
+        fun withAmmo(obj: ItemServerType?) = copy(quiver = obj?.let(::InvObj))
 
-        fun withWeapon(obj: ObjType?) = copy(righthand = obj?.let(::InvObj))
+        fun withWeapon(obj: ItemServerType?) = copy(righthand = obj?.let(::InvObj))
 
-        fun withBody(obj: ObjType?) = copy(torso = obj?.let(::InvObj))
+        fun withBody(obj: ItemServerType?) = copy(torso = obj?.let(::InvObj))
 
-        fun withShield(obj: ObjType?) = copy(lefthand = obj?.let(::InvObj))
+        fun withShield(obj: ItemServerType?) = copy(lefthand = obj?.let(::InvObj))
 
-        fun withLegs(obj: ObjType?) = copy(legs = obj?.let(::InvObj))
+        fun withLegs(obj: ItemServerType?) = copy(legs = obj?.let(::InvObj))
 
-        fun withGloves(obj: ObjType?) = copy(hands = obj?.let(::InvObj))
+        fun withGloves(obj: ItemServerType?) = copy(hands = obj?.let(::InvObj))
 
-        fun withFeet(obj: ObjType?) = copy(feet = obj?.let(::InvObj))
+        fun withFeet(obj: ItemServerType?) = copy(feet = obj?.let(::InvObj))
 
-        fun withRing(obj: ObjType?) = copy(ring = obj?.let(::InvObj))
+        fun withRing(obj: ItemServerType?) = copy(ring = obj?.let(::InvObj))
 
         fun withPrayers(vararg prayers: VarBitType) = copy(prayers = prayers.toSet())
 
@@ -195,69 +193,69 @@ class PvNRangedAccuracyTest {
                 Matchup(expectedAccuracy = 97.20)
                     .withAttackType(RangedAttackType.Standard)
                     .withAttackStyle(RangedAttackStyle.Rapid)
-                    .withWeapon(objs.shortbow)
-                    .withAmmo(objs.bronze_arrow)
+                    .withWeapon("obj.shortbow")
+                    .withAmmo("obj.bronze_arrow")
                     .withNpcTarget(test_npcs.man),
                 Matchup(expectedAccuracy = 19.87)
                     .withAttackType(RangedAttackType.Standard)
                     .withAttackStyle(RangedAttackStyle.Rapid)
-                    .withHelm(objs.armadyl_helmet)
-                    .withBody(objs.armadyl_chestplate)
-                    .withLegs(objs.armadyl_chainskirt)
-                    .withCape(objs.avas_assembler)
-                    .withAmulet(objs.amulet_of_fury)
-                    .withAmmo(objs.dragon_arrow)
-                    .withWeapon(objs.twisted_bow)
-                    .withGloves(objs.barrows_gloves)
-                    .withFeet(objs.pegasian_boots)
-                    .withRing(objs.archers_ring_i)
+                    .withHelm("obj.armadyl_helmet")
+                    .withBody("obj.armadyl_chestplate")
+                    .withLegs("obj.armadyl_skirt")
+                    .withCape("obj.avas_assembler")
+                    .withAmulet("obj.enchanted_onyx_amulet")
+                    .withAmmo("obj.dragon_arrow")
+                    .withWeapon("obj.twisted_bow")
+                    .withGloves("obj.hundred_gauntlets_level_10")
+                    .withFeet("obj.pegasian_boots")
+                    .withRing("obj.nzone_ranger_ring")
                     .withNpcTarget(test_npcs.corporeal_beast),
                 Matchup(expectedAccuracy = 31.20)
                     .withAttackType(RangedAttackType.Standard)
                     .withAttackStyle(RangedAttackStyle.Rapid)
-                    .withHelm(objs.armadyl_helmet)
-                    .withBody(objs.armadyl_chestplate)
-                    .withLegs(objs.armadyl_chainskirt)
-                    .withCape(objs.avas_assembler)
-                    .withAmulet(objs.amulet_of_fury)
-                    .withAmmo(objs.dragon_arrow)
-                    .withWeapon(objs.twisted_bow)
-                    .withGloves(objs.barrows_gloves)
-                    .withFeet(objs.pegasian_boots)
-                    .withRing(objs.archers_ring_i)
-                    .withPrayers(varbits.rigour)
+                    .withHelm("obj.armadyl_helmet")
+                    .withBody("obj.armadyl_chestplate")
+                    .withLegs("obj.armadyl_skirt")
+                    .withCape("obj.avas_assembler")
+                    .withAmulet("obj.enchanted_onyx_amulet")
+                    .withAmmo("obj.dragon_arrow")
+                    .withWeapon("obj.twisted_bow")
+                    .withGloves("obj.hundred_gauntlets_level_10")
+                    .withFeet("obj.pegasian_boots")
+                    .withRing("obj.nzone_ranger_ring")
+                    .withPrayers("varbit.prayer_rigour")
                     .withNpcTarget(test_npcs.nex),
                 Matchup(expectedAccuracy = 79.47)
                     .withAttackType(RangedAttackType.Standard)
                     .withAttackStyle(RangedAttackStyle.Rapid)
-                    .withHelm(objs.armadyl_helmet)
-                    .withBody(objs.armadyl_chestplate)
-                    .withLegs(objs.armadyl_chainskirt)
-                    .withCape(objs.avas_assembler)
-                    .withAmulet(objs.amulet_of_fury)
-                    .withAmmo(objs.runite_bolts)
-                    .withWeapon(objs.dragon_hunter_crossbow)
-                    .withShield(objs.dragonfire_ward)
-                    .withGloves(objs.barrows_gloves)
-                    .withFeet(objs.pegasian_boots)
-                    .withRing(objs.archers_ring_i)
-                    .withPrayers(varbits.hawk_eye)
+                    .withHelm("obj.armadyl_helmet")
+                    .withBody("obj.armadyl_chestplate")
+                    .withLegs("obj.armadyl_skirt")
+                    .withCape("obj.avas_assembler")
+                    .withAmulet("obj.enchanted_onyx_amulet")
+                    .withAmmo("obj.xbows_crossbow_bolts_runite")
+                    .withWeapon("obj.dragonhunter_xbow")
+                    .withShield("obj.dragonfire_ward")
+                    .withGloves("obj.hundred_gauntlets_level_10")
+                    .withFeet("obj.pegasian_boots")
+                    .withRing("obj.nzone_ranger_ring")
+                    .withPrayers("varbit.prayer_hawkeye")
                     .withRangingPotion()
                     .withNpcTarget(test_npcs.vorkath),
                 Matchup(expectedAccuracy = 55.42)
                     .withAttackType(RangedAttackType.Standard)
                     .withAttackStyle(RangedAttackStyle.Rapid)
-                    .withHelm(objs.void_ranger_helm)
-                    .withBody(objs.elite_void_top)
-                    .withLegs(objs.elite_void_robe)
-                    .withCape(objs.avas_assembler)
-                    .withAmulet(objs.necklace_of_anguish)
-                    .withAmmo(objs.dragon_arrow)
-                    .withWeapon(objs.twisted_bow)
-                    .withGloves(objs.void_gloves)
-                    .withFeet(objs.pegasian_boots)
-                    .withRing(objs.venator_ring)
-                    .withPrayers(varbits.rigour)
+                    .withHelm("obj.game_pest_archer_helm")
+                    .withBody("obj.elite_void_knight_top")
+                    .withLegs("obj.elite_void_knight_robes")
+                    .withCape("obj.avas_assembler")
+                    .withAmulet("obj.zenyte_necklace_enchanted")
+                    .withAmmo("obj.dragon_arrow")
+                    .withWeapon("obj.twisted_bow")
+                    .withGloves("obj.pest_void_knight_gloves")
+                    .withFeet("obj.pegasian_boots")
+                    .withRing("obj.venator_ring")
+                    .withPrayers("varbit.prayer_rigour")
                     .withRangingPotion()
                     .withNpcTarget(test_npcs.abyssal_sire),
             )

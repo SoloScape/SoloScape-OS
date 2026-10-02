@@ -1,7 +1,7 @@
 package org.rsmod.api.stats.xpmod
 
+import dev.openrune.types.StatType
 import org.rsmod.game.entity.Player
-import org.rsmod.game.type.stat.StatType
 
 fun interface XpMod {
     /**
@@ -15,5 +15,5 @@ fun interface XpMod {
      * **Important:** This modifier only affects calculations in places that explicitly call this
      * function and apply it to the experience granted to players.
      */
-    fun Player.modifier(stat: StatType): Double
+    fun Player.modifier(stat: String): Double
 }

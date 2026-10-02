@@ -1,6 +1,6 @@
 package org.rsmod.api.player.worn
 
-import org.rsmod.game.type.obj.Wearpos
+import dev.openrune.util.Wearpos
 
 public sealed class HeldEquipResult {
     public data class Success(
@@ -14,6 +14,9 @@ public sealed class HeldEquipResult {
         public class NotEnoughInvSpace(message: String) : Fail(listOf(message))
 
         public class NotEnoughWornSpace(message: String) : Fail(listOf(message))
+
+        /** A [org.rsmod.api.player.hook.PlayerRestrictionHook] forbade the equip. */
+        public class Restricted(message: String) : Fail(listOf(message))
 
         public class StatRequirements(messages: List<String>) : Fail(messages) {
             public constructor(

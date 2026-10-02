@@ -1,0 +1,86 @@
+[gamevals.synth]
+farming_compost = 2427
+farming_dibbing = 2432
+farming_pick = 2437
+farming_plantcure = 2438
+farming_raking = 2442
+farming_watering = 2446
+
+[gamevals.varp]
+farming_patch_00 = 63003
+farming_patch_01 = 63004
+farming_patch_02 = 63005
+farming_patch_03 = 63006
+farming_patch_04 = 63007
+farming_patch_05 = 63008
+farming_patch_06 = 63009
+farming_patch_07 = 63010
+farming_patch_08 = 63011
+farming_patch_09 = 63012
+farming_patch_10 = 63013
+farming_patch_11 = 63014
+farming_patch_12 = 63015
+farming_patch_13 = 63016
+farming_patch_14 = 65454
+farming_patch_15 = 63017
+farming_patch_16 = 63018
+farming_patch_17 = 65457
+farming_patch_18 = 65458
+farming_patch_19 = 65459
+farming_clock = 65439
+
+[gamevals.timer]
+farming_transmit = 120
+
+[gamevals.dbtable]
+farming_crop = 65478
+farming_patch = 65479
+
+[gamevals.dbrow]
+farming_potato = 63065
+farming_onion = 63066
+farming_cabbage = 63067
+farming_tomato = 63068
+farming_sweetcorn = 63069
+farming_strawberry = 63070
+farming_watermelon = 63071
+farming_marigold = 63072
+farming_rosemary = 63073
+farming_nasturtium = 63074
+farming_woad = 63075
+farming_limpwurt = 63076
+farming_guam = 63077
+farming_marrentill = 63078
+farming_tarromin = 63079
+farming_harralander = 63080
+farming_ranarr = 63081
+farming_toadflax = 63082
+farming_irit = 63083
+farming_avantoe = 63084
+farming_kwuarm = 63085
+farming_snapdragon = 63086
+farming_cadantine = 63087
+farming_lantadyme = 63088
+farming_dwarf_weed = 63089
+farming_torstol = 63090
+farming_snape_grass = 63091
+farming_veg_patch_1 = 63092
+farming_veg_patch_2 = 63093
+farming_flower_patch_1 = 63094
+farming_herb_patch_1 = 63095
+farming_veg_patch_3 = 63096
+farming_veg_patch_4 = 63097
+farming_flower_patch_2 = 63098
+farming_herb_patch_2 = 63099
+farming_veg_patch_5 = 63100
+farming_veg_patch_6 = 63101
+farming_flower_patch_3 = 63102
+farming_herb_patch_3 = 63103
+farming_veg_patch_7 = 63104
+farming_veg_patch_8 = 63105
+farming_flower_patch_4 = 63106
+farming_herb_patch_4 = 63107
+farming_veg_patch_10 = 63108
+farming_veg_patch_11 = 63109
+farming_flower_patch_5 = 63110
+farming_herb_patch_6 = 63111

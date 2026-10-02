@@ -39,6 +39,7 @@ object Constants {
 
     // Arbitrary value until I get more info on this var.
     const val ge_recalcusers_normal: Int = 25
+
     // Arbitrary value until I get more info on this var.
     const val ge_recalcusers_low: Int = 10
 
@@ -61,6 +62,9 @@ object Constants {
     const val combat_spell_attackrate = 5
     const val combat_activecombat_delay = 8
 
+    // Must stay above every weapon's `defend_anim` priority, which tops out at 6.
+    const val combat_special_anim_priority = 7
+
     const val npc_immunity_none = 0
     const val npc_venom_partial_immunity = 1
     const val npc_venom_full_immunity = 2
@@ -73,10 +77,28 @@ object Constants {
     const val run_max_energy = 10_000
     const val sa_max_energy = 1000
 
+    const val skullicon_none = -1
     const val skullicon_default = 0
-    const val skullicon_red = 1
+    const val skullicon_fight_pit = 1
     const val skullicon_highrisk_world = 2
     const val skullicon_forinthry_surge = 3
+    const val skullicon_deadman = 7
+    const val skullicon_loot_key_1 = 8
+    const val skullicon_loot_key_2 = 9
+    const val skullicon_loot_key_3 = 10
+    const val skullicon_loot_key_4 = 11
+    const val skullicon_loot_key_5 = 12
+    const val skullicon_forinthry_surge_deadman = 14
+    const val skullicon_forinthry_surge_keys_1 = 15
+    const val skullicon_forinthry_surge_keys_2 = 16
+    const val skullicon_forinthry_surge_keys_3 = 17
+    const val skullicon_forinthry_surge_keys_4 = 18
+    const val skullicon_forinthry_surge_keys_5 = 19
+
+    fun isForinthrySurgeSkull(icon: Int): Boolean =
+        icon == skullicon_forinthry_surge ||
+            icon == skullicon_forinthry_surge_deadman ||
+            icon in skullicon_forinthry_surge_keys_1..skullicon_forinthry_surge_keys_5
 
     const val overhead_protect_from_melee = 0
     const val overhead_protect_from_missiles = 1

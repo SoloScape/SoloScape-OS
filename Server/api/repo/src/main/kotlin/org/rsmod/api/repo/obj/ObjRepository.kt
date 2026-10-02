@@ -1,5 +1,8 @@
 package org.rsmod.api.repo.obj
 
+import dev.openrune.rscm.RSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.ItemServerType
 import jakarta.inject.Inject
 import org.rsmod.api.registry.obj.ObjRegistry
 import org.rsmod.api.registry.obj.ObjRegistryResult
@@ -9,21 +12,17 @@ import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.obj.Obj
 import org.rsmod.game.obj.ObjScope
-import org.rsmod.game.type.obj.ObjType
-import org.rsmod.game.type.obj.ObjTypeList
+import org.rsmod.game.type.getObj
 import org.rsmod.map.CoordGrid
 import org.rsmod.map.zone.ZoneKey
+import java.util.concurrent.ConcurrentLinkedQueue
 
 public class ObjRepository
 @Inject
-constructor(
-    private val mapClock: MapClock,
-    private val registry: ObjRegistry,
-    private val objTypes: ObjTypeList,
-) {
+constructor(private val mapClock: MapClock, private val registry: ObjRegistry) {
     private val addDurations = ArrayDeque<ObjAddDuration>()
     private val delDurations = ArrayDeque<ObjDelDuration>()
-    private val addDelayed = ArrayDeque<ObjAddDelayed>()
+    private val addDelayed = ConcurrentLinkedQueue<ObjAddDelayed>()
 
     public fun add(obj: Obj, duration: Int, reveal: Int = DEFAULT_REVEAL_DELAY): Boolean {
         val register = register(obj, duration, reveal)
@@ -48,7 +47,18 @@ constructor(
     }
 
     public fun add(
-        type: ObjType,
+        type: ItemServerType,
+        coords: CoordGrid,
+        duration: Int,
+        receiver: Player? = null,
+        count: Int = 1,
+        reveal: Int = DEFAULT_REVEAL_DELAY,
+    ): Obj {
+        return add(RSCM.getReverseMapping(RSCMType.OBJ, type.id), coords, duration, receiver, count, reveal)
+    }
+
+    public fun add(
+        type: String,
         coords: CoordGrid,
         duration: Int,
         receiver: Player? = null,
@@ -95,7 +105,7 @@ constructor(
         return true
     }
 
-    private fun Obj.respawnRate(): Int = objTypes[this].respawnRate
+    private fun Obj.respawnRate(): Int = getObj(this).respawnRate
 
     private fun Obj.canRespawn(): Boolean = scope == ObjScope.Perm
 
@@ -170,21 +180,38 @@ constructor(
         }
     }
 
-    internal fun processDelayedAdd() {
-        if (addDelayed.isNotEmpty()) {
-            processAddDelayed()
+    internal fun processDelayedAdd(): Int {
+        if (addDelayed.isEmpty()) {
+            return 0
         }
+        return processAddDelayed(DELAYED_ADDS_PER_CYCLE)
     }
 
-    private fun processAddDelayed() {
+    /**
+     * Drains all due delayed obj spawns without the per-cycle cap.
+     *
+     * Used during boot after plugin scripts are loaded so map objs exist before login opens.
+     * Runtime [addDelayed] calls continue to use the paced [processDelayedAdd] path.
+     */
+    internal fun flushDelayedAdds(): Int {
+        if (addDelayed.isEmpty()) {
+            return 0
+        }
+        return processAddDelayed(limit = Int.MAX_VALUE)
+    }
+
+    private fun processAddDelayed(limit: Int): Int {
+        var added = 0
         val iterator = addDelayed.iterator()
-        while (iterator.hasNext()) {
+        while (iterator.hasNext() && added < limit) {
             val duration = iterator.next()
             if (duration.shouldTrigger()) {
                 add(duration.obj, duration = duration.duration)
                 iterator.remove()
+                added++
             }
         }
+        return added
     }
 
     private fun ObjCycleDuration.shouldTrigger(): Boolean = mapClock >= triggerCycle
@@ -201,5 +228,8 @@ constructor(
 
     public companion object {
         public const val DEFAULT_REVEAL_DELAY: Int = 100
+
+        /** Cap for runtime delayed drains; boot flush uses an uncapped path. */
+        private const val DELAYED_ADDS_PER_CYCLE: Int = 2_500
     }
 }

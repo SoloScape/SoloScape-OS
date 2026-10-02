@@ -1,5 +1,6 @@
 package org.rsmod.api.combat.formulas.accuracy.multi
 
+import dev.openrune.types.NpcServerType
 import jakarta.inject.Inject
 import java.util.EnumSet
 import kotlin.math.max
@@ -18,10 +19,8 @@ import org.rsmod.api.combat.formulas.attributes.collector.CombatNpcAttributeColl
 import org.rsmod.api.combat.formulas.attributes.collector.CombatRangedAttributeCollector
 import org.rsmod.api.combat.formulas.isSlayerTask
 import org.rsmod.api.config.refs.params
-import org.rsmod.api.config.refs.varbits
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.Player
-import org.rsmod.game.type.npc.UnpackedNpcType
 
 public class PvNMultiStyleAccuracy
 @Inject
@@ -43,6 +42,7 @@ constructor(
         return computeMagicalMeleeHitChance(
             source = player,
             target = target.visType,
+            npc = target,
             targetDefence = target.defenceLvl,
             targetCurrHp = target.hitpoints,
             targetMaxHp = target.baseHitpointsLvl,
@@ -55,7 +55,8 @@ constructor(
 
     private fun computeMagicalMeleeHitChance(
         source: Player,
-        target: UnpackedNpcType,
+        target: NpcServerType,
+        npc: Npc?,
         targetDefence: Int,
         targetCurrHp: Int,
         targetMaxHp: Int,
@@ -67,13 +68,13 @@ constructor(
         val meleeAttributes = meleeAttributes.collect(source, attackType)
 
         val slayerTask = target.isSlayerTask(source)
-        val npcAttributes = npcAttributes.collect(target, targetCurrHp, targetMaxHp, slayerTask)
+        val npcAttributes = npcAttributes.collect(target, npc, targetCurrHp, targetMaxHp, slayerTask)
 
         val baseAttackRoll =
             melee.computeAttackRoll(source, attackType, attackStyle, meleeAttributes, npcAttributes)
         val attackRoll = (baseAttackRoll * specialMultiplier).toInt()
 
-        val amascutInvocationLvl = source.vars[varbits.toa_client_raid_level]
+        val amascutInvocationLvl = source.vars["varbit.toa_client_raid_level"]
         val defenceRoll =
             magic.computeDefenceRoll(
                 target = target,
@@ -97,6 +98,7 @@ constructor(
         return computeRangedMeleeHitChance(
             source = player,
             target = target.visType,
+            npc = target,
             targetDefence = target.defenceLvl,
             targetCurrHp = target.hitpoints,
             targetMaxHp = target.baseHitpointsLvl,
@@ -109,7 +111,8 @@ constructor(
 
     private fun computeRangedMeleeHitChance(
         source: Player,
-        target: UnpackedNpcType,
+        target: NpcServerType,
+        npc: Npc?,
         targetDefence: Int,
         targetCurrHp: Int,
         targetMaxHp: Int,
@@ -121,13 +124,13 @@ constructor(
         val meleeAttributes = meleeAttributes.collect(source, attackType)
 
         val slayerTask = target.isSlayerTask(source)
-        val npcAttributes = npcAttributes.collect(target, targetCurrHp, targetMaxHp, slayerTask)
+        val npcAttributes = npcAttributes.collect(target, npc, targetCurrHp, targetMaxHp, slayerTask)
 
         val baseAttackRoll =
             melee.computeAttackRoll(source, attackType, attackStyle, meleeAttributes, npcAttributes)
         val attackRoll = (baseAttackRoll * specialMultiplier).toInt()
 
-        val amascutInvocationLvl = source.vars[varbits.toa_client_raid_level]
+        val amascutInvocationLvl = source.vars["varbit.toa_client_raid_level"]
         val defenceRoll =
             ranged.computeDefenceRoll(
                 target = target,
@@ -150,6 +153,7 @@ constructor(
         return computeRangedMagicHitChance(
             source = player,
             target = target.visType,
+            npc = target,
             targetDefence = target.defenceLvl,
             targetCurrHp = target.hitpoints,
             targetMaxHp = target.baseHitpointsLvl,
@@ -161,7 +165,8 @@ constructor(
 
     private fun computeRangedMagicHitChance(
         source: Player,
-        target: UnpackedNpcType,
+        target: NpcServerType,
+        npc: Npc?,
         targetDefence: Int,
         targetCurrHp: Int,
         targetMaxHp: Int,
@@ -170,7 +175,7 @@ constructor(
         specialMultiplier: Double,
     ): Int {
         val slayerTask = target.isSlayerTask(source)
-        val npcAttributes = npcAttributes.collect(target, targetCurrHp, targetMaxHp, slayerTask)
+        val npcAttributes = npcAttributes.collect(target, npc, targetCurrHp, targetMaxHp, slayerTask)
 
         // TODO(combat): Should we use `computeSpellAttackRoll` instead to take elemental weakness
         // into account?
@@ -178,7 +183,7 @@ constructor(
             magic.computeStaffAttackRoll(source, attackStyle, EMPTY_STAFF_ATTRIBUTES, npcAttributes)
         val attackRoll = (baseAttackRoll * specialMultiplier).toInt()
 
-        val amascutInvocationLvl = source.vars[varbits.toa_client_raid_level]
+        val amascutInvocationLvl = source.vars["varbit.toa_client_raid_level"]
         val defenceRoll =
             ranged.computeDefenceRoll(
                 target = target,
@@ -204,6 +209,7 @@ constructor(
         return computeMagicalRangedHitChance(
             source = player,
             target = targetType,
+            npc = target,
             targetDefence = target.defenceLvl,
             targetCurrHp = target.hitpoints,
             targetMaxHp = target.baseHitpointsLvl,
@@ -217,7 +223,8 @@ constructor(
 
     private fun computeMagicalRangedHitChance(
         source: Player,
-        target: UnpackedNpcType,
+        target: NpcServerType,
+        npc: Npc?,
         targetDefence: Int,
         targetCurrHp: Int,
         targetMaxHp: Int,
@@ -230,7 +237,7 @@ constructor(
         val rangeAttributes = rangedAttributes.collect(source, attackType, attackStyle)
 
         val slayerTask = target.isSlayerTask(source)
-        val npcAttributes = npcAttributes.collect(target, targetCurrHp, targetMaxHp, slayerTask)
+        val npcAttributes = npcAttributes.collect(target, npc, targetCurrHp, targetMaxHp, slayerTask)
 
         val baseAttackRoll =
             ranged.computeAttackRoll(
@@ -243,7 +250,7 @@ constructor(
             )
         val attackRoll = (baseAttackRoll * specialMultiplier).toInt()
 
-        val amascutInvocationLvl = source.vars[varbits.toa_client_raid_level]
+        val amascutInvocationLvl = source.vars["varbit.toa_client_raid_level"]
         val defenceRoll =
             magic.computeDefenceRoll(
                 target = target,

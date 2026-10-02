@@ -1,18 +1,20 @@
 package org.rsmod.api.player.vars
 
-import org.rsmod.api.config.refs.varbits
-import org.rsmod.api.config.refs.varps
+import dev.openrune.ServerCacheManager
+import dev.openrune.definition.type.VarBitType
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.varp.VarpServerType
+import dev.openrune.types.varp.baseVar
 import org.rsmod.api.player.output.VarpSync
 import org.rsmod.game.entity.Player
 import org.rsmod.game.movement.MoveSpeed
-import org.rsmod.game.type.varbit.VarBitType
-import org.rsmod.game.type.varp.VarpType
 
-internal var Player.enabledPrayers by intVarBit(varbits.enabled_prayers)
-internal var Player.usingQuickPrayers by boolVarBit(varbits.quickprayer_active)
-internal var Player.prayerDrainCounter by intVarBit(varbits.prayer_drain_counter)
+internal var Player.enabledPrayers by intVarBit("varbit.prayer_allactive")
+internal var Player.usingQuickPrayers by boolVarBit("varbit.quickprayer_active")
+internal var Player.prayerDrainCounter by intVarBit("varbit.prayer_drain_counter")
 
-private var Player.varSpeed: MoveSpeed by typeIntVarp(varps.option_run, ::getSpeed, ::getSpeedId)
+private var Player.varSpeed: MoveSpeed by typeIntVarp("varp.option_run", ::getSpeed, ::getSpeedId)
 
 public var Player.varMoveSpeed: MoveSpeed
     get() = varSpeed
@@ -23,7 +25,19 @@ public var Player.varMoveSpeed: MoveSpeed
         cachedMoveSpeed = varSpeed
     }
 
-public fun Player.resyncVar(varp: VarpType) {
+public fun Player.resyncVar(internal: String) {
+    val prefix = internal.substringBefore('.')
+    if (prefix == "varbit") {
+        val varBitId = internal.asRSCM(RSCMType.VARBIT)
+        val varBit = ServerCacheManager.getVarbit(varBitId) ?: error("VarBit '$internal' (id=$varBitId) not found")
+        resyncVar(varBit)
+    } else {
+        val varp = ServerCacheManager.getVarp(internal.asRSCM(RSCMType.VARP)) ?: error("Varp '$internal' not found")
+        resyncVar(varp)
+    }
+}
+
+public fun Player.resyncVar(varp: VarpServerType) {
     if (varp.transmit.never) {
         return
     }

@@ -11,11 +11,9 @@ dependencies {
     implementation(libs.fastutil)
     implementation(libs.rsprot.api)
     implementation(projects.api.account)
+    implementation(projects.api.playerOutput)
     implementation(projects.engine.events)
     implementation(projects.engine.game)
     implementation(projects.engine.map)
     implementation(projects.engine.routefinder)
-    testImplementation(projects.api.testing.testFactory)
-    testImplementation(projects.api.testing.testParams)
-    testImplementation(projects.engine.routefinder)
 }

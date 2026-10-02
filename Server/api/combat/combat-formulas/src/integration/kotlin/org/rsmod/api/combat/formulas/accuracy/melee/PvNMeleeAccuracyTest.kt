@@ -1,12 +1,13 @@
 package org.rsmod.api.combat.formulas.accuracy.melee
 
 import com.google.inject.Inject
+import dev.openrune.definition.type.VarBitType
+import dev.openrune.types.ItemServerType
+import dev.openrune.types.npc.UnpackedNpcType
 import org.rsmod.api.combat.commons.styles.MeleeAttackStyle
 import org.rsmod.api.combat.commons.types.MeleeAttackType
 import org.rsmod.api.combat.formulas.test_npcs
-import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.stats
-import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.player.back
 import org.rsmod.api.player.feet
 import org.rsmod.api.player.front
@@ -24,9 +25,6 @@ import org.rsmod.api.testing.params.TestWithArgs
 import org.rsmod.api.testing.params.testArgsOfSingleParam
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.inv.InvObj
-import org.rsmod.game.type.npc.UnpackedNpcType
-import org.rsmod.game.type.obj.ObjType
-import org.rsmod.game.type.varbit.VarBitType
 
 class PvNMeleeAccuracyTest {
     @TestWithArgs(MatchupProvider::class)
@@ -97,23 +95,23 @@ class PvNMeleeAccuracyTest {
     ) {
         fun withNpcTarget(npc: UnpackedNpcType) = copy(npc = npc)
 
-        fun withHelm(obj: ObjType?) = copy(hat = obj?.let(::InvObj))
+        fun withHelm(obj: ItemServerType?) = copy(hat = obj?.let(::InvObj))
 
-        fun withCape(obj: ObjType?) = copy(back = obj?.let(::InvObj))
+        fun withCape(obj: ItemServerType?) = copy(back = obj?.let(::InvObj))
 
-        fun withAmulet(obj: ObjType?) = copy(front = obj?.let(::InvObj))
+        fun withAmulet(obj: ItemServerType?) = copy(front = obj?.let(::InvObj))
 
-        fun withWeapon(obj: ObjType?) = copy(righthand = obj?.let(::InvObj))
+        fun withWeapon(obj: ItemServerType?) = copy(righthand = obj?.let(::InvObj))
 
-        fun withBody(obj: ObjType?) = copy(torso = obj?.let(::InvObj))
+        fun withBody(obj: ItemServerType?) = copy(torso = obj?.let(::InvObj))
 
-        fun withLegs(obj: ObjType?) = copy(legs = obj?.let(::InvObj))
+        fun withLegs(obj: ItemServerType?) = copy(legs = obj?.let(::InvObj))
 
-        fun withGloves(obj: ObjType?) = copy(hands = obj?.let(::InvObj))
+        fun withGloves(obj: ItemServerType?) = copy(hands = obj?.let(::InvObj))
 
-        fun withFeet(obj: ObjType?) = copy(feet = obj?.let(::InvObj))
+        fun withFeet(obj: ItemServerType?) = copy(feet = obj?.let(::InvObj))
 
-        fun withRing(obj: ObjType?) = copy(ring = obj?.let(::InvObj))
+        fun withRing(obj: ItemServerType?) = copy(ring = obj?.let(::InvObj))
 
         fun withPrayers(vararg prayers: VarBitType) = copy(prayers = prayers.toSet())
 
@@ -190,44 +188,44 @@ class PvNMeleeAccuracyTest {
                 Matchup(expectedAccuracy = 46.57)
                     .withAttackType(MeleeAttackType.Stab)
                     .withAttackStyle(MeleeAttackStyle.Accurate)
-                    .withHelm(objs.torva_full_helm)
-                    .withBody(objs.torva_platebody)
-                    .withLegs(objs.torva_platelegs)
-                    .withCape(objs.infernal_cape)
-                    .withAmulet(objs.amulet_of_rancour)
-                    .withWeapon(objs.ghrazi_rapier)
-                    .withGloves(objs.ferocious_gloves)
-                    .withFeet(objs.primordial_boots)
-                    .withRing(objs.ultor_ring)
-                    .withPrayers(varbits.piety)
+                    .withHelm("obj.torva_helm")
+                    .withBody("obj.torva_chest")
+                    .withLegs("obj.torva_legs")
+                    .withCape("obj.infernal_cape")
+                    .withAmulet("obj.amulet_of_rancour")
+                    .withWeapon("obj.ghrazi_rapier")
+                    .withGloves("obj.ferocious_gloves")
+                    .withFeet("obj.primordial_boots")
+                    .withRing("obj.ultor_ring")
+                    .withPrayers("varbit.prayer_piety")
                     .withNpcTarget(test_npcs.corporeal_beast),
                 Matchup(expectedAccuracy = 92.86)
                     .withAttackType(MeleeAttackType.Stab)
                     .withAttackStyle(MeleeAttackStyle.Aggressive)
-                    .withHelm(objs.torva_full_helm)
-                    .withBody(objs.torva_platebody)
-                    .withLegs(objs.torva_platelegs)
-                    .withCape(objs.infernal_cape)
-                    .withAmulet(objs.amulet_of_rancour)
-                    .withWeapon(objs.osmumtens_fang)
-                    .withGloves(objs.ferocious_gloves)
-                    .withFeet(objs.primordial_boots)
-                    .withRing(objs.ultor_ring)
-                    .withPrayers(varbits.chivalry)
+                    .withHelm("obj.torva_helm")
+                    .withBody("obj.torva_chest")
+                    .withLegs("obj.torva_legs")
+                    .withCape("obj.infernal_cape")
+                    .withAmulet("obj.amulet_of_rancour")
+                    .withWeapon("obj.osmumtens_fang")
+                    .withGloves("obj.ferocious_gloves")
+                    .withFeet("obj.primordial_boots")
+                    .withRing("obj.ultor_ring")
+                    .withPrayers("varbit.prayer_chivalry")
                     .withNpcTarget(test_npcs.abyssal_demon),
                 Matchup(expectedAccuracy = 96.83)
                     .withAttackType(MeleeAttackType.Stab)
                     .withAttackStyle(MeleeAttackStyle.Aggressive)
-                    .withHelm(objs.torva_full_helm)
-                    .withBody(objs.torva_platebody)
-                    .withLegs(objs.torva_platelegs)
-                    .withCape(objs.infernal_cape)
-                    .withAmulet(objs.amulet_of_rancour)
-                    .withWeapon(objs.osmumtens_fang)
-                    .withGloves(objs.ferocious_gloves)
-                    .withFeet(objs.primordial_boots)
-                    .withRing(objs.ultor_ring)
-                    .withPrayers(varbits.chivalry)
+                    .withHelm("obj.torva_helm")
+                    .withBody("obj.torva_chest")
+                    .withLegs("obj.torva_legs")
+                    .withCape("obj.infernal_cape")
+                    .withAmulet("obj.amulet_of_rancour")
+                    .withWeapon("obj.osmumtens_fang")
+                    .withGloves("obj.ferocious_gloves")
+                    .withFeet("obj.primordial_boots")
+                    .withRing("obj.ultor_ring")
+                    .withPrayers("varbit.prayer_chivalry")
                     .withSpecMultiplier(1.5)
                     .withNpcTarget(test_npcs.abyssal_demon),
             )

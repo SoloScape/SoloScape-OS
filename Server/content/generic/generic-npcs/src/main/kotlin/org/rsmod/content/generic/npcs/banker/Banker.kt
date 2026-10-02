@@ -1,28 +1,27 @@
 package org.rsmod.content.generic.npcs.banker
 
+import dev.openrune.rscm.RSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.ItemServerType
 import jakarta.inject.Inject
 import kotlin.math.min
-import org.rsmod.api.config.refs.content
-import org.rsmod.api.config.refs.interfaces
-import org.rsmod.api.config.refs.objs
-import org.rsmod.api.config.refs.synths
-import org.rsmod.api.config.refs.varbits
+import org.rsmod.api.enums.BankEnums.bank_space_purchase_block_cost
 import org.rsmod.api.player.dialogue.Dialogue
+import org.rsmod.api.player.ironman.isUltimateIronman
 import org.rsmod.api.player.protect.ProtectedAccess
-import org.rsmod.api.script.onApNpc1
-import org.rsmod.api.script.onApNpc3
-import org.rsmod.api.script.onApNpc4
+import org.rsmod.api.script.onApContentNpc1
+import org.rsmod.api.script.onApContentNpc3
+import org.rsmod.api.script.onApContentNpc4
 import org.rsmod.api.script.onApNpcU
-import org.rsmod.api.script.onOpNpc1
-import org.rsmod.api.script.onOpNpc3
-import org.rsmod.api.script.onOpNpc4
-import org.rsmod.api.script.onOpNpcU
+import org.rsmod.api.script.onOpContentNpc1
+import org.rsmod.api.script.onOpContentNpc3
+import org.rsmod.api.script.onOpContentNpc4
+import org.rsmod.api.script.onOpContentNpcU
 import org.rsmod.api.utils.format.formatAmount
+import org.rsmod.content.interfaces.bank.confirmAndExchangeBanknote
 import org.rsmod.content.interfaces.bank.scripts.BankTutorialScript
+import org.rsmod.content.interfaces.bank.tryOpenBank
 import org.rsmod.game.entity.Npc
-import org.rsmod.game.enums.EnumTypeMapResolver
-import org.rsmod.game.inv.isType
-import org.rsmod.game.type.obj.UnpackedObjType
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -35,23 +34,23 @@ private constructor(
     // TODO(content): Bank Tutor dialogue variation when player has a bank PIN set up.
 
     override fun ScriptContext.startup() {
-        onApNpc4(content.banker) { apOpenCollectionBox(it.npc) }
-        onOpNpc4(content.banker) { openCollectionBox() }
-        onApNpc3(content.banker) { apOpenBank(it.npc) }
-        onOpNpc3(content.banker) { openBank() }
-        onApNpc1(content.banker) { apTalkToBanker(it.npc) }
-        onOpNpc1(content.banker) { talkToBanker(it.npc) }
-        onApNpcU(content.banker) { apBanknote(it.npc, it.invSlot, it.objType) }
-        onOpNpcU(content.banker) { banknote(it.npc, it.invSlot, it.objType) }
+        onApContentNpc4("content.banker") { apOpenCollectionBox(it.npc) }
+        onOpContentNpc4("content.banker") { openCollectionBox() }
+        onApContentNpc3("content.banker") { apOpenBank(it.npc) }
+        onOpContentNpc3("content.banker") { openBank() }
+        onApContentNpc1("content.banker") { apTalkToBanker(it.npc) }
+        onOpContentNpc1("content.banker") { talkToBanker(it.npc) }
+        onApNpcU("content.banker") { apBanknote(it.npc, it.invSlot, it.objType) }
+        onOpContentNpcU("content.banker") { banknote(it.npc, it.invSlot, it.objType) }
 
-        onApNpc4(content.banker_tutor) { apOpenCollectionBox(it.npc) }
-        onOpNpc4(content.banker_tutor) { openCollectionBox() }
-        onApNpc3(content.banker_tutor) { apOpenBank(it.npc) }
-        onOpNpc3(content.banker_tutor) { openBank() }
-        onApNpc1(content.banker_tutor) { apTalkToBanker(it.npc) }
-        onOpNpc1(content.banker_tutor) { talkToBanker(it.npc) }
-        onApNpcU(content.banker_tutor) { apBanknote(it.npc, it.invSlot, it.objType) }
-        onOpNpcU(content.banker_tutor) { banknote(it.npc, it.invSlot, it.objType) }
+        onApContentNpc4("content.banker_tutor") { apOpenCollectionBox(it.npc) }
+        onOpContentNpc4("content.banker_tutor") { openCollectionBox() }
+        onApContentNpc3("content.banker_tutor") { apOpenBank(it.npc) }
+        onOpContentNpc3("content.banker_tutor") { openBank() }
+        onApContentNpc1("content.banker_tutor") { apTalkToBanker(it.npc) }
+        onOpContentNpc1("content.banker_tutor") { talkToBanker(it.npc) }
+        onApNpcU("content.banker_tutor") { apBanknote(it.npc, it.invSlot, it.objType) }
+        onOpContentNpcU("content.banker_tutor") { banknote(it.npc, it.invSlot, it.objType) }
 
         spaceShop.startup()
     }
@@ -69,7 +68,7 @@ private constructor(
     }
 
     private fun ProtectedAccess.openBank() {
-        ifOpenMainSidePair(main = interfaces.bank_main, side = interfaces.bank_side)
+        tryOpenBank()
     }
 
     private suspend fun ProtectedAccess.apTalkToBanker(npc: Npc) {
@@ -80,7 +79,7 @@ private constructor(
 
     private suspend fun ProtectedAccess.talkToBanker(npc: Npc) {
         startDialogue(npc, faceFar = true) {
-            if (npc.type.isContentType(content.banker_tutor)) {
+            if (npc.type.isContentType("content.banker_tutor")) {
                 talkToBankerTutor()
             } else {
                 talkToBanker()
@@ -91,7 +90,7 @@ private constructor(
     private suspend fun Dialogue.talkToBanker() {
         chatNpc(quiz, "Good day, how may I help you?")
 
-        val blocks = access.vars[banker_varbits.blocks_purchased]
+        val blocks = access.vars["varbit.bank_extra_blocks_purchased"]
         if (spaceShop.hasPurchasedAll(blocks)) {
             talkToBankerPurchasedAllSlots()
             return
@@ -111,7 +110,7 @@ private constructor(
                 5,
             )
         when (option) {
-            1 -> access.openBank()
+            1 -> accessBankAccount()
             2 -> access.openPin()
             3 -> access.openCollectionBox()
             4 -> {
@@ -135,7 +134,7 @@ private constructor(
                 4,
             )
         when (option) {
-            1 -> access.openBank()
+            1 -> accessBankAccount()
             2 -> access.openPin()
             3 -> access.openCollectionBox()
             4 -> whatIsThisPlace()
@@ -145,7 +144,7 @@ private constructor(
     private suspend fun Dialogue.talkToBankerTutor() {
         chatNpc(quiz, "Good day, how may I help you?")
 
-        val blocks = access.vars[banker_varbits.blocks_purchased]
+        val blocks = access.vars["varbit.bank_extra_blocks_purchased"]
         if (spaceShop.hasPurchasedAll(blocks)) {
             talkToBankerTutorPurchasedAllSlots()
             return
@@ -166,7 +165,7 @@ private constructor(
             )
         when (option) {
             1 -> howToUseBank()
-            2 -> access.openBank()
+            2 -> accessBankAccount()
             3 -> access.openPin()
             4 -> access.openCollectionBox()
             5 -> {
@@ -192,26 +191,38 @@ private constructor(
             )
         when (option) {
             1 -> howToUseBank()
-            2 -> access.openBank()
+            2 -> accessBankAccount()
             3 -> access.openPin()
             4 -> access.openCollectionBox()
             5 -> whatIsThisPlace()
         }
     }
 
+    private suspend fun Dialogue.accessBankAccount() {
+        if (access.player.isUltimateIronman) {
+            chatNpc(quiz, "Why? You don't use the bank.")
+            chatPlayer(confused, "Oh yeah... Never mind then.")
+            return
+        }
+        access.openBank()
+    }
+
     private fun ProtectedAccess.openPin() {
-        ifOpenMainModal(interfaces.bankpin_settings)
+        ifOpenMainModal("interface.bankpin_settings")
     }
 
     private fun ProtectedAccess.openCollectionBox() {
-        ifOpenMainModal(interfaces.ge_collection_box)
+        ifOpenMainModal("interface.ge_collect")
     }
 
     private suspend fun Dialogue.buyBankSlots() {
-        // TODO(content): Check if player is ultimate ironman. If so, give dialogue and return
-        //  early.
+        if (access.player.isUltimateIronman) {
+            chatNpc(quiz, "Why? You don't use the bank.")
+            chatPlayer(confused, "Oh yeah... Never mind then.")
+            return
+        }
 
-        val blocks = access.vars[banker_varbits.blocks_purchased]
+        val blocks = access.vars["varbit.bank_extra_blocks_purchased"]
         val costs = spaceShop.listCosts(blocks)
         if (costs.isEmpty()) {
             // Note: Not sure if this is allowed or if the option to buy more bank slots is
@@ -278,7 +289,7 @@ private constructor(
 
             chatPlayer(happy, "Yes, I'm happy with that.")
 
-            val newCapacity = access.vars[varbits.bank_capacity] + slots
+            val newCapacity = access.vars["varbit.bank_capacity"] + slots
             check(newCapacity > slots) { "`bank_capacity` should have been previously assigned." }
 
             val takeFee = access.invTakeFee(cost)
@@ -290,9 +301,9 @@ private constructor(
                 return
             }
 
-            access.vars[banker_varbits.blocks_purchased] += block
-            access.soundSynth(synths.coins_jingle_1)
-            access.vars[varbits.bank_capacity] = min(newCapacity, access.bank.size)
+            access.vars["varbit.bank_extra_blocks_purchased"] += block
+            access.soundSynth("synth.coins_jingle_1")
+            access.vars["varbit.bank_capacity"] = min(newCapacity, access.bank.size)
             chatNpc(happy, "Your additional bank slots have been added.")
             return
         }
@@ -412,9 +423,9 @@ private constructor(
                 "withdraw as button.",
         )
         doubleobjbox(
-            objs.shrimps,
+            "obj.shrimp",
             400,
-            ocCert(objs.shrimps),
+            RSCM.getReverseMapping(RSCMType.OBJ,ocCert("obj.shrimp").id),
             400,
             "A noted item looks like a piece of paper with the image " +
                 "of the actual item on top of it.",
@@ -585,14 +596,14 @@ private constructor(
     private suspend fun ProtectedAccess.apBanknote(
         npc: Npc,
         invSlot: Int,
-        objType: UnpackedObjType,
+        objType: ItemServerType,
     ) {
         if (isWithinApRange(npc, 3)) {
             banknote(npc, invSlot, objType)
         }
     }
 
-    private suspend fun ProtectedAccess.banknote(npc: Npc, invSlot: Int, objType: UnpackedObjType) {
+    private suspend fun ProtectedAccess.banknote(npc: Npc, invSlot: Int, objType: ItemServerType) {
         if (!objType.isCert) {
             startDialogue(npc) {
                 chatNpcNoTurn(sad, "Hand me a banknote, and I'll try to convert it to an item.")
@@ -605,29 +616,7 @@ private constructor(
             return
         }
 
-        startDialogue(npc) {
-            val confirmation = choice2("Yes", true, "No", false, "Un-note the banknote?")
-            if (!confirmation) {
-                return@startDialogue
-            }
-
-            val invObj = inv[invSlot]
-            check(invObj.isType(objType)) {
-                "Unexpected `invObj` when un-certifying! (found=$invObj, expectedType=$objType)"
-            }
-
-            val count = min(inv.freeSpace(), invObj.count)
-            if (count == 0) {
-                chatNpcNoTurn(sad, "You don't have any inventory space.")
-                return@startDialogue
-            }
-
-            val uncert = ocUncert(objType)
-            val replace = invReplace(inv, invSlot, count, uncert)
-            if (replace.success) {
-                objbox(uncert, 400, "The bank exchanges your banknote for an item.")
-            }
-        }
+        startDialogue(npc) { confirmAndExchangeBanknote(invSlot, objType) }
     }
 
     private companion object {
@@ -635,11 +624,11 @@ private constructor(
     }
 }
 
-private class BankSpaceShop @Inject constructor(private val enumResolver: EnumTypeMapResolver) {
+private class BankSpaceShop {
     private lateinit var blockCosts: List<Int>
 
     fun startup() {
-        val costs = enumResolver[banker_enums.block_costs].filterValuesNotNull()
+        val costs = bank_space_purchase_block_cost.filterValuesNotNull()
         val maxBlock = costs.keys.maxOrNull() ?: error("`block_costs` enum should not be empty.")
         val blockCosts = MutableList(maxBlock) { 0 }
         for ((block, cost) in costs) {

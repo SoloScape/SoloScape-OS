@@ -1,10 +1,12 @@
 package org.rsmod.game.obj
 
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.ItemServerType
 import org.rsmod.game.MapClock
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.InvObj
-import org.rsmod.game.type.obj.ObjType
 import org.rsmod.map.CoordGrid
 
 /**
@@ -134,7 +136,7 @@ public class Obj(
         //  - Can they pick up any of their death pile loot if the killer does not take it and
         //  it spawns publicly?
 
-        public fun fromPvp(killer: Player, target: Player, obj: ObjType, count: Int): Obj {
+        public fun fromPvp(killer: Player, target: Player, obj: ItemServerType, count: Int): Obj {
             return fromPvp(killer, target, obj.id, count)
         }
 
@@ -153,7 +155,7 @@ public class Obj(
             )
         }
 
-        public fun fromPvn(killer: Player, target: Npc, obj: ObjType, count: Int): Obj {
+        public fun fromPvn(killer: Player, target: Npc, obj: ItemServerType, count: Int): Obj {
             return fromPvn(killer, target.coords, obj.id, count)
         }
 
@@ -172,8 +174,23 @@ public class Obj(
             )
         }
 
-        public fun fromOwner(player: Player, coords: CoordGrid, obj: ObjType, count: Int): Obj {
+        public fun fromOwner(
+            player: Player,
+            coords: CoordGrid,
+            obj: ItemServerType,
+            count: Int,
+        ): Obj {
             return fromOwner(player, coords, obj.id, count)
+        }
+
+
+        public fun fromOwner(
+            player: Player,
+            coords: CoordGrid,
+            obj: String,
+            count: Int,
+        ): Obj {
+            return fromOwner(player, coords, obj.asRSCM(RSCMType.OBJ), count)
         }
 
         public fun fromOwner(player: Player, coords: CoordGrid, obj: InvObj): Obj {
@@ -191,8 +208,13 @@ public class Obj(
             )
         }
 
-        public fun fromServer(clock: MapClock, coords: CoordGrid, obj: ObjType, count: Int): Obj {
-            return fromServer(clock, coords, obj.id, count)
+        public fun fromServer(
+            clock: MapClock,
+            coords: CoordGrid,
+            obj: String,
+            count: Int,
+        ): Obj {
+            return fromServer(clock, coords, obj.asRSCM(RSCMType.OBJ), count)
         }
 
         public fun fromServer(clock: MapClock, coords: CoordGrid, obj: InvObj): Obj {

@@ -4,14 +4,13 @@ import org.rsmod.api.player.dialogue.Dialogue
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.stat.woodcuttingLvl
 import org.rsmod.api.script.onOpNpc1
-import org.rsmod.content.areas.city.lumbridge.configs.lumbridge_npcs
 import org.rsmod.game.entity.Npc
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
 class BarfyBill : PluginScript() {
     override fun ScriptContext.startup() {
-        onOpNpc1(lumbridge_npcs.barfy_bill) { startDialogue(it.npc) }
+        onOpNpc1("npc.canoeing_bill") { startDialogue(it.npc) }
     }
 
     private suspend fun ProtectedAccess.startDialogue(npc: Npc) {
@@ -65,7 +64,7 @@ class BarfyBill : PluginScript() {
         chatNpc(happy, "I don't get river sick!")
         chatNpc(quiz, "Would you like to know how to make a canoe?")
 
-        val askAboutCanoeing = choice2("Yes", true, "No", false)
+        val askAboutCanoeing = choice2("Yes.", true, "No.", false)
         if (askAboutCanoeing) {
             askAboutCanoeing()
         } else {

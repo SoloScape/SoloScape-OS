@@ -1,54 +1,47 @@
 package org.rsmod.content.interfaces.gameframe
 
-import jakarta.inject.Inject
-import org.rsmod.content.interfaces.gameframe.config.gameframe_columns
-import org.rsmod.content.interfaces.gameframe.config.gameframe_enums
-import org.rsmod.game.dbtable.DbRow
-import org.rsmod.game.dbtable.DbRowResolver
-import org.rsmod.game.enums.EnumTypeMapResolver
-import org.rsmod.game.type.comp.ComponentType
+import dev.openrune.definition.type.widget.ComponentType
+import dev.openrune.rscm.RSCM
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.aconverted.enum
+import dev.openrune.types.dbcol.DbColumnCodec.ComponentTypeCodec
+import org.rsmod.api.table.GameframeRow
 import org.rsmod.game.ui.Component
 
-internal class GameframeLoader
-@Inject
-constructor(private val rows: DbRowResolver, private val enums: EnumTypeMapResolver) {
+internal class GameframeLoader {
     fun loadGameframes(): Map<Int, Gameframe> {
         return loadGameframeRows()
     }
 
     private fun loadGameframeRows(): Map<Int, Gameframe> {
+
         val mapped = mutableMapOf<Int, Gameframe>()
 
-        val list = enums[gameframe_enums.list].filterValuesNotNull()
-        for (entry in list.values) {
-            val gameframe = loadGameframe(rows[entry])
-            val previous = mapped[gameframe.topLevel.id]
+        GameframeRow.all().forEach { entry ->
+            val gameframe = loadGameframe(entry)
+            val previous = mapped[gameframe.topLevel.asRSCM(RSCMType.INTERFACE)]
             if (previous != null) {
                 val message =
-                    "Gameframe for toplevel already exists: '${previous.topLevel.internalName}' " +
+                    "Gameframe for toplevel already exists: '${previous.topLevel}' " +
                         "(previous=$previous, curr=$gameframe)"
                 throw IllegalStateException(message)
             }
-            mapped[gameframe.topLevel.id] = gameframe
+            mapped[gameframe.topLevel.asRSCM(RSCMType.INTERFACE)] = gameframe
         }
 
         return mapped
     }
 
-    private fun loadGameframe(row: DbRow): Gameframe {
-        val topLevel = row[gameframe_columns.toplevel]
-        val overlays = row[gameframe_columns.overlays]
-        val clientMode = row[gameframe_columns.clientmode]
-        val resizable = row[gameframe_columns.resizable]
-        val isDefault = row[gameframe_columns.is_default]
-        val stoneArrangement = row[gameframe_columns.stone_arrangement]
-        val mappings = linkedMapOf<Component, Component>()
+    private fun loadGameframe(row: GameframeRow): Gameframe {
+        val topLevel = RSCM.getReverseMapping(RSCMType.INTERFACE, row.toplevel)
+        val clientMode = row.clientMode
+        val resizable = row.resizable
+        val isDefault = row.default
+        val stoneArrangement = row.stoneArrangement
 
-        val mappingsEnum = row[gameframe_columns.mappings]
-        val mappingRedirects = enums[mappingsEnum].filterValuesNotNull()
-        for ((base, translated) in mappingRedirects) {
-            mappings[Component(base.packed)] = Component(translated.packed)
-        }
+        val mappings =
+            row.mappings.filterValuesNotNull().associate { Component(it.key.packed) to Component(it.value.packed) }
 
         return Gameframe(
             topLevel = topLevel,
@@ -61,8 +54,38 @@ constructor(private val rows: DbRowResolver, private val enums: EnumTypeMapResol
         )
     }
 
-    fun loadMoveEvents(): Map<ComponentType, ComponentType> {
-        val list = enums[gameframe_enums.move_events].filterValuesNotNull()
-        return list.backing
-    }
+    fun loadMoveEvents(): Map<String, String> =
+        enum("enum.toplevel_move_events", ComponentTypeCodec, ComponentTypeCodec).associate {
+            val from = RSCM.getReverseMapping(RSCMType.COMPONENT, it.key.packed)
+            val to = RSCM.getReverseMapping(RSCMType.COMPONENT, it.value.packed)
+            from to to
+        }
+
+    val overlays: List<GameframeOverlay> =
+        listOf(
+            GameframeOverlay("interface.chatbox", "component.toplevel_osrs_stretch:chat_container"),
+            GameframeOverlay("interface.buff_bar", "component.toplevel_osrs_stretch:buff_bar"),
+            GameframeOverlay("interface.stat_boosts_hud", "component.toplevel_osrs_stretch:stat_boosts_hud"),
+            GameframeOverlay("interface.pm_chat", "component.toplevel_osrs_stretch:pm_container"),
+            GameframeOverlay("interface.hpbar_hud", "component.toplevel_osrs_stretch:hpbar_hud"),
+            GameframeOverlay("interface.orbs", "component.toplevel_osrs_stretch:orbs"),
+            GameframeOverlay("interface.xp_drops", "component.toplevel_osrs_stretch:xp_drops"),
+            GameframeOverlay("interface.popout", "component.toplevel_osrs_stretch:popout"),
+            GameframeOverlay("interface.ehc_worldhop", "component.toplevel_osrs_stretch:tli_listener"),
+            GameframeOverlay("interface.stats", "component.toplevel_osrs_stretch:side1"),
+            GameframeOverlay("interface.side_journal", "component.toplevel_osrs_stretch:side2"),
+            GameframeOverlay("interface.inventory", "component.toplevel_osrs_stretch:side3"),
+            GameframeOverlay("interface.wornitems", "component.toplevel_osrs_stretch:side4"),
+            GameframeOverlay("interface.prayerbook", "component.toplevel_osrs_stretch:side5"),
+            GameframeOverlay("interface.magic_spellbook", "component.toplevel_osrs_stretch:side6"),
+            GameframeOverlay("interface.friends", "component.toplevel_osrs_stretch:side9"),
+            GameframeOverlay("interface.account", "component.toplevel_osrs_stretch:side8"),
+            GameframeOverlay("interface.logout", "component.toplevel_osrs_stretch:side10"),
+            GameframeOverlay("interface.settings_side", "component.toplevel_osrs_stretch:side11"),
+            GameframeOverlay("interface.emote", "component.toplevel_osrs_stretch:side12"),
+            GameframeOverlay("interface.music", "component.toplevel_osrs_stretch:side13"),
+            GameframeOverlay("interface.side_channels", "component.toplevel_osrs_stretch:side7"),
+            GameframeOverlay("interface.combat_interface", "component.toplevel_osrs_stretch:side0"),
+            GameframeOverlay("interface.notification_display", "component.toplevel_osrs_stretch:notifications"),
+        )
 }

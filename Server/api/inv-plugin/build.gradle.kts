@@ -1,6 +1,6 @@
 plugins {
     id("base-conventions")
-    id("integration-test-suite")
+
 }
 
 kotlin {
@@ -10,6 +10,7 @@ kotlin {
 dependencies {
     implementation(libs.guice)
     implementation(projects.api.cache)
+    implementation(projects.api.generated)
     implementation(projects.api.config)
     implementation(projects.api.gameProcess)
     implementation(projects.api.player)
@@ -17,7 +18,6 @@ dependencies {
     implementation(projects.api.script)
     implementation(projects.api.scriptAdvanced)
     implementation(projects.api.specials)
-    implementation(projects.api.type.typeReferences)
     implementation(projects.api.utils.utilsVars)
     implementation(projects.engine.events)
     implementation(projects.engine.game)

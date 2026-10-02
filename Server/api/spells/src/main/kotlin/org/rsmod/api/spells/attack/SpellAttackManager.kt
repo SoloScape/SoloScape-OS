@@ -1,5 +1,6 @@
 package org.rsmod.api.spells.attack
 
+import dev.openrune.types.ItemServerType
 import jakarta.inject.Inject
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.commons.magic.MagicSpell
@@ -8,22 +9,16 @@ import org.rsmod.api.combat.manager.MagicRuneManager.Companion.consumedRune
 import org.rsmod.api.combat.manager.MagicRuneManager.Companion.isFailure
 import org.rsmod.api.combat.manager.PlayerAttackManager
 import org.rsmod.api.config.constants
-import org.rsmod.api.config.refs.stats
-import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.vars.boolVarBit
 import org.rsmod.game.entity.PathingEntity
 import org.rsmod.game.hit.Hit
 import org.rsmod.game.proj.ProjAnim
-import org.rsmod.game.type.obj.ObjType
-import org.rsmod.game.type.proj.ProjAnimType
-import org.rsmod.game.type.spot.SpotanimType
-import org.rsmod.game.type.synth.SynthType
 
 public class SpellAttackManager
 @Inject
 constructor(private val manager: PlayerAttackManager, private val runes: MagicRuneManager) {
-    private val ProtectedAccess.autocastEnabled by boolVarBit(varbits.autocast_set)
+    private val ProtectedAccess.autocastEnabled by boolVarBit("varbit.autocast_set")
 
     /**
      * Checks and **consumes** any requirements for [CombatAttack.Spell.spell], delegating to
@@ -75,7 +70,7 @@ constructor(private val manager: PlayerAttackManager, private val runes: MagicRu
      * [CombatAttack.Spell.spell].
      */
     public fun giveCastXp(access: ProtectedAccess, attack: CombatAttack.Spell) {
-        access.statAdvance(stats.magic, attack.spell.castXp)
+        access.statAdvance("stat.magic", attack.spell.castXp)
     }
 
     /**
@@ -123,7 +118,8 @@ constructor(private val manager: PlayerAttackManager, private val runes: MagicRu
         target: PathingEntity,
         attack: CombatAttack.Spell,
         castResult: MagicRuneManager.CastResult,
-    ): Boolean = !rollSpellAccuracy(source, target, attack, castResult)
+        conflictionEligible: Boolean = true,
+    ): Boolean = !rollSpellAccuracy(source, target, attack, castResult, conflictionEligible)
 
     /** @see [PlayerAttackManager.rollSpellAccuracy] */
     public fun rollSpellAccuracy(
@@ -131,6 +127,7 @@ constructor(private val manager: PlayerAttackManager, private val runes: MagicRu
         target: PathingEntity,
         attack: CombatAttack.Spell,
         castResult: MagicRuneManager.CastResult,
+        conflictionEligible: Boolean = true,
     ): Boolean =
         manager.rollSpellAccuracy(
             source = source.player,
@@ -138,6 +135,7 @@ constructor(private val manager: PlayerAttackManager, private val runes: MagicRu
             spell = attack.spell.obj,
             spellbook = attack.spell.spellbook,
             sunfireRune = castResult.consumedRune() && castResult.usedSunfire,
+            conflictionEligible = conflictionEligible,
         )
 
     /** @see [PlayerAttackManager.rollSpellMaxHit] */
@@ -189,7 +187,7 @@ constructor(private val manager: PlayerAttackManager, private val runes: MagicRu
     public fun queueMagicHit(
         source: ProtectedAccess,
         target: PathingEntity,
-        spell: ObjType,
+        spell: ItemServerType,
         damage: Int,
         clientDelay: Int,
         hitDelay: Int = 1 + (clientDelay / 30),
@@ -208,7 +206,7 @@ constructor(private val manager: PlayerAttackManager, private val runes: MagicRu
     public fun queueSplashHit(
         source: ProtectedAccess,
         target: PathingEntity,
-        spell: ObjType,
+        spell: ItemServerType,
         clientDelay: Int,
         hitDelay: Int = 1 + (clientDelay / 30),
     ): Hit =
@@ -225,11 +223,11 @@ constructor(private val manager: PlayerAttackManager, private val runes: MagicRu
         source: ProtectedAccess,
         target: PathingEntity,
         clientDelay: Int,
-        castSound: SynthType?,
+        castSound: String?,
         soundRadius: Int,
-        hitSpot: SpotanimType?,
+        hitSpot: String?,
         hitSpotHeight: Int,
-        hitSound: SynthType?,
+        hitSound: String?,
     ): Unit =
         manager.playMagicHitFx(
             source = source.player,
@@ -247,7 +245,7 @@ constructor(private val manager: PlayerAttackManager, private val runes: MagicRu
         source: ProtectedAccess,
         target: PathingEntity,
         clientDelay: Int,
-        castSound: SynthType?,
+        castSound: String?,
         soundRadius: Int,
     ): Unit =
         manager.playMagicSplashFx(
@@ -262,7 +260,7 @@ constructor(private val manager: PlayerAttackManager, private val runes: MagicRu
     public fun spawnProjectile(
         source: ProtectedAccess,
         target: PathingEntity,
-        spotanim: SpotanimType,
-        projanim: ProjAnimType,
+        spotanim: String,
+        projanim: String,
     ): ProjAnim = manager.spawnProjectile(source.player, target, spotanim, projanim)
 }

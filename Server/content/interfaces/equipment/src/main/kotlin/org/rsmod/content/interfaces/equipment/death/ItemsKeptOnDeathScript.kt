@@ -1,10 +1,14 @@
 package org.rsmod.content.interfaces.equipment.death
 
+import dev.openrune.definition.type.widget.IfEvent
 import jakarta.inject.Inject
 import java.util.Objects
 import kotlin.math.abs
-import org.rsmod.api.config.refs.params
-import org.rsmod.api.config.refs.synths
+import org.rsmod.api.area.checker.AreaChecker
+import org.rsmod.api.death.PlayerDeathDrops
+import org.rsmod.api.death.PlayerDeathHandlingResolver
+import org.rsmod.api.death.PlayerDeathPreviewContext
+import org.rsmod.api.death.UntradeableHandling
 import org.rsmod.api.market.MarketPrices
 import org.rsmod.api.player.isInCombat
 import org.rsmod.api.player.output.mes
@@ -12,19 +16,14 @@ import org.rsmod.api.player.output.soundSynth
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.protect.ProtectedAccessLauncher
 import org.rsmod.api.player.stopInvTransmit
+import org.rsmod.api.player.vars.boolVarBit
 import org.rsmod.api.script.onIfClose
 import org.rsmod.api.script.onIfOverlayButton
 import org.rsmod.api.utils.format.formatAmount
-import org.rsmod.content.interfaces.equipment.configs.equip_components
-import org.rsmod.content.interfaces.equipment.configs.equip_interfaces
-import org.rsmod.content.interfaces.equipment.configs.equip_invs
-import org.rsmod.content.interfaces.equipment.configs.equip_objs
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.inv.Inventory
-import org.rsmod.game.type.interf.IfEvent
-import org.rsmod.game.type.inv.InvTypeList
-import org.rsmod.game.type.obj.ObjTypeList
+import org.rsmod.game.type.getInvObj
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -32,13 +31,16 @@ class ItemsKeptOnDeathScript
 @Inject
 constructor(
     private val protectedAccess: ProtectedAccessLauncher,
-    private val invTypes: InvTypeList,
-    private val objTypes: ObjTypeList,
     private val marketPrices: MarketPrices,
+    private val handlingResolver: PlayerDeathHandlingResolver,
+    private val deathDrops: PlayerDeathDrops,
+    private val areaChecker: AreaChecker,
 ) : PluginScript() {
+    private var Player.inInstance by boolVarBit("varbit.player_in_instance")
+
     override fun ScriptContext.startup() {
-        onIfOverlayButton(equip_components.items_kept_on_death) { player.selectKeptOnDeath() }
-        onIfClose(equip_interfaces.deathkeep) { player.closeKeptOnDeath() }
+        onIfOverlayButton("component.wornitems:deathkeep") { player.selectKeptOnDeath() }
+        onIfClose("interface.deathkeep") { player.closeKeptOnDeath() }
     }
 
     private fun Player.selectKeptOnDeath() {
@@ -48,7 +50,7 @@ constructor(
         }
         if (isAccessProtected) {
             mes("Please finish what you're doing before opening this menu.")
-            soundSynth(synths.pillory_wrong)
+            soundSynth("synth.pillory_wrong")
             return
         }
         protectedAccess.launch(this) {
@@ -74,15 +76,15 @@ constructor(
         deathInventory: DeathInventory,
         deathSettings: DeathSettings,
     ) {
-        ifOpenMainModal(equip_interfaces.deathkeep)
+        ifOpenMainModal("interface.deathkeep")
         deathKeepInit(deathInventory, deathSettings)
-        ifSetEvents(equip_components.items_kept_on_death_pbutton, 0..3, IfEvent.PauseButton)
+        ifSetEvents("component.deathkeep:right", 0..3, IfEvent.PauseButton)
         updateDeathRisk(deathInventory)
     }
 
     private fun ProtectedAccess.updateDeathRisk(deathInventory: DeathInventory) {
         ifSetText(
-            equip_components.items_kept_on_death_risk,
+            "component.deathkeep:value",
             "Guide risk value:<br><col=ffffff>" +
                 "${deathInventory.calculateRisk().formatAmount}</col>",
         )
@@ -93,8 +95,7 @@ constructor(
 
         ifClose()
 
-        // Verify the pause button input came from items kept on death interface.
-        if (!update.component.isType(equip_components.items_kept_on_death_pbutton)) {
+        if (update.component != "component.deathkeep:right") {
             return
         }
 
@@ -120,9 +121,9 @@ constructor(
     }
 
     private fun ProtectedAccess.createDeathInventory(settings: DeathSettings): DeathInventory {
-        val keptInventory = Inventory.create(invTypes[equip_invs.kept])
-        val lostInventory = Inventory.create(invTypes[equip_invs.death])
-        val dataInventory = Inventory.create(invTypes[equip_invs.death_data])
+        val keptInventory = Inventory.create("inv.skill_guide_hunting_tracking")
+        val lostInventory = Inventory.create("inv.deathkeep_items")
+        val dataInventory = Inventory.create("inv.diango_hols_sack")
 
         check(keptInventory.size == 4) {
             "Size for `keptInventory` expected to be `4`. (size=${keptInventory.size})"
@@ -136,13 +137,42 @@ constructor(
             "Death inventory can only fit `${lostInventory.size}` objs."
         }
 
-        val carried = sortedCarriedObjs().toMutableList()
-        val (kept, lost) = carried.partition(settings.keepCount())
+        val carried = inv.filterNotNull() + worn.filterNotNull()
+        val wildernessLevel = if (settings.wildernessLvl > 0) settings.wildernessLvl else 0
+        val context =
+            PlayerDeathPreviewContext.create(
+                player = player,
+                protectItem = settings.protectItemPrayer,
+                skulled = settings.skullActive,
+                playerKill = settings.playerKill,
+                wildernessLevel = wildernessLevel,
+                inInstance = player.inInstance,
+                inRevenantCaves = areaChecker.inArea("area.revenant_caves", player.coords),
+                gamemode = player.gamemode,
+            )
+        val handling = handlingResolver.resolve(context)
 
-        val keptAddResult = invMoveAll(keptInventory, kept)
+        val rules =
+            PlayerDeathDrops.DeathDropRules(
+                isUIM = context.isUIM,
+                isPvpDeath = context.isPvpDeath,
+            )
+        val result = deathDrops.selectDrops(carried, rules, handling)
+
+        val neverKept = carried.filter { deathDrops.isNeverKept(it, rules) }
+        val lost =
+            buildList {
+                addAll(result.lostTradeable)
+                if (handling.untradeableHandling != UntradeableHandling.KEEP) {
+                    addAll(result.lostUntradeable)
+                }
+                addAll(neverKept)
+            }
+
+        val keptAddResult = invMoveAll(keptInventory, result.kept)
         val lostAddResult = invMoveAll(lostInventory, lost)
 
-        check(kept.isEmpty() || keptAddResult.success) {
+        check(result.kept.isEmpty() || keptAddResult.success) {
             "Could not add `inv` and `worn` into kept inventory. (result=$keptAddResult)"
         }
 
@@ -150,75 +180,26 @@ constructor(
             "Could not add `inv` and `worn` into lost inventory. (result=$lostAddResult)"
         }
 
-        // Convert all objs from `lost` inventory into the respective "death" obj that are
-        // substitutes used by cs2 to send "extra data" per inv obj.
         for (i in dataInventory.indices) {
-            val converted = convertToDataObj(lostInventory[i])
-            dataInventory[i] = converted
+            dataInventory[i] = convertToDataObj(lostInventory[i])
         }
 
         return DeathInventory(keptInventory, lostInventory, dataInventory)
     }
 
-    private fun ProtectedAccess.sortedCarriedObjs(): Sequence<InvObj> {
-        val overall = inv.filterNotNull() + worn.filterNotNull()
-        return overall
-            .asSequence()
-            .filterNot { objTypes[it].param(params.bond_item) }
-            .sortedByDescending(::marketPriceSingle)
-    }
-
-    private fun MutableList<InvObj>.partition(keepCount: Int): Pair<List<InvObj>, List<InvObj>> {
-        var pointer = 0
-        val kept = mutableListOf<InvObj>()
-        for (i in 0 until keepCount) {
-            val obj = getOrNull(pointer) ?: break
-            kept += obj.copy(count = 1)
-
-            if (obj.count == 1) {
-                pointer++
-                continue
-            }
-
-            this[pointer] = obj.copy(count = obj.count - 1)
-        }
-        val lost = drop(pointer)
-        return kept to lost
-    }
-
-    private fun DeathSettings.keepCount(): Int {
-        var keep = if (skullActive) 0 else 3
-        if (protectItemPrayer) {
-            keep++
-        }
-        return keep
-    }
-
     private fun convertToDataObj(obj: InvObj?): InvObj {
         if (obj == null) {
-            return InvObj(equip_objs.deleted)
+            return InvObj("obj.burntfish1")
         }
-        val type = objTypes[obj]
-        val price = marketPrices[type] ?: type.cost
-        val fee = calculateFee(price)
-        return InvObj(equip_objs.gravestone, fee + 1)
+        return InvObj("obj.burntfish4", 1)
     }
-
-    private fun calculateFee(marketPrice: Int): Int =
-        when {
-            marketPrice < 100_000 -> 0
-            marketPrice in 100_000..<1_000_000 -> 1000
-            marketPrice in 1_000_000..<10_000_000 -> 10_000
-            else -> 100_000
-        }
 
     private fun marketPriceSingle(obj: InvObj?): Long {
         if (obj == null) {
             return 0
         }
-        val type = objTypes[obj]
-        val price = marketPrices[type] ?: 1
-        return price.toLong()
+        val type = getInvObj(obj)
+        return (marketPrices[type] ?: type.cost).toLong()
     }
 
     private fun marketPriceTotal(obj: InvObj?): Long = marketPriceSingle(obj) * (obj?.count ?: 0)
@@ -240,20 +221,15 @@ constructor(
     )
 
     private fun ProtectedAccess.deathKeepInit(inventory: DeathInventory, settings: DeathSettings) {
-        val skullActive = settings.skullActive
-        val protectItemPrayer = settings.protectItemPrayer
-        val wildernessLvl = settings.wildernessLvl
-        val playerKill = settings.playerKill
-        val headerText = settings.header
         val keepCount = inventory.kept.count(Objects::nonNull)
         val keepObjs = inventory.kept.map { it?.id ?: -1 }
         runClientScript(
             972,
-            if (skullActive) 1 else 0,
-            if (protectItemPrayer) 1 else 0,
-            wildernessLvl,
-            if (playerKill) 1 else 0,
-            headerText,
+            if (settings.skullActive) 1 else 0,
+            if (settings.protectItemPrayer) 1 else 0,
+            settings.wildernessLvl,
+            if (settings.playerKill) 1 else 0,
+            settings.header,
             keepCount,
             keepObjs[0],
             keepObjs[1],
@@ -264,7 +240,7 @@ constructor(
 }
 
 private val Player.itemsKeptOnDeath: Inventory
-    get() = invMap.getValue(equip_invs.death)
+    get() = invMap.getValue("inv.deathkeep_items")
 
 private val Player.itemsKeptOnDeathData: Inventory
-    get() = invMap.getValue(equip_invs.death_data)
+    get() = invMap.getValue("inv.diango_hols_sack")

@@ -1,9 +1,15 @@
 package org.rsmod.api.player.vars
 
+import dev.openrune.ServerCacheManager
+import dev.openrune.definition.type.VarBitType
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.varp.VarpServerType
+import dev.openrune.types.varp.baseVar
+import dev.openrune.types.varp.bits
 import org.rsmod.api.player.output.VarpSync
 import org.rsmod.game.entity.Player
-import org.rsmod.game.type.varbit.VarBitType
-import org.rsmod.game.type.varp.VarpType
+import org.rsmod.game.entity.PlayerPersistenceHints
 import org.rsmod.game.vars.VarPlayerIntMap
 import org.rsmod.utils.bits.withBits
 
@@ -30,12 +36,25 @@ import org.rsmod.utils.bits.withBits
  * @see [VarPlayerIntMap]
  */
 public object VarPlayerIntMapSetter {
-    public fun set(player: Player, varp: VarpType, value: Int) {
+
+    public fun set(player: Player, varp: String, value: Int) {
+        if (varp.startsWith("varp.")) {
+            set(player, ServerCacheManager.getVarp(varp.asRSCM(RSCMType.VARP))!!, value)
+        } else {
+            set(player, ServerCacheManager.getVarbit(varp.asRSCM(RSCMType.VARBIT))!!, value)
+        }
+    }
+
+    public fun set(player: Player, varp: VarpServerType, value: Int) {
         val previous = player.vars.backing[varp.id]
 
         player.vars.backing[varp.id] = value
 
         val engineLoggedIn = player.processedMapClock > 0
+        if (engineLoggedIn && previous != value) {
+            PlayerPersistenceHints.notify(player)
+        }
+
         if (!engineLoggedIn) {
             return
         }
@@ -48,10 +67,33 @@ public object VarPlayerIntMapSetter {
         }
     }
 
+    public fun toggle(player: Player, varp: String) {
+        if (varp.startsWith("varp.")) {
+            toggle(player, ServerCacheManager.getVarp(varp.asRSCM(RSCMType.VARP))!!)
+        } else {
+            toggle(player, ServerCacheManager.getVarbit(varp.asRSCM(RSCMType.VARBIT))!!)
+        }
+    }
+
+    public fun toggle(player: Player, varp: VarpServerType) {
+        val current = player.vars[varp]
+        set(player, varp, if (current == 0) 1 else 0)
+    }
+
+    public fun toggle(player: Player, varbit: VarBitType) {
+        val current = player.vars[varbit]
+        set(player, varbit, if (current == 0) 1 else 0)
+    }
+
     public fun set(player: Player, varbit: VarBitType, value: Int) {
         VarPlayerIntMap.assertVarBitBounds(varbit, value)
         val mappedValue = player.vars[varbit.baseVar]
         val packedValue = mappedValue.withBits(varbit.bits, value)
         set(player, varbit.baseVar, packedValue)
+    }
+
+    public fun toggleBit(player: Player, varbit: VarBitType, bit: Int) {
+        val current = player.vars[varbit]
+        set(player, varbit, current xor (1 shl bit))
     }
 }

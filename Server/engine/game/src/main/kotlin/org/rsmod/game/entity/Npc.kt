@@ -1,8 +1,19 @@
 package org.rsmod.game.entity
 
+import dev.openrune.ServerCacheManager
+import dev.openrune.TypedParamType
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.HealthBarServerType
+import dev.openrune.types.HitmarkTypeGroup
+import dev.openrune.types.HuntModeType
+import dev.openrune.types.MoveRestrict
+import dev.openrune.types.NpcMode
+import dev.openrune.types.NpcServerType
+import dev.openrune.util.BlockWalk
 import org.rsmod.annotations.InternalApi
+import org.rsmod.game.damage.DamageContributions
 import org.rsmod.game.entity.npc.NpcInfoProtocol
-import org.rsmod.game.entity.npc.NpcMode
 import org.rsmod.game.entity.npc.NpcUid
 import org.rsmod.game.entity.npc.OpVisibility
 import org.rsmod.game.entity.player.PlayerUid
@@ -13,24 +24,14 @@ import org.rsmod.game.hero.HeroPoints
 import org.rsmod.game.hit.Hitmark
 import org.rsmod.game.loc.LocInfo
 import org.rsmod.game.map.Direction
-import org.rsmod.game.movement.BlockWalk
-import org.rsmod.game.movement.MoveRestrict
 import org.rsmod.game.movement.MoveSpeed
+import org.rsmod.game.movement.collisionFlag
+import org.rsmod.game.movement.collisionStrategy
 import org.rsmod.game.obj.Obj
 import org.rsmod.game.queue.AiQueueType
 import org.rsmod.game.queue.NpcQueueList
 import org.rsmod.game.seq.EntitySeq
 import org.rsmod.game.timer.NpcTimerMap
-import org.rsmod.game.type.content.ContentGroupType
-import org.rsmod.game.type.headbar.HeadbarType
-import org.rsmod.game.type.hitmark.HitmarkTypeGroup
-import org.rsmod.game.type.hunt.HuntModeType
-import org.rsmod.game.type.npc.UnpackedNpcType
-import org.rsmod.game.type.param.ParamType
-import org.rsmod.game.type.queue.QueueType
-import org.rsmod.game.type.seq.SeqType
-import org.rsmod.game.type.spot.SpotanimType
-import org.rsmod.game.type.timer.TimerType
 import org.rsmod.game.vars.VarNpcIntMap
 import org.rsmod.game.vars.VarNpcStrMap
 import org.rsmod.map.CoordGrid
@@ -38,14 +39,22 @@ import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.routefinder.collision.CollisionStrategy
 
 public class Npc(
-    public val type: UnpackedNpcType,
+    public val type: NpcServerType,
     override val avatar: NpcAvatar = NpcAvatar(type.size),
 ) : PathingEntity() {
-    public constructor(type: UnpackedNpcType, coords: CoordGrid) : this(type) {
+    public constructor(type: NpcServerType, coords: CoordGrid) : this(type) {
         this.coords = coords
         this.spawnCoords = coords
     }
 
+    public constructor(type: String, coords: CoordGrid) : this(
+        requireNotNull(ServerCacheManager.getNpc(type.asRSCM(RSCMType.NPC))) {
+            "NPC type '$type' not found in cache"
+        },
+    ) {
+        this.coords = coords
+        this.spawnCoords = coords
+    }
     override val blockWalkCollisionFlag: Int?
         get() = blockWalk.collisionFlag
 
@@ -53,6 +62,8 @@ public class Npc(
         get() = moveRestrict.collisionStrategy
 
     override val heroPoints: HeroPoints = HeroPoints(type.heroCount)
+
+    override val damageContributions: DamageContributions = DamageContributions()
 
     public val vars: VarNpcIntMap = VarNpcIntMap()
     public val strVars: VarNpcStrMap = VarNpcStrMap()
@@ -74,6 +85,29 @@ public class Npc(
     public var respawns: Boolean = false
 
     public var mode: NpcMode? = type.defaultMode
+
+    /**
+     * Whether or not the Npc should ignore all combat interactions, i.e. not respond in any way
+     * when attacked.
+     */
+    public var ignoreCombatInteractions: Boolean = false
+
+    /**
+     * Whether the Npc has locked movement. This is enforced in NpcMovementProcessor.process by
+     * continually resetting the Npc's route.
+     */
+    public var movementLocked: Boolean = false
+
+    /**
+     * Used for temporarily overwriting a Npc's ap-range, i.e. the distance at which it can
+     * perform a ranged attack.
+     */
+    public var apRangeOverride: Int? = null
+
+    public val attackRange: Int
+        get() = apRangeOverride ?: visType.attackRange
+
+    public var apRequiresLineOfSight: Boolean = true
 
     public var aiTimerStart: Int = type.timer
     public var aiTimer: Int = type.timer
@@ -104,11 +138,21 @@ public class Npc(
     public val regenRate: Int = type.regenRate
 
     public var huntClock: Int = 0
+
     // `Obj` and `LocInfo` are lightweight, otherwise we would wrap them in `WeakReference`.
     public var huntObj: Obj? = null
     public var huntLoc: LocInfo? = null
     public var huntNpc: NpcUid = NpcUid.NULL
     public var huntPlayer: PlayerUid = PlayerUid.NULL
+
+    public var spawnOwner: PlayerUid = PlayerUid.NULL
+
+    /**
+     * Map cycle when [spawnOwner] was last within vicinity of this npc. Used for owner-presence
+     * despawn logic (e.g. superior slayer monsters leaving the area).
+     */
+    public var spawnOwnerLastNearCycle: Int = -1
+
     public var huntRange: Int = type.huntRange
         private set
 
@@ -129,7 +173,13 @@ public class Npc(
 
     public var actionDelay: Int = -1
 
-    public var transmog: UnpackedNpcType? = null
+    /**
+     * A persistent idle/stand animation override.
+     */
+    public var idleSequence: EntitySeq = EntitySeq.NULL
+        private set
+
+    public var transmog: NpcServerType? = null
         private set
 
     public var cachedHitmark: HitmarkTypeGroup? = null
@@ -152,8 +202,7 @@ public class Npc(
     public val name: String
         get() = type.name
 
-    public val moveRestrict: MoveRestrict
-        get() = type.moveRestrict
+    public var moveRestrict: MoveRestrict = type.moveRestrict
 
     public val blockWalk: BlockWalk
         get() = type.blockWalk
@@ -164,7 +213,7 @@ public class Npc(
     public val defaultMode: NpcMode
         get() = type.defaultMode
 
-    public val visType: UnpackedNpcType
+    public val visType: NpcServerType
         get() = transmog ?: type
 
     public var infoProtocol: NpcInfoProtocol
@@ -188,6 +237,39 @@ public class Npc(
         abortRoute()
         moveSpeed = defaultMoveSpeed
         routeDestination.add(dest)
+        arrivalAction = null
+    }
+
+    /**
+     * Walks to [dest] and runs [onArrival] once the route completes (the npc reaches the destination
+     * or the route otherwise ends).
+     */
+    public fun walk(dest: CoordGrid, onArrival: () -> Unit) {
+        walk(dest)
+        arrivalAction = onArrival
+    }
+
+    /**
+     * Walks the npc along a precomputed list of [waypoints] (e.g. the output of a pathfinder), running
+     * [onArrival] once the route completes.
+     */
+    public fun walk(waypoints: List<CoordGrid>, onArrival: (() -> Unit)? = null) {
+        abortRoute()
+        moveSpeed = defaultMoveSpeed
+        routeDestination.addAll(waypoints)
+        arrivalAction = onArrival
+    }
+
+    private var arrivalAction: (() -> Unit)? = null
+
+    @InternalApi
+    public fun processArrivalAction() {
+        val action = arrivalAction ?: return
+        if (routeDestination.isNotEmpty()) {
+            return
+        }
+        arrivalAction = null
+        action()
     }
 
     public fun teleport(collision: CollisionFlagMap, dest: CoordGrid): Unit =
@@ -201,12 +283,12 @@ public class Npc(
         this.aiTimer = cycles
     }
 
-    public fun timer(timer: TimerType, cycles: Int) {
+    public fun timer(timer: String, cycles: Int) {
         require(cycles > 0) { "`cycles` must be greater than 0. (cycles=$cycles)" }
         timerMap.schedule(timer, interval = cycles)
     }
 
-    public fun clearTimer(timer: TimerType) {
+    public fun clearTimer(timer: String) {
         timerMap.remove(timer)
     }
 
@@ -221,12 +303,12 @@ public class Npc(
         pendingAiQueue = null
     }
 
-    public fun queue(queue: QueueType, cycles: Int, args: Any? = null) {
+    public fun queue(queue: String, cycles: Int, args: Any? = null) {
         require(cycles > 0) { "`cycles` must be greater than 0. (cycles=$cycles)" }
         queueList.add(queue, cycles, args)
     }
 
-    public fun clearQueue(queue: QueueType) {
+    public fun clearQueue(queue: String) {
         queueList.removeAll(queue)
     }
 
@@ -261,6 +343,9 @@ public class Npc(
     @InternalApi
     public fun setRespawnValues() {
         pendingTelejump = true
+        if (transmog != null) {
+            infoProtocol.resetTransmog(originalType = id)
+        }
         transmog = null
         cachedHitmark = null
         mode = defaultMode
@@ -284,7 +369,7 @@ public class Npc(
         clearInteraction()
     }
 
-    override fun anim(seq: SeqType, delay: Int, priority: Int) {
+    override fun anim(seq: String, delay: Int, priority: Int) {
         val setSequence = PathingEntityCommon.anim(this, seq, delay, priority)
         if (!setSequence) {
             return
@@ -301,9 +386,26 @@ public class Npc(
         infoProtocol.setSequence(-1, 0)
     }
 
-    override fun spotanim(spot: SpotanimType, delay: Int, height: Int, slot: Int) {
-        PathingEntityCommon.spotanim(this, spot.id, delay, height, slot)
-        infoProtocol.setSpotanim(spot.id, delay, height, slot)
+    /**
+     * Sets a persistent idle animation [seq] that the engine keeps displayed while the npc is
+     * stationary and not animating. See [idleSequence].
+     */
+    public fun setIdleAnim(seq: String) {
+        idleSequence = EntitySeq(seq.asRSCM(RSCMType.SEQ), delay = 0, priority = 0)
+    }
+
+    /** Clears the persistent idle animation, reverting the npc to its cache `standAnim`. */
+    public fun clearIdleAnim() {
+        val wasSet = idleSequence != EntitySeq.NULL
+        idleSequence = EntitySeq.NULL
+        if (wasSet) {
+            resetAnim()
+        }
+    }
+
+    override fun spotanim(spot: String, delay: Int, height: Int, slot: Int) {
+        PathingEntityCommon.spotanim(this, spot.asRSCM(RSCMType.SPOTANIM), delay, height, slot)
+        infoProtocol.setSpotanim(spot.asRSCM(RSCMType.SPOTANIM), delay, height, slot)
     }
 
     public fun say(text: String) {
@@ -314,6 +416,10 @@ public class Npc(
         infoProtocol.showHeadbar(headbar)
     }
 
+    public fun removeHeadbar(id: Int) {
+        infoProtocol.removeHeadbar(id)
+    }
+
     public fun showHitmark(hitmark: Hitmark) {
         infoProtocol.showHitmark(hitmark)
     }
@@ -322,11 +428,57 @@ public class Npc(
         infoProtocol.toggleOps(OpVisibility.showAll())
     }
 
+    public fun setHeadIcon(slot: Int, graphic: Int, index: Int) {
+        infoProtocol.setHeadIcon(slot, graphic, index)
+    }
+
+    public fun clearHeadIcon(slot: Int) {
+        infoProtocol.setHeadIcon(slot, -1, -1)
+    }
+
     public fun hideAllOps() {
         infoProtocol.toggleOps(OpVisibility.hideAll())
     }
 
+    /**
+     * The square this npc's facing is pinned to, or [CoordGrid.NULL] when facing is not locked.
+     */
+    public var faceLockSquare: CoordGrid = CoordGrid.NULL
+        private set
+
+    public var faceLockWidth: Int = 1
+        private set
+
+    public var faceLockLength: Int = 1
+        private set
+
+    public val isFacingLocked: Boolean
+        get() = faceLockSquare != CoordGrid.NULL
+
+    public fun lockFacing(target: CoordGrid, targetWidth: Int = 1, targetLength: Int = 1) {
+        faceLockSquare = target
+        faceLockWidth = targetWidth
+        faceLockLength = targetLength
+        // Drop continuous entity facing; the locked angle is (re)applied by the facing processor.
+        resetFaceEntity()
+        faceSquare(target, targetWidth, targetLength)
+    }
+
+    /** Pins this npc's facing toward the tile one step in [direction]. @see [lockFacing] */
+    public fun lockFacingDirection(direction: Direction) {
+        lockFacing(coords.translate(direction.xOff, direction.zOff))
+    }
+
+    public fun clearFacingLock() {
+        faceLockSquare = CoordGrid.NULL
+        faceLockWidth = 1
+        faceLockLength = 1
+    }
+
     public fun facePlayer(target: Player) {
+        if (isFacingLocked) {
+            return
+        }
         if (faceEntity.playerSlot != target.slotId) {
             PathingEntityCommon.facePlayer(this, target)
             infoProtocol.setFacePathingEntity(faceEntity.entitySlot)
@@ -334,6 +486,9 @@ public class Npc(
     }
 
     public fun faceNpc(target: Npc) {
+        if (isFacingLocked) {
+            return
+        }
         if (faceEntity.npcSlot != target.slotId) {
             PathingEntityCommon.faceNpc(this, target)
             infoProtocol.setFacePathingEntity(faceEntity.entitySlot)
@@ -353,7 +508,7 @@ public class Npc(
         PathingEntityCommon.resetFaceEntity(this)
     }
 
-    public fun transmog(type: UnpackedNpcType, duration: Int) {
+    public fun transmog(type: NpcServerType, duration: Int) {
         cachedHitmark = null
         transmog = type
         lifecycleChangeCycle = if (duration == Int.MAX_VALUE) -1 else currentMapClock + duration
@@ -367,12 +522,28 @@ public class Npc(
         infoProtocol.resetTransmog(originalType = id)
     }
 
-    public fun copyStats(from: UnpackedNpcType) {
+    public fun setBodyModel(model: Int) {
+        infoProtocol.setBodyModel(model)
+    }
+
+    public fun setBodyModels(models: List<Int>) {
+        infoProtocol.setBodyModels(models)
+    }
+
+    public fun setBodyRecolours(recolours: List<Int>) {
+        infoProtocol.setBodyRecolours(recolours)
+    }
+
+    public fun resetBodyModel() {
+        infoProtocol.resetBodyModel()
+    }
+
+    public fun copyStats(from: NpcServerType) {
         copyBaseStats(from)
         copyCurrentStats(from)
     }
 
-    public fun copyBaseStats(from: UnpackedNpcType) {
+    public fun copyBaseStats(from: NpcServerType) {
         baseAttackLvl = from.attack
         baseStrengthLvl = from.strength
         baseDefenceLvl = from.defence
@@ -381,7 +552,7 @@ public class Npc(
         baseMagicLvl = from.magic
     }
 
-    public fun copyCurrentStats(from: UnpackedNpcType) {
+    public fun copyCurrentStats(from: NpcServerType) {
         attackLvl = from.attack
         strengthLvl = from.strength
         defenceLvl = from.defence
@@ -463,9 +634,9 @@ public class Npc(
         return infoProtocol.isActive()
     }
 
-    public fun isType(type: UnpackedNpcType): Boolean = this.type.isType(type)
+    public fun isType(type: String): Boolean = this.type.isType(type)
 
-    public fun isVisType(type: UnpackedNpcType): Boolean = this.visType.isType(type)
+    public fun isVisType(type: String): Boolean = this.visType.isType(type)
 
     /**
      * Returns the headbar associated with [headbar] param for the **current** npc [visType].
@@ -473,7 +644,8 @@ public class Npc(
      * @throws IllegalStateException if [visType] does not have a value associated with the headbar
      *   [param] and [param] does not have a non-null `default` [HeadbarType] value.
      */
-    public fun visHeadbar(headbar: ParamType<HeadbarType>): HeadbarType = visType.param(headbar)
+    public fun visHeadbar(headbar: TypedParamType<HealthBarServerType>): HealthBarServerType =
+        visType.param(headbar)
 
     /**
      * Returns the param value associated with [param] from the **base** npc [type], or `null` if
@@ -483,7 +655,7 @@ public class Npc(
      * If you wish to retrieve the param value for the current (transmog) type, use [visType] to
      * retrieve it.
      */
-    public fun <T : Any> paramOrNull(param: ParamType<T>): T? = type.paramOrNull(param)
+    public fun <T : Any> paramOrNull(param: TypedParamType<T>): T? = type.paramOrNull(param)
 
     /**
      * Returns the param value associated with [param] from the **base** npc [type].
@@ -494,9 +666,9 @@ public class Npc(
      * @throws IllegalStateException if the type does not have a value associated with [param] and
      *   [param] does not have a non-null `default` value.
      */
-    public fun <T : Any> param(param: ParamType<T>): T = type.param(param)
+    public fun <T : Any> param(param: TypedParamType<T>): T = type.param(param)
 
-    public fun isContentType(content: ContentGroupType): Boolean = type.contentGroup == content.id
+    public fun isContentType(content: String): Boolean = type.contentGroup == content.asRSCM(RSCMType.CONTENT)
 
     override fun toString(): String = "Npc(uid=$uid, slot=$slotId, coords=$coords, type=$type)"
 }

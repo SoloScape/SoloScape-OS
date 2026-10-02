@@ -1,5 +1,6 @@
 package org.rsmod.api.combat.formulas.accuracy.ranged
 
+import dev.openrune.util.Wearpos
 import java.util.EnumSet
 import kotlin.math.min
 import org.rsmod.api.combat.accuracy.player.PlayerRangedAccuracy
@@ -9,13 +10,11 @@ import org.rsmod.api.combat.formulas.accuracy.AccuracyOperations
 import org.rsmod.api.combat.formulas.attributes.CombatNpcAttributes
 import org.rsmod.api.combat.formulas.attributes.CombatRangedAttributes
 import org.rsmod.api.combat.formulas.scale
-import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.player.stat.defenceLvl
 import org.rsmod.api.player.stat.rangedLvl
 import org.rsmod.api.player.worn.EquipmentChecks
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.Inventory
-import org.rsmod.game.type.obj.Wearpos
 import org.rsmod.game.vars.VarPlayerIntMap
 
 private typealias RangeAttr = CombatRangedAttributes
@@ -199,12 +198,12 @@ public object RangedAccuracyOperations {
 
     private fun VarPlayerIntMap.offensivePrayerBonus(): Double =
         when {
-            this[varbits.sharp_eye] == 1 -> 1.05
-            this[varbits.hawk_eye] == 1 -> 1.1
-            this[varbits.eagle_eye] == 1 -> {
-                if (this[varbits.prayer_deadeye_unlocked] == 1) 1.18 else 1.15
+            this["varbit.prayer_sharpeye"] == 1 -> 1.05
+            this["varbit.prayer_hawkeye"] == 1 -> 1.1
+            this["varbit.prayer_eagleeye"] == 1 -> {
+                if (this["varbit.prayer_deadeye_unlocked"] == 1) 1.18 else 1.15
             }
-            this[varbits.rigour] == 1 -> 1.2
+            this["varbit.prayer_rigour"] == 1 -> 1.2
             else -> 1.0
         }
 

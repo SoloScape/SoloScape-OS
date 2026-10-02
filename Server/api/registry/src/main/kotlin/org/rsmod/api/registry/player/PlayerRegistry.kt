@@ -1,6 +1,12 @@
 package org.rsmod.api.registry.player
 
 import jakarta.inject.Inject
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
+import org.rsmod.api.player.output.ChatType
+import org.rsmod.api.player.output.mes
+import org.rsmod.api.player.output.runClientScript
 import org.rsmod.api.registry.zone.ZonePlayerActivityBitSet
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.PathingEntity.Companion.INVALID_SLOT
@@ -13,7 +19,7 @@ import org.rsmod.routefinder.collision.CollisionFlagMap
 public class PlayerRegistry
 @Inject
 constructor(
-    private val playerList: PlayerList,
+    public val playerList: PlayerList,
     private val collision: CollisionFlagMap,
     private val zoneActivity: ZonePlayerActivityBitSet,
     private val eventBus: EventBus,
@@ -108,4 +114,136 @@ constructor(
     public fun nextFreeSlot(): Int? = playerList.nextFreeSlot()
 
     public fun isOnline(userId: Long): Boolean = playerList.any { it.userId == userId }
+
+    public fun findOnlineByCharacterId(characterId: Int): Player? {
+        if (characterId <= 0) {
+            return null
+        }
+        for (player in playerList) {
+            if (player.characterId == characterId) {
+                return player
+            }
+        }
+        return null
+    }
+
+    public fun applyCentralMuteUpdate(
+        centralAccountId: Long,
+        characterId: Int,
+        mutedUntilEpochMillis: Long,
+    ) {
+        val aid = centralAccountId.toInt()
+        val newUntil: LocalDateTime? =
+            if (mutedUntilEpochMillis <= 0L) {
+                null
+            } else {
+                LocalDateTime.ofInstant(
+                    Instant.ofEpochMilli(mutedUntilEpochMillis),
+                    ZoneId.systemDefault(),
+                )
+            }
+        for (player in playerList) {
+            if (player.accountId != aid) {
+                continue
+            }
+            if (characterId != 0 && player.characterId != characterId) {
+                continue
+            }
+            //TODO MUTED
+        }
+    }
+
+    /**
+     * Marks matching online players disconnected after Central revokes their session (e.g. ban while online).
+     * [centralAccountId] matches [Player.accountId] (shared `accounts.id` with Central).
+     * [characterId] `0` = every character on that account; otherwise only that character row id.
+     */
+    public fun disconnectPlayersForCentralRevoke(
+        centralAccountId: Long,
+        characterId: Int,
+    ) {
+        val aid = centralAccountId.toInt()
+        for (player in playerList) {
+            if (player.accountId != aid) {
+                continue
+            }
+            if (characterId != 0 && player.characterId != characterId) {
+                continue
+            }
+            player.forceDisconnect = true
+        }
+    }
+
+    /**
+     * Disconnects matching online players after Central applies a `kick` punishment row (one-shot
+     * notify). Uses a kick-style client close without clearing Central sessions.
+     */
+    public fun disconnectPlayersForCentralKick(
+        centralAccountId: Long,
+        characterId: Int,
+    ) {
+        val aid = centralAccountId.toInt()
+        for (player in playerList) {
+            if (player.accountId != aid) {
+                continue
+            }
+            if (characterId != 0 && player.characterId != characterId) {
+                continue
+            }
+            player.forceDisconnect = true
+        }
+    }
+
+    /**
+     * Applies a Discord link written in Central's DB to any online characters on that account.
+     */
+    public fun applyCentralDiscordSync(
+        centralAccountId: Long,
+        discordId: String,
+    ) {
+        val aid = centralAccountId.toInt()
+        val parsed = discordId.trim().takeIf { it.isNotEmpty() }?.toLongOrNull()
+        for (player in playerList) {
+            if (player.accountId == aid) {
+                val newlyLinked = parsed != null && player.discordId == null
+                player.discordId = parsed
+                if (newlyLinked) {
+                    player.mes("Your account has been successfully linked to Discord!")
+                }
+            }
+        }
+    }
+
+    /**
+     * Applies a display name written in Central's DB (staff rename, etc.) to the matching online player
+     * and rebuilds appearance so other clients see the new name.
+     */
+    public fun applyCentralDisplayNameSync(
+        centralAccountId: Long,
+        characterId: Int,
+        newDisplayName: String,
+        priorDisplayName: String? = null,
+    ) {
+        if (characterId <= 0 || newDisplayName.isBlank()) {
+            return
+        }
+        val aid = centralAccountId.toInt()
+        val player = findOnlineByCharacterId(characterId) ?: return
+        if (player.accountId != aid) {
+            return
+        }
+        if (priorDisplayName != null) {
+            player.previousDisplayName = priorDisplayName
+        }
+
+        player.displayName = newDisplayName
+        player.displayNameChangedAtMillis = System.currentTimeMillis()
+        player.rebuildAppearance()
+    }
+
+    public inline fun forEachOnline(action: (Player) -> Unit) {
+        for (player in playerList) {
+            action(player)
+        }
+    }
 }

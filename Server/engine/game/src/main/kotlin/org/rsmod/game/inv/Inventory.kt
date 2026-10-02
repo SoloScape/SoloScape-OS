@@ -1,17 +1,26 @@
 package org.rsmod.game.inv
 
+import dev.openrune.ServerCacheManager
+import dev.openrune.rscm.RSCM
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.InvStackType
+import dev.openrune.types.InventoryServerType
+import dev.openrune.types.ItemServerType
+import dev.openrune.types.util.UncheckedType
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet
 import java.util.BitSet
-import org.rsmod.game.type.inv.InvStackType
-import org.rsmod.game.type.inv.UnpackedInvType
-import org.rsmod.game.type.obj.ObjType
-import org.rsmod.game.type.obj.UnpackedObjType
-import org.rsmod.game.type.obj.isAssociatedWith
-import org.rsmod.game.type.util.UncheckedType
+import org.rsmod.game.entity.Player
+import org.rsmod.game.type.isAssociatedWith
 
-public class Inventory(public val type: UnpackedInvType, public val objs: Array<InvObj?>) :
+public class Inventory(public val type: InventoryServerType, public val objs: Array<InvObj?>) :
     Iterable<InvObj?> {
+    public var owner: Player? = null
+
     public val modifiedSlots: BitSet = BitSet()
+
+    public val internalName: String
+        get() = RSCM.getReverseMapping(RSCMType.INV, type.id)
 
     public val size: Int
         get() = objs.size
@@ -82,9 +91,27 @@ public class Inventory(public val type: UnpackedInvType, public val objs: Array<
         modifiedSlots.set(slot)
     }
 
-    public operator fun contains(type: ObjType): Boolean = objs.any { type.isAssociatedWith(it) }
+    public operator fun contains(type: String): Boolean {
+        if (type.startsWith("content.")) {
+            val content = type.asRSCM(RSCMType.CONTENT)
+            return objs.any { obj ->
+                obj != null && ServerCacheManager.getItem(obj.id)?.contentGroup == content
+            }
+        }
 
-    public fun count(objType: UnpackedObjType): Int {
+        return physicalCount(type) > 0 || virtualCount(type) > 0
+    }
+
+    public operator fun contains(type: ItemServerType): Boolean =
+        objs.any { type.isAssociatedWith(it) }
+
+    public fun count(internal: String): Int = physicalCount(internal) + virtualCount(internal)
+
+    /** Slots-only count; ignores [InvVirtualStorage]. */
+    public fun physicalCount(internal: String): Int {
+        val objType = ServerCacheManager.getItem(internal.asRSCM(RSCMType.OBJ))
+            ?: error("Unable to find item: $internal")
+
         val obj = objs.firstOrNull { it?.id == objType.id } ?: return 0
         val singleStack = type.stack == InvStackType.Always || objType.isStackable
         if (singleStack) {
@@ -93,7 +120,13 @@ public class Inventory(public val type: UnpackedInvType, public val objs: Array<
         return individualCount(obj)
     }
 
-    public fun count(obj: InvObj, objType: UnpackedObjType): Int {
+    private fun virtualCount(internal: String): Int {
+        val player = owner ?: return 0
+        val storage = InvVirtualStorageHolder.instance ?: return 0
+        return storage.additionalCount(player, this, internal)
+    }
+
+    public fun count(obj: InvObj, objType: ItemServerType): Int {
         val singleStack = type.stack == InvStackType.Always || objType.isStackable
         if (singleStack) {
             return obj.count
@@ -118,11 +151,15 @@ public class Inventory(public val type: UnpackedInvType, public val objs: Array<
 
     public companion object {
         @OptIn(UncheckedType::class)
-        public fun create(type: UnpackedInvType): Inventory {
+        public fun create(internal: String): Inventory {
+
+            val type = ServerCacheManager.getInventory(internal.asRSCM(RSCMType.INV))
+                ?: error("Unable to find inventory: $internal")
+
             val objs = arrayOfNulls<InvObj>(type.size)
-            if (type.stock != null) {
+            if (type.stock.isNotEmpty()) {
                 for (i in type.stock.indices) {
-                    val copy = type.stock[i] ?: continue
+                    val copy = type.stock[i]
                     objs[i] = InvObj(copy.obj, copy.count)
                 }
             }

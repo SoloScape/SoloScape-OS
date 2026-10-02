@@ -1,16 +1,22 @@
 package org.rsmod.api.combat.formulas.attributes.collector
 
+import dev.openrune.types.NpcServerType
 import java.util.EnumSet
+import org.rsmod.api.area.checker.isInWildernessBasic
 import org.rsmod.api.combat.formulas.attributes.CombatNpcAttributes
 import org.rsmod.api.config.constants
-import org.rsmod.api.config.refs.categories
-import org.rsmod.api.config.refs.npcs
 import org.rsmod.api.config.refs.params
-import org.rsmod.game.type.npc.UnpackedNpcType
+import org.rsmod.game.entity.Npc
 
 public class CombatNpcAttributeCollector {
+    /**
+     * @param npc the live npc being attacked, when available. Passing it lets branches that depend on
+     *   per-fight runtime state (e.g. the Tormented Demon fire shield) read npc vars rather than only
+     *   static npc-type params. Callers that only have a [NpcServerType] pass `null`.
+     */
     public fun collect(
-        type: UnpackedNpcType,
+        type: NpcServerType,
+        npc: Npc?,
         currHp: Int,
         maxHp: Int,
         slayerTask: Boolean,
@@ -25,7 +31,10 @@ public class CombatNpcAttributeCollector {
             attributes += CombatNpcAttributes.SlayerTask
         }
 
-        // TODO(combat): "In wilderness" area check.
+        // Revenant weapons only get their boost against npcs standing in the Wilderness.
+        if (npc != null && npc.coords.isInWildernessBasic()) {
+            attributes += CombatNpcAttributes.Wilderness
+        }
 
         val sizeAttribute =
             when (val size = type.size) {
@@ -98,16 +107,31 @@ public class CombatNpcAttributeCollector {
             attributes += CombatNpcAttributes.Shade
         }
 
-        if (type.isCategoryType(categories.vampyres)) {
+        if (type.isCategoryType("category.vampyres")) {
             attributes += CombatNpcAttributes.Vampyre
         }
 
-        if (type.param(params.tormented_demon) != 0 && !type.param(params.td_shield_active)) {
-            attributes += CombatNpcAttributes.TormentedDemonUnshielded
+        if (type.param(params.tormented_demon) != 0 && npc != null) {
+            if (npc.vars["varn.td_shield_up"] == 0) {
+                attributes += CombatNpcAttributes.TormentedDemonUnshielded
+            }
+            when (npc.vars["varn.td_overhead_style"]) {
+                1 -> attributes += CombatNpcAttributes.TormentedDemonOverheadMelee
+                2 -> attributes += CombatNpcAttributes.TormentedDemonOverheadRanged
+                3 -> attributes += CombatNpcAttributes.TormentedDemonOverheadMagic
+            }
         }
 
-        if (type.isType(npcs.corp_beast)) {
+        if (npc != null && npc.vars["varn.guaranteed_hit"] == 1) {
+            attributes += CombatNpcAttributes.GuaranteedHit
+        }
+
+        if (type.isType("npc.corp_beast")) {
             attributes += CombatNpcAttributes.CorporealBeast
+        }
+
+        if (TANGLEFOOT_TYPES.any(type::isType)) {
+            attributes += CombatNpcAttributes.Tanglefoot
         }
 
         if (type.param(params.xerician) != 0) {
@@ -119,5 +143,17 @@ public class CombatNpcAttributeCollector {
         }
 
         return attributes
+    }
+
+    private companion object {
+        /** Magic secateurs draw on Farming against any of these; see `MeleeMaxHitOperations`. */
+        val TANGLEFOOT_TYPES =
+            listOf(
+                "npc.fairy_tanglefoot",
+                "npc.fairy_tanglefoot_sml1",
+                "npc.fairy_tanglefoot_sml2",
+                "npc.nzone_fairy_tanglefoot_normal",
+                "npc.nzone_fairy_tanglefoot_hard",
+            )
     }
 }

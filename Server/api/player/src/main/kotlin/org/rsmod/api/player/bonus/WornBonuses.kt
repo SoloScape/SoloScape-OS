@@ -1,22 +1,23 @@
 package org.rsmod.api.player.bonus
 
-import jakarta.inject.Inject
+import dev.openrune.util.Wearpos
 import kotlin.math.max
 import org.rsmod.api.config.constants
-import org.rsmod.api.config.refs.categories
 import org.rsmod.api.config.refs.params
-import org.rsmod.api.config.refs.varps
+import org.rsmod.api.player.front
 import org.rsmod.api.player.hands
 import org.rsmod.api.player.hat
 import org.rsmod.api.player.legs
 import org.rsmod.api.player.righthand
 import org.rsmod.api.player.torso
+import org.rsmod.api.player.worn.DizanasQuiver
 import org.rsmod.api.player.worn.EquipmentChecks
 import org.rsmod.game.entity.Player
-import org.rsmod.game.type.obj.ObjTypeList
-import org.rsmod.game.type.obj.Wearpos
+import org.rsmod.game.inv.isAnyType
+import org.rsmod.game.type.getInvObj
+import org.rsmod.game.type.getOrNull
 
-public class WornBonuses @Inject constructor(private val objTypes: ObjTypeList) {
+public class WornBonuses {
     public fun strengthBonus(player: Player): Int {
         val bonuses = calculate(player)
         return bonuses.meleeStr
@@ -120,20 +121,47 @@ public class WornBonuses @Inject constructor(private val objTypes: ObjTypeList) 
         var undeadMeleeOnly = false
         var slayerMeleeOnly = false
 
-        val weapon = objTypes.getOrNull(player.righthand)
+        val weapon = getOrNull(player.righthand)
 
-        val usingChargebow = weapon != null && weapon.isCategoryType(categories.chargebow)
-        val usingThrown = weapon != null && weapon.isCategoryType(categories.throwing_weapon)
+        val usingChargebow = weapon != null && weapon.isCategoryType("category.chargebow")
+        val usingThrown = weapon != null && weapon.isCategoryType("category.throwing_weapon")
         val ignoreQuiverBonuses = usingChargebow || usingThrown
 
+        // Ammunition fired from a worn Dizana's quiver replaces the ammo slot's ranged strength;
+        // everything else the ammo slot item gives (e.g. a blessing's prayer bonus) still counts.
+        val storedAmmo = DizanasQuiver.activeStoredAmmo(player, weapon)
+
         for (wearpos in Wearpos.entries) {
-            val obj = player.worn[wearpos.slot] ?: continue
+            val obj =
+                if (wearpos == Wearpos.Quiver && storedAmmo != null) {
+                    // The ammo slot may be empty; the stored ammunition still applies.
+                    val wornAmmo = player.worn[wearpos.slot]
+                    if (wornAmmo != null) {
+                        val wornType = getInvObj(wornAmmo)
+                        offStab += wornType.param(params.attack_stab)
+                        offSlash += wornType.param(params.attack_slash)
+                        offCrush += wornType.param(params.attack_crush)
+                        offMagic += wornType.param(params.attack_magic)
+                        offRange += wornType.param(params.attack_ranged)
+                        defStab += wornType.param(params.defence_stab)
+                        defSlash += wornType.param(params.defence_slash)
+                        defCrush += wornType.param(params.defence_crush)
+                        defRange += wornType.param(params.defence_ranged)
+                        defMagic += wornType.param(params.defence_magic)
+                        meleeStr += wornType.param(params.melee_strength)
+                        magicDmg += wornType.param(params.magic_damage)
+                        prayer += wornType.param(params.item_prayer_bonus)
+                    }
+                    storedAmmo
+                } else {
+                    player.worn[wearpos.slot] ?: continue
+                }
 
             if (wearpos == Wearpos.Quiver && ignoreQuiverBonuses) {
                 continue
             }
 
-            val type = objTypes[obj]
+            val type = getInvObj(obj)
             offStab += type.param(params.attack_stab)
             offSlash += type.param(params.attack_slash)
             offCrush += type.param(params.attack_crush)
@@ -168,8 +196,8 @@ public class WornBonuses @Inject constructor(private val objTypes: ObjTypeList) 
             offMagic = (offMagic * multiplier).toInt()
         }
 
-        val attackStyle = player.vars[varps.com_mode]
-        val usingDinhsBulwark = weapon != null && weapon.isCategoryType(categories.dinhs_bulwark)
+        val attackStyle = player.vars["varp.com_mode"]
+        val usingDinhsBulwark = weapon != null && weapon.isCategoryType("category.dinhs_bulwark")
         if (usingDinhsBulwark && attackStyle == constants.dinhs_attackstyle_pummel) {
             val relativeDefenceBonuses = defStab + defSlash + defCrush + defRange
             val meleeStrIncrease = ((relativeDefenceBonuses - 800) / 12) - 38
@@ -194,6 +222,10 @@ public class WornBonuses @Inject constructor(private val objTypes: ObjTypeList) 
 
         if (player.isWearingEliteMageVoid()) {
             magicDmg += 50
+        }
+
+        if (player.isWearingVeracSetWithDamnedAmulet()) {
+            prayer += 7
         }
 
         // TODO: +10 off ranged and +1 ranged str with dizana's quiver.
@@ -229,6 +261,10 @@ public class WornBonuses @Inject constructor(private val objTypes: ObjTypeList) 
             EquipmentChecks.isEliteVoidTop(torso) &&
             EquipmentChecks.isEliteVoidRobe(legs) &&
             EquipmentChecks.isVoidGloves(hands)
+
+    private fun Player.isWearingVeracSetWithDamnedAmulet(): Boolean =
+        EquipmentChecks.isVeracSet(hat, torso, legs, righthand) &&
+            front.isAnyType("obj.damned_amulet", "obj.damned_amulet_degraded")
 
     public data class Bonuses(
         val offStab: Int,

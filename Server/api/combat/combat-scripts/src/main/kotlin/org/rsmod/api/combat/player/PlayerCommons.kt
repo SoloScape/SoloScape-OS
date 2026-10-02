@@ -24,10 +24,10 @@ import org.rsmod.api.spells.autocast.AutocastWeapons
 import org.rsmod.game.entity.PathingEntity
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.InvObj
-import org.rsmod.game.type.obj.ObjTypeList
+import org.rsmod.game.type.getInvObj
 
 internal fun ProtectedAccess.attackRange(style: AttackStyle?): Int =
-    if (autocastSpell > 0) {
+    if (autocastEnabled && autocastSpell > 0) {
         MAGIC_ATTACK_RANGE
     } else {
         weaponAttackRange(style)
@@ -92,7 +92,6 @@ internal fun ProtectedAccess.resolveCombatAttack(
     }
 
 internal fun ProtectedAccess.resolveAutocastSpell(
-    objTypes: ObjTypeList,
     spells: MagicSpellRegistry,
     runes: MagicRuneManager,
     autocast: AutocastWeapons,
@@ -103,7 +102,7 @@ internal fun ProtectedAccess.resolveAutocastSpell(
     val weapon = player.righthand ?: return null
     val spell = spells.getAutocastSpell(autocastSpell) ?: return null
 
-    val weaponType = objTypes[weapon]
+    val weaponType = getInvObj(weapon)
 
     if (spell.spellbook != spellbook) {
         mes("You can't autocast that spell with your current active spellbook.")
@@ -222,14 +221,61 @@ internal suspend fun ProtectedAccess.activateMagicSpecial(
     return true
 }
 
+/**
+ * Activates a [SpecialAttack.Spell] belonging to [weapon].
+ *
+ * Called from both the spell-cast and melee paths: a staff with a spell special casts it whether
+ * or not the player has a spell autocast, so whichever path the attack arrives on gets a chance
+ * to fire it.
+ */
+internal suspend fun ProtectedAccess.activateSpellSpecial(
+    target: PathingEntity,
+    weapon: InvObj?,
+    specials: SpecialAttackRegistry,
+    energy: SpecialAttackEnergy,
+): Boolean {
+    val staff = weapon ?: return false
+    val special = specials[staff] ?: return false
+    if (special !is SpecialAttack.Spell) {
+        return false
+    }
+
+    val specializedEnergyReq = energy.isSpecializedRequirement(special.energyInHundreds)
+    if (!specializedEnergyReq) {
+        val hasRequiredEnergy = energy.hasSpecialEnergy(player, special.energyInHundreds)
+        if (!hasRequiredEnergy) {
+            mes("You don't have enough power left.")
+            return false
+        }
+    }
+
+    val reduceEnergy = special.attack(this, target, staff)
+    if (reduceEnergy && !specializedEnergyReq) {
+        energy.takeSpecialEnergy(player, special.energyInHundreds)
+    }
+    return true
+}
+
+/**
+ * Activates a [SpecialAttack.Shield] belonging to [shield].
+ *
+ * Shield specials cost no special attack energy, so unlike every other path this neither checks
+ * nor deducts any - the shield's own cooldown is what limits it.
+ */
 internal suspend fun ProtectedAccess.activateShieldSpecial(
     target: PathingEntity,
     shield: InvObj?,
     specials: SpecialAttackRegistry,
-): Boolean = TODO()
+): Boolean {
+    val offhand = shield ?: return false
+    val special = specials[offhand] ?: return false
+    if (special !is SpecialAttack.Shield) {
+        return false
+    }
+    return special.attack(this, target, offhand)
+}
 
 internal fun ProtectedAccess.setPkVars(target: Player) {
-    // TODO(combat): Set pk skull when applicable.
     pkPrey2 = pkPrey1
     pkPrey1 = target.uid
 

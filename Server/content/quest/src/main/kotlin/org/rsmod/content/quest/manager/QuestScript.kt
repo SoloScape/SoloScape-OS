@@ -1,0 +1,145 @@
+package org.rsmod.content.quest.manager
+
+import dev.openrune.rscm.RSCM
+import dev.openrune.rscm.RSCMType
+import org.rsmod.api.player.protect.ProtectedAccess
+import org.rsmod.api.script.onPlayerLogin
+import org.rsmod.plugin.scripts.PluginScript
+import org.rsmod.plugin.scripts.ScriptContext
+
+enum class JournalState { OVERVIEW, LOG }
+
+enum class QuestProgressState {
+    NOT_STARTED,
+    IN_PROGRESS,
+    FINISHED;
+
+    val isNotStarted: Boolean
+        get() = this == NOT_STARTED
+
+    val isInProgress: Boolean
+        get() = this == IN_PROGRESS
+
+    val isCompleted: Boolean
+        get() = this == FINISHED
+
+    companion object {
+        fun fromStage(stage: Int, endState: Int): QuestProgressState =
+            when {
+                stage <= 0 -> NOT_STARTED
+                stage >= endState -> FINISHED
+                else -> IN_PROGRESS
+            }
+    }
+}
+
+@DslMarker
+annotation class QuestJournalDsl
+
+data class QuestReward(
+    val xp: Map<String, Double> = emptyMap(),
+    val items: List<Pair<String, Int>> = emptyList(),
+    val extraText: String? = null,
+    /** Replaces the generated reward-scroll lines, for quests whose rewards do not fit in six. */
+    val scrollLines: List<String>? = null,
+    val itemLabels: Map<String, String> = emptyMap(),
+)
+
+@QuestJournalDsl
+fun rewards(builder: QuestRewardBuilder.() -> Unit): QuestReward {
+    return QuestRewardBuilder().apply(builder).build()
+}
+
+@QuestJournalDsl
+class QuestRewardBuilder {
+    private val _xp = mutableMapOf<String, Double>()
+    private val _items = mutableListOf<Pair<String, Int>>()
+    private val _itemLabels = mutableMapOf<String, String>()
+    private var _extraText: String? = null
+    private var _scrollLines: List<String>? = null
+
+    fun xp(skill: String, amount: Double) {
+        _xp[skill] = amount
+    }
+
+    fun item(id: String, amount: Int = 1, label: String? = null) {
+        if (label != null) _itemLabels[id] = label
+        _items.add(id to amount)
+    }
+
+    fun extra(text: String) {
+        _extraText = text
+    }
+
+    fun scroll(vararg lines: String) {
+        _scrollLines = lines.toList()
+    }
+
+    fun build(): QuestReward = QuestReward(_xp, _items, _extraText, _scrollLines, _itemLabels)
+}
+
+abstract class QuestScript(
+    val questKey: String,
+    val questVarp: String,
+    val rewards: QuestReward,
+    val completedQuestItemDisplay: ItemRewardDisplay,
+    /**
+     * Js5 group of the jingle played with the completion scroll (one of the `Quest.QUEST_COMPLETE_*`
+     * constants); longer quests pass their own variant.
+     */
+    val completionJingle: Int = Quest.DEFAULT_COMPLETION_JINGLE,
+    /** Stage varbit for quests whose varp is shared with unrelated flags; see [Quest.questVarbit]. */
+    val questVarbit: String? = null,
+    val closeDialogue: QuestClose = QuestClose.OnFinished,
+    val closeScroll: QuestClose = QuestClose.Never,
+) : PluginScript() {
+
+    val quest =
+        Quest.register(
+            questKey,
+            questVarp,
+            completedQuestItemDisplay,
+            rewards,
+            completionJingle,
+            questVarbit,
+            closeDialogue,
+            closeScroll,
+        )
+
+    abstract fun subTitle(): String
+
+    abstract fun questLog(player: ProtectedAccess): String
+
+    abstract fun completedLog(player: ProtectedAccess): String
+
+    abstract fun ScriptContext.init()
+
+    override fun ScriptContext.startup() {
+        RSCM.requireRSCM(RSCMType.DBROW, "dbrow.${questKey}")
+
+        QuestJournalRegistry.register(
+            quest,
+            QuestJournalContent(
+                subTitle = ::subTitle,
+                questLog = ::questLog,
+                completedLog = ::completedLog,
+            ),
+        )
+
+        onPlayerLogin {
+            quest.syncState(player)
+        }
+
+        this.init()
+    }
+
+    protected fun questJournal(
+        player: ProtectedAccess,
+        builder: QuestJournalBuilder.() -> Unit
+    ): String = buildQuestJournal(player, quest, builder)
+
+    protected fun completionJournal(
+        player: ProtectedAccess,
+        builder: QuestJournalBuilder.() -> Unit
+    ): String = buildCompletionJournal(player, quest, builder)
+}

@@ -1,37 +1,38 @@
 package org.rsmod.content.generic.locs.gate
 
+import dev.openrune.rscm.RSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.ObjectServerType
 import jakarta.inject.Inject
-import org.rsmod.api.config.refs.content
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.repo.loc.LocRepository
-import org.rsmod.api.script.onOpLoc1
+import org.rsmod.api.script.onOpContentLoc1
 import org.rsmod.content.generic.locs.gate.GateTranslations.leftGateClose
 import org.rsmod.content.generic.locs.gate.GateTranslations.leftGateOpen
 import org.rsmod.content.generic.locs.gate.GateTranslations.leftGateRightPair
 import org.rsmod.content.generic.locs.gate.GateTranslations.rightGateClose
 import org.rsmod.content.generic.locs.gate.GateTranslations.rightGateOpen
 import org.rsmod.game.loc.BoundLocInfo
-import org.rsmod.game.type.loc.UnpackedLocType
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
 class PicketGate @Inject constructor(private val locRepo: LocRepository) : PluginScript() {
     override fun ScriptContext.startup() {
-        onOpLoc1(content.closed_left_picketgate) { openLeftGate(it.loc, it.type) }
-        onOpLoc1(content.closed_right_picketgate) { openRightGate(it.loc, it.type) }
-        onOpLoc1(content.opened_left_picketgate) { closeLeftGate(it.loc, it.type) }
-        onOpLoc1(content.opened_right_picketgate) { closeRightGate(it.loc, it.type) }
+        onOpContentLoc1("content.closed_left_picketgate") { openLeftGate(it.loc, it.type) }
+        onOpContentLoc1("content.closed_right_picketgate") { openRightGate(it.loc, it.type) }
+        onOpContentLoc1("content.opened_left_picketgate") { closeLeftGate(it.loc, it.type) }
+        onOpContentLoc1("content.opened_right_picketgate") { closeRightGate(it.loc, it.type) }
     }
 
-    private fun ProtectedAccess.openLeftGate(left: BoundLocInfo, type: UnpackedLocType) {
+    private fun ProtectedAccess.openLeftGate(left: BoundLocInfo, type: ObjectServerType) {
         val sound = type.param(params.opensound)
         soundSynth(sound)
 
         val right =
             locRepo.findExact(
                 coords = left.coords + leftGateRightPair(left.shape, left.angle),
-                content = content.closed_right_picketgate,
+                content = "content.closed_right_picketgate",
                 shape = left.shape,
             )
 
@@ -54,14 +55,14 @@ class PicketGate @Inject constructor(private val locRepo: LocRepository) : Plugi
         }
     }
 
-    private fun ProtectedAccess.openRightGate(right: BoundLocInfo, type: UnpackedLocType) {
+    private fun ProtectedAccess.openRightGate(right: BoundLocInfo, type: ObjectServerType) {
         val sound = type.param(params.opensound)
         soundSynth(sound)
 
         val left =
             locRepo.findExact(
                 coords = right.coords - leftGateRightPair(right.shape, right.angle),
-                content = content.closed_left_picketgate,
+                content = "content.closed_left_picketgate",
                 shape = right.shape,
             )
 
@@ -84,14 +85,14 @@ class PicketGate @Inject constructor(private val locRepo: LocRepository) : Plugi
         }
     }
 
-    private fun ProtectedAccess.closeLeftGate(left: BoundLocInfo, type: UnpackedLocType) {
+    private fun ProtectedAccess.closeLeftGate(left: BoundLocInfo, type: ObjectServerType) {
         val sound = type.param(params.closesound)
         soundSynth(sound)
 
         val right =
             locRepo.findExact(
                 coords = left.coords + leftGateRightPair(left.shape, left.angle),
-                content = content.opened_right_picketgate,
+                content = "content.opened_right_picketgate",
                 shape = left.shape,
             )
 
@@ -114,14 +115,14 @@ class PicketGate @Inject constructor(private val locRepo: LocRepository) : Plugi
         }
     }
 
-    private fun ProtectedAccess.closeRightGate(right: BoundLocInfo, type: UnpackedLocType) {
+    private fun ProtectedAccess.closeRightGate(right: BoundLocInfo, type: ObjectServerType) {
         val sound = type.param(params.closesound)
         soundSynth(sound)
 
         val left =
             locRepo.findExact(
                 coords = right.coords - leftGateRightPair(right.shape, right.angle),
-                content = content.opened_left_picketgate,
+                content = "content.opened_left_picketgate",
                 shape = right.shape,
             )
 

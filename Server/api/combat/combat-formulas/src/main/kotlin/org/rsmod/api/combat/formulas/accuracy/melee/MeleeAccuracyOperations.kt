@@ -1,5 +1,6 @@
 package org.rsmod.api.combat.formulas.accuracy.melee
 
+import dev.openrune.util.Wearpos
 import java.util.EnumSet
 import org.rsmod.api.combat.accuracy.player.PlayerMeleeAccuracy
 import org.rsmod.api.combat.commons.styles.AttackStyle
@@ -9,13 +10,11 @@ import org.rsmod.api.combat.formulas.accuracy.AccuracyOperations
 import org.rsmod.api.combat.formulas.attributes.CombatMeleeAttributes
 import org.rsmod.api.combat.formulas.attributes.CombatNpcAttributes
 import org.rsmod.api.combat.formulas.scale
-import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.player.stat.attackLvl
 import org.rsmod.api.player.stat.defenceLvl
 import org.rsmod.api.player.worn.EquipmentChecks
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.Inventory
-import org.rsmod.game.type.obj.Wearpos
 import org.rsmod.game.vars.VarPlayerIntMap
 
 private typealias MeleeAttr = CombatMeleeAttributes
@@ -174,11 +173,11 @@ public object MeleeAccuracyOperations {
 
     private fun VarPlayerIntMap.offensivePrayerBonus(): Double =
         when {
-            this[varbits.clarity_of_thought] == 1 -> 1.05
-            this[varbits.improved_reflexes] == 1 -> 1.1
-            this[varbits.incredible_reflexes] == 1 -> 1.15
-            this[varbits.chivalry] == 1 -> 1.15
-            this[varbits.piety] == 1 -> 1.20
+            this["varbit.prayer_clarityofthought"] == 1 -> 1.05
+            this["varbit.prayer_improvedreflexes"] == 1 -> 1.1
+            this["varbit.prayer_incrediblereflexes"] == 1 -> 1.15
+            this["varbit.prayer_chivalry"] == 1 -> 1.15
+            this["varbit.prayer_piety"] == 1 -> 1.20
             else -> 1.0
         }
 

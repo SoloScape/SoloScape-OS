@@ -1,12 +1,13 @@
 package org.rsmod.api.combat.formulas.accuracy.multi
 
 import com.google.inject.Inject
+import dev.openrune.definition.type.VarBitType
+import dev.openrune.types.ItemServerType
+import dev.openrune.types.NpcServerType
 import org.rsmod.api.combat.commons.styles.MeleeAttackStyle
 import org.rsmod.api.combat.commons.types.MeleeAttackType
 import org.rsmod.api.combat.formulas.test_npcs
-import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.stats
-import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.player.back
 import org.rsmod.api.player.feet
 import org.rsmod.api.player.front
@@ -24,9 +25,6 @@ import org.rsmod.api.testing.params.TestWithArgs
 import org.rsmod.api.testing.params.testArgsOfSingleParam
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.inv.InvObj
-import org.rsmod.game.type.npc.UnpackedNpcType
-import org.rsmod.game.type.obj.ObjType
-import org.rsmod.game.type.varbit.VarBitType
 
 class PvNMultiStyleAccuracyMagicalMeleeTest {
     @TestWithArgs(MatchupProvider::class)
@@ -71,7 +69,7 @@ class PvNMultiStyleAccuracyMagicalMeleeTest {
 
     data class Matchup(
         val expectedAccuracy: Double,
-        val npc: UnpackedNpcType = test_npcs.man,
+        val npc: NpcServerType = test_npcs.man,
         val npcCurrHp: Int = 1,
         val npcMaxHp: Int = 1,
         val hat: InvObj? = null,
@@ -93,25 +91,25 @@ class PvNMultiStyleAccuracyMagicalMeleeTest {
         val attackStyle: MeleeAttackStyle? = null,
         val specMultiplier: Double = 1.0,
     ) {
-        fun withNpcTarget(npc: UnpackedNpcType) = copy(npc = npc)
+        fun withNpcTarget(npc: NpcServerType) = copy(npc = npc)
 
-        fun withHelm(obj: ObjType?) = copy(hat = obj?.let(::InvObj))
+        fun withHelm(obj: ItemServerType?) = copy(hat = obj?.let(::InvObj))
 
-        fun withCape(obj: ObjType?) = copy(back = obj?.let(::InvObj))
+        fun withCape(obj: ItemServerType?) = copy(back = obj?.let(::InvObj))
 
-        fun withAmulet(obj: ObjType?) = copy(front = obj?.let(::InvObj))
+        fun withAmulet(obj: ItemServerType?) = copy(front = obj?.let(::InvObj))
 
-        fun withWeapon(obj: ObjType?) = copy(righthand = obj?.let(::InvObj))
+        fun withWeapon(obj: ItemServerType?) = copy(righthand = obj?.let(::InvObj))
 
-        fun withBody(obj: ObjType?) = copy(torso = obj?.let(::InvObj))
+        fun withBody(obj: ItemServerType?) = copy(torso = obj?.let(::InvObj))
 
-        fun withLegs(obj: ObjType?) = copy(legs = obj?.let(::InvObj))
+        fun withLegs(obj: ItemServerType?) = copy(legs = obj?.let(::InvObj))
 
-        fun withGloves(obj: ObjType?) = copy(hands = obj?.let(::InvObj))
+        fun withGloves(obj: ItemServerType?) = copy(hands = obj?.let(::InvObj))
 
-        fun withFeet(obj: ObjType?) = copy(feet = obj?.let(::InvObj))
+        fun withFeet(obj: ItemServerType?) = copy(feet = obj?.let(::InvObj))
 
-        fun withRing(obj: ObjType?) = copy(ring = obj?.let(::InvObj))
+        fun withRing(obj: ItemServerType?) = copy(ring = obj?.let(::InvObj))
 
         fun withPrayers(vararg prayers: VarBitType) = copy(prayers = prayers.toSet())
 
@@ -178,21 +176,21 @@ class PvNMultiStyleAccuracyMagicalMeleeTest {
                 Matchup(expectedAccuracy = 98.80)
                     .withAttackType(MeleeAttackType.Slash)
                     .withAttackStyle(MeleeAttackStyle.Accurate)
-                    .withWeapon(objs.saradomin_blessed_sword)
+                    .withWeapon("obj.blessed_saradomin_sword")
                     .withNpcTarget(test_npcs.man),
                 Matchup(expectedAccuracy = 41.26)
                     .withAttackType(MeleeAttackType.Slash)
                     .withAttackStyle(MeleeAttackStyle.Aggressive)
-                    .withHelm(objs.torva_full_helm)
-                    .withBody(objs.torva_platebody)
-                    .withLegs(objs.torva_platelegs)
-                    .withCape(objs.infernal_cape)
-                    .withAmulet(objs.amulet_of_rancour)
-                    .withWeapon(objs.saradomin_blessed_sword)
-                    .withGloves(objs.ferocious_gloves)
-                    .withFeet(objs.primordial_boots)
-                    .withRing(objs.ultor_ring)
-                    .withPrayers(varbits.piety)
+                    .withHelm("obj.torva_helm")
+                    .withBody("obj.torva_chest")
+                    .withLegs("obj.torva_legs")
+                    .withCape("obj.infernal_cape")
+                    .withAmulet("obj.amulet_of_rancour")
+                    .withWeapon("obj.blessed_saradomin_sword")
+                    .withGloves("obj.ferocious_gloves")
+                    .withFeet("obj.primordial_boots")
+                    .withRing("obj.ultor_ring")
+                    .withPrayers("varbit.prayer_piety")
                     .withNpcTarget(test_npcs.general_graardor),
             )
         }

@@ -4,7 +4,8 @@ plugins {
 
 dependencies {
     api(libs.guice)
-    api(libs.bundles.logging)
+    api(libs.kotlin.inline.logger)
+    runtimeOnly(libs.logback.classic)
     api(projects.api.areaChecker)
     api(projects.api.cache)
     api(projects.api.cheat)
@@ -18,6 +19,7 @@ dependencies {
     api(projects.api.hunt)
     api(projects.api.invtx)
     api(projects.api.market)
+    api(projects.api.mechanics.toxins)
     api(projects.api.npc)
     api(projects.api.objCharges)
     api(projects.api.player)
@@ -30,12 +32,7 @@ dependencies {
     api(projects.api.shops)
     api(projects.api.stats.levelmod)
     api(projects.api.stats.xpmod)
-    api(projects.api.type.typeBuilders)
-    api(projects.api.type.typeEditors)
-    api(projects.api.type.typeReferences)
-    api(projects.api.type.typeScriptDsl)
     api(projects.api.utils.utilsFormat)
-    api(projects.api.utils.utilsIo)
     api(projects.api.utils.utilsTime)
     api(projects.api.utils.utilsVars)
     api(projects.engine.annotations)
@@ -46,4 +43,5 @@ dependencies {
     api(projects.engine.objtx)
     api(projects.engine.routefinder)
     api(projects.engine.plugin)
+    api(projects.api.generated)
 }

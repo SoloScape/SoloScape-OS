@@ -1,17 +1,17 @@
 package org.rsmod.content.interfaces.prayer.tab
 
+import dev.openrune.definition.type.VarBitType
+import dev.openrune.types.aconverted.SynthType
 import org.rsmod.api.player.stat.baseDefenceLvl
 import org.rsmod.api.player.stat.basePrayerLvl
 import org.rsmod.game.entity.Player
-import org.rsmod.game.type.synth.SynthType
-import org.rsmod.game.type.varbit.VarBitType
 
 data class Prayer(
     val id: Int,
     val name: String,
     val level: Int,
-    val sound: SynthType,
-    val enabled: VarBitType,
+    val sound: Int,
+    val enabled: String,
     val drainEffect: Int,
     val overhead: Int?,
     val unlocked: VarBitType?,

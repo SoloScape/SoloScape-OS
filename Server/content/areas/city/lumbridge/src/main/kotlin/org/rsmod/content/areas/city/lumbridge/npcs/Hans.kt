@@ -1,29 +1,42 @@
 package org.rsmod.content.areas.city.lumbridge.npcs
 
+import jakarta.inject.Inject
+import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import org.rsmod.api.player.dialogue.Dialogue
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.script.onOpNpc1
 import org.rsmod.api.script.onOpNpc3
-import org.rsmod.content.areas.city.lumbridge.configs.lumbridge_npcs
+import org.rsmod.content.quest.area.lumbridge.dorgeshuun.ZanikTour
+import org.rsmod.content.quest.area.lumbridge.losttribe.LostTribeQuest
+import org.rsmod.content.quest.area.lumbridge.losttribe.LostTribeQuest.Witness
 import org.rsmod.game.entity.Npc
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
-class Hans : PluginScript() {
+class Hans
+@Inject
+constructor(private val lostTribe: LostTribeQuest, private val zanikTour: ZanikTour) :
+    PluginScript() {
     override fun ScriptContext.startup() {
-        onOpNpc1(lumbridge_npcs.hans) { hansDialogue(it.npc) }
-        onOpNpc3(lumbridge_npcs.hans) { hansAgeDialogue(it.npc) }
+        onOpNpc1("npc.hans") { hansDialogue(it.npc) }
+        onOpNpc3("npc.hans") { hansAgeDialogue(it.npc) }
     }
 
     private suspend fun ProtectedAccess.hansDialogue(npc: Npc) =
         startDialogue(npc) { optionsDialogue(npc) }
 
     private suspend fun Dialogue.optionsDialogue(npc: Npc) {
-        chatNpc(neutral, "Hello. What are you doing here?")
+        if (zanikTour.isTouring(player)) {
+            with(zanikTour) { hansIntro() }
+        } else {
+            chatNpc(neutral, "Hello. What are you doing here?")
+        }
+        val cellarQuestion = lostTribe.cellarQuestion(player, Witness.Hans)
         val choice =
             choice5(
-                "I'm looking for whoever is in charge of this place.",
-                1,
+                cellarQuestion ?: "I'm looking for whoever is in charge of this place.",
+                if (cellarQuestion != null) 6 else 1,
                 "I have come to kill everyone in this castle!",
                 2,
                 "I don't know. I'm lost. Where am I?",
@@ -65,6 +78,7 @@ class Hans : PluginScript() {
             5 -> {
                 chatPlayer(shifty, "Nothing.")
             }
+            6 -> with(lostTribe) { askAboutCellar(Witness.Hans) }
         }
     }
 
@@ -72,11 +86,38 @@ class Hans : PluginScript() {
         startDialogue(npc) { playtimeDialogue() }
 
     private suspend fun Dialogue.playtimeDialogue() {
-        // TODO(content): playtime
-        chatNpc(
-            happy,
-            "You've spent 0 days, 0 hours, 0 minutes in the " +
-                "world since you arrived 0 days ago.",
-        )
+        val minutesPlayed = vars["varp.playtime"] / MINUTE_SCALE_FACTOR
+        val (days, hours, minutes) = minutesPlayed.toDayHourMinuteParts()
+        val accountAgeDays = player.createdAt.accountAgeInDays()
+
+        val text =
+            if (accountAgeDays == null) {
+                "You've spent $days days, $hours hours, $minutes minutes in the world."
+            } else {
+                "You've spent $days days, $hours hours, $minutes minutes in the world " +
+                    "since you arrived $accountAgeDays days ago."
+            }
+
+        chatNpc(happy, text)
+    }
+
+    private fun Int.toDayHourMinuteParts(): Triple<Int, Int, Int> {
+        val days = this / MINUTES_PER_DAY
+        val remainderAfterDays = this % MINUTES_PER_DAY
+        val hours = remainderAfterDays / MINUTES_PER_HOUR
+        val minutes = remainderAfterDays % MINUTES_PER_HOUR
+        return Triple(days, hours, minutes)
+    }
+
+    private fun LocalDateTime?.accountAgeInDays(): Long? {
+        val createdAt = this ?: return null
+        val days = ChronoUnit.DAYS.between(createdAt, LocalDateTime.now())
+        return days.coerceAtLeast(0)
+    }
+
+    private companion object {
+        private const val MINUTE_SCALE_FACTOR = 100
+        private const val MINUTES_PER_HOUR = 60
+        private const val MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR
     }
 }

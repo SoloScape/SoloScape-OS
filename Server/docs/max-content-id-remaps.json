@@ -1,0 +1,974 @@
+[
+  {
+    "namespace": "varp",
+    "name": "agility_course",
+    "old": 65478,
+    "new": 63000
+  },
+  {
+    "namespace": "varp",
+    "name": "agility_course_progress",
+    "old": 65477,
+    "new": 63001
+  },
+  {
+    "namespace": "varp",
+    "name": "agility_mark_clock",
+    "old": 65476,
+    "new": 63002
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_combat_ring_1",
+    "old": 62300,
+    "new": 63009
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_combat_ring_2",
+    "old": 62301,
+    "new": 63010
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_combat_ring_3",
+    "old": 62302,
+    "new": 63011
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_combat_ring_4",
+    "old": 62303,
+    "new": 63012
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_combat_ring_5",
+    "old": 62304,
+    "new": 63013
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_weapon_rack_1",
+    "old": 62305,
+    "new": 63014
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_weapon_rack_2",
+    "old": 62306,
+    "new": 63015
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_weapon_rack_3",
+    "old": 62307,
+    "new": 63016
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_bed_1",
+    "old": 62308,
+    "new": 63017
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_bed_2",
+    "old": 62309,
+    "new": 63018
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_bed_3",
+    "old": 62310,
+    "new": 63019
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_bed_4",
+    "old": 62311,
+    "new": 63020
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_bed_5",
+    "old": 62312,
+    "new": 63021
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_bed_6",
+    "old": 62313,
+    "new": 63022
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_bed_7",
+    "old": 62314,
+    "new": 63023
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_wardrobe_1",
+    "old": 62315,
+    "new": 63024
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_wardrobe_2",
+    "old": 62316,
+    "new": 63025
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_wardrobe_3",
+    "old": 62317,
+    "new": 63026
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_wardrobe_4",
+    "old": 62318,
+    "new": 63027
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_wardrobe_5",
+    "old": 62319,
+    "new": 63028
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_wardrobe_6",
+    "old": 62320,
+    "new": 63029
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_wardrobe_7",
+    "old": 62321,
+    "new": 63030
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_mirror_1",
+    "old": 62322,
+    "new": 63031
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_mirror_2",
+    "old": 62323,
+    "new": 63032
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_mirror_3",
+    "old": 62324,
+    "new": 63033
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_mirror_4",
+    "old": 62325,
+    "new": 63034
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_mirror_5",
+    "old": 62326,
+    "new": 63035
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_mirror_6",
+    "old": 62327,
+    "new": 63036
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_mirror_7",
+    "old": 62328,
+    "new": 63037
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_clock_1",
+    "old": 62329,
+    "new": 63038
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_clock_2",
+    "old": 62330,
+    "new": 63039
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_clock_3",
+    "old": 62331,
+    "new": 63040
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_symbol_saradomin",
+    "old": 62332,
+    "new": 63041
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_symbol_zamorak",
+    "old": 62333,
+    "new": 63042
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_symbol_guthix",
+    "old": 62334,
+    "new": 63043
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_icon_saradomin",
+    "old": 62335,
+    "new": 63044
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_icon_zamorak",
+    "old": 62336,
+    "new": 63045
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_icon_guthix",
+    "old": 62337,
+    "new": 63046
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_icon_bob",
+    "old": 62338,
+    "new": 63047
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_altar_oak",
+    "old": 62339,
+    "new": 63048
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_altar_teak",
+    "old": 62340,
+    "new": 63049
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_altar_teak_cloth",
+    "old": 62341,
+    "new": 63050
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_altar_mahogany",
+    "old": 62342,
+    "new": 63051
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_altar_limestone",
+    "old": 62343,
+    "new": 63052
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_altar_marble",
+    "old": 62344,
+    "new": 63053
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_altar_marble_and_gilt",
+    "old": 62345,
+    "new": 63054
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_torches_wooden",
+    "old": 62346,
+    "new": 63055
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_torches_steel",
+    "old": 62347,
+    "new": 63056
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_candlesticks_steel",
+    "old": 62348,
+    "new": 63057
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_candlesticks_gilt",
+    "old": 62349,
+    "new": 63058
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_incense_burner_oak",
+    "old": 62350,
+    "new": 63059
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_incense_burner_mahogany",
+    "old": 62351,
+    "new": 63060
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_incense_burner_marble",
+    "old": 62352,
+    "new": 63061
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_chapel_window_shutters",
+    "old": 62353,
+    "new": 63062
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_chapel_window_decorative",
+    "old": 62354,
+    "new": 63063
+  },
+  {
+    "namespace": "dbrow",
+    "name": "build_poh_chapel_window_stainedglass",
+    "old": 62355,
+    "new": 63064
+  },
+  {
+    "namespace": "varp",
+    "name": "farming_patch_00",
+    "old": 65440,
+    "new": 63003
+  },
+  {
+    "namespace": "varp",
+    "name": "farming_patch_01",
+    "old": 65441,
+    "new": 63004
+  },
+  {
+    "namespace": "varp",
+    "name": "farming_patch_02",
+    "old": 65442,
+    "new": 63005
+  },
+  {
+    "namespace": "varp",
+    "name": "farming_patch_03",
+    "old": 65443,
+    "new": 63006
+  },
+  {
+    "namespace": "varp",
+    "name": "farming_patch_04",
+    "old": 65444,
+    "new": 63007
+  },
+  {
+    "namespace": "varp",
+    "name": "farming_patch_05",
+    "old": 65445,
+    "new": 63008
+  },
+  {
+    "namespace": "varp",
+    "name": "farming_patch_06",
+    "old": 65446,
+    "new": 63009
+  },
+  {
+    "namespace": "varp",
+    "name": "farming_patch_07",
+    "old": 65447,
+    "new": 63010
+  },
+  {
+    "namespace": "varp",
+    "name": "farming_patch_08",
+    "old": 65448,
+    "new": 63011
+  },
+  {
+    "namespace": "varp",
+    "name": "farming_patch_09",
+    "old": 65449,
+    "new": 63012
+  },
+  {
+    "namespace": "varp",
+    "name": "farming_patch_10",
+    "old": 65450,
+    "new": 63013
+  },
+  {
+    "namespace": "varp",
+    "name": "farming_patch_11",
+    "old": 65451,
+    "new": 63014
+  },
+  {
+    "namespace": "varp",
+    "name": "farming_patch_12",
+    "old": 65452,
+    "new": 63015
+  },
+  {
+    "namespace": "varp",
+    "name": "farming_patch_13",
+    "old": 65453,
+    "new": 63016
+  },
+  {
+    "namespace": "varp",
+    "name": "farming_patch_15",
+    "old": 65455,
+    "new": 63017
+  },
+  {
+    "namespace": "varp",
+    "name": "farming_patch_16",
+    "old": 65456,
+    "new": 63018
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_potato",
+    "old": 62000,
+    "new": 63065
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_onion",
+    "old": 62001,
+    "new": 63066
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_cabbage",
+    "old": 62002,
+    "new": 63067
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_tomato",
+    "old": 62003,
+    "new": 63068
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_sweetcorn",
+    "old": 62004,
+    "new": 63069
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_strawberry",
+    "old": 62005,
+    "new": 63070
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_watermelon",
+    "old": 62006,
+    "new": 63071
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_marigold",
+    "old": 62007,
+    "new": 63072
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_rosemary",
+    "old": 62008,
+    "new": 63073
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_nasturtium",
+    "old": 62009,
+    "new": 63074
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_woad",
+    "old": 62010,
+    "new": 63075
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_limpwurt",
+    "old": 62011,
+    "new": 63076
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_guam",
+    "old": 62012,
+    "new": 63077
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_marrentill",
+    "old": 62013,
+    "new": 63078
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_tarromin",
+    "old": 62014,
+    "new": 63079
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_harralander",
+    "old": 62015,
+    "new": 63080
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_ranarr",
+    "old": 62016,
+    "new": 63081
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_toadflax",
+    "old": 62017,
+    "new": 63082
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_irit",
+    "old": 62018,
+    "new": 63083
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_avantoe",
+    "old": 62019,
+    "new": 63084
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_kwuarm",
+    "old": 62020,
+    "new": 63085
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_snapdragon",
+    "old": 62021,
+    "new": 63086
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_cadantine",
+    "old": 62022,
+    "new": 63087
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_lantadyme",
+    "old": 62023,
+    "new": 63088
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_dwarf_weed",
+    "old": 62024,
+    "new": 63089
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_torstol",
+    "old": 62025,
+    "new": 63090
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_snape_grass",
+    "old": 62026,
+    "new": 63091
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_veg_patch_1",
+    "old": 62030,
+    "new": 63092
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_veg_patch_2",
+    "old": 62031,
+    "new": 63093
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_flower_patch_1",
+    "old": 62032,
+    "new": 63094
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_herb_patch_1",
+    "old": 62033,
+    "new": 63095
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_veg_patch_3",
+    "old": 62034,
+    "new": 63096
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_veg_patch_4",
+    "old": 62035,
+    "new": 63097
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_flower_patch_2",
+    "old": 62036,
+    "new": 63098
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_herb_patch_2",
+    "old": 62037,
+    "new": 63099
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_veg_patch_5",
+    "old": 62038,
+    "new": 63100
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_veg_patch_6",
+    "old": 62039,
+    "new": 63101
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_flower_patch_3",
+    "old": 62040,
+    "new": 63102
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_herb_patch_3",
+    "old": 62041,
+    "new": 63103
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_veg_patch_7",
+    "old": 62042,
+    "new": 63104
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_veg_patch_8",
+    "old": 62043,
+    "new": 63105
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_flower_patch_4",
+    "old": 62044,
+    "new": 63106
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_herb_patch_4",
+    "old": 62045,
+    "new": 63107
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_veg_patch_10",
+    "old": 62046,
+    "new": 63108
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_veg_patch_11",
+    "old": 62047,
+    "new": 63109
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_flower_patch_5",
+    "old": 62048,
+    "new": 63110
+  },
+  {
+    "namespace": "dbrow",
+    "name": "farming_herb_patch_6",
+    "old": 62049,
+    "new": 63111
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_man",
+    "old": 62100,
+    "new": 63112
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_woman",
+    "old": 62101,
+    "new": 63113
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_citizen",
+    "old": 62102,
+    "new": 63114
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_farmer",
+    "old": 62103,
+    "new": 63115
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_male_h_a_m_member",
+    "old": 62104,
+    "new": 63116
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_female_h_a_m_member",
+    "old": 62105,
+    "new": 63117
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_h_a_m_member",
+    "old": 62106,
+    "new": 63118
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_warrior_woman",
+    "old": 62107,
+    "new": 63119
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_warrior",
+    "old": 62108,
+    "new": 63120
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_workman",
+    "old": 62109,
+    "new": 63121
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_villager",
+    "old": 62110,
+    "new": 63122
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_rogue",
+    "old": 62111,
+    "new": 63123
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_cave_goblin",
+    "old": 62112,
+    "new": 63124
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_master_farmer",
+    "old": 62113,
+    "new": 63125
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_guard",
+    "old": 62114,
+    "new": 63126
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_fremennik_citizen",
+    "old": 62115,
+    "new": 63127
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_bearded_pollnivnian_bandit",
+    "old": 62116,
+    "new": 63128
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_wealthy_citizen",
+    "old": 62117,
+    "new": 63129
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_desert_bandit",
+    "old": 62118,
+    "new": 63130
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_knight_of_ardougne",
+    "old": 62119,
+    "new": 63131
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_knight_of_varlamore",
+    "old": 62120,
+    "new": 63132
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_pollnivnian_bandit",
+    "old": 62121,
+    "new": 63133
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_watchman",
+    "old": 62122,
+    "new": 63134
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_menaphite_thug",
+    "old": 62123,
+    "new": 63135
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_paladin",
+    "old": 62124,
+    "new": 63136
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_gnome",
+    "old": 62125,
+    "new": 63137
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_hero",
+    "old": 62126,
+    "new": 63138
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_vyre",
+    "old": 62127,
+    "new": 63139
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_elf",
+    "old": 62128,
+    "new": 63140
+  },
+  {
+    "namespace": "dbrow",
+    "name": "thieving_tzhaar_hur",
+    "old": 62129,
+    "new": 63141
+  },
+  {
+    "namespace": "dbrow",
+    "name": "cakethiefstall_thieving",
+    "old": 62150,
+    "new": 63142
+  },
+  {
+    "namespace": "dbrow",
+    "name": "tea_stall_thieving",
+    "old": 62151,
+    "new": 63143
+  },
+  {
+    "namespace": "dbrow",
+    "name": "silkthiefstall_thieving",
+    "old": 62152,
+    "new": 63144
+  },
+  {
+    "namespace": "dbrow",
+    "name": "furthiefstall_thieving",
+    "old": 62153,
+    "new": 63145
+  },
+  {
+    "namespace": "dbrow",
+    "name": "silverthiefstall_thieving",
+    "old": 62154,
+    "new": 63146
+  },
+  {
+    "namespace": "dbrow",
+    "name": "spicethiefstall_thieving",
+    "old": 62155,
+    "new": 63147
+  },
+  {
+    "namespace": "dbrow",
+    "name": "gemthiefstall_thieving",
+    "old": 62156,
+    "new": 63148
+  },
+  {
+    "namespace": "dbrow",
+    "name": "rag_market_stall_thieving",
+    "old": 62157,
+    "new": 63149
+  },
+  {
+    "namespace": "dbrow",
+    "name": "seed_stall_thieving",
+    "old": 62158,
+    "new": 63150
+  },
+  {
+    "namespace": "varn",
+    "name": "muspah_hits_since_switch",
+    "old": 36,
+    "new": 51
+  }
+]

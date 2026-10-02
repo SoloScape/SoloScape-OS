@@ -1,8 +1,10 @@
 package org.rsmod.api.net.rsprot
 
 import net.rsprot.protocol.game.outgoing.info.npcinfo.NpcAvatar
+import org.rsmod.api.net.rsprot.ext.setFaceTarget
 import org.rsmod.game.entity.npc.NpcInfoProtocol
 import org.rsmod.game.entity.npc.OpVisibility
+import org.rsmod.game.entity.util.EntityFaceTarget
 import org.rsmod.game.headbar.Headbar
 import org.rsmod.game.hit.Hitmark
 
@@ -20,7 +22,7 @@ class RspNpcInfo(val rspAvatar: NpcAvatar) : NpcInfoProtocol {
     }
 
     override fun setFacePathingEntity(slot: Int) {
-        rspAvatar.extendedInfo.setFacePathingEntity(slot)
+        rspAvatar.extendedInfo.setFaceTarget(EntityFaceTarget(slot))
     }
 
     override fun setFaceAngle(angle: Int, instant: Boolean) {
@@ -37,6 +39,22 @@ class RspNpcInfo(val rspAvatar: NpcAvatar) : NpcInfoProtocol {
         rspAvatar.extendedInfo.setTransmogrification(originalType)
     }
 
+    override fun setBodyModel(model: Int) {
+        rspAvatar.extendedInfo.setBodyCustomisation(listOf(model), emptyList(), emptyList())
+    }
+
+    override fun setBodyModels(models: List<Int>) {
+        rspAvatar.extendedInfo.setBodyCustomisation(models, emptyList(), emptyList())
+    }
+
+    override fun setBodyRecolours(recolours: List<Int>) {
+        rspAvatar.extendedInfo.setBodyCustomisation(emptyList(), recolours, emptyList())
+    }
+
+    override fun resetBodyModel() {
+        rspAvatar.extendedInfo.resetBodyCustomisations()
+    }
+
     override fun showHeadbar(headbar: Headbar) {
         rspAvatar.extendedInfo.addHeadBar(
             sourceIndex = if (headbar.isNoSource) -1 else headbar.sourceSlot,
@@ -47,6 +65,10 @@ class RspNpcInfo(val rspAvatar: NpcAvatar) : NpcInfoProtocol {
             startTime = headbar.startTime,
             endTime = headbar.endTime,
         )
+    }
+
+    override fun removeHeadbar(id: Int) {
+        rspAvatar.extendedInfo.removeHeadBar(id)
     }
 
     override fun showHitmark(hitmark: Hitmark) {

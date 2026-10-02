@@ -1,10 +1,6 @@
 # Temporary removal of playground directory
 /content/playground
 
-# Keep source symbol mappings, but not downloaded caches or generated keys.
-/.data/*
-!/.data/symbols/
-
 /server/tools
 
 .kotlin
@@ -51,3 +47,20 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+/api/tables/src/main/kotlin/org/rsmod/api/table
+game.yml
+xp-rates.yml
+/.idea
+/api/generated
+
+logs/
+*.log
+/.cursor
+/.data/raw-cache/cs2
+.claude/
+.mcp.json
+/bench
+
+### Python tools ###
+__pycache__/
+*.py[cod]

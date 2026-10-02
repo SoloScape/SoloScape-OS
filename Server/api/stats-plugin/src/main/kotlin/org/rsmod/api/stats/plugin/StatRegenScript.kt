@@ -1,11 +1,12 @@
 package org.rsmod.api.stats.plugin
 
-import jakarta.inject.Inject
+import dev.openrune.ServerCacheManager
+import dev.openrune.rscm.RSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.StatType
 import org.rsmod.api.config.constants
-import org.rsmod.api.config.refs.objs
-import org.rsmod.api.config.refs.stats
-import org.rsmod.api.config.refs.timers
 import org.rsmod.api.player.hands
+import org.rsmod.api.player.stat.StatBoostDecayPrevention
 import org.rsmod.api.player.stat.baseHitpointsLvl
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.player.stat.stat
@@ -17,47 +18,58 @@ import org.rsmod.api.script.onPlayerLogin
 import org.rsmod.api.script.onPlayerSoftTimer
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.isType
-import org.rsmod.game.type.stat.StatType
-import org.rsmod.game.type.stat.StatTypeList
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
-public class StatRegenScript @Inject constructor(private val statTypes: StatTypeList) :
-    PluginScript() {
-    private val regenStats by lazy { statTypes.values.toRegenStats() }
+public class StatRegenScript : PluginScript() {
+    private val regenStats by lazy { ServerCacheManager.getStats().values.toRegenStats() }
 
     override fun ScriptContext.startup() {
         onPlayerLogin { player.initRegenTimers() }
 
-        onPlayerSoftTimer(timers.stat_regen) { player.statRegen() }
-        onPlayerSoftTimer(timers.stat_boost_restore) { player.statBoostRestore() }
-        onPlayerSoftTimer(timers.health_regen) { player.healthRegen() }
+        onPlayerSoftTimer("timer.stat_regen") { player.statRegen() }
+        onPlayerSoftTimer("timer.stat_boost_restore") { player.statBoostRestore() }
+        onPlayerSoftTimer("timer.health_regen") { player.healthRegen() }
 
-        onPlayerSoftTimer(timers.rapidrestore_regen) { player.statRegen() }
+        onPlayerSoftTimer("timer.rapidrestore_regen") { player.statRegen() }
     }
 
     private fun Player.initRegenTimers() {
-        softTimer(timers.stat_regen, constants.stat_regen_interval)
-        softTimer(timers.stat_boost_restore, constants.stat_boost_restore_interval)
-        softTimer(timers.health_regen, constants.health_regen_interval)
+        softTimer("timer.stat_regen", constants.stat_regen_interval)
+        softTimer("timer.stat_boost_restore", constants.stat_boost_restore_interval)
+        softTimer("timer.health_regen", constants.health_regen_interval)
     }
 
     private fun Player.statRegen() {
         for (stat in regenStats) {
-            val base = statBase(stat)
-            val current = stat(stat)
+            val statInternal = RSCM.getReverseMapping(RSCMType.STAT,stat.id)
+
+            val base = statBase(statInternal)
+            val current = stat(statInternal)
             if (current < base) {
-                statAdd(stat, constant = 1, percent = 0)
+                statAdd(statInternal, constant = 1, percent = 0)
             }
         }
     }
 
     private fun Player.statBoostRestore() {
         for (stat in regenStats) {
-            val base = statBase(stat)
-            val current = stat(stat)
-            if (current > base) {
-                statSub(stat, constant = 1, percent = 0)
+            val statInternal = RSCM.getReverseMapping(RSCMType.STAT,stat.id)
+
+            val base = statBase(statInternal)
+            val current = stat(statInternal)
+            if (
+                current > base &&
+                !StatBoostDecayPrevention.prevents(
+                    player = this,
+                    stat = statInternal,
+                )
+            ) {
+                statSub(
+                    statInternal,
+                    constant = 1,
+                    percent = 0,
+                )
             }
         }
     }
@@ -66,11 +78,11 @@ public class StatRegenScript @Inject constructor(private val statTypes: StatType
         if (hitpoints >= baseHitpointsLvl) {
             return
         }
-        val amount = if (hands.isType(objs.regen_bracelet)) 2 else 1
-        statHeal(stats.hitpoints, constant = amount, percent = 0)
+        val amount = if (hands.isType("obj.jewl_bracelet_regen")) 2 else 1
+        statHeal("stat.hitpoints", constant = amount, percent = 0)
     }
 
     private fun Collection<StatType>.toRegenStats(): List<StatType> {
-        return filter { !it.isType(stats.prayer) && !it.isType(stats.hitpoints) }
+        return filter { !it.isType("stat.prayer") && !it.isType("stat.hitpoints") }
     }
 }

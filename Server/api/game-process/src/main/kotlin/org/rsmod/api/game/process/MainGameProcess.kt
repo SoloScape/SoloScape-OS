@@ -47,15 +47,22 @@ constructor(
         dbSync.blockingFastForwardShutdown()
     }
 
+    // Players leave the list only once their save is acknowledged, so an empty list means every
+    // logout has been fully persisted and further cycles have nothing left to flush.
     private fun fastForwardCycles() {
-        repeat(SHUTDOWN_MAX_SIMULATIONS) { cycle() }
+        repeat(SHUTDOWN_MAX_SIMULATIONS) {
+            if (playerList.none()) {
+                return
+            }
+            cycle()
+        }
     }
 
     private fun logRemainingPlayers() {
         val remaining = playerList.filterNot(Player::loggingOut)
         if (remaining.isNotEmpty()) {
             // Log up to 250 player names to avoid creating excessively large log entries.
-            val names = remaining.take(250).joinToString { "'${it.username}'" }
+            val names = remaining.take(250).joinToString { "'${it.displayName}'" }
             logger.error { "${remaining.size} players were unable to logout properly: $names" }
         }
     }

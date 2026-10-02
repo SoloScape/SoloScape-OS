@@ -1,12 +1,17 @@
 package org.rsmod.api.player.hit.processor
 
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.ItemServerType
+import dev.openrune.types.aconverted.SynthType
 import kotlin.math.min
 import org.rsmod.api.config.constants
-import org.rsmod.api.config.refs.headbars
-import org.rsmod.api.config.refs.params
-import org.rsmod.api.config.refs.queues
-import org.rsmod.api.config.refs.stats
-import org.rsmod.api.config.refs.synths
+import org.rsmod.api.config.refs.BaseParams
+import org.rsmod.api.player.cheat.adminGodMode
+import org.rsmod.api.player.death.recordDeathCause
+import org.rsmod.api.player.death.resolveDeathCause
+import org.rsmod.api.player.events.PlayerHitEvents
+import org.rsmod.api.player.events.PlayerHitpointsChangedEvent
 import org.rsmod.api.player.headbar.InternalPlayerHeadbars
 import org.rsmod.api.player.lefthand
 import org.rsmod.api.player.output.soundSynth
@@ -18,32 +23,44 @@ import org.rsmod.api.random.GameRandom
 import org.rsmod.game.headbar.Headbar
 import org.rsmod.game.hit.Hit
 import org.rsmod.game.hit.HitType
-import org.rsmod.game.type.obj.UnpackedObjType
-import org.rsmod.game.type.synth.SynthType
 
 public object StandardPlayerHitProcessor : QueuedPlayerHitProcessor {
     private val hitSoundsBodyA =
-        listOf(synths.human_hit_1, synths.human_hit_2, synths.human_hit_3, synths.human_hit_4)
+        listOf("synth.human_hit_1", "synth.human_hit_2", "synth.human_hit_3", "synth.human_hit_4")
+            .map { SynthType(it.asRSCM(RSCMType.SYNTH)) }
 
-    private val hitSoundsBodyB = listOf(synths.female_hit_1, synths.female_hit_2)
+    private val hitSoundsBodyB =
+        listOf("synth.female_hit_1", "synth.female_hit_2").map {
+            SynthType(it.asRSCM(RSCMType.SYNTH))
+        }
 
     override fun ProtectedAccess.process(hit: Hit) {
         if (!hit.isValid(this)) {
+            return
+        }
+        // Hits queued without StandardPlayerHitModifier (poison, self-damage) keep their damage.
+        if (player.adminGodMode && hit.damage > 0) {
             return
         }
         preventLogout("You can't log out until 10 seconds after the end of combat.", 16)
 
         // TODO(combat): Process degradation, ring of recoil, retribution, etc.
 
-        val damage = min(player.hitpoints, hit.damage)
+        val oldHitpoints = player.hitpoints
+        val damage = min(oldHitpoints, hit.damage)
         if (damage > 0) {
-            statSub(stats.hitpoints, constant = damage, percent = 0)
+            statSub("stat.hitpoints", constant = damage, percent = 0)
+            recordHitDamage(player, hit, damage)
+            publishPlayerHitpointsChangedEvent(oldHitpoints, hit)
         }
 
         playDefendSound(hit, random)
 
-        val queueDeath = player.hitpoints == 0 && queues.death !in player.queueList
+        val queueDeath = player.hitpoints == 0 && "queue.death" !in player.queueList
         if (queueDeath) {
+            val npcSource = if (hit.isFromNpc) findHitNpcSource(hit) else null
+            val playerSource = if (hit.isFromPlayer) findHitPlayerSource(hit) else null
+            player.recordDeathCause(hit.resolveDeathCause(npcSource, playerSource))
             queueDeath()
         }
 
@@ -51,6 +68,20 @@ public object StandardPlayerHitProcessor : QueuedPlayerHitProcessor {
 
         val headbar = hit.createHeadbar(player.hitpoints, player.baseHitpointsLvl)
         player.showHeadbar(headbar)
+
+        publish(PlayerHitEvents.Impact(player, hit))
+    }
+
+    private fun ProtectedAccess.publishPlayerHitpointsChangedEvent(oldHitpoints: Int, hit: Hit) {
+        val event =
+            PlayerHitpointsChangedEvent(
+                player = player,
+                oldHitpoints = oldHitpoints,
+                newHitpoints = player.hitpoints,
+                maxHitpoints = player.baseHitpointsLvl,
+                hit = hit,
+            )
+        publish(event)
     }
 
     private fun Hit.isValid(access: ProtectedAccess): Boolean {
@@ -81,8 +112,8 @@ public object StandardPlayerHitProcessor : QueuedPlayerHitProcessor {
     }
 
     private fun resolveDefendSound(
-        lefthand: UnpackedObjType?,
-        torso: UnpackedObjType?,
+        lefthand: ItemServerType?,
+        torso: ItemServerType?,
         damage: Int,
         bodyType: Int,
         random: GameRandom,
@@ -95,8 +126,8 @@ public object StandardPlayerHitProcessor : QueuedPlayerHitProcessor {
         }
 
     private fun resolveBlockSound(
-        lefthand: UnpackedObjType?,
-        torso: UnpackedObjType?,
+        lefthand: ItemServerType?,
+        torso: ItemServerType?,
         random: GameRandom,
     ): SynthType {
         val lefthandSound = lefthand?.randomBlockSound(random)
@@ -109,21 +140,21 @@ public object StandardPlayerHitProcessor : QueuedPlayerHitProcessor {
             return torsoSound
         }
 
-        return synths.human_block_1
+        return SynthType("synth.human_block_1".asRSCM(RSCMType.SYNTH))
     }
 
-    private fun UnpackedObjType.randomBlockSound(random: GameRandom): SynthType? {
+    private fun ItemServerType.randomBlockSound(random: GameRandom): SynthType? {
         val sounds =
             listOfNotNull(
-                paramOrNull(params.item_block_sound1),
-                paramOrNull(params.item_block_sound2),
-                paramOrNull(params.item_block_sound3),
-                paramOrNull(params.item_block_sound4),
-                paramOrNull(params.item_block_sound5),
+                paramOrNull(BaseParams.item_block_sound1),
+                paramOrNull(BaseParams.item_block_sound2),
+                paramOrNull(BaseParams.item_block_sound3),
+                paramOrNull(BaseParams.item_block_sound4),
+                paramOrNull(BaseParams.item_block_sound5),
             )
         return random.pickOrNull(sounds)
     }
 
     private fun Hit.createHeadbar(currHp: Int, maxHp: Int): Headbar =
-        InternalPlayerHeadbars.createFromHitmark(hitmark, currHp, maxHp, headbars.health_30)
+        InternalPlayerHeadbars.createFromHitmark(hitmark, currHp, maxHp, "headbar.health_30")
 }

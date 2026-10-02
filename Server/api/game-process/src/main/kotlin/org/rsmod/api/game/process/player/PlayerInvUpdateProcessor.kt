@@ -1,10 +1,13 @@
 package org.rsmod.api.game.process.player
 
+import dev.openrune.types.InvScope
 import jakarta.inject.Inject
 import kotlin.collections.iterator
+import org.rsmod.api.player.hook.PlayerInvUpdateHook
 import org.rsmod.api.player.output.UpdateInventory
 import org.rsmod.api.utils.logging.GameExceptionHandler
 import org.rsmod.game.entity.Player
+import org.rsmod.game.entity.PlayerPersistenceHints
 import org.rsmod.game.entity.util.ShuffledPlayerList
 import org.rsmod.game.inv.Inventory
 
@@ -13,12 +16,20 @@ public class PlayerInvUpdateProcessor
 constructor(
     private val players: ShuffledPlayerList,
     private val exceptionHandler: GameExceptionHandler,
+    private val invUpdateHooks: Set<PlayerInvUpdateHook>,
 ) {
     private val processedInvs = hashSetOf<Inventory>()
+    private val playerUpdatedInvs = ArrayList<Inventory>(4)
 
     public fun process(player: Player) {
+        playerUpdatedInvs.clear()
         player.updateTransmittedInvs()
         player.processQueuedTransmissions()
+        for (inv in playerUpdatedInvs) {
+            for (hook in invUpdateHooks) {
+                hook.onInvUpdated(player, inv)
+            }
+        }
     }
 
     public fun cleanUp() {
@@ -36,6 +47,8 @@ constructor(
             UpdateInventory.updateInvPartial(this, inv)
             updatePendingRunWeight(inv)
             processedInvs += inv
+            playerUpdatedInvs += inv
+            persistenceHintAfterPermInvTransmit(this, inv)
         }
     }
 
@@ -47,6 +60,8 @@ constructor(
             updatePendingRunWeight(inv)
             transmittedInvs.add(add)
             processedInvs += inv
+            playerUpdatedInvs += inv
+            persistenceHintAfterPermInvTransmit(this, inv)
         }
         transmittedInvAddQueue.clear()
     }
@@ -55,6 +70,12 @@ constructor(
         val updateRunWeight = inventory.type.runWeight
         if (updateRunWeight) {
             pendingRunWeight = true
+        }
+    }
+
+    private fun persistenceHintAfterPermInvTransmit(player: Player, inv: Inventory) {
+        if (inv.type.scope == InvScope.Perm) {
+            PlayerPersistenceHints.notify(player)
         }
     }
 }

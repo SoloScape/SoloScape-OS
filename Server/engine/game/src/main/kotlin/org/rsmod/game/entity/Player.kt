@@ -1,5 +1,14 @@
 package org.rsmod.game.entity
 
+import dev.openrune.rscm.RSCM
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.BasType
+import dev.openrune.types.NpcServerType
+import dev.openrune.types.StatType
+import dev.or2.central.account.Rights
+import dev.or2.central.account.TrustedDeviceData
+import dev.or2.central.account.TwoFactorAuthData
 import it.unimi.dsi.fastutil.ints.IntArrayList
 import it.unimi.dsi.fastutil.ints.IntArraySet
 import it.unimi.dsi.fastutil.ints.IntList
@@ -11,14 +20,17 @@ import java.util.BitSet
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.properties.Delegates
 import org.rsmod.annotations.InternalApi
+import org.rsmod.api.attr.AttributeMap
 import org.rsmod.game.client.Client
 import org.rsmod.game.client.ClientCycle
 import org.rsmod.game.client.NoopClient
 import org.rsmod.game.client.NoopClientCycle
+import org.rsmod.game.damage.DamageContributions
 import org.rsmod.game.entity.player.Appearance
 import org.rsmod.game.entity.player.PlayerUid
 import org.rsmod.game.entity.player.PublicMessage
 import org.rsmod.game.entity.util.EntityFaceAngle
+import org.rsmod.game.entity.util.EntityTinting
 import org.rsmod.game.entity.util.PathingEntityCommon
 import org.rsmod.game.headbar.Headbar
 import org.rsmod.game.hero.HeroPoints
@@ -35,15 +47,6 @@ import org.rsmod.game.shop.Shop
 import org.rsmod.game.spot.EntitySpotanim
 import org.rsmod.game.stat.PlayerStatMap
 import org.rsmod.game.timer.PlayerTimerMap
-import org.rsmod.game.type.bas.UnpackedBasType
-import org.rsmod.game.type.droptrig.DropTriggerType
-import org.rsmod.game.type.mod.UnpackedModLevelType
-import org.rsmod.game.type.npc.UnpackedNpcType
-import org.rsmod.game.type.queue.QueueType
-import org.rsmod.game.type.seq.SeqType
-import org.rsmod.game.type.spot.SpotanimType
-import org.rsmod.game.type.stat.StatType
-import org.rsmod.game.type.timer.TimerType
 import org.rsmod.game.ui.UserInterfaceMap
 import org.rsmod.game.vars.VarPlayerIntMap
 import org.rsmod.game.vars.VarPlayerStrMap
@@ -69,6 +72,10 @@ public class Player(
 
     override val heroPoints: HeroPoints = HeroPoints(size = 16)
 
+    override val damageContributions: DamageContributions = DamageContributions()
+
+    public val options: MutableList<String?> = MutableList(7) { null }
+
     public val vars: VarPlayerIntMap = VarPlayerIntMap()
     public val strVars: VarPlayerStrMap = VarPlayerStrMap()
 
@@ -79,6 +86,12 @@ public class Player(
     public val queueList: PlayerQueueList = PlayerQueueList()
     public val weakQueueList: PlayerQueueList = PlayerQueueList()
     public val engineQueueList: EngineQueueList = EngineQueueList()
+
+    /**
+     * Opaque session token from OpenRune Central world-link when `OPENRUNE_CENTRAL_HOST` is set.
+     * The game server notifies central on logout so the session ends and the account can log in again.
+     */
+    public var openRuneCentralSessionToken: ByteArray? = null
 
     /**
      * A unique identifier that should be generated when the player's account is created and then
@@ -159,8 +172,14 @@ public class Player(
     public var username: String = ""
     public var displayName: String by avatar::name
     public var members: Boolean = false
+    public var gamemode: Int = 0
     public var lastKnownDevice: Int? = null
-
+    public var trustedDevices: MutableList<TrustedDeviceData> = mutableListOf()
+    public var twoFactorAuth: TwoFactorAuthData = TwoFactorAuthData()
+    public var previousDisplayName: String = ""
+    public var displayNameChangedAtMillis: Long? = null
+    public var discordId: Long? = null
+    public var createdAt: LocalDateTime? = null
     public var followCoord: CoordGrid = CoordGrid.NULL
     public var buildArea: CoordGrid = CoordGrid.NULL
     public val visibleZoneKeys: IntList = IntArrayList()
@@ -173,26 +192,15 @@ public class Player(
     public var runEnergy: Int = 1000
     public var runWeight: Int = 0
 
-    /**
-     * The player's current mod level.
-     *
-     * Checking if a player has access to permissions from other mod levels should be done through
-     * [UnpackedModLevelType.hasAccessTo] instead of direct comparisons.
-     *
-     * _Note: This value is **always** expected to be set on login._
-     */
-    // Design note: Using `lateinit` here avoids the ambiguity of a nullable `modLevel`. A nullable
-    // type would require checks like `modLevel?.hasAccessTo(...)`, which could be misinterpreted:
-    // is `null` equivalent to a "player" mod level, or does it signify uninitialized state?
-    // `lateinit` ensures `modLevel` is always initialized before use, making its state explicit.
-    // Given the circumstances, we use `lateinit` even though it can be considered a code smell.
-    public lateinit var modLevel: UnpackedModLevelType
+    public var modLevel: Rights = Rights.NONE
 
+    public val attr: AttributeMap = AttributeMap()
     public var xpRate: Double = 1.0
     public var globalXpRate: Double = 1.0
 
     public var publicMessage: PublicMessage? = null
     public var pendingSay: String? = null
+    public var pendingTinting: EntityTinting? = null
     public var pendingRunWeight: Boolean = false
     public val pendingStatUpdates: BitSet = BitSet()
     public val activeHitmarks: LongArrayList = LongArrayList()
@@ -228,12 +236,14 @@ public class Player(
      */
     public val clientDisconnected: AtomicBoolean = AtomicBoolean(false)
     public var clientDisconnectedCycles: Int = 0
+
     public var forceDisconnect: Boolean = false
     public var manualLogout: Boolean = false
     public var pendingLogout: Boolean = false
     public var loggingOut: Boolean = false
     public var pendingCloseClient: Boolean = false
     public var closeClient: Boolean = false
+
     /** This flag should only be set when the game server is in the process of shutting down. */
     public var pendingShutdown: Boolean = false
 
@@ -251,12 +261,17 @@ public class Player(
     public var actionDelay: Int = -1
     public var skillAnimDelay: Int = -1
     public var refaceDelay: Int = -1
+    public var frozen: Boolean = false
+    public var freezeImmune: Boolean = false
+
+    public val isFrozen: Boolean
+        get() = frozen
 
     public var lootDropDuration: Int? = null
 
     public val appearance: Appearance = Appearance()
-    public var bas: UnpackedBasType? by appearance::bas
-    public var transmog: UnpackedNpcType? by appearance::transmog
+    public var bas: BasType? by appearance::bas
+    public var transmog: NpcServerType? by appearance::transmog
     public var skullIcon: Int? by appearance::skullIcon
     public var overheadIcon: Int? by appearance::overheadIcon
     public val combatLevel: Int by appearance::combatLevel
@@ -276,7 +291,7 @@ public class Player(
      *
      * _Note: Use the [Player.dropTrigger] function to set this value._
      */
-    public var dropTrigger: DropTriggerType? = null
+    public var dropTrigger: String? = null
         private set
 
     /**
@@ -345,61 +360,61 @@ public class Player(
         }
     }
 
-    public fun timer(timer: TimerType, cycles: Int) {
+    public fun timer(timer: String, cycles: Int) {
         require(cycles > 0) { "`cycles` must be greater than 0. (cycles=$cycles)" }
         timerMap.schedule(timer, mapClock = currentMapClock, interval = cycles)
     }
 
     @OptIn(InternalApi::class)
-    public fun clearTimer(timerType: TimerType) {
+    public fun clearTimer(timerType: String) {
         timerMap.remove(timerType)
     }
 
-    public fun softTimer(timer: TimerType, cycles: Int) {
+    public fun softTimer(timer: String, cycles: Int) {
         require(cycles > 0) { "`cycles` must be greater than 0. (cycles=$cycles)" }
         softTimerMap.schedule(timer, mapClock = currentMapClock, interval = cycles)
     }
 
     @OptIn(InternalApi::class)
-    public fun clearSoftTimer(timerType: TimerType) {
+    public fun clearSoftTimer(timerType: String) {
         softTimerMap.remove(timerType)
     }
 
-    public fun weakQueue(queue: QueueType, cycles: Int, args: Any? = null) {
+        public fun weakQueue(queue: String, cycles: Int, args: Any? = null) {
         require(cycles > 0) { "`cycles` must be greater than 0. (cycles=$cycles)" }
         weakQueueList.add(queue, QueueCategory.Weak, cycles, args)
     }
 
-    public fun clearWeakQueue(queue: QueueType) {
+    public fun clearWeakQueue(queue: String) {
         weakQueueList.removeAll(queue)
     }
 
-    public fun softQueue(queue: QueueType, cycles: Int, args: Any? = null) {
+    public fun softQueue(queue: String, cycles: Int, args: Any? = null) {
         require(cycles > 0) { "`cycles` must be greater than 0. (cycles=$cycles)" }
         queueList.add(queue, QueueCategory.Soft, cycles, args)
     }
 
-    public fun queue(queue: QueueType, cycles: Int, args: Any? = null) {
+    public fun queue(queue: String, cycles: Int, args: Any? = null) {
         require(cycles > 0) { "`cycles` must be greater than 0. (cycles=$cycles)" }
         queueList.add(queue, QueueCategory.Normal, cycles, args)
     }
 
-    public fun strongQueue(queue: QueueType, cycles: Int, args: Any? = null) {
+    public fun strongQueue(queue: String, cycles: Int, args: Any? = null) {
         require(cycles > 0) { "`cycles` must be greater than 0. (cycles=$cycles)" }
         queueList.add(queue, QueueCategory.Strong, cycles, args)
     }
 
-    public fun longQueueAccelerate(queue: QueueType, cycles: Int, args: Any? = null) {
+    public fun longQueueAccelerate(queue: String, cycles: Int, args: Any? = null) {
         require(cycles > 0) { "`cycles` must be greater than 0. (cycles=$cycles)" }
         queueList.add(queue, QueueCategory.LongAccelerate, cycles, args)
     }
 
-    public fun longQueueDiscard(queue: QueueType, cycles: Int, args: Any? = null) {
+    public fun longQueueDiscard(queue: String, cycles: Int, args: Any? = null) {
         require(cycles > 0) { "`cycles` must be greater than 0. (cycles=$cycles)" }
         queueList.add(queue, QueueCategory.LongDiscard, cycles, args)
     }
 
-    public fun clearQueue(queue: QueueType) {
+    public fun clearQueue(queue: String) {
         queueList.removeAll(queue)
     }
 
@@ -446,11 +461,11 @@ public class Player(
     }
 
     @InternalApi
-    public fun markStatUpdate(stat: StatType) {
-        pendingStatUpdates.set(stat.id)
+    public fun markStatUpdate(stat: String) {
+        pendingStatUpdates.set(stat.asRSCM(RSCMType.STAT))
     }
 
-    override fun anim(seq: SeqType, delay: Int, priority: Int) {
+    override fun anim(seq: String, delay: Int, priority: Int) {
         PathingEntityCommon.anim(this, seq, delay, priority)
     }
 
@@ -458,8 +473,8 @@ public class Player(
         pendingSequence = EntitySeq.ZERO
     }
 
-    override fun spotanim(spot: SpotanimType, delay: Int, height: Int, slot: Int) {
-        PathingEntityCommon.spotanim(this, spot.id, delay, height, slot)
+    override fun spotanim(spot: String, delay: Int, height: Int, slot: Int) {
+        PathingEntityCommon.spotanim(this, spot.asRSCM(RSCMType.SPOTANIM), delay, height, slot)
     }
 
     public fun resetSpotanim(height: Int = 0, slot: Int = 0) {
@@ -477,6 +492,10 @@ public class Player(
 
     public fun say(text: String) {
         pendingSay = text
+    }
+
+    public fun tint(tinting: EntityTinting) {
+        pendingTinting = tinting
     }
 
     public fun showHeadbar(headbar: Headbar) {
@@ -500,7 +519,9 @@ public class Player(
      * [clearAnyDropTrigger]. If a [dropTrigger] is still set, it may indicate the player exited
      * through unintended means, and an error will be thrown to prevent silent failures.
      */
-    public fun dropTrigger(trigger: DropTriggerType) {
+    public fun dropTrigger(trigger: String) {
+        RSCM.requireRSCM(RSCMType.DROP_TRIGGER, trigger)
+
         check(dropTrigger == null) {
             "Previous `dropTrigger` must be removed before " +
                 "setting a new trigger: oldTrigger=$dropTrigger, newTrigger=$trigger"
@@ -512,7 +533,9 @@ public class Player(
      * Clears [dropTrigger] as long as it matches [trigger], otherwise throws
      * [IllegalStateException].
      */
-    public fun clearDropTrigger(trigger: DropTriggerType) {
+    public fun clearDropTrigger(trigger: String) {
+        RSCM.requireRSCM(RSCMType.DROP_TRIGGER, trigger)
+
         check(dropTrigger == trigger) {
             "Current `dropTrigger` does not match input: " +
                 "currentTrigger=$dropTrigger, clearTrigger=$trigger"

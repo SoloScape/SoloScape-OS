@@ -20,15 +20,16 @@ import org.rsmod.api.account.character.main.CharacterAccountRepository
 import org.rsmod.api.account.loader.request.AccountLoadRequest
 import org.rsmod.api.account.loader.request.AccountLoadResponse
 import org.rsmod.api.db.DatabaseConnection
-import org.rsmod.api.db.sqlite.SqliteDatabase
+import org.rsmod.api.db.jdbc.GameDatabase
 import org.rsmod.server.services.concurrent.ScheduledService
 
 public class AccountLoaderService
 @Inject
 constructor(
-    private val database: SqliteDatabase,
+    private val database: GameDatabase,
     private val repository: CharacterAccountRepository,
     private val pipelines: Set<CharacterDataStage.Pipeline>,
+    private val serverConfig: org.rsmod.api.server.config.ServerConfig,
 ) : ScheduledService {
     private val logger = InlineLogger()
 
@@ -130,7 +131,7 @@ constructor(
 
     override fun createExecutor(): ExecutorService {
         val threadFactory = ThreadFactory { runnable ->
-            Thread(runnable, SERVICE_THREAD_NAME).apply { isDaemon = false }
+            Thread(runnable, SERVICE_THREAD_NAME).apply { isDaemon = true }
         }
         return Executors.newSingleThreadExecutor(threadFactory)
     }
@@ -182,18 +183,34 @@ constructor(
     private suspend fun handleRequestWithTimeout(request: AccountLoadRequest, timeoutMillis: Long) {
         val result = withTimeoutOrNull(timeoutMillis) { handleRequest(request) }
         if (result == null) {
-            logger.warn { "Account load timed out for: '${request.loginName}' ($request)" }
+            logger.warn { "Account load timed out for: '${request.accountName}' ($request)" }
             request.callback(AccountLoadResponse.Err.Timeout)
         }
     }
 
     private suspend fun handleRequest(request: AccountLoadRequest) {
+        val startedAt = System.nanoTime()
         val response = database.withTransaction { connection -> connection.handleRequest(request) }
+        val elapsedMs = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt)
+        if (serverConfig.loginTimingLogs && elapsedMs >= ACCOUNT_DB_TIMING_INFO_MS) {
+            val level =
+                if (elapsedMs >= ACCOUNT_DB_TIMING_WARN_MS) {
+                    "warn"
+                } else {
+                    "info"
+                }
+            val message = "Account load DB user='${request.accountName}' elapsed=${elapsedMs}ms"
+            if (level == "warn") {
+                logger.warn { message }
+            } else {
+                logger.info { message }
+            }
+        }
         request.callback(response)
     }
 
     private fun DatabaseConnection.handleRequest(request: AccountLoadRequest): AccountLoadResponse {
-        val metadataList = repository.selectAndCreateMetadataList(this, request.loginName)
+        val metadataList = repository.selectAndCreateMetadataList(this, request.accountName)
         if (metadataList == null) {
             val response = accountNotFoundResponse(request)
             return response
@@ -216,29 +233,29 @@ constructor(
         request: AccountLoadRequest.SearchOrCreateWithPassword
     ): AccountLoadResponse =
         try {
-            val metadataList = createMetadataList(request.loginName, request.hashedPassword())
+            val metadataList = createMetadataList(request.accountName, request.hashedPassword())
             AccountLoadResponse.Ok.NewAccount(request.auth, metadataList.accountData, metadataList)
         } catch (e: Exception) {
             AccountLoadResponse.Err.Exception(e)
         }
 
     private fun DatabaseConnection.createMetadataList(
-        loginName: String,
+        accountName: String,
         hashedPassword: String,
     ): CharacterMetadataList {
-        val accountId = repository.insertOrSelectAccountId(this, loginName, hashedPassword)
+        val accountId = repository.insertOrSelectAccountId(this, accountName, hashedPassword)
         if (accountId == null) {
-            throw IllegalStateException("Could not insert or select account id for: '$loginName'")
+            throw IllegalStateException("Could not insert or select account id for: '$accountName'")
         }
 
         val characterId = repository.insertAndSelectCharacterId(this, accountId)
         if (characterId == null) {
-            throw IllegalStateException("Could not insert character for: '$loginName' ($accountId)")
+            throw IllegalStateException("Could not insert character for: '$accountName' ($accountId)")
         }
 
-        val metadataList = repository.selectAndCreateMetadataList(this, loginName)
+        val metadataList = repository.selectAndCreateMetadataList(this, accountName)
         if (metadataList == null) {
-            throw IllegalStateException("Could not select character after creation: '$loginName'")
+            throw IllegalStateException("Could not select character after creation: '$accountName'")
         }
         return metadataList
     }
@@ -318,5 +335,9 @@ constructor(
          * to recover naturally once requests succeed again.
          */
         private const val MAX_CONSECUTIVE_FAILURES = 5
+
+        private const val ACCOUNT_DB_TIMING_INFO_MS = 100L
+
+        private const val ACCOUNT_DB_TIMING_WARN_MS = 500L
     }
 }

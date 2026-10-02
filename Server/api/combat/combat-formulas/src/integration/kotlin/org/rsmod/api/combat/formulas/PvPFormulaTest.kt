@@ -2,6 +2,9 @@ package org.rsmod.api.combat.formulas
 
 import com.google.inject.AbstractModule
 import com.google.inject.Scopes
+import dev.openrune.definition.type.VarBitType
+import dev.openrune.types.ItemServerType
+import dev.openrune.types.obj.Wearpos
 import jakarta.inject.Inject
 import org.rsmod.api.combat.commons.CombatStance
 import org.rsmod.api.combat.commons.magic.Spellbook
@@ -20,10 +23,7 @@ import org.rsmod.api.combat.weapon.scripts.WeaponAttackStylesScript
 import org.rsmod.api.combat.weapon.scripts.WeaponAttackTypesScript
 import org.rsmod.api.combat.weapon.styles.AttackStyles
 import org.rsmod.api.combat.weapon.types.AttackTypes
-import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.stats
-import org.rsmod.api.config.refs.varbits
-import org.rsmod.api.config.refs.varps
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.params.TestArgs
@@ -33,9 +33,6 @@ import org.rsmod.api.testing.params.testArgsOfSingleParam
 import org.rsmod.api.testing.scope.GameTestScope
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.InvObj
-import org.rsmod.game.type.obj.ObjType
-import org.rsmod.game.type.obj.Wearpos
-import org.rsmod.game.type.varbit.VarBitType
 
 class PvPFormulaTest {
     @TestWithArgs(MatchupProvider::class)
@@ -202,17 +199,17 @@ class PvPFormulaTest {
         @MatchupDsl
         data class MatchupPlayer(
             var stance: CombatStance = CombatStance.Stance1,
-            var helm: ObjType? = null,
-            var cape: ObjType? = null,
-            var amulet: ObjType? = null,
-            var ammo: ObjType? = null,
-            var weapon: ObjType? = null,
-            var body: ObjType? = null,
-            var shield: ObjType? = null,
-            var legs: ObjType? = null,
-            var gloves: ObjType? = null,
-            var feet: ObjType? = null,
-            var ring: ObjType? = null,
+            var helm: ItemServerType? = null,
+            var cape: ItemServerType? = null,
+            var amulet: ItemServerType? = null,
+            var ammo: ItemServerType? = null,
+            var weapon: ItemServerType? = null,
+            var body: ItemServerType? = null,
+            var shield: ItemServerType? = null,
+            var legs: ItemServerType? = null,
+            var gloves: ItemServerType? = null,
+            var feet: ItemServerType? = null,
+            var ring: ItemServerType? = null,
             var attackLvl: Int = 99,
             var defenceLvl: Int = 99,
             var rangedLvl: Int = 99,
@@ -221,7 +218,7 @@ class PvPFormulaTest {
             var hitpoints: Int = 99,
             val vars: MutableMap<VarBitType, Int> = mutableMapOf(),
             var spellbook: Spellbook = Spellbook.Standard,
-            var castSpell: ObjType? = null,
+            var castSpell: ItemServerType? = null,
             var spellMaxHit: Int? = null,
             var staffMaxHit: Int? = null,
             var specialAccuracy: Double = 1.0,
@@ -322,21 +319,21 @@ class PvPFormulaTest {
                 Matchup.create("Torva vs Unarmed") {
                     setup {
                         attacker {
-                            weapon = objs.armadyl_godsword
-                            amulet = objs.amulet_of_fury
-                            helm = objs.torva_full_helm
-                            body = objs.torva_platebody
-                            legs = objs.torva_platelegs
-                            cape = objs.infernal_cape
-                            feet = objs.primordial_boots
-                            gloves = objs.barrows_gloves
-                            ring = objs.ultor_ring
-                            vars[varbits.piety] = 1
+                            weapon = "obj.ags"
+                            amulet = "obj.enchanted_onyx_amulet"
+                            helm = "obj.torva_helm"
+                            body = "obj.torva_chest"
+                            legs = "obj.torva_legs"
+                            cape = "obj.infernal_cape"
+                            feet = "obj.primordial_boots"
+                            gloves = "obj.hundred_gauntlets_level_10"
+                            ring = "obj.ultor_ring"
+                            vars["varbit.prayer_piety"] = 1
                         }
 
                         defender {
                             defenceLvl = 118
-                            vars[varbits.thick_skin] = 1
+                            vars["varbit.prayer_thickskin"] = 1
                         }
                     }
 
@@ -355,31 +352,31 @@ class PvPFormulaTest {
                 Matchup.create("Torva vs Torva") {
                     setup {
                         attacker {
-                            weapon = objs.abyssal_whip
-                            amulet = objs.amulet_of_fury
-                            helm = objs.torva_full_helm
-                            body = objs.torva_platebody
-                            legs = objs.torva_platelegs
-                            shield = objs.dragon_defender
-                            cape = objs.infernal_cape
-                            feet = objs.primordial_boots
-                            gloves = objs.barrows_gloves
-                            ring = objs.ultor_ring
-                            vars[varbits.piety] = 1
+                            weapon = "obj.abyssal_whip"
+                            amulet = "obj.enchanted_onyx_amulet"
+                            helm = "obj.torva_helm"
+                            body = "obj.torva_chest"
+                            legs = "obj.torva_legs"
+                            shield = "obj.dragon_parryingdagger"
+                            cape = "obj.infernal_cape"
+                            feet = "obj.primordial_boots"
+                            gloves = "obj.hundred_gauntlets_level_10"
+                            ring = "obj.ultor_ring"
+                            vars["varbit.prayer_piety"] = 1
                         }
 
                         defender {
-                            weapon = objs.abyssal_whip
-                            amulet = objs.amulet_of_fury
-                            helm = objs.torva_full_helm
-                            body = objs.torva_platebody
-                            legs = objs.torva_platelegs
-                            shield = objs.dragon_defender
-                            cape = objs.infernal_cape
-                            feet = objs.primordial_boots
-                            gloves = objs.barrows_gloves
-                            ring = objs.ultor_ring
-                            vars[varbits.piety] = 1
+                            weapon = "obj.abyssal_whip"
+                            amulet = "obj.enchanted_onyx_amulet"
+                            helm = "obj.torva_helm"
+                            body = "obj.torva_chest"
+                            legs = "obj.torva_legs"
+                            shield = "obj.dragon_parryingdagger"
+                            cape = "obj.infernal_cape"
+                            feet = "obj.primordial_boots"
+                            gloves = "obj.hundred_gauntlets_level_10"
+                            ring = "obj.ultor_ring"
+                            vars["varbit.prayer_piety"] = 1
                         }
                     }
 
@@ -399,30 +396,30 @@ class PvPFormulaTest {
                     setup {
                         attacker {
                             attackLvl = 118
-                            weapon = objs.abyssal_whip
-                            amulet = objs.amulet_of_fury
-                            helm = objs.torva_full_helm
-                            body = objs.torva_platebody
-                            legs = objs.torva_platelegs
-                            cape = objs.infernal_cape
-                            feet = objs.primordial_boots
-                            gloves = objs.barrows_gloves
-                            ring = objs.ultor_ring
-                            vars[varbits.piety] = 1
+                            weapon = "obj.abyssal_whip"
+                            amulet = "obj.enchanted_onyx_amulet"
+                            helm = "obj.torva_helm"
+                            body = "obj.torva_chest"
+                            legs = "obj.torva_legs"
+                            cape = "obj.infernal_cape"
+                            feet = "obj.primordial_boots"
+                            gloves = "obj.hundred_gauntlets_level_10"
+                            ring = "obj.ultor_ring"
+                            vars["varbit.prayer_piety"] = 1
                         }
 
                         defender {
                             defenceLvl = 118
-                            weapon = objs.dinhs_bulwark
-                            amulet = objs.amulet_of_fury
-                            helm = objs.justiciar_faceguard
-                            body = objs.justiciar_chestguard
-                            legs = objs.justiciar_legguards
-                            cape = objs.infernal_cape
-                            feet = objs.primordial_boots
-                            gloves = objs.barrows_gloves
-                            ring = objs.ultor_ring
-                            vars[varbits.piety] = 1
+                            weapon = "obj.dinhs_bulwark"
+                            amulet = "obj.enchanted_onyx_amulet"
+                            helm = "obj.justiciar_faceguard"
+                            body = "obj.justiciar_chestguard"
+                            legs = "obj.justiciar_leg_guards"
+                            cape = "obj.infernal_cape"
+                            feet = "obj.primordial_boots"
+                            gloves = "obj.hundred_gauntlets_level_10"
+                            ring = "obj.ultor_ring"
+                            vars["varbit.prayer_piety"] = 1
                         }
                     }
 
@@ -442,31 +439,31 @@ class PvPFormulaTest {
                     setup {
                         attacker {
                             rangedLvl = 112
-                            ammo = objs.rune_arrow
-                            weapon = objs.magic_shortbow
-                            amulet = objs.amulet_of_fury
-                            helm = objs.helm_of_neitiznot
-                            body = objs.black_dhide_body
-                            legs = objs.black_dhide_chaps
-                            cape = objs.avas_assembler
-                            feet = objs.pegasian_boots
-                            gloves = objs.barrows_gloves
-                            ring = objs.archers_ring_i
-                            vars[varbits.rigour] = 1
+                            ammo = "obj.rune_arrow"
+                            weapon = "obj.magic_shortbow"
+                            amulet = "obj.enchanted_onyx_amulet"
+                            helm = "obj.fris_kingly_helm"
+                            body = "obj.black_dragonhide_body"
+                            legs = "obj.black_dragonhide_chaps"
+                            cape = "obj.avas_assembler"
+                            feet = "obj.pegasian_boots"
+                            gloves = "obj.hundred_gauntlets_level_10"
+                            ring = "obj.nzone_ranger_ring"
+                            vars["varbit.prayer_rigour"] = 1
                         }
 
                         defender {
                             defenceLvl = 80
-                            ammo = objs.rune_arrow
-                            weapon = objs.magic_shortbow
-                            amulet = objs.amulet_of_glory_4
-                            helm = objs.helm_of_neitiznot
-                            body = objs.black_dhide_body
-                            legs = objs.rune_platelegs
-                            cape = objs.avas_accumulator
-                            feet = objs.snakeskin_boots
-                            gloves = objs.barrows_gloves
-                            vars[varbits.eagle_eye] = 1
+                            ammo = "obj.rune_arrow"
+                            weapon = "obj.magic_shortbow"
+                            amulet = "obj.amulet_of_glory_4"
+                            helm = "obj.fris_kingly_helm"
+                            body = "obj.black_dragonhide_body"
+                            legs = "obj.rune_platelegs"
+                            cape = "obj.anma_50_reward"
+                            feet = "obj.snakeskin_boots"
+                            gloves = "obj.hundred_gauntlets_level_10"
+                            vars["varbit.prayer_eagleeye"] = 1
                         }
                     }
 
@@ -487,7 +484,7 @@ class PvPFormulaTest {
     }
 
     private fun GameTestScope.copy(player: Player, matchup: Matchup.MatchupPlayer) {
-        player.setVarp(varps.com_mode, matchup.stance.varValue)
+        player.setVarp("varp.com_mode", matchup.stance.varValue)
 
         player.setBaseLevel(stats.attack, matchup.attackLvl)
         player.setBaseLevel(stats.defence, matchup.defenceLvl)

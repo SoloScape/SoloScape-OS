@@ -1,14 +1,16 @@
 package org.rsmod.api.invtx
 
+import dev.openrune.rscm.RSCM
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.InvStackType
+import dev.openrune.types.ItemServerType
 import org.rsmod.api.config.constants
-import org.rsmod.api.config.refs.objs
 import org.rsmod.api.repo.obj.ObjRepository
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.inv.Inventory
 import org.rsmod.game.obj.Obj
-import org.rsmod.game.type.inv.InvStackType
-import org.rsmod.game.type.obj.ObjType
 import org.rsmod.map.CoordGrid
 import org.rsmod.objtx.Transaction
 import org.rsmod.objtx.TransactionInventory
@@ -17,13 +19,13 @@ import org.rsmod.objtx.TransactionResultList
 
 public fun Player.invAddOrDrop(
     repo: ObjRepository,
-    type: ObjType,
+    type: String,
     count: Int = 1,
     duration: Int = this.lootDropDuration ?: constants.lootdrop_duration,
     coords: CoordGrid = this.coords,
     inv: Inventory = this.inv,
 ): Boolean {
-    val transaction = invAdd(inv, type, count = count)
+    val transaction = invAdd(inv, RSCM.getReverseMapping(RSCMType.OBJ,type.asRSCM(RSCMType.OBJ)), count = count)
     if (transaction.success) {
         return true
     }
@@ -34,7 +36,7 @@ public fun Player.invAddOrDrop(
 }
 
 public fun Player.invTakeFee(fee: Int, inv: Inventory = this.inv): Boolean {
-    val transaction = invDel(inv, objs.coins, count = fee)
+    val transaction = invDel(inv, "obj.coins", count = fee)
     return transaction.success
 }
 
@@ -69,9 +71,13 @@ public fun Player.invAdd(
         )
     }
 
+/**
+ * @param ignoreVirtualStorage When `true`, items are placed only in [inv] slots and are not
+ *   redirected into virtual storage hooks (e.g. coal bag while open).
+ */
 public fun Player.invAdd(
     inv: Inventory,
-    type: ObjType,
+    type: String,
     count: Int = 1,
     vars: Int = 0,
     slot: Int? = null,
@@ -79,10 +85,11 @@ public fun Player.invAdd(
     cert: Boolean = false,
     uncert: Boolean = false,
     autoCommit: Boolean = true,
+    ignoreVirtualStorage: Boolean = false,
 ): TransactionResultList<InvObj> =
-    invAdd(
+    invAddWithVirtualStorage(
         inv = inv,
-        obj = type.id,
+        type = type,
         count = count,
         vars = vars,
         slot = slot,
@@ -90,7 +97,20 @@ public fun Player.invAdd(
         cert = cert,
         uncert = uncert,
         autoCommit = autoCommit,
-    )
+        ignoreVirtualStorage = ignoreVirtualStorage,
+    ) { targetInv, objType, objCount, objVars, objSlot, objStrict, objCert, objUncert, objAutoCommit ->
+        invAdd(
+            inv = targetInv,
+            obj = objType.asRSCM(RSCMType.OBJ),
+            count = objCount,
+            vars = objVars,
+            slot = objSlot,
+            strict = objStrict,
+            cert = objCert,
+            uncert = objUncert,
+            autoCommit = objAutoCommit,
+        )
+    }
 
 public fun Transaction<InvObj>.add(
     inv: TransactionInventory<InvObj>,
@@ -165,30 +185,46 @@ public fun Player.invDel(
         )
     }
 
+/**
+ * @param ignoreVirtualStorage When `true`, items are removed only from [inv] slots and are not
+ *   taken from virtual storage hooks (e.g. essence pouches).
+ */
 public fun Player.invDel(
     inv: Inventory,
-    type: ObjType,
+    type: String,
     count: Int = 1,
     slot: Int? = null,
     strict: Boolean = true,
     placehold: Boolean = false,
     autoCommit: Boolean = true,
+    ignoreVirtualStorage: Boolean = false,
 ): TransactionResultList<InvObj> =
-    invDel(
+    invDelWithVirtualStorage(
         inv = inv,
-        obj = type.id,
+        type = type,
         count = count,
         slot = slot,
         strict = strict,
         placehold = placehold,
         autoCommit = autoCommit,
-    )
+        ignoreVirtualStorage = ignoreVirtualStorage,
+    ) { targetInv, objType, objCount, objSlot, objStrict, objPlacehold, objAutoCommit ->
+        invDel(
+            inv = targetInv,
+            obj = objType.asRSCM(RSCMType.OBJ),
+            count = objCount,
+            slot = objSlot,
+            strict = objStrict,
+            placehold = objPlacehold,
+            autoCommit = objAutoCommit,
+        )
+    }
 
 public fun Player.invDel(
     inv: Inventory,
-    type1: ObjType,
+    type1: String,
     count1: Int,
-    type2: ObjType,
+    type2: String,
     count2: Int,
     strict: Boolean = true,
     autoCommit: Boolean = true,
@@ -197,7 +233,7 @@ public fun Player.invDel(
         val targetInv = select(inv)
         delete(
             inv = targetInv,
-            obj = type1.id,
+            obj = type1.asRSCM(RSCMType.OBJ),
             count = count1,
             slot = null,
             strict = strict,
@@ -205,7 +241,7 @@ public fun Player.invDel(
         )
         delete(
             inv = targetInv,
-            obj = type2.id,
+            obj = type2.asRSCM(RSCMType.OBJ),
             count = count2,
             slot = null,
             strict = strict,
@@ -215,11 +251,11 @@ public fun Player.invDel(
 
 public fun Player.invDel(
     inv: Inventory,
-    type1: ObjType,
+    type1: ItemServerType,
     count1: Int,
-    type2: ObjType,
+    type2: ItemServerType,
     count2: Int,
-    type3: ObjType,
+    type3: ItemServerType,
     count3: Int,
     strict: Boolean = true,
     autoCommit: Boolean = true,

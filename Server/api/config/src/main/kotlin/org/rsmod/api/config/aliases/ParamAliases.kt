@@ -1,57 +1,59 @@
 package org.rsmod.api.config.aliases
 
-import org.rsmod.game.type.category.CategoryType
-import org.rsmod.game.type.comp.ComponentType
-import org.rsmod.game.type.headbar.HeadbarType
-import org.rsmod.game.type.hitmark.HitmarkType
-import org.rsmod.game.type.loc.LocType
-import org.rsmod.game.type.npc.NpcType
-import org.rsmod.game.type.obj.ObjType
-import org.rsmod.game.type.obj.UnpackedObjType
-import org.rsmod.game.type.param.ParamType
-import org.rsmod.game.type.proj.ProjAnimType
-import org.rsmod.game.type.seq.SeqType
-import org.rsmod.game.type.spot.SpotanimType
-import org.rsmod.game.type.stat.StatType
-import org.rsmod.game.type.synth.SynthType
-import org.rsmod.game.type.varbit.VarBitType
-import org.rsmod.game.type.varp.VarpType
+import dev.openrune.TypedParamType
+import dev.openrune.definition.type.DBRowType
+import dev.openrune.definition.type.HitSplatType
+import dev.openrune.definition.type.VarBitType
+import dev.openrune.definition.type.widget.ComponentType
+import dev.openrune.types.HealthBarServerType
+import dev.openrune.types.ItemServerType
+import dev.openrune.types.NpcServerType
+import dev.openrune.types.ObjectServerType
+import dev.openrune.types.ProjAnimType
+import dev.openrune.types.SequenceServerType
+import dev.openrune.types.StatType
+import dev.openrune.types.aconverted.CategoryType
+import dev.openrune.types.aconverted.SpotanimType
+import dev.openrune.types.aconverted.SynthType
+import dev.openrune.types.varp.VarpServerType
 import org.rsmod.map.CoordGrid
 
-typealias ParamInt = ParamType<Int>
+typealias ParamInt = TypedParamType<Int>
 
-typealias ParamStr = ParamType<String>
+typealias ParamDbRow = TypedParamType<DBRowType>
 
-typealias ParamBool = ParamType<Boolean>
+typealias ParamStr = TypedParamType<String>
 
-typealias ParamCategory = ParamType<CategoryType>
+typealias ParamBool = TypedParamType<Boolean>
 
-typealias ParamComponent = ParamType<ComponentType>
+typealias ParamCategory = TypedParamType<CategoryType>
 
-typealias ParamCoord = ParamType<CoordGrid>
+typealias ParamComponent = TypedParamType<ComponentType>
 
-typealias ParamHeadbar = ParamType<HeadbarType>
+typealias ParamCoord = TypedParamType<CoordGrid>
 
-typealias ParamHitmark = ParamType<HitmarkType>
+typealias ParamHeadbar = TypedParamType<HealthBarServerType>
 
-typealias ParamObj = ParamType<ObjType>
+typealias ParamHitmark = TypedParamType<HitSplatType>
 
-typealias ParamNamedObj = ParamType<UnpackedObjType>
+typealias ParamObj = TypedParamType<ItemServerType>
 
-typealias ParamLoc = ParamType<LocType>
+typealias ParamNamedObj = TypedParamType<ItemServerType>
 
-typealias ParamNpc = ParamType<NpcType>
+typealias ParamLoc = TypedParamType<ObjectServerType>
 
-typealias ParamProj = ParamType<ProjAnimType>
+typealias ParamNpc = TypedParamType<NpcServerType>
 
-typealias ParamSeq = ParamType<SeqType>
+typealias ParamProj = TypedParamType<ProjAnimType>
 
-typealias ParamSpot = ParamType<SpotanimType>
+typealias ParamSeq = TypedParamType<SequenceServerType>
 
-typealias ParamStat = ParamType<StatType>
+typealias ParamSpot = TypedParamType<SpotanimType>
 
-typealias ParamSynth = ParamType<SynthType>
+typealias ParamStat = TypedParamType<StatType>
 
-typealias ParamVarBit = ParamType<VarBitType>
+typealias ParamSynth = TypedParamType<SynthType>
 
-typealias ParamVarp = ParamType<VarpType>
+typealias ParamVarBit = TypedParamType<VarBitType>
+
+typealias ParamVarp = TypedParamType<VarpServerType>

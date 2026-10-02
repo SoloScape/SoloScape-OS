@@ -1,23 +1,25 @@
 package org.rsmod.api.combat.commons.ranged
 
-import org.rsmod.api.config.refs.categories
+import dev.openrune.types.ItemServerType
+import dev.openrune.util.Wearpos
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.player.back
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.torso
+import org.rsmod.api.player.worn.DizanasQuiver
+import org.rsmod.api.player.worn.RangedAmmoValidation
+import org.rsmod.api.player.worn.RangedAmmoValidation.Validation
 import org.rsmod.api.player.worn.WornUnequipOp
 import org.rsmod.api.random.GameRandom
 import org.rsmod.api.repo.obj.ObjRepository
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
+import org.rsmod.game.inv.InvObj
 import org.rsmod.game.inv.isType
 import org.rsmod.game.map.collision.isWalkBlocked
 import org.rsmod.game.obj.Obj
 import org.rsmod.game.queue.WorldQueueList
-import org.rsmod.game.type.obj.ObjType
-import org.rsmod.game.type.obj.ObjTypeList
-import org.rsmod.game.type.obj.UnpackedObjType
-import org.rsmod.game.type.obj.Wearpos
+import org.rsmod.game.type.getOrNull
 import org.rsmod.map.CoordGrid
 import org.rsmod.routefinder.collision.CollisionFlagMap
 
@@ -27,6 +29,19 @@ public object RangedAmmunition {
 
     /** The obj spawn duration when an ammunition is dropped on the ground after being fired. */
     public const val DEFAULT_AMMO_DROP_DURATION: Int = 200
+
+    /**
+     * Resolves the ammunition [player] would fire from [weapon].
+     *
+     * This is the obj in the ammo slot, unless the player wears a Dizana's quiver whose stored
+     * ammunition the weapon can fire while the ammo slot cannot supply anything usable (it is empty,
+     * holds a blessing, or holds ammunition of the wrong kind). The ammo slot always has priority.
+     *
+     * Pass the result to [attemptAmmoUsage] and later to the ammo consumption functions, which know
+     * whether it came from the ammo slot or the quiver.
+     */
+    public fun activeAmmo(player: Player, weapon: ItemServerType): InvObj? =
+        DizanasQuiver.activeAmmo(player, weapon)
 
     /**
      * Verifies that [weapon] can use [ammo] as valid ammunition and sends an appropriate error
@@ -40,10 +55,10 @@ public object RangedAmmunition {
      */
     public fun attemptAmmoUsage(
         player: Player,
-        weapon: UnpackedObjType,
-        ammo: UnpackedObjType?,
+        weapon: ItemServerType,
+        ammo: ItemServerType?,
     ): Boolean {
-        val crossbow = weapon.isCategoryType(categories.crossbow)
+        val crossbow = weapon.isCategoryType("category.crossbow")
         if (crossbow) {
             if (ammo == null) {
                 player.mes("There is no ammo left in your quiver.")
@@ -72,7 +87,7 @@ public object RangedAmmunition {
             }
         }
 
-        val bow = weapon.isCategoryType(categories.bow)
+        val bow = weapon.isCategoryType("category.bow")
         if (bow) {
             if (ammo == null) {
                 player.mes("There is no ammo left in your quiver.")
@@ -93,7 +108,7 @@ public object RangedAmmunition {
             }
         }
 
-        val ballista = weapon.isCategoryType(categories.ballista)
+        val ballista = weapon.isCategoryType("category.ballista")
         if (ballista) {
             if (ammo == null) {
                 player.mes("There are no javelins in your quiver.")
@@ -113,29 +128,46 @@ public object RangedAmmunition {
         return true
     }
 
-    public fun conserveAmmo(player: Player, objTypes: ObjTypeList, random: GameRandom): Boolean {
-        val cape = objTypes.getOrNull(player.back)
-        if (cape != null) {
-            val recoveryRate = cape.paramOrNull(params.ammo_recovery_rate) ?: return false
+    /**
+     * Rolls whether the worn cape conserves the ammunition about to be fired. Ava's devices carry
+     * their chance as an `ammo_recovery_rate` param; a Dizana's quiver only conserves ammunition
+     * once one of those devices has been applied to it (see [DizanasQuiver.ammoSaveRate]).
+     */
+    public fun conserveAmmo(player: Player, random: GameRandom): Boolean {
+        val cape = getOrNull(player.back) ?: return false
 
-            val body = objTypes.getOrNull(player.torso)
-            if (body != null && body.param(params.metallic_interference)) {
-                return false
+        val recoveryRate =
+            if (DizanasQuiver.isQuiver(cape)) {
+                DizanasQuiver.ammoSaveRate(player) ?: return false
+            } else {
+                cape.paramOrNull(params.ammo_recovery_rate) ?: return false
             }
 
-            return recoveryRate > random.of(maxExclusive = 100)
+        val body = getOrNull(player.torso)
+        if (body != null && body.param(params.metallic_interference)) {
+            return false
         }
-        return false
+
+        return recoveryRate > random.of(maxExclusive = 100)
     }
 
+    /**
+     * Removes [detract] ammunition of type [wornType] from [wearpos]. When [wearpos] is the ammo
+     * slot but the ammunition being fired is the one stored in a worn Dizana's quiver, the stored
+     * stack is reduced instead.
+     */
     public fun detractAmmo(
         player: Player,
         wearpos: Wearpos,
-        wornType: UnpackedObjType,
+        wornType: ItemServerType,
         detract: Int,
         eventBus: EventBus,
     ) {
         val startObj = player.worn[wearpos.slot]
+        if (wearpos == Wearpos.Quiver && !startObj.isType(wornType)) {
+            detractStoredAmmo(player, wornType, detract)
+            return
+        }
         check(startObj.isType(wornType)) {
             "Expected worn obj to match `wornType`: wearpos=$wearpos, obj=$startObj, type=$wornType"
         }
@@ -162,10 +194,22 @@ public object RangedAmmunition {
         }
     }
 
+    private fun detractStoredAmmo(player: Player, ammoType: ItemServerType, detract: Int) {
+        val stored = checkNotNull(DizanasQuiver.storedAmmo(player)) { "No quiver ammo stored." }
+        check(stored.isType(ammoType)) {
+            "Expected quiver ammo to match `wornType`: stored=$stored, type=$ammoType"
+        }
+        check(stored.count >= detract) {
+            "Unexpected low quiver ammo count: ${stored.count} (expected=$detract)"
+        }
+        val remaining = stored.count - detract
+        DizanasQuiver.setStoredAmmo(player, if (remaining > 0) stored.copy(count = remaining) else null)
+    }
+
     public fun attemptAmmoDrop(
         player: Player,
         delay: Int,
-        ammoType: ObjType,
+        ammoType: ItemServerType,
         ammoCount: Int,
         dropCoord: CoordGrid,
         dropDuration: Int,
@@ -186,68 +230,12 @@ public object RangedAmmunition {
         worldQueues.add(delay) { objRepo.add(obj, dropDuration) }
     }
 
-    public fun validateArrows(weapon: UnpackedObjType, ammo: UnpackedObjType): Validation {
-        val requiredAmmo = weapon.paramOrNull(params.required_ammo) ?: categories.arrows
+    public fun validateArrows(weapon: ItemServerType, ammo: ItemServerType): Validation =
+        RangedAmmoValidation.validateArrows(weapon, ammo)
 
-        // Dragon arrows have a separate category from standard arrows, but any bow that accepts
-        // regular arrows can also use dragon arrows, provided the `levelrequire` threshold is met.
-        val isAlternativeAmmo =
-            requiredAmmo.isType(categories.arrows) && ammo.isCategoryType(categories.dragon_arrow)
+    public fun validateBolts(weapon: ItemServerType, ammo: ItemServerType): Validation =
+        RangedAmmoValidation.validateBolts(weapon, ammo)
 
-        if (!ammo.isCategoryType(requiredAmmo) && !isAlternativeAmmo) {
-            return Validation.Invalid.IncorrectAmmo
-        }
-
-        if (ammo.param(params.levelrequire) > weapon.param(params.levelrequire)) {
-            return Validation.Invalid.LevelTooHigh
-        }
-
-        return Validation.Valid
-    }
-
-    public fun validateBolts(weapon: UnpackedObjType, ammo: UnpackedObjType): Validation {
-        val requiredAmmo = weapon.paramOrNull(params.required_ammo) ?: categories.crossbow_bolt
-        if (!ammo.isCategoryType(requiredAmmo)) {
-            return if (weapon.param(params.bone_weapon) != 0) {
-                Validation.Invalid.BoneWeaponIncorrectAmmo
-            } else {
-                Validation.Invalid.IncorrectAmmo
-            }
-        }
-
-        if (ammo.param(params.bone_weapon) != 0 && weapon.param(params.bone_weapon) == 0) {
-            return Validation.Invalid.ExpectedBoneWeapon
-        }
-
-        if (ammo.param(params.levelrequire) > weapon.param(params.levelrequire)) {
-            return Validation.Invalid.LevelTooHigh
-        }
-
-        return Validation.Valid
-    }
-
-    public fun validateJavelins(weapon: UnpackedObjType, ammo: UnpackedObjType): Validation {
-        val requiredAmmo = weapon.paramOrNull(params.required_ammo) ?: categories.javelin
-        return if (!ammo.isCategoryType(requiredAmmo)) {
-            Validation.Invalid.IncorrectAmmo
-        } else {
-            return Validation.Valid
-        }
-    }
-
-    public sealed class Validation {
-        public data object Valid : Validation()
-
-        public sealed class Invalid : Validation() {
-            public data object LevelTooHigh : Invalid()
-
-            public sealed class Ammo : Invalid()
-
-            public data object IncorrectAmmo : Ammo()
-
-            public data object BoneWeaponIncorrectAmmo : Ammo()
-
-            public data object ExpectedBoneWeapon : Ammo()
-        }
-    }
+    public fun validateJavelins(weapon: ItemServerType, ammo: ItemServerType): Validation =
+        RangedAmmoValidation.validateJavelins(weapon, ammo)
 }

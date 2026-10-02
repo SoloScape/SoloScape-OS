@@ -1,11 +1,10 @@
 package org.rsmod.api.game.process.player
 
-import jakarta.inject.Inject
+import dev.openrune.util.Wearpos
 import kotlin.math.max
 import kotlin.math.min
 import org.rsmod.api.config.constants
 import org.rsmod.api.config.refs.params
-import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.inv.weight.InvWeight
 import org.rsmod.api.player.output.UpdateRun
 import org.rsmod.api.player.stat.agilityLvl
@@ -13,10 +12,9 @@ import org.rsmod.api.player.vars.setActiveMoveSpeed
 import org.rsmod.api.player.vars.varMoveSpeed
 import org.rsmod.game.entity.Player
 import org.rsmod.game.movement.MoveSpeed
-import org.rsmod.game.type.obj.ObjTypeList
-import org.rsmod.game.type.obj.Wearpos
+import org.rsmod.game.type.getOrNull
 
-public class PlayerRunUpdateProcessor @Inject constructor(private val objTypes: ObjTypeList) {
+public class PlayerRunUpdateProcessor {
     public fun process(player: Player) {
         player.updateRunWeight()
         player.updateRunEnergy()
@@ -31,7 +29,7 @@ public class PlayerRunUpdateProcessor @Inject constructor(private val objTypes: 
     private fun Player.updateRunEnergy() {
         val startRunEnergy = runEnergy
 
-        if (pendingStepCount > 1) {
+        if (pendingStepCount > 1 && !forcedRoute) {
             decreaseRunEnergy()
         } else {
             restoreRunEnergy()
@@ -60,11 +58,11 @@ public class PlayerRunUpdateProcessor @Inject constructor(private val objTypes: 
     }
 
     private fun Player.hasImprovedStaminaEffect(): Boolean {
-        return vars[varbits.improved_stamina_passive] == 1
+        return vars["varbit.improved_stamina_passive"] == 1
     }
 
     private fun Player.hasStaminaEffect(): Boolean {
-        return vars[varbits.stamina_active] == 1
+        return vars["varbit.stamina_active"] == 1
     }
 
     private fun Player.isRunning(): Boolean {
@@ -85,7 +83,7 @@ public class PlayerRunUpdateProcessor @Inject constructor(private val objTypes: 
         var pieces = 0
 
         for (wearpos in gracefulWearpos) {
-            val type = objTypes.getOrNull(worn[wearpos.slot]) ?: continue
+            val type = getOrNull(worn[wearpos.slot]) ?: continue
             val rate = type.paramOrNull(params.graceful_restore_rate) ?: continue
             wornRate += rate
             pieces++
@@ -114,7 +112,7 @@ public class PlayerRunUpdateProcessor @Inject constructor(private val objTypes: 
     }
 
     private fun Player.calculateWeightInGrams(): Int {
-        return InvWeight.calculateWeightInGrams(this, objTypes)
+        return InvWeight.calculateWeightInGrams(this)
     }
 
     private companion object {

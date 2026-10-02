@@ -2,6 +2,7 @@ package org.rsmod.api.game.process.player
 
 import jakarta.inject.Inject
 import org.rsmod.api.player.forceDisconnect
+import org.rsmod.game.entity.PlayerPersistenceHints
 import org.rsmod.api.player.ui.closeSubs
 import org.rsmod.api.player.ui.ifClose
 import org.rsmod.api.utils.logging.GameExceptionHandler
@@ -9,7 +10,6 @@ import org.rsmod.events.EventBus
 import org.rsmod.game.MapClock
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.util.ShuffledPlayerList
-import org.rsmod.game.type.obj.ObjTypeList
 import org.rsmod.game.ui.Component
 
 public class PlayerMainProcess
@@ -17,7 +17,6 @@ public class PlayerMainProcess
 constructor(
     private val mapClock: MapClock,
     private val eventBus: EventBus,
-    private val objTypes: ObjTypeList,
     private val players: ShuffledPlayerList,
     private val queues: PlayerQueueProcessor,
     private val timers: PlayerTimerProcessor,
@@ -38,17 +37,22 @@ constructor(
                 continue
             }
             player.processedMapClock = mapClock.cycle
-            player.tryOrDisconnect {
-                resumePausedProcess()
-                refreshFaceEntity()
-                processIfCloseQueue()
-                processIfCloseModal()
-                processQueues()
-                processTimers()
-                processAreas()
-                processEngineQueues()
-                processInteractions()
-                processIfCloseDisconnect()
+            PlayerPersistenceHints.enter(player)
+            try {
+                player.tryOrDisconnect {
+                    resumePausedProcess()
+                    refreshFaceEntity()
+                    processIfCloseQueue()
+                    processIfCloseModal()
+                    processQueues()
+                    processTimers()
+                    processAreas()
+                    processEngineQueues()
+                    processInteractions()
+                    processIfCloseDisconnect()
+                }
+            } finally {
+                PlayerPersistenceHints.leave()
             }
         }
     }

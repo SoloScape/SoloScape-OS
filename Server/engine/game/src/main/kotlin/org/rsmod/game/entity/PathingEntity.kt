@@ -1,10 +1,15 @@
 package org.rsmod.game.entity
 
+import dev.openrune.ServerCacheManager
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.WalkTriggerType
 import it.unimi.dsi.fastutil.longs.LongArrayList
 import kotlin.coroutines.startCoroutine
 import org.rsmod.annotations.InternalApi
 import org.rsmod.coroutine.GameCoroutine
 import org.rsmod.coroutine.suspension.GameCoroutineSimpleCompletion
+import org.rsmod.game.damage.DamageContributions
 import org.rsmod.game.entity.player.ProtectedAccessLostException
 import org.rsmod.game.entity.util.EntityExactMove
 import org.rsmod.game.entity.util.EntityFaceAngle
@@ -15,15 +20,15 @@ import org.rsmod.game.loc.BoundLocInfo
 import org.rsmod.game.loc.LocInfo
 import org.rsmod.game.map.CardinalDirection
 import org.rsmod.game.map.Direction
+import org.rsmod.game.map.Direction.Companion.angleBetween
+import org.rsmod.game.map.Direction.Companion.between
+import org.rsmod.game.map.Direction.Companion.cardinalBetween
+import org.rsmod.game.map.Direction.Companion.ordinalBetween
 import org.rsmod.game.map.OrdinalDirection
 import org.rsmod.game.movement.MoveSpeed
 import org.rsmod.game.movement.RouteDestination
 import org.rsmod.game.movement.RouteRequest
 import org.rsmod.game.seq.EntitySeq
-import org.rsmod.game.type.seq.SeqType
-import org.rsmod.game.type.spot.SpotanimType
-import org.rsmod.game.type.walktrig.WalkTriggerPriority
-import org.rsmod.game.type.walktrig.WalkTriggerType
 import org.rsmod.map.CoordGrid
 import org.rsmod.map.util.Bounds
 import org.rsmod.map.zone.ZoneKey
@@ -40,6 +45,8 @@ public sealed class PathingEntity {
     public abstract val blockWalkCollisionFlag: Int?
 
     public abstract val heroPoints: HeroPoints
+
+    public abstract val damageContributions: DamageContributions
 
     public var slotId: Int = INVALID_SLOT
 
@@ -96,6 +103,10 @@ public sealed class PathingEntity {
     public var activeCoroutine: GameCoroutine? = null
     public val routeDestination: RouteDestination = RouteDestination()
     public var routeRequest: RouteRequest? = null
+
+    /** Collision bypass for a scripted crossing; cleared when its route is aborted. */
+    public var forcedRoute: Boolean = false
+
     // Used for setting temporary move speed for single requests, aka ctrl run mode.
     public var tempMoveSpeed: MoveSpeed? = null
     public var moveSpeed: MoveSpeed = MoveSpeed.Stationary
@@ -210,6 +221,29 @@ public sealed class PathingEntity {
         return coroutine
     }
 
+    /**
+     * Runs [block] in its own coroutine, leaving [activeCoroutine] and [delay] untouched.
+     *
+     * [launch] cancels the active coroutine before the new block gets to decide whether it is even
+     * allowed to run, so any protection check inside that block is evaluated after the script it
+     * was guarding has already been destroyed. This entry point exists for input that must be
+     * answered on the same cycle it arrives without disturbing a suspended script.
+     *
+     * Only [activeCoroutine] is advanced by the game loop, so a [block] that suspends is cancelled
+     * rather than left stranded.
+     *
+     * @return `false` if [block] suspended and had to be cancelled.
+     */
+    public fun launchBeside(block: suspend GameCoroutine.() -> Unit): Boolean {
+        val coroutine = GameCoroutine()
+        block.startCoroutine(coroutine, GameCoroutineSimpleCompletion)
+        if (coroutine.isSuspended) {
+            coroutine.cancel()
+            return false
+        }
+        return true
+    }
+
     public fun advanceActiveCoroutine() {
         try {
             activeCoroutine?.advance()
@@ -241,17 +275,20 @@ public sealed class PathingEntity {
         routeRequest = null
         tempMoveSpeed = null
         routeDestination.clear()
+        forcedRoute = false
     }
 
     public fun clearInteraction() {
         interaction = null
     }
 
-    public abstract fun anim(seq: SeqType, delay: Int = 0, priority: Int = seq.priority)
+    public abstract fun anim(
+        seq: String, delay: Int = 0, priority: Int = ServerCacheManager.getAnim(seq.asRSCM(RSCMType.SEQ))!!.priority
+    )
 
     public abstract fun resetAnim()
 
-    public abstract fun spotanim(spot: SpotanimType, delay: Int = 0, height: Int = 0, slot: Int = 0)
+    public abstract fun spotanim(spot: String, delay: Int = 0, height: Int = 0, slot: Int = 0)
 
     /**
      * Sets the [pendingFaceSquare] for [target] to face as soon as this [PathingEntity] is not
@@ -284,7 +321,7 @@ public sealed class PathingEntity {
     /**
      * This function will call [faceSquare] with arguments based on the provided [loc] and its
      * dimensions ([width] and [length]). The dimensions should be the unmodified values from the
-     * [org.rsmod.game.type.loc.UnpackedLocType] of the loc. This method automatically adjusts the
+     * [dev.openrune.types.ObjectServerType] of the loc. This method automatically adjusts the
      * dimensions according to the loc's angle to ensure that the PathingEntity faces the correct
      * angle.
      *
@@ -383,15 +420,15 @@ public sealed class PathingEntity {
     }
 
     public fun calculateDirection(target: PathingEntity): Direction {
-        return Direction.between(bounds(), target.bounds())
+        return between(bounds(), target.bounds())
     }
 
     public fun calculateCardinalDirection(target: PathingEntity): CardinalDirection {
-        return Direction.cardinalBetween(bounds(), target.bounds())
+        return cardinalBetween(bounds(), target.bounds())
     }
 
     public fun calculateOrdinalDirection(target: PathingEntity): OrdinalDirection {
-        return Direction.ordinalBetween(bounds(), target.bounds())
+        return ordinalBetween(bounds(), target.bounds())
     }
 
     public fun calculateAngle(target: CoordGrid, width: Int, length: Int): Int? =
@@ -400,7 +437,7 @@ public sealed class PathingEntity {
             coords -> null
             else -> {
                 val targetBounds = Bounds(target, width, length)
-                Direction.angleBetween(bounds(), targetBounds)
+                angleBetween(bounds(), targetBounds)
             }
         }
 
@@ -438,12 +475,16 @@ public sealed class PathingEntity {
      * @see [WalkTriggerPriority.Low]
      * @see [WalkTriggerPriority.High]
      */
-    public fun walkTrigger(trigger: WalkTriggerType): Boolean {
+    public fun walkTrigger(trigger: String): Boolean {
+
+        val triggerType = ServerCacheManager.getWalkTrigger(trigger.asRSCM(RSCMType.WALKTRIGGER))
+            ?: error("Invalid walk trigger: $trigger")
+
         val previous = walkTrigger?.priority
-        if (!trigger.priority.canOverwrite(previous)) {
+        if (!triggerType.priority.canOverwrite(previous)) {
             return false
         }
-        walkTrigger = trigger
+        walkTrigger = triggerType
         return true
     }
 
@@ -457,6 +498,21 @@ public sealed class PathingEntity {
         }
         val uuid = source.uuid ?: error("Unexpected null uuid for player: $source")
         heroPoints.add(uuid, points)
+    }
+
+    public fun recordDamage(source: Player, damage: Int) {
+        if (damage <= 0) {
+            return
+        }
+        damageContributions.record(source, damage)
+        heroPoints(source, damage)
+    }
+
+    public fun recordDamage(source: Npc, damage: Int) {
+        if (damage <= 0) {
+            return
+        }
+        damageContributions.record(source, damage)
     }
 
     public fun findHero(playerList: PlayerList): Player? {
@@ -474,6 +530,7 @@ public sealed class PathingEntity {
     @InternalApi
     public fun clearHeroPoints() {
         heroPoints.clear()
+        damageContributions.clear()
     }
 
     @InternalApi

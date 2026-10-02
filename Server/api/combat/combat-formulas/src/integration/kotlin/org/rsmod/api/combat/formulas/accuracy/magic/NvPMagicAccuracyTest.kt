@@ -2,15 +2,15 @@ package org.rsmod.api.combat.formulas.accuracy.magic
 
 import com.google.inject.AbstractModule
 import com.google.inject.Scopes
+import dev.openrune.definition.type.VarBitType
+import dev.openrune.types.ItemServerType
+import dev.openrune.types.npc.UnpackedNpcType
 import jakarta.inject.Inject
 import org.rsmod.api.combat.commons.CombatStance
 import org.rsmod.api.combat.formulas.test_npcs
 import org.rsmod.api.combat.weapon.scripts.WeaponAttackStylesScript
 import org.rsmod.api.combat.weapon.styles.AttackStyles
-import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.stats
-import org.rsmod.api.config.refs.varbits
-import org.rsmod.api.config.refs.varps
 import org.rsmod.api.player.back
 import org.rsmod.api.player.feet
 import org.rsmod.api.player.front
@@ -28,9 +28,6 @@ import org.rsmod.api.testing.params.TestWithArgs
 import org.rsmod.api.testing.params.testArgsOfSingleParam
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.inv.InvObj
-import org.rsmod.game.type.npc.UnpackedNpcType
-import org.rsmod.game.type.obj.ObjType
-import org.rsmod.game.type.varbit.VarBitType
 
 class NvPMagicAccuracyTest {
     @TestWithArgs(MatchupProvider::class)
@@ -48,7 +45,7 @@ class NvPMagicAccuracyTest {
             player.setBaseLevel(stats.hitpoints, matchup.baseHitpointsLvl)
             player.setCurrentLevel(stats.magic, matchup.magicLvl)
             player.setBaseLevel(stats.magic, matchup.baseMagicLvl)
-            player.setVarp(varps.com_mode, matchup.blockStance.varValue)
+            player.setVarp("varp.com_mode", matchup.blockStance.varValue)
 
             player.hat = matchup.hat
             player.back = matchup.back
@@ -96,25 +93,25 @@ class NvPMagicAccuracyTest {
 
         fun withBlockStance(stance: CombatStance) = copy(blockStance = stance)
 
-        fun withHelm(obj: ObjType?) = copy(hat = obj?.let(::InvObj))
+        fun withHelm(obj: ItemServerType?) = copy(hat = obj?.let(::InvObj))
 
-        fun withCape(obj: ObjType?) = copy(back = obj?.let(::InvObj))
+        fun withCape(obj: ItemServerType?) = copy(back = obj?.let(::InvObj))
 
-        fun withAmulet(obj: ObjType?) = copy(front = obj?.let(::InvObj))
+        fun withAmulet(obj: ItemServerType?) = copy(front = obj?.let(::InvObj))
 
-        fun withWeapon(obj: ObjType?) = copy(righthand = obj?.let(::InvObj))
+        fun withWeapon(obj: ItemServerType?) = copy(righthand = obj?.let(::InvObj))
 
-        fun withBody(obj: ObjType?) = copy(torso = obj?.let(::InvObj))
+        fun withBody(obj: ItemServerType?) = copy(torso = obj?.let(::InvObj))
 
-        fun withShield(obj: ObjType?) = copy(lefthand = obj?.let(::InvObj))
+        fun withShield(obj: ItemServerType?) = copy(lefthand = obj?.let(::InvObj))
 
-        fun withLegs(obj: ObjType?) = copy(legs = obj?.let(::InvObj))
+        fun withLegs(obj: ItemServerType?) = copy(legs = obj?.let(::InvObj))
 
-        fun withGloves(obj: ObjType?) = copy(hands = obj?.let(::InvObj))
+        fun withGloves(obj: ItemServerType?) = copy(hands = obj?.let(::InvObj))
 
-        fun withFeet(obj: ObjType?) = copy(feet = obj?.let(::InvObj))
+        fun withFeet(obj: ItemServerType?) = copy(feet = obj?.let(::InvObj))
 
-        fun withRing(obj: ObjType?) = copy(ring = obj?.let(::InvObj))
+        fun withRing(obj: ItemServerType?) = copy(ring = obj?.let(::InvObj))
 
         fun withDefenceLevel(defenceLvl: Int) = copy(defenceLvl = defenceLvl)
 
@@ -184,30 +181,30 @@ class NvPMagicAccuracyTest {
                     .withNpcSource(test_npcs.dagannoth_prime)
                     .withBlockStance(CombatStance.Stance4) // Unarmed "Block" stance.
                     .withMagicLevel(magicLvl = 50)
-                    .withPrayers(varbits.augury),
+                    .withPrayers("varbit.prayer_augury"),
                 Matchup(expectedAccuracy = 51.11)
                     .withNpcSource(test_npcs.dagannoth_prime)
                     .withSaturatedHeart()
-                    .withHelm(objs.ancestral_hat)
-                    .withCape(objs.imbued_saradomin_cape)
-                    .withAmulet(objs.occult_necklace)
-                    .withBody(objs.ancestral_robe_top)
-                    .withLegs(objs.ancestral_robe_bottom)
-                    .withGloves(objs.tormented_bracelet)
-                    .withFeet(objs.eternal_boots)
-                    .withRing(objs.magus_ring)
-                    .withPrayers(varbits.mystic_will),
+                    .withHelm("obj.ancestral_hat")
+                    .withCape("obj.ma2_saradomin_cape")
+                    .withAmulet("obj.occult_necklace")
+                    .withBody("obj.ancestral_robe_top")
+                    .withLegs("obj.ancestral_robe_bottom")
+                    .withGloves("obj.zenyte_bracelet_enchanted")
+                    .withFeet("obj.eternal_boots")
+                    .withRing("obj.magus_ring")
+                    .withPrayers("varbit.prayer_mysticwill"),
                 Matchup(expectedAccuracy = 83.38)
                     .withNpcSource(test_npcs.dagannoth_prime)
-                    .withHelm(objs.torva_full_helm)
-                    .withBody(objs.torva_platebody)
-                    .withLegs(objs.torva_platelegs)
-                    .withCape(objs.infernal_cape)
-                    .withAmulet(objs.amulet_of_rancour)
-                    .withGloves(objs.ferocious_gloves)
-                    .withFeet(objs.primordial_boots)
-                    .withRing(objs.ultor_ring)
-                    .withPrayers(varbits.piety)
+                    .withHelm("obj.torva_helm")
+                    .withBody("obj.torva_chest")
+                    .withLegs("obj.torva_legs")
+                    .withCape("obj.infernal_cape")
+                    .withAmulet("obj.amulet_of_rancour")
+                    .withGloves("obj.ferocious_gloves")
+                    .withFeet("obj.primordial_boots")
+                    .withRing("obj.ultor_ring")
+                    .withPrayers("varbit.prayer_piety")
                     .withDefenceLevel(defenceLvl = 75),
             )
         }

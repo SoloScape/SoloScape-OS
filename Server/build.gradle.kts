@@ -1,3 +1,5 @@
+import javax.inject.Inject
+
 plugins {
     alias(libs.plugins.manes.versions)
     alias(libs.plugins.gradle.download)
@@ -20,6 +22,33 @@ tasks.register("run") {
     dependsOn(":server:app:run")
 }
 
+tasks.register("configureOsrsMcp") {
+    group = "MCP"
+    description =
+        "Alias for :tools:osrs-mcp:configureOsrsMcp (interactive menu if -Pclient omitted; same -PdebugMcp / -PdryRun)"
+    dependsOn(":tools:osrs-mcp:configureOsrsMcp")
+}
+
+tasks.register("updateOsrsMcp") {
+    group = "MCP"
+    description =
+        "Alias for :tools:osrs-mcp:updateOsrsMcp (rebuild install layout + refresh MCP client configs)."
+    dependsOn(":tools:osrs-mcp:updateOsrsMcp")
+}
+
+tasks.register("removeOsrsMcp") {
+    group = "MCP"
+    description =
+        "Alias for :tools:osrs-mcp:removeOsrsMcp (strip MCP entries, optional Claude global + install cleanup)."
+    dependsOn(":tools:osrs-mcp:removeOsrsMcp")
+}
+
+tasks.register("runMcp") {
+    group = "MCP"
+    description = "Runs the osrs-mcp stdio MCP server (alias for :tools:osrs-mcp:runMcp)."
+    dependsOn(":tools:osrs-mcp:runMcp")
+}
+
 tasks.register<JavaExec>("install") {
     group = "installation"
     description = "Runs the complete RS Mod server installation task."
@@ -27,7 +56,22 @@ tasks.register<JavaExec>("install") {
     mainClass.set("org.rsmod.server.install.GameServerInstallKt")
     classpath = sourceSets["main"].runtimeClasspath
 
-    doLast { logger.lifecycle("Installation process completed.") }
+    dependsOn(":or-cache:freshCache")
+
+    val fs = objects.newInstance<InjectedFileSystem>().fs
+    val rootDir = layout.projectDirectory
+    val exampleConfig = rootDir.file("game.example.yml").asFile
+    val gameConfig = rootDir.file("game.yml").asFile
+
+    doLast {
+        if (!gameConfig.exists()) {
+            fs.copy {
+                into(rootDir)
+                from(exampleConfig) { rename { "game.yml" } }
+            }
+        }
+        logger.lifecycle("Installation process completed.")
+    }
 }
 
 tasks.register<JavaExec>("cleanInstall") {
@@ -40,35 +84,18 @@ tasks.register<JavaExec>("cleanInstall") {
 
     doFirst { logger.lifecycle("Starting clean up of any previous installation attempts...") }
     doLast { logger.lifecycle("Clean-up process completed. You can now run the `install` task.") }
-}
 
-tasks.register<JavaExec>("downloadCache") {
-    group = "cache"
-    description = "Runs the cache download & extract task."
-
-    args = getArgsFromProperty("cacheDownload")
-    mainClass.set("org.rsmod.server.install.GameServerCacheDownloaderKt")
-    classpath = sourceSets["main"].runtimeClasspath
-
-    doFirst { logger.lifecycle("Starting the cache download process...") }
-    doLast { logger.lifecycle("Cache download completed.") }
-}
-
-tasks.register<JavaExec>("packCache") {
-    group = "cache"
-    description = "Runs the cache packer task."
-
-    args = getArgsFromProperty("cachePack")
-    mainClass.set("org.rsmod.server.install.GameServerCachePackerKt")
-    classpath = sourceSets["main"].runtimeClasspath
-
-    doFirst { logger.lifecycle("Starting the cache-packing process...") }
-    doLast { logger.lifecycle("Cache-packing process completed.") }
+    finalizedBy("install")
 }
 
 tasks.register<JavaExec>("generateRsa") {
     group = "security"
-    description = "Runs the rsa-key generation task."
+    description =
+        "Generates RSA network keys when .data/game.key or .data/client.key is missing."
+
+    val gameKey = layout.projectDirectory.file(".data/game.key")
+    val clientKey = layout.projectDirectory.file(".data/client.key")
+    onlyIf { !gameKey.asFile.isFile || !clientKey.asFile.isFile }
 
     args = getArgsFromProperty("rsa")
     mainClass.set("org.rsmod.server.install.GameNetworkRsaGeneratorKt")
@@ -97,6 +124,10 @@ tasks.register<JavaExec>("setupLogbackAdvanced") {
 
     doFirst { logger.lifecycle("Starting logback copy for advanced configuration...") }
     doLast { logger.lifecycle("Logback advanced configuration copied successfully.") }
+}
+
+interface InjectedFileSystem {
+    @get:Inject val fs: FileSystemOperations
 }
 
 fun getArgsFromProperty(propertyName: String): List<String> {

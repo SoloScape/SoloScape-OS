@@ -14,8 +14,8 @@ import org.rsmod.api.combat.player.resolveAutocastSpell
 import org.rsmod.api.combat.player.resolveCombatAttack
 import org.rsmod.api.combat.weapon.styles.AttackStyles
 import org.rsmod.api.combat.weapon.types.AttackTypes
-import org.rsmod.api.config.refs.categories
-import org.rsmod.api.config.refs.queues
+import org.rsmod.api.death.NpcAttackValidateHook
+import org.rsmod.api.death.NpcAttackValidateResult
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.righthand
 import org.rsmod.api.script.advanced.onDefaultApNpc2
@@ -24,20 +24,20 @@ import org.rsmod.api.script.onApNpcT
 import org.rsmod.api.spells.MagicSpellRegistry
 import org.rsmod.api.spells.autocast.AutocastWeapons
 import org.rsmod.game.entity.Npc
-import org.rsmod.game.type.obj.ObjTypeList
+import org.rsmod.game.type.getOrNull
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
 internal class PvNCombatScript
 @Inject
 constructor(
-    private val objTypes: ObjTypeList,
     private val styles: AttackStyles,
     private val types: AttackTypes,
     private val combat: PvNCombat,
     private val spells: MagicSpellRegistry,
     private val runes: MagicRuneManager,
     private val autocast: AutocastWeapons,
+    private val attackValidateHooks: Set<NpcAttackValidateHook>,
 ) : PluginScript() {
     override fun ScriptContext.startup() {
         onDefaultApNpc2 { attemptCombatAp(it.npc) }
@@ -70,7 +70,7 @@ constructor(
             return
         }
 
-        val spell = resolveAutocastSpell(objTypes, spells, runes, autocast)
+        val spell = resolveAutocastSpell(spells, runes, autocast)
         val attack = resolveCombatAttack(player.righthand, type, style, spell)
         combat.attack(this, target, attack)
     }
@@ -82,7 +82,7 @@ constructor(
         val type = types.get(player)
         val style = styles.get(player)
 
-        val spell = resolveAutocastSpell(objTypes, spells, runes, autocast)
+        val spell = resolveAutocastSpell(spells, runes, autocast)
         val attack = resolveCombatAttack(player.righthand, type, style, spell)
         combat.attack(this, target, attack)
     }
@@ -104,16 +104,24 @@ constructor(
     }
 
     private fun ProtectedAccess.canAttack(npc: Npc): Boolean {
-        // TODO(combat): Handle "can attack hooks" here. Seems like the ones that give dialogues
-        //  have a cool-down period, but it's more than likely something hardcoded into
-        //  their specific conditions. Some npcs like the mage arena (wilderness) npcs
-        //  don't give any sort of message, but simply won't allow players to melee them.
-        //  (Will stop at ap range, doesn't drag you into melee range)
+        var bypassSingleWayPvn = false
+        for (hook in attackValidateHooks) {
+            when (val result = hook.validate(player, npc)) {
+                is NpcAttackValidateResult.Deny -> {
+                    if (result.message.isNotEmpty()) {
+                        mes(result.message)
+                    }
+                    return false
+                }
+                NpcAttackValidateResult.BypassSingleWayPvnRestriction -> bypassSingleWayPvn = true
+                NpcAttackValidateResult.Pass -> Unit
+            }
+        }
 
         // Note: Dinh's bulwark conditions occur _before_ multi-combat area checks and _after_
         // "can attack" hooks.
-        val weapon = objTypes.getOrNull(player.righthand)
-        if (weapon != null && weapon.isCategoryType(categories.dinhs_bulwark)) {
+        val weapon = getOrNull(player.righthand)
+        if (weapon != null && weapon.isCategoryType("category.dinhs_bulwark")) {
             val attackStyle = styles.get(player)
             // Dinh's "Block" attack style uses `AggressiveMelee` as its "dummy" attack style.
             if (attackStyle == AttackStyle.AggressiveMelee) {
@@ -126,14 +134,14 @@ constructor(
         // Dinh's bulwark style-switching delay is added to a queue and is applied globally during
         // this condition check. This means even if you quickly change to another melee weapon and
         // re-interact with a target, you will _not_ move into op range.
-        if (queues.dinhs_combat_delay in player.queueList) {
+        if ("queue.dinhs_combat_delay" in player.queueList) {
             clearPendingAction()
             return false
         }
 
         // TODO(combat): Add singles plus support.
         val singleCombat = !mapMultiway()
-        if (singleCombat) {
+        if (singleCombat && !bypassSingleWayPvn) {
             if (isInPvpCombat()) {
                 spam("I'm already under attack.")
                 return false

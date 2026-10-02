@@ -1,5 +1,9 @@
 package org.rsmod.api.weapons
 
+import dev.openrune.types.ItemServerType
+import dev.openrune.types.ProjAnimType
+import dev.openrune.types.aconverted.SpotanimType
+import dev.openrune.types.aconverted.SynthType
 import jakarta.inject.Inject
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.commons.styles.MeleeAttackStyle
@@ -13,15 +17,8 @@ import org.rsmod.game.entity.PathingEntity
 import org.rsmod.game.entity.Player
 import org.rsmod.game.hit.Hit
 import org.rsmod.game.proj.ProjAnim
-import org.rsmod.game.type.obj.ObjType
-import org.rsmod.game.type.obj.ObjTypeList
-import org.rsmod.game.type.proj.ProjAnimType
-import org.rsmod.game.type.spot.SpotanimType
-import org.rsmod.game.type.synth.SynthType
 
-public class WeaponAttackManager
-@Inject
-constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttackManager) {
+public class WeaponAttackManager @Inject constructor(private val manager: PlayerAttackManager) {
     /**
      * Sets [Player.actionDelay] to the current map clock + [cycles].
      *
@@ -133,6 +130,7 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
         attackType: MeleeAttackType? = attack.type,
         attackStyle: MeleeAttackStyle? = attack.style,
         blockType: MeleeAttackType? = attack.type,
+        roundMaxHitUp: Boolean = false,
     ): Int =
         manager.rollMeleeDamage(
             source = source.player,
@@ -143,6 +141,7 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
             attackType = attackType,
             attackStyle = attackStyle,
             blockType = blockType,
+            roundMaxHitUp = roundMaxHitUp,
         )
 
     /** @see [PlayerAttackManager.rollMeleeAccuracy] */
@@ -170,7 +169,16 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
         attackType: MeleeAttackType?,
         attackStyle: MeleeAttackStyle?,
         multiplier: Double,
-    ): Int = manager.rollMeleeMaxHit(source.player, target, attackType, attackStyle, multiplier)
+        roundUp: Boolean = false,
+    ): Int =
+        manager.rollMeleeMaxHit(
+            source.player,
+            target,
+            attackType,
+            attackStyle,
+            multiplier,
+            roundUp,
+        )
 
     /** @see [PlayerAttackManager.calculateMeleeMaxHit] */
     public fun calculateMeleeMaxHit(
@@ -179,8 +187,16 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
         attackType: MeleeAttackType?,
         attackStyle: MeleeAttackStyle?,
         multiplier: Double,
+        roundUp: Boolean = false,
     ): Int =
-        manager.calculateMeleeMaxHit(source.player, target, attackType, attackStyle, multiplier)
+        manager.calculateMeleeMaxHit(
+            source.player,
+            target,
+            attackType,
+            attackStyle,
+            multiplier,
+            roundUp,
+        )
 
     /** @see [PlayerAttackManager.queueMeleeHit] */
     public fun queueMeleeHit(
@@ -272,7 +288,7 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
     public fun queueRangedHit(
         source: ProtectedAccess,
         target: PathingEntity,
-        ammo: ObjType?,
+        ammo: ItemServerType?,
         damage: Int,
         clientDelay: Int,
         hitDelay: Int = 1 + (clientDelay / 30),
@@ -290,7 +306,7 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
     public fun queueRangedDamage(
         source: ProtectedAccess,
         target: PathingEntity,
-        ammo: ObjType?,
+        ammo: ItemServerType?,
         damage: Int,
         hitDelay: Int,
     ): Hit =
@@ -362,7 +378,7 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
         damage: Int,
         clientDelay: Int,
         hitDelay: Int = 1 + (clientDelay / 30),
-        spell: ObjType? = null,
+        spell: ItemServerType? = null,
     ): Hit =
         manager.queueMagicHit(
             source = source.player,
@@ -378,11 +394,11 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
         source: ProtectedAccess,
         target: PathingEntity,
         clientDelay: Int,
-        castSound: SynthType?,
+        castSound: String?,
         soundRadius: Int,
-        hitSpot: SpotanimType?,
+        hitSpot: String?,
         hitSpotHeight: Int,
-        hitSound: SynthType?,
+        hitSound: String?,
     ): Unit =
         manager.playMagicHitFx(
             source = source.player,
@@ -401,7 +417,7 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
         target: PathingEntity,
         clientDelay: Int,
         hitDelay: Int = 1 + (clientDelay / 30),
-        spell: ObjType? = null,
+        spell: ItemServerType? = null,
     ): Hit =
         manager.queueSplashHit(
             source = source.player,
@@ -416,7 +432,7 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
         source: ProtectedAccess,
         target: PathingEntity,
         clientDelay: Int,
-        castSound: SynthType?,
+        castSound: String?,
         soundRadius: Int,
     ): Unit =
         manager.playMagicSplashFx(
@@ -431,14 +447,14 @@ constructor(private val objTypes: ObjTypeList, private val manager: PlayerAttack
     public fun spawnProjectile(
         source: ProtectedAccess,
         target: PathingEntity,
-        spotanim: SpotanimType,
-        projanim: ProjAnimType,
+        spotanim: String,
+        projanim: String,
     ): ProjAnim = manager.spawnProjectile(source.player, target, spotanim, projanim)
 
     /** @see [PlayerAttackManager.soundArea] */
     public fun soundArea(
         source: PathingEntity,
-        synth: SynthType,
+        synth: String,
         delay: Int = 0,
         loops: Int = 1,
         radius: Int = 5,

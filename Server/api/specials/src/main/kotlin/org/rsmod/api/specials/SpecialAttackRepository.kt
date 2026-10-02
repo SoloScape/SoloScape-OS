@@ -5,10 +5,10 @@ import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.specials.combat.MagicSpecialAttack
 import org.rsmod.api.specials.combat.MeleeSpecialAttack
 import org.rsmod.api.specials.combat.RangedSpecialAttack
-import org.rsmod.api.specials.configs.SpecialAttackEnergyEnums
+import org.rsmod.api.specials.combat.ShieldSpecialAttack
+import org.rsmod.api.specials.combat.SpellSpecialAttack
 import org.rsmod.api.specials.instant.InstantSpecialAttack
 import org.rsmod.api.specials.weapon.SpecialAttackWeapons
-import org.rsmod.game.type.obj.ObjType
 
 public class SpecialAttackRepository
 @Inject
@@ -26,7 +26,7 @@ constructor(private val registry: SpecialAttackRegistry) {
      *
      * @throws IllegalStateException if [specWeapon] is already registered with any special attack.
      */
-    public fun registerInstant(specWeapon: ObjType, special: InstantSpecialAttack) {
+    public fun registerInstant(specWeapon: String, special: InstantSpecialAttack) {
         val result = registry.add(specWeapon, special)
         assertValidResult(specWeapon, result)
     }
@@ -66,7 +66,7 @@ constructor(private val registry: SpecialAttackRegistry) {
      * @see [SpecialAttackManager.hasSpecialEnergy]
      * @see [SpecialAttackManager.takeSpecialEnergy]
      */
-    public fun registerMelee(specWeapon: ObjType, special: MeleeSpecialAttack) {
+    public fun registerMelee(specWeapon: String, special: MeleeSpecialAttack) {
         val result = registry.add(specWeapon, special)
         assertValidResult(specWeapon, result)
     }
@@ -105,7 +105,7 @@ constructor(private val registry: SpecialAttackRegistry) {
      * @see [SpecialAttackManager.hasSpecialEnergy]
      * @see [SpecialAttackManager.takeSpecialEnergy]
      */
-    public fun registerRanged(specWeapon: ObjType, special: RangedSpecialAttack) {
+    public fun registerRanged(specWeapon: String, special: RangedSpecialAttack) {
         val result = registry.add(specWeapon, special)
         assertValidResult(specWeapon, result)
     }
@@ -148,12 +148,44 @@ constructor(private val registry: SpecialAttackRegistry) {
      * @see [SpecialAttackManager.hasSpecialEnergy]
      * @see [SpecialAttackManager.takeSpecialEnergy]
      */
-    public fun registerMagic(specWeapon: ObjType, special: MagicSpecialAttack) {
+    public fun registerMagic(specWeapon: String, special: MagicSpecialAttack) {
         val result = registry.add(specWeapon, special)
         assertValidResult(specWeapon, result)
     }
 
-    private fun assertValidResult(specWeapon: ObjType, result: SpecialAttackRegistry.Result.Add) {
+    /**
+     * Registers the [specWeapon] special attack ([special]) as a [SpellSpecialAttack], for a staff
+     * that casts a spell of its own.
+     *
+     * Unlike [registerMagic] this fires from both the spell-cast path and the melee path, because
+     * a staff with no spell autocast attacks in melee - the special is the same either way.
+     *
+     * @throws IllegalStateException if [specWeapon] is already registered with any special attack.
+     */
+    public fun registerSpell(specWeapon: String, special: SpellSpecialAttack) {
+        val result = registry.add(specWeapon, special)
+        assertValidResult(specWeapon, result)
+    }
+
+    /**
+     * Registers the [specShield] special attack ([special]) as a [ShieldSpecialAttack], which
+     * activates on the player's next attack in combat, whatever style that attack uses.
+     *
+     * These cost no special attack energy, so [specShield] must be mapped to an energy requirement
+     * of `0`. The shield is responsible for its own cooldown.
+     *
+     * @throws IllegalStateException if [specShield] is already registered with any special attack,
+     *   or if its energy requirement is not `0`.
+     */
+    public fun registerShield(specShield: String, special: ShieldSpecialAttack) {
+        val result = registry.add(specShield, special)
+        assertValidResult(specShield, result)
+    }
+
+    private fun assertValidResult(
+        specWeapon: String,
+        result: SpecialAttackRegistry.Result.Add,
+    ) {
         when (result) {
             SpecialAttackRegistry.Result.Add.AlreadyAdded -> {
                 error("Weapon already has a special attack mapped: $specWeapon")
@@ -162,8 +194,14 @@ constructor(private val registry: SpecialAttackRegistry) {
                 error(
                     "Weapon `$specWeapon` was not found in the required enums. " +
                         "Use [${SpecialAttackWeapons::class}] " +
-                        "and [${SpecialAttackEnergyEnums::class}] " +
+                        "and AttackEnergyEnums " +
                         "as reference for which enums are required."
+                )
+            }
+            SpecialAttackRegistry.Result.Add.NotEnergyFree -> {
+                error(
+                    "Shield special attacks must cost no energy, but `$specWeapon` is mapped to " +
+                        "a non-zero requirement in the sa_energy_requirements enum."
                 )
             }
             SpecialAttackRegistry.Result.Add.Success -> {

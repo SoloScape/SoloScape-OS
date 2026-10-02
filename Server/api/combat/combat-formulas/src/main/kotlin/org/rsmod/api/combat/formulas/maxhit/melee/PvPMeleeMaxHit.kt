@@ -2,6 +2,7 @@ package org.rsmod.api.combat.formulas.maxhit.melee
 
 import jakarta.inject.Inject
 import java.util.EnumSet
+import kotlin.math.ceil
 import org.rsmod.api.combat.commons.styles.MeleeAttackStyle
 import org.rsmod.api.combat.commons.types.MeleeAttackType
 import org.rsmod.api.combat.formulas.attributes.CombatMeleeAttributes
@@ -12,7 +13,6 @@ import org.rsmod.api.combat.formulas.attributes.collector.DamageReductionAttribu
 import org.rsmod.api.combat.formulas.maxhit.MaxHitOperations
 import org.rsmod.api.combat.maxhit.player.PlayerMeleeMaxHit
 import org.rsmod.api.combat.weapon.WeaponSpeeds
-import org.rsmod.api.config.refs.varps
 import org.rsmod.api.player.bonus.WornBonuses
 import org.rsmod.api.player.stat.baseHitpointsLvl
 import org.rsmod.api.player.stat.hitpoints
@@ -30,7 +30,7 @@ constructor(
     private val meleeAttributes: CombatMeleeAttributeCollector,
     private val reductions: DamageReductionAttributeCollector,
 ) {
-    private var Player.maxHit by intVarp(varps.com_maxhit)
+    private var Player.maxHit by intVarp("varp.com_maxhit")
 
     /**
      * Computes the maximum melee hit for [player] against [target].
@@ -47,8 +47,10 @@ constructor(
         attackType: MeleeAttackType?,
         attackStyle: MeleeAttackStyle?,
         specialMultiplier: Double,
+        roundUp: Boolean = false,
     ): Int {
-        val maxHit = computeMaxHit(player, target, attackType, attackStyle, specialMultiplier)
+        val maxHit =
+            computeMaxHit(player, target, attackType, attackStyle, specialMultiplier, roundUp)
         player.maxHit = maxHit
         return maxHit
     }
@@ -59,16 +61,18 @@ constructor(
         attackType: MeleeAttackType?,
         attackStyle: MeleeAttackStyle?,
         specialMultiplier: Double,
+        roundUp: Boolean = false,
     ): Int {
         val npcAttributes = EnumSet.noneOf(CombatNpcAttributes::class.java)
         val meleeAttributes = meleeAttributes.collect(source, attackType)
 
         val modifiedDamage =
             computeModifiedDamage(source, attackStyle, meleeAttributes, npcAttributes)
-        val specMaxHit = (modifiedDamage * specialMultiplier).toInt()
+        val scaled = modifiedDamage * specialMultiplier
+        val specMaxHit = if (roundUp) ceil(scaled).toInt() else scaled.toInt()
         val postSpecDamage = modifyPostSpec(source, specMaxHit, meleeAttributes, npcAttributes)
 
-        val reductionAttributes = reductions.collectPvP(target, random)
+        val reductionAttributes = reductions.collectPvPMelee(target, random)
         return MaxHitOperations.applyDamageReductions(
             startDamage = postSpecDamage,
             activeDefenceBonus = null,

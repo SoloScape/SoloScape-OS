@@ -1,5 +1,7 @@
 package org.rsmod.api.combat.formulas.accuracy.magic
 
+import dev.openrune.types.ItemServerType
+import dev.openrune.types.NpcServerType
 import jakarta.inject.Inject
 import java.util.EnumSet
 import org.rsmod.api.combat.accuracy.npc.NpcMagicAccuracy
@@ -15,13 +17,10 @@ import org.rsmod.api.combat.formulas.attributes.collector.CombatNpcAttributeColl
 import org.rsmod.api.combat.formulas.isSlayerTask
 import org.rsmod.api.combat.formulas.scale
 import org.rsmod.api.config.refs.params
-import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.player.bonus.WornBonuses
 import org.rsmod.api.random.GameRandom
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.Player
-import org.rsmod.game.type.npc.UnpackedNpcType
-import org.rsmod.game.type.obj.ObjType
 
 public class PvNMagicAccuracy
 @Inject
@@ -34,7 +33,7 @@ constructor(
     public fun getSpellHitChance(
         player: Player,
         target: Npc,
-        spell: ObjType,
+        spell: ItemServerType,
         spellbook: Spellbook?,
         usedSunfireRune: Boolean,
     ): Int {
@@ -43,6 +42,7 @@ constructor(
         return computeSpellHitChance(
             source = player,
             target = targetType,
+            npc = target,
             spell = spell,
             targetDefence = target.defenceLvl,
             targetCurrHp = target.hitpoints,
@@ -56,8 +56,8 @@ constructor(
 
     public fun computeSpellHitChance(
         source: Player,
-        target: UnpackedNpcType,
-        spell: ObjType,
+        target: NpcServerType,
+        spell: ItemServerType,
         targetDefence: Int,
         targetCurrHp: Int,
         targetMaxHp: Int,
@@ -65,12 +65,13 @@ constructor(
         targetWeaknessPercent: Int,
         spellbook: Spellbook?,
         usedSunfireRune: Boolean,
+        npc: Npc? = null,
     ): Int {
         val spellAttributes =
             magicAttributes.spellCollect(source, spell, spellbook, usedSunfireRune, random)
 
         val slayerTask = target.isSlayerTask(source)
-        val npcAttributes = npcAttributes.collect(target, targetCurrHp, targetMaxHp, slayerTask)
+        val npcAttributes = npcAttributes.collect(target, npc, targetCurrHp, targetMaxHp, slayerTask)
 
         val attackRoll =
             computeSpellAttackRoll(
@@ -80,7 +81,7 @@ constructor(
                 npcAttributes = npcAttributes,
             )
 
-        val amascutInvocationLvl = source.vars[varbits.toa_client_raid_level]
+        val amascutInvocationLvl = source.vars["varbit.toa_client_raid_level"]
         val baseDefenceRoll =
             computeDefenceRoll(
                 target = target,
@@ -91,7 +92,7 @@ constructor(
             )
         val defenceRoll = modifySpellDefenceRoll(baseDefenceRoll, spellAttributes)
 
-        return AccuracyOperations.calculateHitChance(attackRoll, defenceRoll)
+        return AccuracyOperations.calculateHitChance(attackRoll, defenceRoll, npcAttributes)
     }
 
     public fun computeSpellAttackRoll(
@@ -120,6 +121,7 @@ constructor(
         computeStaffHitChance(
             source = player,
             target = target.visType,
+            npc = target,
             targetDefence = target.defenceLvl,
             targetCurrHp = target.hitpoints,
             targetMaxHp = target.baseHitpointsLvl,
@@ -130,24 +132,25 @@ constructor(
 
     public fun computeStaffHitChance(
         source: Player,
-        target: UnpackedNpcType,
+        target: NpcServerType,
         targetDefence: Int,
         targetCurrHp: Int,
         targetMaxHp: Int,
         targetMagic: Int,
         attackStyle: MagicAttackStyle?,
         specialMultiplier: Double,
+        npc: Npc? = null,
     ): Int {
         val staffAttributes = magicAttributes.staffCollect(source, random)
 
         val slayerTask = target.isSlayerTask(source)
-        val npcAttributes = npcAttributes.collect(target, targetCurrHp, targetMaxHp, slayerTask)
+        val npcAttributes = npcAttributes.collect(target, npc, targetCurrHp, targetMaxHp, slayerTask)
 
         val baseAttackRoll =
             computeStaffAttackRoll(source, attackStyle, staffAttributes, npcAttributes)
         val attackRoll = (baseAttackRoll * specialMultiplier).toInt()
 
-        val amascutInvocationLvl = source.vars[varbits.toa_client_raid_level]
+        val amascutInvocationLvl = source.vars["varbit.toa_client_raid_level"]
         val baseDefenceRoll =
             computeDefenceRoll(
                 target = target,
@@ -158,7 +161,7 @@ constructor(
             )
         val defenceRoll = modifyStaffDefenceRoll(baseDefenceRoll, staffAttributes)
 
-        return AccuracyOperations.calculateHitChance(attackRoll, defenceRoll)
+        return AccuracyOperations.calculateHitChance(attackRoll, defenceRoll, npcAttributes)
     }
 
     public fun computeStaffAttackRoll(
@@ -178,7 +181,7 @@ constructor(
     }
 
     public fun computeDefenceRoll(
-        target: UnpackedNpcType,
+        target: NpcServerType,
         targetDefence: Int,
         targetMagic: Int,
         amascutInvocationLvl: Int,

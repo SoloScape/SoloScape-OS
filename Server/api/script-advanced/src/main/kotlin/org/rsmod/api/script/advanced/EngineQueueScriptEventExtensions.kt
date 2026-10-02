@@ -1,11 +1,11 @@
 package org.rsmod.api.script.advanced
 
+import dev.openrune.types.StatType
 import org.rsmod.api.player.events.EngineQueueEvents
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.script.onProtectedEvent
 import org.rsmod.events.EventBus
 import org.rsmod.game.queue.EngineQueueType
-import org.rsmod.game.type.stat.StatType
 import org.rsmod.map.square.MapSquareKey
 import org.rsmod.map.zone.ZoneKey
 import org.rsmod.plugin.scripts.ScriptContext
@@ -20,7 +20,7 @@ private fun <T> ScriptContext.onEngineQueue(
     action: suspend ProtectedAccess.(EngineQueueEvents.Default<T>) -> Unit,
 ) {
     onProtectedEvent(type.id, action)
-    engineQueueCache.addDefault(type)
+    engineQueueCache.addDefault(type, action.javaClass.classLoader)
 }
 
 private fun ScriptContext.onEngineQueue(
@@ -29,7 +29,7 @@ private fun ScriptContext.onEngineQueue(
     action: suspend ProtectedAccess.(EngineQueueEvents.Labelled) -> Unit,
 ) {
     onProtectedEvent(EventBus.composeLongKey(label, type.id), action)
-    engineQueueCache.addLabelled(type, label)
+    engineQueueCache.addLabelled(type, label, action.javaClass.classLoader)
 }
 
 public fun ScriptContext.onChangeStat(

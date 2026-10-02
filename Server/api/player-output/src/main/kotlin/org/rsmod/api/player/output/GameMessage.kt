@@ -1,9 +1,12 @@
 package org.rsmod.api.player.output
 
+import dev.openrune.ServerCacheManager
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.ItemServerType
 import net.rsprot.protocol.game.outgoing.misc.player.MessageGame
 import org.rsmod.api.config.refs.params
 import org.rsmod.game.entity.Player
-import org.rsmod.game.type.obj.UnpackedObjType
 
 /** Calls [mes] with [text] as the message and [ChatType.Spam] as the type of chat. */
 public fun Player.spam(text: String): Unit = mes(text, ChatType.Spam)
@@ -14,12 +17,12 @@ public fun Player.mes(text: String, type: ChatType = ChatType.GameMessage) {
     client.write(message)
 }
 
-public fun Player.objExamine(type: UnpackedObjType, count: Int, marketPrice: Int) {
+public fun Player.objExamine(type: ItemServerType, count: Int, marketPrice: Int) {
     ClientScripts.examineItem(
         player = this,
         obj = type.id,
         count = count,
-        desc = type.desc,
+        desc = type.examine,
         market = type.stockmarket,
         marketPrice = marketPrice,
         alchable = type.param(params.no_alchemy) == 0,
@@ -82,4 +85,9 @@ public enum class ChatType(public val id: Int) {
     GimGroupReqTrade(113),
     Dialogue(114),
     Mesbox(115),
+    NpcSay(116),
+    DidYouKnow(117),
+    LevelUpMessage(118),
+
+
 }

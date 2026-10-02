@@ -1,10 +1,10 @@
 package org.rsmod.api.cheat
 
 import com.github.michaelbull.logging.InlineLogger
+import dev.or2.central.account.Rights
 import org.rsmod.api.player.output.mes
 import org.rsmod.game.cheat.Cheat
 import org.rsmod.game.cheat.CheatHandler
-import org.rsmod.game.type.mod.ModLevelType
 
 private val logger = InlineLogger()
 
@@ -13,9 +13,9 @@ private val logger = InlineLogger()
 @CheatBuilderDsl
 public class CheatHandlerBuilder(public val command: String) {
     public var desc: String? = null
-    public var modLevel: ModLevelType? = null
+    public var requiredRights: Rights? = null
     public var invalidArgs: String? = null
-    public var invalidModLevel: String? = null
+    public var invalidRights: String? = null
     public var exception: String? = DEFAULT_EXCEPTION
 
     private var cheat: (Cheat.() -> Unit)? = null
@@ -24,8 +24,8 @@ public class CheatHandlerBuilder(public val command: String) {
         val cheat = cheat ?: error("`cheat` must be set.")
         val desc = desc ?: error("`desc` must be set.")
         val argsErr = invalidArgs ?: DEFAULT_ARG_ERR
-        val action = wrapCheat(argsErr, invalidModLevel, exception, modLevel, cheat)
-        return CheatHandler(desc, action)
+        val action = wrapCheat(argsErr, invalidRights, exception, requiredRights, cheat)
+        return CheatHandler(desc, action, cheat.javaClass.classLoader)
     }
 
     public fun cheat(cheat: Cheat.() -> Unit) {
@@ -34,13 +34,13 @@ public class CheatHandlerBuilder(public val command: String) {
 
     private fun wrapCheat(
         invalidArgsMsg: String,
-        modLevelMsg: String?,
+        invalidRightsMsg: String?,
         exceptionMsg: String?,
-        modLevel: ModLevelType?,
+        requiredRights: Rights?,
         cheat: Cheat.() -> Unit,
     ): Cheat.() -> Unit = action@{
-        if (modLevel != null && !player.modLevel.hasAccessTo(modLevel)) {
-            modLevelMsg?.let(player::mes)
+        if (requiredRights != null && !player.modLevel.isAtLeast(requiredRights)) {
+            invalidRightsMsg?.let(player::mes)
             return@action
         }
         try {

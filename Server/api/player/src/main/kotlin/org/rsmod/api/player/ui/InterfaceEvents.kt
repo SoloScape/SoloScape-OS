@@ -1,17 +1,18 @@
 package org.rsmod.api.player.ui
 
+import dev.openrune.cache.filestore.definition.InterfaceType
+import dev.openrune.definition.type.widget.ComponentType
+import dev.openrune.types.ItemServerType
+import dev.openrune.types.aconverted.interf.IfButtonOp
+import dev.openrune.types.aconverted.interf.IfSubType
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.events.EventBus
 import org.rsmod.events.KeyedEvent
 import org.rsmod.events.SuspendEvent
 import org.rsmod.game.entity.Player
-import org.rsmod.game.type.comp.ComponentType
-import org.rsmod.game.type.interf.IfButtonOp
-import org.rsmod.game.type.interf.IfSubType
-import org.rsmod.game.type.interf.InterfaceType
-import org.rsmod.game.type.obj.UnpackedObjType
 import org.rsmod.game.ui.Component
 import org.rsmod.game.ui.UserInterface
+import org.rsmod.map.CoordGrid
 
 public class IfMoveTop(public val player: Player, interf: InterfaceType) : KeyedEvent {
     override val id: Long = interf.id.toLong()
@@ -38,27 +39,65 @@ public class IfMoveSub(public val player: Player, destComponent: Int) : KeyedEve
 public data class IfModalButton(
     val component: ComponentType,
     val comsub: Int,
-    val obj: UnpackedObjType?,
+    val obj: ItemServerType?,
     val op: IfButtonOp,
 ) : SuspendEvent<ProtectedAccess> {
     override val id: Long = component.packed.toLong()
 }
 
-public data class IfOverlayButton(
-    val player: Player,
+/**
+ * A pause button pressed on an open modal while no script was waiting for one, such as a list
+ * whose entries call `cc_resume_pausebutton` to pick an entry.
+ */
+public data class IfModalPauseButton(val component: ComponentType, val comsub: Int) :
+    SuspendEvent<ProtectedAccess> {
+    override val id: Long = component.packed.toLong()
+}
+
+public data class IfOverlayScriptTrigger(
     val component: ComponentType,
     val comsub: Int,
-    val obj: UnpackedObjType?,
+    val obj: ItemServerType?,
+    val crc: Int,
+    val args: List<Any>,
+) : SuspendEvent<ProtectedAccess> {
+    override val id: Long = component.packed.toLong()
+}
+
+public data class IfOverlayButton(
+    val component: ComponentType,
+    val comsub: Int,
+    val obj: ItemServerType?,
     val op: IfButtonOp,
-) : KeyedEvent {
+) : SuspendEvent<ProtectedAccess> {
+    override val id: Long = component.packed.toLong()
+}
+
+public data class IfModalSubOpMenu(
+    val component: ComponentType,
+    val comsub: Int,
+    val obj: ItemServerType?,
+    val op: IfButtonOp,
+    val subop: Int,
+) : SuspendEvent<ProtectedAccess> {
+    override val id: Long = component.packed.toLong()
+}
+
+public data class IfOverlaySubOpMenu(
+    val component: ComponentType,
+    val comsub: Int,
+    val obj: ItemServerType?,
+    val op: IfButtonOp,
+    val subop: Int,
+) : SuspendEvent<ProtectedAccess> {
     override val id: Long = component.packed.toLong()
 }
 
 public class IfModalButtonT(
     public val selectedSlot: Int,
-    public val selectedObj: UnpackedObjType?,
+    public val selectedObj: ItemServerType?,
     public val targetSlot: Int,
-    public val targetObj: UnpackedObjType?,
+    public val targetObj: ItemServerType?,
     selectedComponent: Component,
     targetComponent: Component,
 ) : SuspendEvent<ProtectedAccess> {
@@ -77,9 +116,9 @@ public class IfModalButtonT(
 public class IfOverlayButtonT(
     public val player: Player,
     public val selectedSlot: Int,
-    public val selectedObj: UnpackedObjType?,
+    public val selectedObj: ItemServerType?,
     public val targetSlot: Int,
-    public val targetObj: UnpackedObjType?,
+    public val targetObj: ItemServerType?,
     selectedComponent: Component,
     targetComponent: Component,
 ) : KeyedEvent {
@@ -94,6 +133,22 @@ public class IfOverlayButtonT(
             "targetObj=$targetObj, " +
             "player=$player" +
             ")"
+}
+
+public class WorldMapClick(
+    public val player: Player,
+    public val coord: CoordGrid
+) : SuspendEvent<ProtectedAccess> {
+    /**
+     * Stable event-bus key for [org.rsmod.api.script.onWorldMapClick]. Scripts gate by
+     * [dev.or2.central.account.Rights]; this must not vary per player or the subscription key
+     * would not match the published event.
+     */
+    override val id: Long = BUS_ID
+
+    public companion object {
+        public const val BUS_ID: Long = 0L
+    }
 }
 
 public class IfModalDrag(

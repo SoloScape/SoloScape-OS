@@ -1,0 +1,2 @@
+id = "Khazard warlord Drops"
+npcs = ["npc.khazard_warlord", "npc.khazard_warlord_chat", "npc.khazard_warlord_combat"]

@@ -1,5 +1,7 @@
 package org.rsmod.api.combat.formulas.maxhit.magic
 
+import dev.openrune.types.ItemServerType
+import dev.openrune.types.NpcServerType
 import jakarta.inject.Inject
 import java.util.EnumSet
 import org.rsmod.api.combat.commons.magic.Spellbook
@@ -10,15 +12,12 @@ import org.rsmod.api.combat.formulas.attributes.collector.CombatMagicAttributeCo
 import org.rsmod.api.combat.formulas.attributes.collector.CombatNpcAttributeCollector
 import org.rsmod.api.combat.formulas.isSlayerTask
 import org.rsmod.api.config.refs.params
-import org.rsmod.api.config.refs.varps
 import org.rsmod.api.player.bonus.WornBonuses
 import org.rsmod.api.player.stat.magicLvl
 import org.rsmod.api.player.vars.intVarp
 import org.rsmod.api.random.GameRandom
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.Player
-import org.rsmod.game.type.npc.UnpackedNpcType
-import org.rsmod.game.type.obj.ObjType
 
 public class PvNMagicMaxHit
 @Inject
@@ -28,7 +27,7 @@ constructor(
     private val npcAttributes: CombatNpcAttributeCollector,
     private val magicAttributes: CombatMagicAttributeCollector,
 ) {
-    private var Player.maxHit by intVarp(varps.com_maxhit)
+    private var Player.maxHit by intVarp("varp.com_maxhit")
 
     /**
      * Computes the maximum magic hit for a normal spell cast by [player] against [target].
@@ -39,8 +38,8 @@ constructor(
      *   the main entry point.
      * - The `com_maxhit` varp for [player] is updated with the computed max hit.
      *
-     * @param spell The [ObjType] representing the spell being cast (e.g., `objs.spell_wind_strike`
-     *   for the Wind Strike spell).
+     * @param spell The [ItemServerType] representing the spell being cast (e.g.,
+     *   `"obj.01_wind_strike"` for the Wind Strike spell).
      * @param spellbook The [Spellbook] the spell belongs to (e.g., Standard or Ancients), usually
      *   derived from the player's current spellbook.
      * @param baseMaxHit The spell's base max hit, used as a baseline for calculating the maximum
@@ -51,7 +50,7 @@ constructor(
     public fun getSpellMaxHit(
         player: Player,
         target: Npc,
-        spell: ObjType,
+        spell: ItemServerType,
         spellbook: Spellbook?,
         baseMaxHit: Int,
         attackRate: Int,
@@ -63,6 +62,7 @@ constructor(
             computeSpellMaxHit(
                 source = player,
                 target = targetType,
+                npc = target,
                 spell = spell,
                 targetCurrHp = target.hitpoints,
                 targetMaxHp = target.baseHitpointsLvl,
@@ -78,8 +78,8 @@ constructor(
 
     public fun computeSpellMaxHit(
         source: Player,
-        target: UnpackedNpcType,
-        spell: ObjType,
+        target: NpcServerType,
+        spell: ItemServerType,
         targetCurrHp: Int,
         targetMaxHp: Int,
         targetWeaknessPercent: Int,
@@ -87,12 +87,13 @@ constructor(
         attackRate: Int,
         spellbook: Spellbook?,
         usedSunfireRune: Boolean,
+        npc: Npc? = null,
     ): IntRange {
         val spellAttributes =
             magicAttributes.spellCollect(source, spell, spellbook, usedSunfireRune, random)
 
         val slayerTask = target.isSlayerTask(source)
-        val npcAttributes = npcAttributes.collect(target, targetCurrHp, targetMaxHp, slayerTask)
+        val npcAttributes = npcAttributes.collect(target, npc, targetCurrHp, targetMaxHp, slayerTask)
 
         val modifiedDamage =
             computeSpellModifiedDamage(source, baseMaxHit, spellAttributes, npcAttributes)
@@ -147,6 +148,7 @@ constructor(
             computeStaffMaxHit(
                 source = player,
                 target = target.visType,
+                npc = target,
                 targetCurrHp = target.hitpoints,
                 targetMaxHp = target.baseHitpointsLvl,
                 baseMaxHit = baseMaxHit,
@@ -158,16 +160,17 @@ constructor(
 
     public fun computeStaffMaxHit(
         source: Player,
-        target: UnpackedNpcType,
+        target: NpcServerType,
         targetCurrHp: Int,
         targetMaxHp: Int,
         baseMaxHit: Int,
         specialMultiplier: Double,
+        npc: Npc? = null,
     ): Int {
         val staffAttributes = magicAttributes.staffCollect(source, random)
 
         val slayerTask = target.isSlayerTask(source)
-        val npcAttributes = npcAttributes.collect(target, targetCurrHp, targetMaxHp, slayerTask)
+        val npcAttributes = npcAttributes.collect(target, npc, targetCurrHp, targetMaxHp, slayerTask)
 
         val modifiedDamage =
             computeStaffModifiedDamage(source, baseMaxHit, staffAttributes, npcAttributes)

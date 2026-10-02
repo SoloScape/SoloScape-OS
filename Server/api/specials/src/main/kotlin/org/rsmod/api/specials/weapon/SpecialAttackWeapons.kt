@@ -1,14 +1,11 @@
 package org.rsmod.api.specials.weapon
 
-import jakarta.inject.Inject
-import org.rsmod.api.specials.configs.energy_enums
+import dev.openrune.types.ItemServerType
+import org.rsmod.api.enums.SaEnums.sa_descriptions
+import org.rsmod.api.enums.SaEnums.sa_energy_requirements
 import org.rsmod.api.specials.energy.SpecialAttackEnergy
-import org.rsmod.game.enums.EnumTypeMapResolver
-import org.rsmod.game.type.obj.ObjType
 
-public class SpecialAttackWeapons
-@Inject
-constructor(private val enumResolver: EnumTypeMapResolver) {
+public class SpecialAttackWeapons() {
     private lateinit var energyRequirements: Map<Int, Int>
     private lateinit var descriptions: Map<Int, String>
 
@@ -20,9 +17,9 @@ constructor(private val enumResolver: EnumTypeMapResolver) {
      *   [MAX_ENERGY] (`1000`), or `null` if [objType] does not have an associated special attack.
      * @see [loadEnergyRequirements]
      */
-    public fun getSpecialEnergy(objType: ObjType): Int? = energyRequirements[objType.id]
+    public fun getSpecialEnergy(objType: Int): Int? = energyRequirements[objType]
 
-    public fun getSpecialDescription(objType: ObjType): String? = descriptions[objType.id]
+    public fun getSpecialDescription(objType: Int): String? = descriptions[objType]
 
     internal fun startup() {
         val energyRequirements = loadEnergyRequirements()
@@ -35,7 +32,7 @@ constructor(private val enumResolver: EnumTypeMapResolver) {
     private fun loadEnergyRequirements(): Map<Int, Int> {
         val requirements = mutableMapOf<Int, Int>()
 
-        val enum = enumResolver[energy_enums.energy_requirements].filterValuesNotNull()
+        val enum = sa_energy_requirements.filterValuesNotNull()
         for ((obj, energy) in enum) {
             check(energy in 0..MAX_ENERGY) {
                 "Expected `energy` values to be within range of [0..$MAX_ENERGY]: actual=$energy"
@@ -49,7 +46,7 @@ constructor(private val enumResolver: EnumTypeMapResolver) {
     private fun loadDescriptions(): Map<Int, String> {
         val descriptions = mutableMapOf<Int, String>()
 
-        val enum = enumResolver[energy_enums.descriptions].filterValuesNotNull()
+        val enum = sa_descriptions.filterValuesNotNull()
         for ((obj, description) in enum) {
             descriptions[obj.id] = description
         }

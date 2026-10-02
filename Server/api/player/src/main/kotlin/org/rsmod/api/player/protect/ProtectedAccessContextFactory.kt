@@ -4,7 +4,9 @@ import jakarta.inject.Inject
 import org.rsmod.api.area.checker.AreaChecker
 import org.rsmod.api.market.MarketPrices
 import org.rsmod.api.player.dialogue.align.TextAlignment
+import org.rsmod.api.player.hit.modifier.PlayerHitModifier
 import org.rsmod.api.player.hit.processor.InstantPlayerHitProcessor
+import org.rsmod.api.player.hook.PlayerTeleportValidator
 import org.rsmod.api.player.interact.HeldInteractions
 import org.rsmod.api.player.interact.LocInteractions
 import org.rsmod.api.player.interact.NpcInteractions
@@ -15,11 +17,6 @@ import org.rsmod.api.random.GameRandom
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.NpcList
 import org.rsmod.game.entity.PlayerList
-import org.rsmod.game.type.inv.InvTypeList
-import org.rsmod.game.type.loc.LocTypeList
-import org.rsmod.game.type.npc.NpcTypeList
-import org.rsmod.game.type.obj.ObjTypeList
-import org.rsmod.game.type.seq.SeqTypeList
 import org.rsmod.routefinder.collision.CollisionFlagMap
 
 public class ProtectedAccessContextFactory
@@ -32,11 +29,6 @@ constructor(
     private val collision: CollisionFlagMap,
     private val areaChecker: AreaChecker,
     private val alignment: TextAlignment,
-    private val invTypes: InvTypeList,
-    private val locTypes: LocTypeList,
-    private val npcTypes: NpcTypeList,
-    private val objTypes: ObjTypeList,
-    private val seqTypes: SeqTypeList,
     private val locInteractions: LocInteractions,
     private val npcInteractions: NpcInteractions,
     private val playerInteractions: PlayerInteractions,
@@ -45,21 +37,19 @@ constructor(
     private val musicPlayer: MusicPlayer,
     private val marketPrices: MarketPrices,
     private val instantHitProcessor: InstantPlayerHitProcessor,
+    private val teleportValidator: PlayerTeleportValidator,
+    private val hitModifier: PlayerHitModifier,
 ) {
     public fun create(): ProtectedAccessContext =
         ProtectedAccessContext(
             getRandom = { random },
             getEventBus = { eventBus },
+            getHitModifier = { hitModifier },
             getNpcList = { npcList },
             getPlayerList = { playerList },
             getCollision = { collision },
             getAreaChecker = { areaChecker },
             getAlignment = { alignment },
-            getInvTypes = { invTypes },
-            getLocTypes = { locTypes },
-            getNpcTypes = { npcTypes },
-            getObjTypes = { objTypes },
-            getSeqTypes = { seqTypes },
             getLocInteractions = { locInteractions },
             getNpcInteractions = { npcInteractions },
             getPlayerInteractions = { playerInteractions },
@@ -68,6 +58,7 @@ constructor(
             getMusicPlayer = { musicPlayer },
             getMarketPrices = { marketPrices },
             getInstantHitProcessor = { instantHitProcessor },
+            getTeleportValidator = { teleportValidator },
         )
 
     public companion object {
@@ -80,11 +71,6 @@ constructor(
                 getCollision = { error("No collision map provided.") },
                 getAreaChecker = { error("No area checker provided.") },
                 getAlignment = { error("No text alignment provided.") },
-                getInvTypes = { error("No inv type list provided.") },
-                getLocTypes = { error("No loc type list provided.") },
-                getNpcTypes = { error("No npc type list provided.") },
-                getObjTypes = { error("No obj type list provided.") },
-                getSeqTypes = { error("No seq type list provided.") },
                 getLocInteractions = { error("No loc interactions provided.") },
                 getNpcInteractions = { error("No npc interactions provided.") },
                 getPlayerInteractions = { error("No player interactions provided.") },
@@ -93,6 +79,8 @@ constructor(
                 getMusicPlayer = { error("No music player provided.") },
                 getMarketPrices = { error("No market prices provided.") },
                 getInstantHitProcessor = { error("No instant hit processor provided.") },
+                getTeleportValidator = { error("No teleport validator provided.") },
+                getHitModifier = { error("No hit modifier provided.") },
             )
 
         /**

@@ -1,8 +1,10 @@
 package org.rsmod.api.net.rsprot.handlers
 
 import com.github.michaelbull.logging.InlineLogger
+import dev.openrune.ServerCacheManager
 import jakarta.inject.Inject
 import net.rsprot.protocol.game.incoming.objs.OpObj
+import net.rsprot.protocol.game.incoming.objs.OpObjV2
 import org.rsmod.api.player.interact.ObjInteractions
 import org.rsmod.api.player.protect.clearPendingAction
 import org.rsmod.api.player.vars.ctrlMoveSpeed
@@ -13,20 +15,19 @@ import org.rsmod.game.interact.InteractionObj
 import org.rsmod.game.interact.InteractionOp
 import org.rsmod.game.movement.RouteRequestCoord
 import org.rsmod.game.obj.Obj
-import org.rsmod.game.type.obj.ObjTypeList
+import org.rsmod.game.type.hasOp
 import org.rsmod.map.CoordGrid
 
 class OpObjHandler
 @Inject
 constructor(
     private val eventBus: EventBus,
-    private val objTypes: ObjTypeList,
     private val objRegistry: ObjRegistry,
     private val objInteractions: ObjInteractions,
-) : MessageHandler<OpObj> {
+) : MessageHandler<OpObjV2> {
     private val logger = InlineLogger()
 
-    private val OpObj.interactionOp: InteractionOp
+    private val OpObjV2.interactionOp: InteractionOp
         get() =
             when (op) {
                 1 -> InteractionOp.Op1
@@ -37,13 +38,13 @@ constructor(
                 else -> throw NotImplementedError("Unhandled `op` conversion: $this")
             }
 
-    override fun handle(player: Player, message: OpObj) {
+    override fun handle(player: Player, message: OpObjV2) {
         if (player.isDelayed) {
             return
         }
         val coords = CoordGrid(message.x, message.z, player.level)
         val obj = findObj(player, coords, message.id) ?: return
-        val type = objTypes[obj.type] ?: return
+        val type = ServerCacheManager.getItem(obj.type) ?: return
         val speed = if (message.controlKey) player.ctrlMoveSpeed() else null
         val opTrigger = objInteractions.hasOpTrigger(obj, message.interactionOp, type)
         val apTrigger = objInteractions.hasApTrigger(obj, message.interactionOp, type)

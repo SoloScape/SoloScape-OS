@@ -1,7 +1,9 @@
 package org.rsmod.api.combat.formulas.maxhit.melee
 
+import dev.openrune.types.NpcServerType
 import jakarta.inject.Inject
 import java.util.EnumSet
+import kotlin.math.ceil
 import org.rsmod.api.combat.commons.styles.MeleeAttackStyle
 import org.rsmod.api.combat.commons.types.MeleeAttackType
 import org.rsmod.api.combat.formulas.attributes.CombatMeleeAttributes
@@ -11,7 +13,6 @@ import org.rsmod.api.combat.formulas.attributes.collector.CombatNpcAttributeColl
 import org.rsmod.api.combat.formulas.isSlayerTask
 import org.rsmod.api.combat.maxhit.player.PlayerMeleeMaxHit
 import org.rsmod.api.combat.weapon.WeaponSpeeds
-import org.rsmod.api.config.refs.varps
 import org.rsmod.api.player.bonus.WornBonuses
 import org.rsmod.api.player.stat.baseHitpointsLvl
 import org.rsmod.api.player.stat.hitpoints
@@ -19,7 +20,6 @@ import org.rsmod.api.player.vars.intVarp
 import org.rsmod.api.random.GameRandom
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.Player
-import org.rsmod.game.type.npc.UnpackedNpcType
 
 public class PvNMeleeMaxHit
 @Inject
@@ -30,7 +30,7 @@ constructor(
     private val npcAttributes: CombatNpcAttributeCollector,
     private val meleeAttributes: CombatMeleeAttributeCollector,
 ) {
-    private var Player.maxHit by intVarp(varps.com_maxhit)
+    private var Player.maxHit by intVarp("varp.com_maxhit")
 
     /**
      * Computes the maximum melee hit for [player] against [target].
@@ -47,16 +47,19 @@ constructor(
         attackType: MeleeAttackType?,
         attackStyle: MeleeAttackStyle?,
         specialMultiplier: Double,
+        roundUp: Boolean = false,
     ): Int {
         val maxHit =
             computeMaxHit(
                 source = player,
                 target = target.visType,
+                npc = target,
                 targetCurrHp = target.hitpoints,
                 targetMaxHp = target.baseHitpointsLvl,
                 attackType = attackType,
                 attackStyle = attackStyle,
                 specialMultiplier = specialMultiplier,
+                roundUp = roundUp,
             )
         player.maxHit = maxHit
         return maxHit
@@ -64,22 +67,25 @@ constructor(
 
     public fun computeMaxHit(
         source: Player,
-        target: UnpackedNpcType,
+        target: NpcServerType,
         targetCurrHp: Int,
         targetMaxHp: Int,
         attackType: MeleeAttackType?,
         attackStyle: MeleeAttackStyle?,
         specialMultiplier: Double,
+        roundUp: Boolean = false,
+        npc: Npc? = null,
     ): Int {
         val meleeAttributes = meleeAttributes.collect(source, attackType)
         addProcAttributes(meleeAttributes)
 
         val slayerTask = target.isSlayerTask(source)
-        val npcAttributes = npcAttributes.collect(target, targetCurrHp, targetMaxHp, slayerTask)
+        val npcAttributes = npcAttributes.collect(target, npc, targetCurrHp, targetMaxHp, slayerTask)
 
         val modifiedDamage =
             computeModifiedDamage(source, attackStyle, meleeAttributes, npcAttributes)
-        val specMaxHit = (modifiedDamage * specialMultiplier).toInt()
+        val scaled = modifiedDamage * specialMultiplier
+        val specMaxHit = if (roundUp) ceil(scaled).toInt() else scaled.toInt()
         return modifyPostSpec(source, specMaxHit, meleeAttributes, npcAttributes)
     }
 
@@ -98,7 +104,8 @@ constructor(
         npcAttributes: EnumSet<CombatNpcAttributes>,
     ): Int {
         val effectiveStrength =
-            MeleeMaxHitOperations.calculateEffectiveStrength(source, attackStyle)
+            MeleeMaxHitOperations.calculateEffectiveStrength(source, attackStyle) +
+                MeleeMaxHitOperations.farmingStrengthBonus(source, meleeAttributes, npcAttributes)
         val strengthBonus = bonuses.strengthBonus(source)
         val baseDamage = PlayerMeleeMaxHit.calculateBaseDamage(effectiveStrength, strengthBonus)
         return MeleeMaxHitOperations.modifyBaseDamage(baseDamage, meleeAttributes, npcAttributes)

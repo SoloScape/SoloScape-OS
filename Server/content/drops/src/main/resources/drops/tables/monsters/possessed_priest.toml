@@ -1,0 +1,12 @@
+id = "Possessed Priest Drops"
+npcs = ["npc.ics_little_possessedpriest"]
+
+[[pre_roll]]
+numerator = 1
+denominator = 32
+obj = "obj.coins"
+count = "1..1260"
+
+# Bones come from the npc's dropped remains and the jar's potion from the quest script
+# (icthlarin/PyramidFights), so neither is in this table.
+# Unknown wiki drop rate: Coins 1-1260 [Other/Uncommon]; 1/32 chosen from the wiki's uncommon band.

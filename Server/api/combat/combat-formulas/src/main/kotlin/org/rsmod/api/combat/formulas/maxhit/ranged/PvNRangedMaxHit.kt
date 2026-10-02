@@ -1,5 +1,6 @@
 package org.rsmod.api.combat.formulas.maxhit.ranged
 
+import dev.openrune.types.NpcServerType
 import jakarta.inject.Inject
 import java.util.EnumSet
 import kotlin.math.max
@@ -13,12 +14,10 @@ import org.rsmod.api.combat.formulas.isSlayerTask
 import org.rsmod.api.combat.maxhit.player.PlayerRangedMaxHit
 import org.rsmod.api.combat.weapon.WeaponSpeeds
 import org.rsmod.api.config.refs.params
-import org.rsmod.api.config.refs.varps
 import org.rsmod.api.player.bonus.WornBonuses
 import org.rsmod.api.player.vars.intVarp
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.Player
-import org.rsmod.game.type.npc.UnpackedNpcType
 
 public class PvNRangedMaxHit
 @Inject
@@ -28,7 +27,7 @@ constructor(
     private val npcAttributes: CombatNpcAttributeCollector,
     private val rangedAttributes: CombatRangedAttributeCollector,
 ) {
-    private var Player.maxHit by intVarp(varps.com_maxhit)
+    private var Player.maxHit by intVarp("varp.com_maxhit")
 
     /**
      * Computes the maximum ranged hit for [player] against [target].
@@ -56,6 +55,7 @@ constructor(
             computeMaxHit(
                 source = player,
                 target = targetType,
+                npc = target,
                 targetCurrHp = target.hitpoints,
                 targetMaxHp = target.baseHitpointsLvl,
                 targetMagic = targetMagic,
@@ -70,7 +70,7 @@ constructor(
 
     public fun computeMaxHit(
         source: Player,
-        target: UnpackedNpcType,
+        target: NpcServerType,
         targetCurrHp: Int,
         targetMaxHp: Int,
         targetMagic: Int,
@@ -78,11 +78,12 @@ constructor(
         attackStyle: RangedAttackStyle?,
         specialMultiplier: Double,
         boltSpecDamage: Int,
+        npc: Npc? = null,
     ): Int {
         val rangeAttributes = rangedAttributes.collect(source, attackType, attackStyle)
 
         val slayerTask = target.isSlayerTask(source)
-        val npcAttributes = npcAttributes.collect(target, targetCurrHp, targetMaxHp, slayerTask)
+        val npcAttributes = npcAttributes.collect(target, npc, targetCurrHp, targetMaxHp, slayerTask)
 
         val modifiedDamage =
             computeModifiedDamage(source, targetMagic, attackStyle, rangeAttributes, npcAttributes)

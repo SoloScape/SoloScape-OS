@@ -1,15 +1,16 @@
 package org.rsmod.api.combat.manager
 
+import dev.openrune.types.ItemServerType
+import dev.openrune.util.Wearpos
 import jakarta.inject.Inject
 import org.rsmod.api.combat.commons.ranged.RangedAmmunition
+import org.rsmod.api.death.RangedAmmoSaveHook
 import org.rsmod.api.random.GameRandom
 import org.rsmod.api.repo.obj.ObjRepository
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
+import org.rsmod.game.inv.InvObj
 import org.rsmod.game.queue.WorldQueueList
-import org.rsmod.game.type.obj.ObjTypeList
-import org.rsmod.game.type.obj.UnpackedObjType
-import org.rsmod.game.type.obj.Wearpos
 import org.rsmod.map.CoordGrid
 import org.rsmod.routefinder.collision.CollisionFlagMap
 
@@ -18,11 +19,21 @@ public class RangedAmmoManager
 constructor(
     private val random: GameRandom,
     private val eventBus: EventBus,
-    private val objTypes: ObjTypeList,
     private val collision: CollisionFlagMap,
     private val worldQueues: WorldQueueList,
     private val objRepo: ObjRepository,
+    private val ammoSaveHooks: Set<RangedAmmoSaveHook>,
 ) {
+    /**
+     * Resolves the ammunition [player] would fire from [weapon]: the ammo slot obj, or the
+     * ammunition stored in a worn Dizana's quiver when the ammo slot cannot supply anything the
+     * weapon can fire. Use this instead of reading the ammo slot directly so the quiver works.
+     *
+     * @see [RangedAmmunition.activeAmmo]
+     */
+    public fun activeAmmo(player: Player, weapon: ItemServerType): InvObj? =
+        RangedAmmunition.activeAmmo(player, weapon)
+
     /**
      * Validates whether the given [weapon] and [ammo] combination are usable by [player].
      *
@@ -40,8 +51,8 @@ constructor(
      */
     public fun attemptAmmoUsage(
         player: Player,
-        weapon: UnpackedObjType,
-        ammo: UnpackedObjType?,
+        weapon: ItemServerType,
+        ammo: ItemServerType?,
     ): Boolean = RangedAmmunition.attemptAmmoUsage(player, weapon, ammo)
 
     /**
@@ -65,7 +76,7 @@ constructor(
      */
     public fun useQuiverAmmo(
         player: Player,
-        quiverType: UnpackedObjType,
+        quiverType: ItemServerType,
         dropCoord: CoordGrid,
         dropDelay: Int,
         dropChance: Int = RangedAmmunition.DEFAULT_AMMO_DROP_RATE,
@@ -105,7 +116,7 @@ constructor(
      */
     public fun useThrownWeapon(
         player: Player,
-        weaponType: UnpackedObjType,
+        weaponType: ItemServerType,
         dropCoord: CoordGrid,
         dropDelay: Int,
         dropChance: Int = RangedAmmunition.DEFAULT_AMMO_DROP_RATE,
@@ -126,14 +137,14 @@ constructor(
     private fun useAmmo(
         player: Player,
         ammoWearpos: Wearpos,
-        ammoType: UnpackedObjType,
+        ammoType: ItemServerType,
         ammoCount: Int,
         dropCoord: CoordGrid,
         dropDelay: Int,
         dropChance: Int,
         dropDuration: Int,
     ) {
-        val conserve = RangedAmmunition.conserveAmmo(player, objTypes, random)
+        val conserve = conserveAmmo(player)
         if (!conserve) {
             RangedAmmunition.detractAmmo(player, ammoWearpos, ammoType, ammoCount, eventBus)
         }
@@ -151,5 +162,13 @@ constructor(
                 objRepo = objRepo,
             )
         }
+    }
+
+    private fun conserveAmmo(player: Player): Boolean {
+        val percent = ammoSaveHooks.maxOfOrNull { it.ammoSavePercent(player) } ?: 0
+        if (percent > 0) {
+            return percent > random.of(maxExclusive = 100)
+        }
+        return RangedAmmunition.conserveAmmo(player, random)
     }
 }

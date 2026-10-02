@@ -1,10 +1,13 @@
 package org.rsmod.api.npc.hit
 
-import org.rsmod.api.config.refs.BaseHitmarkGroups
-import org.rsmod.api.config.refs.hitmark_groups
+import dev.openrune.rscm.RSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.HitmarkTypeGroup
+import dev.openrune.types.ItemServerType
+import org.rsmod.api.config.refs.done.BaseHitmarkGroups
+import org.rsmod.api.config.refs.done.hitmark_groups
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.npc.access.StandardNpcAccess
-import org.rsmod.api.npc.hit.configs.hit_queues
 import org.rsmod.api.npc.hit.modifier.NpcHitModifier
 import org.rsmod.api.npc.hit.modifier.StandardNpcHitModifier
 import org.rsmod.api.npc.hit.processor.NpcHitProcessor
@@ -14,8 +17,6 @@ import org.rsmod.game.entity.Player
 import org.rsmod.game.hit.Hit
 import org.rsmod.game.hit.HitBuilder
 import org.rsmod.game.hit.HitType
-import org.rsmod.game.type.hitmark.HitmarkTypeGroup
-import org.rsmod.game.type.obj.ObjType
 
 /* Standard hit functions. */
 /**
@@ -42,9 +43,9 @@ import org.rsmod.game.type.obj.ObjType
  *   factors from [modifier] and [StandardNpcHitProcessor].
  * @param hitmark The hitmark group used for the visual hitsplat. See [BaseHitmarkGroups] or
  *   reference [hitmark_groups] for a list of available hitmark groups.
- * @param sourceWeapon An optional [ObjType] reference of a "weapon" used by the [source] that hit
- *   modifiers and/or processors can use for specialized logic. Typically unnecessary when [source]
- *   is an [Npc], though there may be niche use cases.
+ * @param sourceWeapon An optional [ItemServerType] reference of a "weapon" used by the [source]
+ *   that hit modifiers and/or processors can use for specialized logic. Typically unnecessary when
+ *   [source] is an [Npc], though there may be niche use cases.
  * @param sourceSecondary Similar to [sourceWeapon], except this refers to objs that are **not** the
  *   primary weapon, such as ammunition for ranged attacks or objs tied to magic spells.
  * @param modifier An [NpcHitModifier] used to adjust damage and other hit properties. Usually,
@@ -64,8 +65,8 @@ public fun Npc.queueHit(
     damage: Int,
     modifier: NpcHitModifier,
     hitmark: HitmarkTypeGroup = visHitmark(),
-    sourceWeapon: ObjType? = null,
-    sourceSecondary: ObjType? = null,
+    sourceWeapon: ItemServerType? = null,
+    sourceSecondary: ItemServerType? = null,
 ): Hit {
     val builder =
         InternalNpcHits.createBuilder(
@@ -130,7 +131,7 @@ public fun Npc.queueHit(
     modifier: NpcHitModifier,
     hitmark: HitmarkTypeGroup = visHitmark(),
     specific: Boolean = false,
-    sourceSecondary: ObjType? = null,
+    sourceSecondary: ItemServerType? = null,
 ): Hit {
     val builder =
         InternalNpcHits.createBuilder(
@@ -214,18 +215,26 @@ public fun Npc.visHitmark(): HitmarkTypeGroup {
     if (current != null) {
         return current
     }
-    val lit = visType.param(params.hitmark_lit)
-    val tint = visType.param(params.hitmark_tint)
-    val max = visType.param(params.hitmark_max)
+    val lit = RSCM.getReverseMapping(RSCMType.HITMARK, visType.param(params.hitmark_lit).id)
+    val tint = RSCM.getReverseMapping(RSCMType.HITMARK, visType.param(params.hitmark_tint).id)
+    val max = RSCM.getReverseMapping(RSCMType.HITMARK, visType.param(params.hitmark_max).id)
     val hitmark = HitmarkTypeGroup(lit, tint, max)
     this.cachedHitmark = hitmark
     return hitmark
 }
 
+public fun Npc.isStyleImmuneTo(type: HitType): Boolean =
+    when (type) {
+        HitType.Melee -> vars["varn.immune_melee"] == 1
+        HitType.Ranged -> vars["varn.immune_ranged"] == 1
+        HitType.Magic -> vars["varn.immune_magic"] == 1
+        HitType.Typeless -> false
+    }
+
 private fun Npc.modifyAndQueueHit(delay: Int, builder: HitBuilder, modifier: NpcHitModifier): Hit {
     modifier.modify(builder, this)
     val hit = builder.build()
-    queue(hit_queues.standard, delay, hit)
+    queue("queue.hit", delay.coerceAtLeast(1), hit)
     return hit
 }
 

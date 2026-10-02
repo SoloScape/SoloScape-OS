@@ -1,7 +1,8 @@
 package org.rsmod.content.interfaces.journal.tab.scripts
 
+import dev.openrune.definition.type.widget.IfEvent
+import dev.openrune.types.aconverted.interf.IfButtonOp
 import jakarta.inject.Inject
-import org.rsmod.api.config.refs.interfaces
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.protect.ProtectedAccessLauncher
@@ -11,14 +12,12 @@ import org.rsmod.api.player.ui.ifSetEvents
 import org.rsmod.api.player.vars.boolVarBit
 import org.rsmod.api.script.onIfOpen
 import org.rsmod.api.script.onIfOverlayButton
+import org.rsmod.content.interfaces.collectionlog.applyCollectionCount
 import org.rsmod.content.interfaces.journal.tab.SideJournalTab
-import org.rsmod.content.interfaces.journal.tab.configs.journal_components
-import org.rsmod.content.interfaces.journal.tab.configs.journal_varbits
 import org.rsmod.content.interfaces.journal.tab.switchJournalTab
 import org.rsmod.content.interfaces.journal.tab.updateSummaryTimePlayed
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
-import org.rsmod.game.type.interf.IfEvent
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -26,20 +25,21 @@ class SummarySideScript
 @Inject
 constructor(private val eventBus: EventBus, private val protectedAccess: ProtectedAccessLauncher) :
     PluginScript() {
-    private var ProtectedAccess.displayPlaytime by boolVarBit(journal_varbits.display_playtime)
+    private var ProtectedAccess.displayPlaytime by boolVarBit("varbit.account_summary_display_playtime")
     private var ProtectedAccess.displayPlaytimeReminderDisabled by
-        boolVarBit(journal_varbits.display_playtime_remind_disable)
+        boolVarBit("varbit.account_summary_display_playtime_remind_disable")
 
     override fun ScriptContext.startup() {
-        onIfOpen(interfaces.account_summary_sidepanel) { player.onSummarySideOpen() }
-        onIfOverlayButton(journal_components.summary_click_layer) {
-            player.clickSummaryLayer(comsub)
+        onIfOpen("interface.account_summary_sidepanel") { player.onSummarySideOpen() }
+        onIfOverlayButton("component.account_summary_sidepanel:summary_click_layer") {
+            player.clickSummaryLayer(it.comsub, it.op)
         }
     }
 
     private fun Player.onSummarySideOpen() {
+        applyCollectionCount()
         ifSetEvents(
-            journal_components.summary_click_layer,
+            "component.account_summary_sidepanel:summary_click_layer",
             3..7,
             IfEvent.Op1,
             IfEvent.Op2,
@@ -48,12 +48,12 @@ constructor(private val eventBus: EventBus, private val protectedAccess: Protect
         )
     }
 
-    private fun Player.clickSummaryLayer(comsub: Int) {
+    private fun Player.clickSummaryLayer(comsub: Int, op: IfButtonOp) {
         when (comsub) {
             3 -> clickQuestList()
             4 -> clickAchievementList()
             5 -> clickCombatAchievements()
-            6 -> clickCollectionLog()
+            6 -> clickCollectionLog(op)
             7 -> selectTimePlayedToggle()
             else -> throw NotImplementedError("Unhandled summary click: comsub=$comsub")
         }
@@ -69,14 +69,23 @@ constructor(private val eventBus: EventBus, private val protectedAccess: Protect
 
     private fun Player.clickCombatAchievements() {
         ifClose(eventBus)
-        val opened = protectedAccess.launch(this) { ifOpenMainModal(interfaces.ca_overview) }
+        val interf =
+            when (vars["varbit.ca_last_opened_interface"]) {
+                1 -> "interface.ca_tasks"
+                2 -> "interface.ca_rewards"
+                3 -> "interface.ca_bosses"
+                else -> "interface.ca_overview"
+            }
+        val opened = protectedAccess.launch(this) { ifOpenMainModal(interf) }
         if (!opened) {
             mes("Please finish what you're doing first.")
         }
     }
 
-    private fun Player.clickCollectionLog() {
-        ifOpenOverlay(interfaces.collection, eventBus)
+    private fun Player.clickCollectionLog(op: IfButtonOp) {
+        val interf =
+            if (op == IfButtonOp.Op2) "interface.collection_overview" else "interface.collection"
+        ifOpenOverlay(interf, eventBus)
     }
 
     private fun Player.selectTimePlayedToggle() {

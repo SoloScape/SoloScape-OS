@@ -1,28 +1,32 @@
 package org.rsmod.api.net.rsprot.handlers
 
+import dev.openrune.ServerCacheManager
+import dev.openrune.definition.type.widget.IfEvent
+import dev.openrune.rscm.RSCM
+import dev.openrune.rscm.RSCMType
 import jakarta.inject.Inject
 import net.rsprot.protocol.game.incoming.resumed.ResumePauseButton
+import org.rsmod.annotations.InternalApi
 import org.rsmod.api.net.rsprot.player.InterfaceEvents
 import org.rsmod.api.player.input.ResumePauseButtonInput
+import org.rsmod.api.player.protect.ProtectedAccessLauncher
+import org.rsmod.api.player.ui.IfModalPauseButton
+import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
-import org.rsmod.game.type.comp.ComponentTypeList
-import org.rsmod.game.type.interf.IfEvent
-import org.rsmod.game.type.interf.InterfaceTypeList
 import org.rsmod.game.ui.Component
 import org.rsmod.game.ui.UserInterface
 
 class ResumePauseButtonHandler
 @Inject
-constructor(
-    private val interfaceTypes: InterfaceTypeList,
-    private val componentTypes: ComponentTypeList,
-) : MessageHandler<ResumePauseButton> {
+constructor(private val eventBus: EventBus, private val protectedAccess: ProtectedAccessLauncher) :
+    MessageHandler<ResumePauseButton> {
     private val ResumePauseButton.asComponent: Component
         get() = Component(interfaceId, componentId)
 
+    @OptIn(InternalApi::class)
     override fun handle(player: Player, message: ResumePauseButton) {
-        val componentType = componentTypes[message.asComponent]
-        val interfaceType = interfaceTypes[message.asComponent]
+        val componentType = ServerCacheManager.fromComponent(message.asComponent.packed)
+        val interfaceType = ServerCacheManager.fromInterface(message.asComponent.packed)
         val userInterface = UserInterface(interfaceType)
 
         val pauseEnabled =
@@ -31,9 +35,17 @@ constructor(
             return
         }
 
-        val input = ResumePauseButtonInput(componentType, message.sub)
+        val input = ResumePauseButtonInput(RSCM.getReverseMapping(RSCMType.COMPONENT, componentType.packed), message.sub)
         val modal = player.ui.modals.getComponent(userInterface)
         if (modal != null) {
+            val waiting = player.activeCoroutine?.isSuspended == true
+            val handled =
+                eventBus.contains(IfModalPauseButton::class.java, componentType.packed.toLong())
+            if (!waiting && handled) {
+                val event = IfModalPauseButton(componentType, message.sub)
+                protectedAccess.launchLenient(player) { eventBus.publish(this, event) }
+                return
+            }
             player.ui.queueClose(modal)
             player.resumeActiveCoroutine(input)
             return

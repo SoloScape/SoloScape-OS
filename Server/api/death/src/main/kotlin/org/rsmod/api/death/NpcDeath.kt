@@ -1,14 +1,16 @@
 package org.rsmod.api.death
 
+import dev.openrune.ServerCacheManager
+import dev.openrune.rscm.RSCM
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import org.rsmod.api.config.constants
-import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.params
-import org.rsmod.api.config.refs.varns
-import org.rsmod.api.config.refs.varps
 import org.rsmod.api.npc.access.StandardNpcAccess
 import org.rsmod.api.npc.vars.typePlayerUidVarn
+import org.rsmod.api.player.output.ClientScripts
 import org.rsmod.api.player.output.soundSynth
 import org.rsmod.api.player.vars.intVarp
 import org.rsmod.api.player.vars.typeNpcUidVarp
@@ -18,7 +20,6 @@ import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.PlayerList
 import org.rsmod.game.entity.npc.NpcUid
-import org.rsmod.game.type.seq.SeqTypeList
 import org.rsmod.map.CoordGrid
 
 @Singleton
@@ -26,19 +27,22 @@ public class NpcDeath
 @Inject
 constructor(
     private val npcRepo: NpcRepository,
-    private val seqTypes: SeqTypeList,
     private val players: PlayerList,
     private val objRepo: ObjRepository,
+    private val deathDropHooks: Set<NpcDeathDropHook>,
+    private val deathKillHooks: Set<NpcDeathKillHook>,
 ) {
+    private var lootTrackerEventId: Int = 0
+
     public suspend fun deathNoDrops(access: StandardNpcAccess) {
-        access.death(npcRepo, seqTypes, players)
+        access.death(npcRepo, players)
     }
 
     public suspend fun deathWithDrops(
         access: StandardNpcAccess,
         dropCoords: CoordGrid = access.coords,
     ) {
-        access.death(npcRepo, seqTypes, players)
+        access.death(npcRepo, players)
         access.npc.spawnDeathDrops(dropCoords)
     }
 
@@ -47,8 +51,58 @@ constructor(
         val hero = findHero(players)
         if (hero != null) {
             val duration = hero.lootDropDuration ?: constants.lootdrop_duration
-            objRepo.add(objs.bones, dropCoords, duration, hero)
+            val lootTrackerEventId = nextLootTrackerEventId()
+
+            val remainsParam = paramOrNull(params.dropped_remains)
+            val explicitlyNoRemains = remainsParam == null && type.hasParam(params.dropped_remains.raw)
+            if (!explicitlyNoRemains) {
+                val droppedRemains =
+                    remainsParam
+                        ?: ServerCacheManager.getItem("obj.bones".asRSCM())
+                        ?: error("No bones")
+                val ctx = NpcDeathDropContext(
+                    hero = hero,
+                    dropType = droppedRemains,
+                    dropCoords = dropCoords,
+                    duration = duration,
+                    objRepo = objRepo
+                )
+
+                var dropConsumed = false
+                for (hook in deathDropHooks) {
+                    if (hook.tryConsume(ctx)) {
+                        dropConsumed = true
+                        break
+                    }
+                }
+                if (!dropConsumed) {
+                    val spawned = objRepo.add(droppedRemains, dropCoords, duration, hero)
+                    ClientScripts.lootTrackerAddLoot(
+                        hero,
+                        visType.id,
+                        lootTrackerEventId,
+                        spawned.type,
+                        spawned.count,
+                    )
+                }
+            }
+
+            val killCtx =
+                NpcDeathKillContext(
+                    hero = hero,
+                    npc = this,
+                    lootTrackerEventId = lootTrackerEventId,
+                    dropCoords = dropCoords,
+                )
+            for (hook in deathKillHooks) {
+                hook.onKill(killCtx)
+            }
         }
+    }
+
+    private fun nextLootTrackerEventId(): Int {
+        lootTrackerEventId = if (lootTrackerEventId == Int.MAX_VALUE) 1 else lootTrackerEventId + 1
+        return lootTrackerEventId
     }
 
     // Note: We may be able to have `Npc` as the arg instead of `StandardNpcAccess`, however we
@@ -59,9 +113,9 @@ constructor(
     }
 }
 
-private var Player.lastCombat: Int by intVarp(varps.lastcombat)
-private var Player.aggressiveNpc: NpcUid? by typeNpcUidVarp(varps.aggressive_npc)
-private var Npc.aggressivePlayer by typePlayerUidVarn(varns.aggressive_player)
+private var Player.lastCombat: Int by intVarp("varp.lastcombat")
+private var Player.aggressiveNpc: NpcUid? by typeNpcUidVarp("varp.aggressive_npc")
+private var Npc.aggressivePlayer by typePlayerUidVarn("varn.aggressive_player")
 
 /**
  * Handles the death sequence of this [StandardNpcAccess.npc], including clearing interactions and
@@ -78,11 +132,7 @@ private var Npc.aggressivePlayer by typePlayerUidVarn(varns.aggressive_player)
  *   (`onNpcQueue(npc_type, queues.death)`), you must explicitly handle drop spawns in the script by
  *   injecting `NpcDeath` and calling either [NpcDeath.deathWithDrops] or [NpcDeath.spawnDrops].
  */
-public suspend fun StandardNpcAccess.death(
-    npcRepo: NpcRepository,
-    seqTypes: SeqTypeList,
-    players: PlayerList,
-) {
+public suspend fun StandardNpcAccess.death(npcRepo: NpcRepository, players: PlayerList) {
     walk(coords)
     noneMode()
     hideAllOps()
@@ -92,7 +142,8 @@ public suspend fun StandardNpcAccess.death(
     if (aggressivePlayer != null) {
         val player = aggressivePlayer.resolve(players)
 
-        val deathSound = paramOrNull(params.death_sound)
+        val deathSound =
+            npc.visType.paramOrNull(params.death_sound) ?: paramOrNull(params.death_sound)
         if (deathSound != null && player != null) {
             player.soundSynth(deathSound)
         }
@@ -105,9 +156,10 @@ public suspend fun StandardNpcAccess.death(
         }
     }
 
-    val deathAnim = param(params.death_anim)
-    anim(deathAnim)
-    delay(seqTypes[deathAnim])
+    // A transformed npc (a varbit multinpc, a wall beast out of its hole) dies as the form it shows.
+    val deathAnim = npc.visType.paramOrNull(params.death_anim) ?: param(params.death_anim)
+    anim(RSCM.getReverseMapping(RSCMType.SEQ, deathAnim.id))
+    delay(deathAnim)
 
     if (npc.respawns) {
         npcRepo.despawn(npc, npc.type.respawnRate)

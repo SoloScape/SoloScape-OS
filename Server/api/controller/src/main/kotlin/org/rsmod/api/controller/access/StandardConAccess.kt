@@ -3,8 +3,6 @@ package org.rsmod.api.controller.access
 import kotlin.getValue
 import org.rsmod.coroutine.GameCoroutine
 import org.rsmod.game.entity.Controller
-import org.rsmod.game.type.queue.QueueType
-import org.rsmod.game.type.timer.TimerType
 import org.rsmod.map.CoordGrid
 
 /**
@@ -39,15 +37,15 @@ public class StandardConAccess(
         controller.aiTimer(cycles)
     }
 
-    public fun timer(timerType: TimerType, cycles: Int) {
+    public fun timer(timerType: String, cycles: Int) {
         controller.timer(timerType, cycles)
     }
 
-    public fun aiQueue(queue: QueueType, cycles: Int, args: Any? = null) {
+    public fun aiQueue(queue: String, cycles: Int, args: Any? = null) {
         controller.aiQueue(queue, cycles, args)
     }
 
-    public fun queue(queue: QueueType, cycles: Int, args: Any? = null) {
+    public fun queue(queue: String, cycles: Int, args: Any? = null) {
         controller.queue(queue, cycles, args)
     }
 

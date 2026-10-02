@@ -7,11 +7,14 @@ kotlin {
 }
 
 dependencies {
-    implementation(libs.bundles.logging)
-    implementation(libs.flyway.core)
+    implementation(libs.embedded.postgres)
+    implementation(libs.openrune.central.common)
+    implementation(libs.kotlin.inline.logger)
+    runtimeOnly(libs.logback.classic)
     implementation(libs.guice)
     implementation(libs.kotlin.coroutines.core)
-    implementation(libs.sqlite.jdbc)
+    implementation(libs.postgresql)
+    implementation(projects.api.serverConfig)
     implementation(projects.engine.module)
     implementation(projects.server.services)
 }

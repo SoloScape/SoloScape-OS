@@ -1,5 +1,8 @@
 package org.rsmod.api.specials
 
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.ItemServerType
 import jakarta.inject.Inject
 import org.rsmod.api.combat.commons.CombatAttack
 import org.rsmod.api.combat.commons.styles.MagicAttackStyle
@@ -16,10 +19,6 @@ import org.rsmod.game.entity.PathingEntity
 import org.rsmod.game.entity.Player
 import org.rsmod.game.hit.Hit
 import org.rsmod.game.proj.ProjAnim
-import org.rsmod.game.type.obj.ObjType
-import org.rsmod.game.type.proj.ProjAnimType
-import org.rsmod.game.type.spot.SpotanimType
-import org.rsmod.game.type.synth.SynthType
 
 public class SpecialAttackManager
 @Inject
@@ -36,7 +35,8 @@ constructor(
         energy.takeSpecialEnergy(source.player, energyInHundreds)
     }
 
-    public fun getSpecialEnergyRequirement(obj: ObjType): Int? = weapons.getSpecialEnergy(obj)
+    public fun getSpecialEnergyRequirement(obj: String): Int? =
+        weapons.getSpecialEnergy(obj.asRSCM(RSCMType.OBJ))
 
     /**
      * Sets [Player.actionDelay] to the current map clock + [cycles].
@@ -255,7 +255,7 @@ constructor(
     public fun queueRangedHit(
         source: ProtectedAccess,
         target: PathingEntity,
-        ammo: ObjType?,
+        ammo: ItemServerType?,
         damage: Int,
         clientDelay: Int,
         hitDelay: Int = 1 + (clientDelay / 30),
@@ -273,7 +273,7 @@ constructor(
     public fun queueRangedDamage(
         source: ProtectedAccess,
         target: PathingEntity,
-        ammo: ObjType?,
+        ammo: ItemServerType?,
         damage: Int,
         hitDelay: Int,
     ): Hit =
@@ -334,7 +334,7 @@ constructor(
         damage: Int,
         clientDelay: Int,
         hitDelay: Int = 1 + (clientDelay / 30),
-        spell: ObjType? = null,
+        spell: ItemServerType? = null,
     ): Hit =
         manager.queueMagicHit(
             source = source.player,
@@ -345,18 +345,37 @@ constructor(
             hitDelay = hitDelay,
         )
 
+    /** @see [PlayerAttackManager.playWeaponSound] */
+    public fun playWeaponSound(source: ProtectedAccess, attack: CombatAttack.Staff): Unit =
+        manager.playWeaponSound(source.player, attack)
+
     /** @see [PlayerAttackManager.spawnProjectile] */
     public fun spawnProjectile(
         source: ProtectedAccess,
         target: PathingEntity,
-        spotanim: SpotanimType,
-        projanim: ProjAnimType,
+        spotanim: String,
+        projanim: String,
     ): ProjAnim = manager.spawnProjectile(source.player, target, spotanim, projanim)
+
+    /**
+     * Plays the wielded weapon's attack sound.
+     *
+     * Special attacks bypass the normal weapon fx, so a special with no sound of its own is
+     * silent unless it calls this.
+     *
+     * @see [PlayerAttackManager.playWeaponSound]
+     */
+    public fun playWeaponSound(source: ProtectedAccess, attack: CombatAttack.Melee): Unit =
+        manager.playWeaponSound(source.player, attack)
+
+    /** @see [PlayerAttackManager.playWeaponSound] */
+    public fun playWeaponSound(source: ProtectedAccess, attack: CombatAttack.Ranged): Unit =
+        manager.playWeaponSound(source.player, attack)
 
     /** @see [PlayerAttackManager.soundArea] */
     public fun soundArea(
         source: PathingEntity,
-        synth: SynthType,
+        synth: String,
         delay: Int = 0,
         loops: Int = 1,
         radius: Int = 5,

@@ -1,5 +1,6 @@
 package org.rsmod.api.registry.region
 
+import dev.openrune.ServerCacheManager
 import jakarta.inject.Inject
 import org.rsmod.api.registry.controller.ControllerRegistry
 import org.rsmod.api.registry.controller.isSuccess
@@ -18,10 +19,10 @@ import org.rsmod.game.region.Region
 import org.rsmod.game.region.Region.Companion.INVALID_SLOT
 import org.rsmod.game.region.RegionListLarge
 import org.rsmod.game.region.RegionListSmall
+import org.rsmod.game.region.RegionListWorldEntity
 import org.rsmod.game.region.util.RegionRotations
 import org.rsmod.game.region.zone.RegionZoneCopy
 import org.rsmod.game.region.zone.RegionZoneCopyMap
-import org.rsmod.game.type.loc.LocTypeList
 import org.rsmod.map.CoordGrid
 import org.rsmod.map.zone.ZoneGrid
 import org.rsmod.map.zone.ZoneKey
@@ -34,9 +35,9 @@ public class RegionRegistry
 constructor(
     private val smallRegions: RegionListSmall,
     private val largeRegions: RegionListLarge,
+    private val worldEntityRegions: RegionListWorldEntity,
     private val normalLocReg: LocRegistryNormal,
     private val collision: CollisionFlagMap,
-    private val locTypes: LocTypeList,
     private val locZones: LocZoneStorage,
     private val npcRegistry: NpcRegistry,
     private val conRegistry: ControllerRegistry,
@@ -45,10 +46,20 @@ constructor(
     init {
         workingAreaSmall.assertValidBounds(smallRegions.capacity)
         workingAreaLarge.assertValidBounds(largeRegions.capacity)
+        workingAreaWorldEntity.assertValidBounds(worldEntityRegions.capacity)
     }
 
     private val zones: RegionZoneCopyMap = RegionZoneCopyMap()
+    private val pinnedUids = HashSet<Int>()
     private var uid = 0
+
+    public fun protect(uid: Int) {
+        pinnedUids += uid
+    }
+
+    public fun unprotect(uid: Int) {
+        pinnedUids -= uid
+    }
 
     public fun registerSmall(): RegionRegistryResult.Add {
         val slot = smallRegions.nextFreeSlot() ?: return RegionRegistryResult.Add.NoAvailableSlot
@@ -78,12 +89,48 @@ constructor(
         return RegionRegistryResult.Add.CreateLarge(region)
     }
 
+    /**
+     * World entity copies back player-owned boats. They are allocated from their own band and,
+     * unlike small and large copies, are never swept by an inactivity pass; the owner of the boat
+     * is responsible for calling [unregister].
+     */
+    public fun registerWorldEntity(): RegionRegistryResult.Add {
+        val slot = worldEntityRegions.nextFreeSlot() ?: return RegionRegistryResult.Add.NoAvailableSlot
+
+        val squareLength = WORLDENTITY_REGION_SQUARE_LENGTH
+        val southWest = workingAreaWorldEntity.calculateCoord(slot)
+        val northEast = southWest.translate(squareLength, squareLength)
+
+        val uid = uid++
+
+        val region = Region(southWest, northEast, uid, slot)
+        worldEntityRegions[slot] = region
+        return RegionRegistryResult.Add.CreateWorldEntity(region)
+    }
+
     public fun unregister(region: Region): RegionRegistryResult.Delete =
         when (region.southWest) {
+            in workingAreaWorldEntity -> unregisterWorldEntity(region)
             in workingAreaSmall -> unregisterSmall(region)
             in workingAreaLarge -> unregisterLarge(region)
             else -> error("Coords not associated with a region area: region=$region")
         }
+
+    private fun unregisterWorldEntity(region: Region): RegionRegistryResult.Delete {
+        if (region.slot == INVALID_SLOT) {
+            return RegionRegistryResult.Delete.UnexpectedSlot
+        }
+
+        if (worldEntityRegions[region.slot] != region) {
+            return RegionRegistryResult.Delete.ListSlotMismatch(worldEntityRegions[region.slot])
+        }
+
+        clearAllZones(region)
+        worldEntityRegions.remove(region.slot)
+        region.slot = INVALID_SLOT
+
+        return RegionRegistryResult.Delete.RemoveWorldEntity
+    }
 
     private fun unregisterSmall(region: Region): RegionRegistryResult.Delete {
         if (region.slot == INVALID_SLOT) {
@@ -118,14 +165,14 @@ constructor(
     }
 
     public fun removeInactiveSmallRegions() {
-        val filtered = smallRegions.filter(::isEmpty)
+        val filtered = smallRegions.filter { it.uid !in pinnedUids && isEmpty(it) }
         for (region in filtered) {
             unregisterSmall(region)
         }
     }
 
     public fun removeInactiveLargeRegions() {
-        val filtered = largeRegions.filter(::isEmpty)
+        val filtered = largeRegions.filter { it.uid !in pinnedUids && isEmpty(it) }
         for (region in filtered) {
             unregisterLarge(region)
         }
@@ -141,10 +188,19 @@ constructor(
             return true
         }
         val validLargeRegion = largeRegions[regionSlot]?.uid == regionUid
-        return validLargeRegion
+        if (validLargeRegion) {
+            return true
+        }
+        val validWorldEntityRegion = worldEntityRegions[regionSlot]?.uid == regionUid
+        return validWorldEntityRegion
     }
 
     public operator fun get(coords: CoordGrid): Region? {
+        if (coords in workingAreaWorldEntity) {
+            val slot = workingAreaWorldEntity.calculateSlot(coords)
+            return worldEntityRegions[slot]
+        }
+
         if (coords in workingAreaSmall) {
             val slot = workingAreaSmall.calculateSlot(coords)
             return smallRegions[slot]
@@ -236,7 +292,7 @@ constructor(
         // the normal zone.
         val normalLocs = normalLocReg.findAll(normalZone)
         for (normalLoc in normalLocs) {
-            val locType = locTypes[normalLoc]
+            val locType = ServerCacheManager.getObject(normalLoc.id)!!
 
             val width = Rotations.rotate(normalLoc.angleId, locType.width, locType.length)
             val length = Rotations.rotate(normalLoc.angleId, locType.length, locType.width)
@@ -421,7 +477,7 @@ constructor(
         // we allow them to stay in a zone that will soon be "invalidated." While this should not
         // cause issues currently, it's worth noting in case future systems enforce stricter
         // validation for npcs in invalid zones.
-        if (npc.type.follower) {
+        if (npc.type.isFollower) {
             return
         }
         val delete = npcRegistry.del(npc)
@@ -482,12 +538,16 @@ constructor(
         val startCoordZ: Int,
         val maxCoordZ: Int,
         val maxCoordX: Int,
+        val padding: Int = PADDING_SQUARES,
     ) {
         private val workingRegionLength: Int
-            get() = PADDING_SQUARES + regionSquareLength + PADDING_SQUARES
+            get() = padding + regionSquareLength + padding
 
+        // `maxCoord` is the exclusive edge of the band, matching how a region's `northEast` is the
+        // exclusive corner of its square. Using an inclusive range here would make a band contain
+        // the first coord of the band that follows it.
         public operator fun contains(coords: CoordGrid): Boolean =
-            coords.x in startCoordX..maxCoordX && coords.z in startCoordZ..maxCoordZ
+            coords.x in startCoordX until maxCoordX && coords.z in startCoordZ until maxCoordZ
 
         public fun calculateSlot(coords: CoordGrid): Int {
             require(coords in this) {
@@ -503,22 +563,24 @@ constructor(
         public fun calculateCoord(slot: Int): CoordGrid {
             val regionX = slot % horizontalRegionCap
             val regionZ = slot / horizontalRegionCap
-            val coordX = startCoordX + (regionX * workingRegionLength) + PADDING_SQUARES
-            val coordZ = startCoordZ + (regionZ * workingRegionLength) + PADDING_SQUARES
+            val coordX = startCoordX + (regionX * workingRegionLength) + padding
+            val coordZ = startCoordZ + (regionZ * workingRegionLength) + padding
             val coord = CoordGrid(coordX, coordZ)
             check(coord in this) { "Unexpected coord result: slot=$slot, coord=$coord" }
             return coord
         }
 
         public fun assertValidBounds(regionCapacity: Int) {
-            val endX = startCoordX + (horizontalRegionCap * workingRegionLength)
+            // The trailing padding of the final region runs up to the band edge, so it is not
+            // counted here; the usable area ends with the last region's own square.
+            val endX = startCoordX + (horizontalRegionCap * workingRegionLength) - padding
             check(endX <= maxCoordX) {
                 "Working area cannot hold $horizontalRegionCap horizontal " +
                     "regions as it goes out of expected bounds. " +
                     "(maxCoordX=$maxCoordX, workingAreaEndX=$endX)"
             }
 
-            val endZ = startCoordZ + (verticalRegionCap * workingRegionLength)
+            val endZ = startCoordZ + (verticalRegionCap * workingRegionLength) - padding
             check(endZ <= maxCoordZ) {
                 "Working area cannot hold $verticalRegionCap vertical " +
                     "regions as it goes out of expected bounds. " +
@@ -536,36 +598,68 @@ constructor(
     public companion object {
         public const val PADDING_SQUARES: Int = 32
 
-        public const val START_COORD_X: Int = 6400 + PADDING_SQUARES
-        public const val START_COORD_Z: Int = 0 + PADDING_SQUARES
+        public const val PADDING_BETWEEN_INSTANCES: Int = PADDING_SQUARES * 2
+
+        public const val INSTANCE_MIN_X: Int = 6400
+
+        /**
+         * Instanced space is divided into vertical bands by `x`, each spanning the full `z` axis.
+         * Large copies occupy the first band, small copies the second, and world entity copies the
+         * third.
+         */
+        public const val LARGE_MIN_X: Int = INSTANCE_MIN_X
+
+        public const val SMALL_MIN_X: Int = 10240
+
+        public const val WORLDENTITY_MIN_X: Int = 14080
+
+        public const val MAX_CONCURRENT_SMALL_REGIONS: Int = 1700
+        public const val MAX_CONCURRENT_LARGE_REGIONS: Int = 420
+        public const val MAX_CONCURRENT_WORLDENTITY_REGIONS: Int = 9216
+
+        public const val START_COORD_Z: Int = PADDING_SQUARES
 
         public const val SMALL_REGION_SQUARE_LENGTH: Int = 128
         public const val LARGE_REGION_SQUARE_LENGTH: Int = 320
-
-        public val workingAreaSmall: WorkingArea =
-            WorkingArea(
-                horizontalRegionCap = 19,
-                verticalRegionCap = 85,
-                regionSquareLength = SMALL_REGION_SQUARE_LENGTH,
-                startCoordX = START_COORD_X + 3904,
-                startCoordZ = START_COORD_Z,
-                maxCoordX = CoordGrid.MAP_WIDTH,
-                maxCoordZ = CoordGrid.MAP_LENGTH,
-            )
+        public const val WORLDENTITY_REGION_SQUARE_LENGTH: Int = 64
 
         public val workingAreaLarge: WorkingArea =
             WorkingArea(
                 horizontalRegionCap = 10,
                 verticalRegionCap = 42,
                 regionSquareLength = LARGE_REGION_SQUARE_LENGTH,
-                startCoordX = START_COORD_X,
+                startCoordX = LARGE_MIN_X + PADDING_SQUARES,
                 startCoordZ = START_COORD_Z,
-                maxCoordX = CoordGrid.MAP_WIDTH,
+                maxCoordX = SMALL_MIN_X,
                 maxCoordZ = CoordGrid.MAP_LENGTH,
             )
 
-        public fun inWorkingArea(coords: CoordGrid): Boolean = coords.x >= START_COORD_X
+        public val workingAreaSmall: WorkingArea =
+            WorkingArea(
+                horizontalRegionCap = 20,
+                verticalRegionCap = 85,
+                regionSquareLength = SMALL_REGION_SQUARE_LENGTH,
+                startCoordX = SMALL_MIN_X + PADDING_SQUARES,
+                startCoordZ = START_COORD_Z,
+                maxCoordX = WORLDENTITY_MIN_X,
+                maxCoordZ = CoordGrid.MAP_LENGTH,
+            )
 
-        public fun inWorkingArea(key: ZoneKey): Boolean = key.x * ZoneGrid.LENGTH >= START_COORD_X
+        /** Unlike the other bands, world entity copies are packed with no padding between them. */
+        public val workingAreaWorldEntity: WorkingArea =
+            WorkingArea(
+                horizontalRegionCap = 36,
+                verticalRegionCap = 256,
+                regionSquareLength = WORLDENTITY_REGION_SQUARE_LENGTH,
+                startCoordX = WORLDENTITY_MIN_X,
+                startCoordZ = 0,
+                maxCoordX = CoordGrid.MAP_WIDTH,
+                maxCoordZ = CoordGrid.MAP_LENGTH,
+                padding = 0,
+            )
+
+        public fun inWorkingArea(coords: CoordGrid): Boolean = coords.x >= INSTANCE_MIN_X
+
+        public fun inWorkingArea(key: ZoneKey): Boolean = key.x * ZoneGrid.LENGTH >= INSTANCE_MIN_X
     }
 }

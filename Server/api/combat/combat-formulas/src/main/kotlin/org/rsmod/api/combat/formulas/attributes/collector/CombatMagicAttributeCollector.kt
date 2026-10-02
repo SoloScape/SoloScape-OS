@@ -1,6 +1,6 @@
 package org.rsmod.api.combat.formulas.attributes.collector
 
-import jakarta.inject.Inject
+import dev.openrune.types.ItemServerType
 import java.util.EnumSet
 import kotlin.collections.plusAssign
 import org.rsmod.api.combat.commons.magic.MagicSpellChecks
@@ -8,9 +8,7 @@ import org.rsmod.api.combat.commons.magic.Spellbook
 import org.rsmod.api.combat.formulas.attributes.CombatSpellAttributes
 import org.rsmod.api.combat.formulas.attributes.CombatStaffAttributes
 import org.rsmod.api.config.constants
-import org.rsmod.api.config.refs.objs
-import org.rsmod.api.config.refs.params
-import org.rsmod.api.config.refs.varbits
+import org.rsmod.api.config.refs.BaseParams
 import org.rsmod.api.player.front
 import org.rsmod.api.player.hands
 import org.rsmod.api.player.hat
@@ -24,17 +22,14 @@ import org.rsmod.api.random.GameRandom
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.isAnyType
 import org.rsmod.game.inv.isType
-import org.rsmod.game.type.obj.ObjType
-import org.rsmod.game.type.obj.ObjTypeList
-import org.rsmod.game.type.obj.UnpackedObjType
-import org.rsmod.game.type.obj.isType
+import org.rsmod.game.type.getOrNull
 
-public class CombatMagicAttributeCollector @Inject constructor(private val objTypes: ObjTypeList) {
+public class CombatMagicAttributeCollector {
     // `random` is an explicit parameter to indicate that this function relies on randomness
     // for certain effects, such as the Brimstone ring proc.
     public fun spellCollect(
         player: Player,
-        spell: ObjType,
+        spell: ItemServerType,
         spellbook: Spellbook?,
         usedSunfireRune: Boolean,
         random: GameRandom,
@@ -52,7 +47,7 @@ public class CombatMagicAttributeCollector @Inject constructor(private val objTy
                 MagicSpellChecks.isEarthSpell(spell) -> CombatSpellAttributes.EarthSpell
                 MagicSpellChecks.isFireSpell(spell) -> CombatSpellAttributes.FireSpell
                 MagicSpellChecks.isBindSpell(spell) -> CombatSpellAttributes.BindSpell
-                spell.isType(objs.spell_magic_dart) -> CombatSpellAttributes.MagicDart
+                spell.isType("obj.50_magic_dart") -> CombatSpellAttributes.MagicDart
                 else -> null
             }
 
@@ -68,27 +63,27 @@ public class CombatMagicAttributeCollector @Inject constructor(private val objTy
 
         val hasImprovedAhrimPassive =
             EquipmentChecks.isAhrimSet(helm, body, legs, weapon) &&
-                amulet.isType(objs.amulet_of_the_damned_full)
+                amulet.isType("obj.damned_amulet")
 
         if (hasImprovedAhrimPassive && random.randomBoolean(4)) {
             attributes += CombatSpellAttributes.AhrimPassive
         }
 
         val ring = player.ring
-        if (ring.isType(objs.brimstone_ring) && random.randomBoolean(4)) {
+        if (ring.isType("obj.brimstone_ring") && random.randomBoolean(4)) {
             attributes += CombatSpellAttributes.BrimstonePassive
         }
 
-        if (player.vars[varbits.buff_mark_of_darkness_disabled] == 1) {
+        if (player.vars["varbit.buff_mark_of_darkness_disabled"] == 1) {
             attributes += CombatSpellAttributes.MarkOfDarkness
         }
 
-        if (weapon.isType(objs.slayers_staff_e)) {
+        if (weapon.isType("obj.slayer_staff_enchanted")) {
             attributes += CombatSpellAttributes.SlayerStaffE
         }
 
         val gloves = player.hands
-        if (gloves.isType(objs.chaos_gauntlets)) {
+        if (gloves.isType("obj.gauntlets_of_chaos")) {
             attributes += CombatSpellAttributes.ChaosGauntlets
         }
 
@@ -96,7 +91,7 @@ public class CombatMagicAttributeCollector @Inject constructor(private val objTy
             attributes += CombatSpellAttributes.BoltSpell
         }
 
-        val chargeBuffCooldown = player.vars[varbits.buff_charge_spell_disabled]
+        val chargeBuffCooldown = player.vars["varbit.buff_charge_spell_disabled"]
         if (MagicSpellChecks.isGodSpell(spell) && chargeBuffCooldown > 0) {
             attributes += CombatSpellAttributes.ChargeSpell
         }
@@ -109,30 +104,30 @@ public class CombatMagicAttributeCollector @Inject constructor(private val objTy
             attributes += CombatSpellAttributes.SmokeStaff
         }
 
-        if (player.skullIcon == constants.skullicon_forinthry_surge) {
+        if (player.skullIcon != null && constants.isForinthrySurgeSkull(player.skullIcon!!)) {
             attributes += CombatSpellAttributes.ForinthrySurge
         }
 
-        if (amulet.isType(objs.amulet_of_avarice)) {
+        if (amulet.isType("obj.wild_cave_amulet")) {
             attributes += CombatSpellAttributes.AmuletOfAvarice
-        } else if (amulet.isType(objs.salve_amulet_ei)) {
+        } else if (amulet.isType("obj.nzone_salve_amulet_e")) {
             attributes += CombatSpellAttributes.SalveAmuletEi
-        } else if (amulet.isType(objs.salve_amulet_i)) {
+        } else if (amulet.isType("obj.nzone_salve_amulet")) {
             attributes += CombatSpellAttributes.SalveAmuletI
         }
 
-        val helmType = objTypes.getOrNull(player.hat)
+        val helmType = getOrNull(player.hat)
         if (helmType != null && helmType.hasImbuedBlackMaskAttribute()) {
             attributes += CombatSpellAttributes.BlackMaskI
         }
 
         val weaponAttribute =
             when {
-                weapon.isType(objs.dragon_hunter_wand) -> {
+                weapon.isType("obj.dragonhunter_wand") -> {
                     CombatSpellAttributes.DragonHunterWand
                 }
 
-                weapon.isType(objs.dragon_hunter_lance) -> {
+                weapon.isType("obj.dragonhunter_lance") -> {
                     CombatSpellAttributes.DragonHunterLance
                 }
 
@@ -141,15 +136,15 @@ public class CombatMagicAttributeCollector @Inject constructor(private val objTy
                 }
 
                 weapon.isAnyType(
-                    objs.accursed_sceptre,
-                    objs.accursed_sceptre_a,
-                    objs.thammarons_sceptre,
-                    objs.thammarons_sceptre_a,
+                    "obj.wild_cave_accursed_charged",
+                    "obj.wild_cave_accursed_charged_recol",
+                    "obj.wild_cave_sceptre_charged",
+                    "obj.wild_cave_sceptre_charged_recol",
                 ) -> {
                     CombatSpellAttributes.RevenantWeapon
                 }
 
-                weapon.isType(objs.purging_staff) -> {
+                weapon.isType("obj.purging_staff") -> {
                     CombatSpellAttributes.PurgingStaff
                 }
 
@@ -164,9 +159,9 @@ public class CombatMagicAttributeCollector @Inject constructor(private val objTy
 
         val shieldAttribute =
             when {
-                shield.isType(objs.tome_of_water) -> CombatSpellAttributes.WaterTome
-                shield.isType(objs.tome_of_earth) -> CombatSpellAttributes.EarthTome
-                shield.isType(objs.tome_of_fire) -> CombatSpellAttributes.FireTome
+                shield.isType("obj.tome_of_water") -> CombatSpellAttributes.WaterTome
+                shield.isType("obj.tome_of_earth") -> CombatSpellAttributes.EarthTome
+                shield.isType("obj.tome_of_fire") -> CombatSpellAttributes.FireTome
                 else -> null
             }
 
@@ -178,7 +173,7 @@ public class CombatMagicAttributeCollector @Inject constructor(private val objTy
             attributes += CombatSpellAttributes.SunfireRunePassive
         }
 
-        if (ring.isType(objs.efaritays_aid)) {
+        if (ring.isType("obj.vampyre_ring")) {
             attributes += CombatSpellAttributes.EfaritaysAid
         }
 
@@ -191,24 +186,24 @@ public class CombatMagicAttributeCollector @Inject constructor(private val objTy
         val attributes = EnumSet.noneOf(CombatStaffAttributes::class.java)
 
         val ring = player.ring
-        if (ring.isType(objs.brimstone_ring) && random.randomBoolean(4)) {
+        if (ring.isType("obj.brimstone_ring") && random.randomBoolean(4)) {
             attributes += CombatStaffAttributes.BrimstonePassive
         }
 
-        if (player.skullIcon == constants.skullicon_forinthry_surge) {
+        if (player.skullIcon != null && constants.isForinthrySurgeSkull(player.skullIcon!!)) {
             attributes += CombatStaffAttributes.ForinthrySurge
         }
 
         val amulet = player.front
-        if (amulet.isType(objs.amulet_of_avarice)) {
+        if (amulet.isType("obj.wild_cave_amulet")) {
             attributes += CombatStaffAttributes.AmuletOfAvarice
-        } else if (amulet.isType(objs.salve_amulet_ei)) {
+        } else if (amulet.isType("obj.nzone_salve_amulet_e")) {
             attributes += CombatStaffAttributes.SalveAmuletEi
-        } else if (amulet.isType(objs.salve_amulet_i)) {
+        } else if (amulet.isType("obj.nzone_salve_amulet")) {
             attributes += CombatStaffAttributes.SalveAmuletI
         }
 
-        val helmType = objTypes.getOrNull(player.hat)
+        val helmType = getOrNull(player.hat)
         if (helmType != null && helmType.hasImbuedBlackMaskAttribute()) {
             attributes += CombatStaffAttributes.BlackMaskI
         }
@@ -222,10 +217,10 @@ public class CombatMagicAttributeCollector @Inject constructor(private val objTy
                 }
 
                 weapon.isAnyType(
-                    objs.accursed_sceptre,
-                    objs.accursed_sceptre_a,
-                    objs.thammarons_sceptre,
-                    objs.thammarons_sceptre_a,
+                    "obj.wild_cave_accursed_charged",
+                    "obj.wild_cave_accursed_charged_recol",
+                    "obj.wild_cave_sceptre_charged",
+                    "obj.wild_cave_sceptre_charged_recol",
                 ) -> {
                     CombatStaffAttributes.RevenantWeapon
                 }
@@ -240,7 +235,7 @@ public class CombatMagicAttributeCollector @Inject constructor(private val objTy
         return attributes
     }
 
-    private fun UnpackedObjType.hasImbuedBlackMaskAttribute(): Boolean {
-        return param(params.blackmask_imbued) != 0 || param(params.slayer_helm_imbued) != 0
+    private fun ItemServerType.hasImbuedBlackMaskAttribute(): Boolean {
+        return param(BaseParams.blackmask_imbued) != 0 || param(BaseParams.slayer_helm_imbued) != 0
     }
 }

@@ -1,0 +1,8 @@
+[[spawn]]
+obj = "obj.tinderbox"
+coords = "0_36_153_20_8"
+
+
+[[spawn]]
+obj = "obj.bucket_empty"
+coords = "0_36_153_19_8"

@@ -1,23 +1,53 @@
 package org.rsmod.api.player.hit.modifier
 
-import org.rsmod.api.config.refs.varbits
+import jakarta.inject.Inject
+import org.rsmod.api.attr.AttributeKey
+import org.rsmod.api.player.cheat.adminGodMode
+import org.rsmod.api.player.events.PlayerHitEvents
+import org.rsmod.api.player.hit.PlayerAbsorption
+import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
 import org.rsmod.game.hit.HitBuilder
 import org.rsmod.game.hit.HitType
 
-public object StandardPlayerHitModifier : PlayerHitModifier {
+/** Set on the target while a hit that ignores protection prayers is being queued. */
+public val PIERCE_PROTECTION_PRAYER_ATTR: AttributeKey<Boolean> = AttributeKey(temp = true)
+
+public class StandardPlayerHitModifier @Inject constructor(private val eventBus: EventBus) :
+    PlayerHitModifier {
     override fun HitBuilder.modify(target: Player) {
+        target.publishEvent(this)
+
+        if (target.adminGodMode) {
+            damage = 0
+            return
+        }
+
         val protectionPrayer =
             when (type) {
                 HitType.Typeless -> false
-                HitType.Melee -> target.vars[varbits.protect_from_melee] == 1
-                HitType.Ranged -> target.vars[varbits.protect_from_missiles] == 1
-                HitType.Magic -> target.vars[varbits.protect_from_magic] == 1
+                HitType.Melee -> target.vars["varbit.prayer_protectfrommelee"] == 1
+                HitType.Ranged -> target.vars["varbit.prayer_protectfrommissiles"] == 1
+                HitType.Magic -> target.vars["varbit.prayer_protectfrommagic"] == 1
             }
 
-        if (protectionPrayer) {
-            val reduction = if (isFromPlayer) 40 else 100
+        if (protectionPrayer && target.attr[PIERCE_PROTECTION_PRAYER_ATTR] != true) {
+            val baseReduction = if (isFromPlayer) 40 else 100
+            val reduction = (baseReduction - penetration).coerceIn(0, 100)
             damage = (damage * (100 - reduction)) / 100
         }
+
+        if (isFromNpc) {
+            damage =
+                PlayerAbsorption.absorb(
+                    player = target,
+                    incomingDamage = damage,
+                )
+        }
+    }
+
+    private fun Player.publishEvent(hit: HitBuilder) {
+        val event = PlayerHitEvents.Modify(this, hit)
+        eventBus.publish(event)
     }
 }

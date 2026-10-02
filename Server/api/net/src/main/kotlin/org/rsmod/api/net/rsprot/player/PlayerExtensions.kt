@@ -1,6 +1,7 @@
 package org.rsmod.api.net.rsprot.player
 
-import org.rsmod.api.config.constants
+import dev.or2.central.account.Rights
+import org.rsmod.api.player.hook.TeleportType
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.protect.ProtectedAccessContextFactory
 import org.rsmod.game.entity.Player
@@ -15,13 +16,13 @@ internal fun Player.protectedTelejump(collision: CollisionFlagMap, dest: CoordGr
     launch {
         val context = ProtectedAccessContextFactory.empty()
         val access = ProtectedAccess(this@protectedTelejump, this, context)
-        access.telejump(dest, collision)
+        access.telejump(dest, collision, TeleportType.Exempt)
     }
     return true
 }
 
 internal fun Player.modLevelTeleMoveSpeed(developmentMode: Boolean): MoveSpeed? =
-    if (modLevel.clientCode == constants.mod_clientcode_jmod || developmentMode) {
+    if (modLevel.isAtLeast(Rights.ADMINISTRATOR) || developmentMode) {
         MoveSpeed.Stationary
     } else {
         null

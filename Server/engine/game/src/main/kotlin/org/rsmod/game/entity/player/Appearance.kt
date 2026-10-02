@@ -1,7 +1,7 @@
 package org.rsmod.game.entity.player
 
-import org.rsmod.game.type.bas.UnpackedBasType
-import org.rsmod.game.type.npc.UnpackedNpcType
+import dev.openrune.types.BasType
+import dev.openrune.types.NpcServerType
 
 public class Appearance {
     /**
@@ -11,13 +11,13 @@ public class Appearance {
     public var rebuild: Boolean = true
         internal set
 
-    public var bas: UnpackedBasType? = null
+    public var bas: BasType? = null
         set(value) {
             field = value
             rebuild = true
         }
 
-    public var transmog: UnpackedNpcType? = null
+    public var transmog: NpcServerType? = null
         set(value) {
             field = value
             rebuild = true
@@ -77,6 +77,8 @@ public class Appearance {
             rebuild = true
         }
 
+    private val wornOverrides: MutableMap<Int, Int> = HashMap(0)
+
     private val colours: ByteArray = ByteArray(5)
     private val identKit: ShortArray = ShortArray(7) { -1 }
 
@@ -93,11 +95,46 @@ public class Appearance {
         this.rebuild = true
     }
 
+    /**
+     * @param identKit the ident-kit style for [index], or [NO_IDENT_KIT] to leave the slot empty.
+     *   The backing array already starts as [NO_IDENT_KIT], and the appearance encoder passes the
+     *   value straight through to a protocol that treats `-1` as "no model" - a body type B jaw,
+     *   for instance, has no model rather than a blank one.
+     */
     public fun setIdentKit(index: Int, identKit: Int) {
-        require(identKit in 0..65535) { "identKit must be in range [0..65535]. ($identKit)" }
+        require(identKit == NO_IDENT_KIT || identKit in 0..65535) {
+            "identKit must be $NO_IDENT_KIT (none) or in range [0..65535]. ($identKit)"
+        }
         this.identKit[index] = identKit.toShort()
         this.rebuild = true
     }
+
+    /**
+     * Cosmetic worn-obj overrides, by wearpos slot: the appearance shows these objs in place of
+     * whatever is worn there, without affecting the worn inv or any bonus. [HIDDEN_WORN_OVERRIDE]
+     * shows the slot as empty instead.
+     */
+    public fun setWornOverride(slot: Int, obj: Int) {
+        wornOverrides[slot] = obj
+        this.rebuild = true
+    }
+
+    public fun clearWornOverride(slot: Int) {
+        if (wornOverrides.remove(slot) != null) {
+            this.rebuild = true
+        }
+    }
+
+    public fun clearWornOverrides() {
+        if (wornOverrides.isNotEmpty()) {
+            wornOverrides.clear()
+            this.rebuild = true
+        }
+    }
+
+    public fun wornOverride(slot: Int): Int? = wornOverrides[slot]
+
+    public fun wornOverrideSlots(): Set<Int> = wornOverrides.keys.toSet()
 
     public fun coloursSnapshot(): List<Byte> = colours.toList()
 
@@ -106,6 +143,14 @@ public class Appearance {
     public fun clearRebuildFlag() {
         rebuild = false
     }
+
+    public fun subjectPronoun(): String =
+        when (pronoun) {
+            PRONOUN_HE -> "He"
+            PRONOUN_SHE -> "She"
+            PRONOUN_THEY -> "They"
+            else -> if (bodyType == BODY_TYPE_A) "He" else "She"
+        }
 
     private fun assignDefaultColours() {
         colours[0] = 0
@@ -123,5 +168,20 @@ public class Appearance {
         identKit[4] = 33
         identKit[5] = 36
         identKit[6] = 42
+    }
+
+    public companion object {
+        /** Shows a worn-override slot as empty, hiding whatever is worn there. */
+        public const val HIDDEN_WORN_OVERRIDE: Int = -1
+
+        /** Leaves an ident-kit slot empty; the protocol encodes it as "no model". */
+        public const val NO_IDENT_KIT: Int = -1
+
+        public const val PRONOUN_HE: Int = 0
+        public const val PRONOUN_SHE: Int = 1
+        public const val PRONOUN_THEY: Int = 2
+
+        public const val BODY_TYPE_A: Int = 0
+        public const val BODY_TYPE_B: Int = 1
     }
 }

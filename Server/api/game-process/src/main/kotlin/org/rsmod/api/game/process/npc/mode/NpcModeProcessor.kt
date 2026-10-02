@@ -1,8 +1,8 @@
 package org.rsmod.api.game.process.npc.mode
 
+import dev.openrune.types.NpcMode
 import jakarta.inject.Inject
 import org.rsmod.game.entity.Npc
-import org.rsmod.game.entity.npc.NpcMode
 import org.rsmod.game.interact.InteractionOp
 
 public class NpcModeProcessor
@@ -20,6 +20,10 @@ constructor(
     private val aiObjMode: AiObjModeProcessor,
 ) {
     public fun process(npc: Npc) {
+        if (npc.ignoreCombatInteractions) {
+            npc.clearInteraction()
+            return
+        }
         val mode = npc.mode ?: npc.defaultMode
         npc.mode = mode
         npc.processMode(mode)

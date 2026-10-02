@@ -1,10 +1,11 @@
 package org.rsmod.content.interfaces.gameframe.script
 
+import dev.openrune.ServerCacheManager
+import dev.openrune.definition.type.widget.ComponentType
+import dev.openrune.definition.type.widget.IfEvent
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
 import jakarta.inject.Inject
-import org.rsmod.api.config.refs.components
-import org.rsmod.api.config.refs.interfaces
-import org.rsmod.api.config.refs.varbits
-import org.rsmod.api.config.refs.varps
 import org.rsmod.api.player.cinematic.Cinematic
 import org.rsmod.api.player.output.ClientScripts
 import org.rsmod.api.player.output.runClientScript
@@ -21,31 +22,24 @@ import org.rsmod.api.script.onPlayerSoftQueueWithArgs
 import org.rsmod.content.interfaces.gameframe.Gameframe
 import org.rsmod.content.interfaces.gameframe.GameframeLoader
 import org.rsmod.content.interfaces.gameframe.GameframeMove
-import org.rsmod.content.interfaces.gameframe.config.gameframe_queues
 import org.rsmod.content.interfaces.gameframe.moveGameframe
 import org.rsmod.content.interfaces.gameframe.openGameframe
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
-import org.rsmod.game.type.comp.ComponentType
-import org.rsmod.game.type.interf.IfEvent
-import org.rsmod.game.type.interf.InterfaceTypeList
-import org.rsmod.game.type.interf.isType
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
-class GameframeScript
-@Inject
-internal constructor(
-    private val eventBus: EventBus,
-    private val loader: GameframeLoader,
-    private val interfaceTypes: InterfaceTypeList,
-) : PluginScript() {
-    private lateinit var gameframes: Map<Int, Gameframe>
+
+var Player.gameframeTopLevel by intVarBit("varbit.gameframe_toplevel")
+private var Player.stoneArrangements by boolVarBit("varbit.resizable_stone_arrangement")
+lateinit var gameframes: Map<Int, Gameframe>
+
+class GameframeScript @Inject internal constructor(private val eventBus: EventBus, private val loader: GameframeLoader) :
+    PluginScript() {
+
     private lateinit var moveEvents: List<MoveEvent>
     private lateinit var default: Gameframe
-
-    private var Player.gameframeTopLevel by intVarBit(varbits.gameframe_toplevel)
-    private var Player.stoneArrangements by boolVarBit(varbits.resizable_stone_arrangement)
+    private var Player.orbsMinimized by boolVarBit("varbit.minimap_toggle")
 
     override fun ScriptContext.startup() {
         loadAll()
@@ -53,17 +47,19 @@ internal constructor(
         onPlayerInit { player.openLoginGameframe() }
 
         for ((topLevel, gameframe) in gameframes) {
-            val type = interfaceTypes.getValue(topLevel)
+            val type = ServerCacheManager.getInterface(topLevel) ?: error("Unable to get Interface")
             onIfMoveTop(type) { player.queueGameframeMove(gameframe) }
         }
 
         for ((target, event) in moveEvents) {
             onIfMoveSub(target) { player.moveSetEvents(event) }
         }
-        onIfMoveSub(components.toplevel_target_xp_drops) { player.moveXpDrops() }
-        onIfMoveSub(components.toplevel_target_ehc_listener) { player.moveEhcListener() }
+        onIfMoveSub("component.toplevel_osrs_stretch:xp_drops") { player.moveXpDrops() }
+        
+        onIfMoveSub("component.toplevel_osrs_stretch:tli_listener") { player.moveEhcListener() }
 
-        onPlayerSoftQueueWithArgs(gameframe_queues.client_mode) { player.changeGameframe(args) }
+        onPlayerSoftQueueWithArgs("queue.client_mode") { player.changeGameframe(args) }
+        onPlayerSoftQueueWithArgs("queue.fullscreen_map") { player.changeGameframe(args) }
     }
 
     private fun Player.openLoginGameframe() {
@@ -75,32 +71,32 @@ internal constructor(
         }
         val fallback = selectFallback(ui.frameResizable, stoneArrangements) ?: default
         ui.frameResizable = fallback.resizable
-        gameframeTopLevel = fallback.topLevel.id
+        gameframeTopLevel = fallback.topLevel.asRSCM(RSCMType.INTERFACE)
         stoneArrangements = fallback.stoneArrangement
         ifOpenTop(fallback.topLevel)
         openGameframe(fallback, eventBus)
     }
 
-    private fun Player.queueGameframeMove(gameframe: Gameframe) {
+    public fun Player.queueGameframeMove(gameframe: Gameframe) {
         val settingsClientMode = ui.frameResizable != gameframe.resizable
         if (settingsClientMode) {
             runClientScript(3998, gameframe.clientMode)
         }
         val previous = gameframes.getValue(gameframeTopLevel)
-        gameframeTopLevel = gameframe.topLevel.id
+        gameframeTopLevel = gameframe.topLevel.asRSCM(RSCMType.INTERFACE)
         ui.frameResizable = gameframe.resizable
 
         val queueDelay = if (settingsClientMode) 2 else 1
         val gameframeMove = resolveGameframeMove(from = previous, dest = gameframe)
-        softQueue(gameframe_queues.client_mode, queueDelay, gameframeMove)
+        softQueue("queue.client_mode", queueDelay, gameframeMove)
     }
 
-    private fun Player.moveSetEvents(component: ComponentType) {
+    private fun Player.moveSetEvents(component: String) {
         ifSetEvents(component, -1..-1, IfEvent.Op1)
     }
 
     private fun Player.moveXpDrops() {
-        ifOpenOverlay(interfaces.orbs, components.toplevel_target_orbs, eventBus)
+        ifOpenOverlay("interface.orbs", "component.toplevel_osrs_stretch:orbs", eventBus)
     }
 
     private fun Player.moveEhcListener() {
@@ -108,38 +104,45 @@ internal constructor(
         ClientScripts.buffBarLayoutRedraw(this)
     }
 
-    private fun Player.resolveGameframeMove(from: Gameframe, dest: Gameframe): GameframeMove {
-        val intermediate = resolveIntermediate(from, dest)
-        return GameframeMove(from = from, dest = dest, intermediate = intermediate)
-    }
-
-    /*
-     * This is required for emulation purposes and might also be required for an edge case within
-     * the client/cs2. This can be seen when going from a fixed gameframe to a resizable one.
-     * If the `resizable_stone_arrangement` has to be changed to match the target gameframe, the
-     * client will receive two `if_opentop` + `if_movesub` sequences. One going from the current
-     * gameframe toplevel to a gameframe toplevel that matches the current stone arrangement var
-     * and is resizable, followed by a second `if_opentop` + `if_movesub` group going from this
-     * intermediate gameframe to the original target gameframe.
-     */
-    private fun Player.resolveIntermediate(from: Gameframe, dest: Gameframe): Gameframe? {
-        val requiresIntermediate =
-            dest.resizable && !from.resizable && stoneArrangements != dest.stoneArrangement
-        if (!requiresIntermediate) {
-            return null
+    companion object {
+        fun Player.resolveGameframeMove(from: Gameframe, dest: Gameframe): GameframeMove {
+            val intermediate = resolveIntermediate(from, dest)
+            return GameframeMove(from = from, dest = dest, intermediate = intermediate)
         }
-        return gameframes.values.first { it.hasFlags(resizable = true, stoneArrangements) }
+
+        /*
+        * This is required for emulation purposes and might also be required for an edge case within
+        * the client/cs2. This can be seen when going from a fixed gameframe to a resizable one.
+        * If the `resizable_stone_arrangement` has to be changed to match the target gameframe, the
+        * client will receive two `if_opentop` + `if_movesub` sequences. One going from the current
+        * gameframe toplevel to a gameframe toplevel that matches the current stone arrangement var
+        * and is resizable, followed by a second `if_opentop` + `if_movesub` group going from this
+        * intermediate gameframe to the original target gameframe.
+        */
+        private fun Player.resolveIntermediate(from: Gameframe, dest: Gameframe): Gameframe? {
+            val requiresIntermediate =
+                dest.resizable && !from.resizable && stoneArrangements != dest.stoneArrangement
+            if (!requiresIntermediate) {
+                return null
+            }
+            return gameframes.values.first { it.hasFlags(resizable = true, stoneArrangements) }
+        }
+
+        private fun Gameframe.hasFlags(resizable: Boolean, stoneArrangements: Boolean): Boolean {
+            return this.resizable == resizable && this.stoneArrangement == stoneArrangements
+        }
+
     }
 
-    private fun Player.changeGameframe(move: GameframeMove) {
+    public fun Player.changeGameframe(move: GameframeMove) {
         val (from, dest, intermediate) = move
         if (dest.resizable) {
             stoneArrangements = dest.stoneArrangement
         }
-        resyncVar(varps.chat_filter_assist)
-        resyncVar(varps.settings_tracking)
+        resyncVar("varp.chat_filter_assist")
+        resyncVar("varp.settings_tracking")
 
-        val sameGameframe = from.topLevel.isType(dest.topLevel)
+        val sameGameframe = from.topLevel == dest.topLevel
         if (!sameGameframe) {
             if (intermediate != null) {
                 moveGameframe(from, intermediate, eventBus)
@@ -155,7 +158,7 @@ internal constructor(
             //  more information before adding this.
         }
 
-        ifOpenOverlay(interfaces.orbs, components.toplevel_target_orbs, eventBus)
+        this.ifOpenOverlay(if (orbsMinimized && dest.resizable) "interface.orbs_nomap" else "interface.orbs", "component.toplevel_osrs_stretch:orbs", eventBus)
         Cinematic.syncMinimapState(this)
     }
 
@@ -167,17 +170,13 @@ internal constructor(
         return gameframes.values.firstOrNull { it.resizable == resizable }
     }
 
-    private fun Gameframe.hasFlags(resizable: Boolean, stoneArrangements: Boolean): Boolean {
-        return this.resizable == resizable && this.stoneArrangement == stoneArrangements
-    }
-
     private fun loadAll() {
         gameframes = loader.loadGameframes()
         moveEvents = loader.loadMoveEvents().mapMoveEvents()
         default = selectDefault(gameframes.values)
     }
 
-    private fun Map<ComponentType, ComponentType>.mapMoveEvents(): List<MoveEvent> {
+    private fun Map<String, String>.mapMoveEvents(): List<MoveEvent> {
         return map { MoveEvent(it.key, it.value) }
     }
 
@@ -185,5 +184,5 @@ internal constructor(
         return from.single(Gameframe::isDefault)
     }
 
-    private data class MoveEvent(val target: ComponentType, val event: ComponentType)
+    private data class MoveEvent(val target: String, val event: String)
 }

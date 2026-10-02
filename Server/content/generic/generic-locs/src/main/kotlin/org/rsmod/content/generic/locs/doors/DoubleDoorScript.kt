@@ -1,27 +1,26 @@
 package org.rsmod.content.generic.locs.doors
 
+import dev.openrune.types.ObjectServerType
 import jakarta.inject.Inject
-import org.rsmod.api.config.refs.content
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.repo.loc.LocRepository
-import org.rsmod.api.script.onOpLoc1
+import org.rsmod.api.script.onOpContentLoc1
 import org.rsmod.game.loc.BoundLocInfo
 import org.rsmod.game.loc.LocInfo
-import org.rsmod.game.type.loc.UnpackedLocType
 import org.rsmod.map.CoordGrid
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
 class DoubleDoorScript @Inject constructor(private val locRepo: LocRepository) : PluginScript() {
     override fun ScriptContext.startup() {
-        onOpLoc1(content.closed_left_door) { openLeftDoor(it.loc, it.type) }
-        onOpLoc1(content.closed_right_door) { openRightDoor(it.loc, it.type) }
-        onOpLoc1(content.opened_left_door) { closeLeftDoor(it.loc, it.type) }
-        onOpLoc1(content.opened_right_door) { closeRightDoor(it.loc, it.type) }
+        onOpContentLoc1("content.closed_left_door") { openLeftDoor(it.loc, it.type) }
+        onOpContentLoc1("content.closed_right_door") { openRightDoor(it.loc, it.type) }
+        onOpContentLoc1("content.opened_left_door") { closeLeftDoor(it.loc, it.type) }
+        onOpContentLoc1("content.opened_right_door") { closeRightDoor(it.loc, it.type) }
     }
 
-    private fun ProtectedAccess.openLeftDoor(left: BoundLocInfo, type: UnpackedLocType) {
+    private fun ProtectedAccess.openLeftDoor(left: BoundLocInfo, type: ObjectServerType) {
         val sound = type.param(params.opensound)
         soundSynth(sound)
 
@@ -36,7 +35,7 @@ class DoubleDoorScript @Inject constructor(private val locRepo: LocRepository) :
         val right =
             locRepo.findExact(
                 coords = left.closeCoords(),
-                content = content.closed_right_door,
+                content = "content.closed_right_door",
                 shape = left.shape,
             )
         right?.let {
@@ -48,7 +47,7 @@ class DoubleDoorScript @Inject constructor(private val locRepo: LocRepository) :
         }
     }
 
-    private fun ProtectedAccess.openRightDoor(right: BoundLocInfo, type: UnpackedLocType) {
+    private fun ProtectedAccess.openRightDoor(right: BoundLocInfo, type: ObjectServerType) {
         val sound = type.param(params.opensound)
         soundSynth(sound)
 
@@ -63,7 +62,7 @@ class DoubleDoorScript @Inject constructor(private val locRepo: LocRepository) :
         val left =
             locRepo.findExact(
                 coords = right.closeCoordsOpposite(),
-                content = content.closed_left_door,
+                content = "content.closed_left_door",
                 shape = right.shape,
             )
         left?.let {
@@ -75,8 +74,8 @@ class DoubleDoorScript @Inject constructor(private val locRepo: LocRepository) :
         }
     }
 
-    private fun ProtectedAccess.closeLeftDoor(left: BoundLocInfo, type: UnpackedLocType) {
-        val sound = type.param(params.opensound)
+    private fun ProtectedAccess.closeLeftDoor(left: BoundLocInfo, type: ObjectServerType) {
+        val sound = type.param(params.closesound)
         soundSynth(sound)
 
         left.let {
@@ -90,7 +89,7 @@ class DoubleDoorScript @Inject constructor(private val locRepo: LocRepository) :
         val right =
             locRepo.findExact(
                 coords = left.openCoordsOpposite(),
-                content = content.opened_right_door,
+                content = "content.opened_right_door",
                 shape = left.shape,
             )
         right?.let {
@@ -102,8 +101,8 @@ class DoubleDoorScript @Inject constructor(private val locRepo: LocRepository) :
         }
     }
 
-    private fun ProtectedAccess.closeRightDoor(right: BoundLocInfo, type: UnpackedLocType) {
-        val sound = type.param(params.opensound)
+    private fun ProtectedAccess.closeRightDoor(right: BoundLocInfo, type: ObjectServerType) {
+        val sound = type.param(params.closesound)
         soundSynth(sound)
 
         right.let {
@@ -117,7 +116,7 @@ class DoubleDoorScript @Inject constructor(private val locRepo: LocRepository) :
         val left =
             locRepo.findExact(
                 coords = right.openCoordsOpposite(),
-                content = content.opened_left_door,
+                content = "content.opened_left_door",
                 shape = right.shape,
             )
         left?.let {

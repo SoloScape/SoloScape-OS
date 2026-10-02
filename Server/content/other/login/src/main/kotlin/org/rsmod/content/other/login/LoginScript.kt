@@ -1,5 +1,9 @@
 package org.rsmod.content.other.login
 
+import dev.openrune.ServerCacheManager
+import dev.openrune.rscm.RSCM
+import dev.openrune.rscm.RSCMType
+import dev.openrune.types.StatType
 import jakarta.inject.Inject
 import net.rsprot.protocol.game.outgoing.misc.client.HideLocOps
 import net.rsprot.protocol.game.outgoing.misc.client.HideNpcOps
@@ -8,8 +12,10 @@ import net.rsprot.protocol.game.outgoing.misc.client.MinimapToggle
 import net.rsprot.protocol.game.outgoing.misc.client.ResetAnims
 import net.rsprot.protocol.game.outgoing.misc.player.ChatFilterSettings
 import net.rsprot.protocol.game.outgoing.varp.VarpReset
-import org.rsmod.api.config.refs.varbits
 import org.rsmod.api.inv.weight.InvWeight
+import org.rsmod.api.net.central.OpenRuneCentralWorldLink
+import org.rsmod.api.net.central.writeCentralSocialSnapshot
+import org.rsmod.api.net.central.writeCentralSocialSnapshotEmpty
 import org.rsmod.api.player.output.Camera
 import org.rsmod.api.player.output.ChatType
 import org.rsmod.api.player.output.MiscOutput
@@ -19,18 +25,17 @@ import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.output.runClientScript
 import org.rsmod.api.player.startInvTransmit
 import org.rsmod.api.player.stat.stat
+import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.player.vars.boolVarBit
 import org.rsmod.api.player.vars.resyncVar
 import org.rsmod.api.realm.Realm
 import org.rsmod.api.script.onEvent
+import org.rsmod.api.server.config.ServerConfig
 import org.rsmod.api.stats.levelmod.InvisibleLevels
+import org.rsmod.api.table.DidyouknowRow
 import org.rsmod.game.MapClock
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.player.SessionStateEvent
-import org.rsmod.game.type.obj.ObjTypeList
-import org.rsmod.game.type.stat.StatTypeList
-import org.rsmod.game.type.varp.UnpackedVarpType
-import org.rsmod.game.type.varp.VarpTypeList
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -39,15 +44,13 @@ class LoginScript
 constructor(
     private val realm: Realm,
     private val mapClock: MapClock,
-    private val objTypes: ObjTypeList,
-    private val varpTypes: VarpTypeList,
-    private val statTypes: StatTypeList,
     private val invisibleLevels: InvisibleLevels,
+    private val config: ServerConfig,
+    private val openRuneCentral: OpenRuneCentralWorldLink,
 ) : PluginScript() {
-    private val transmitVars by lazy { transmitVars() }
+    private val statSyncEntries by lazy { statSyncEntries() }
 
-    private var Player.chatboxUnlocked: Boolean by boolVarBit(varbits.has_displayname_transmitter)
-    private var Player.hideRoofs by boolVarBit(varbits.option_hide_rooftops)
+    private var Player.chatboxUnlocked: Boolean by boolVarBit("varbit.has_displayname_transmitter")
 
     override fun ScriptContext.startup() {
         onEvent<SessionStateEvent.EngineLogin>(0L) { player.engineLogin() }
@@ -56,17 +59,44 @@ constructor(
     private fun Player.engineLogin() {
         sendHighPriority()
         sendLowPriority()
+        VarPlayerIntMapSetter.set(this, "varbit.player_in_instance", 0)
     }
 
     private fun Player.sendHighPriority() {
         sendChatFilters()
+        sendSocial()
         sendOpVisibility()
         sendWelcomeMessage()
+        val validDidYouKnow = DidyouknowRow.all().filter { it.mobileonly != true }.random()
+        mes("Did you know? ${validDidYouKnow.tip}", ChatType.DidYouKnow)
         sendVars()
     }
 
     private fun Player.sendChatFilters() {
         client.write(ChatFilterSettings(0, 0))
+    }
+
+    private fun Player.sendSocial() {
+        if (!openRuneCentral.isEnabled) {
+            return
+        }
+
+        if (characterId <= 0) {
+            mes("Social list did not load: missing character.")
+            writeCentralSocialSnapshotEmpty()
+            return
+        }
+
+        when (val result = openRuneCentral.socialSnapshot(characterId)) {
+            is OpenRuneCentralWorldLink.CentralSocialSnapshotResult.Ok -> {
+                writeCentralSocialSnapshot(result.snapshot)
+            }
+
+            is OpenRuneCentralWorldLink.CentralSocialSnapshotResult.Failed -> {
+                mes("Social list did not load: ${result.message}")
+                writeCentralSocialSnapshotEmpty()
+            }
+        }
     }
 
     private fun Player.sendOpVisibility() {
@@ -77,7 +107,9 @@ constructor(
 
     private fun Player.sendWelcomeMessage() {
         val message = realm.config.loginMessage
-        message?.let { mes(it, ChatType.Welcome) }
+        message?.let {
+            mes(it.replace("RS Mod", config.name), ChatType.Welcome)
+        }
 
         val broadcast = realm.config.loginBroadcast
         broadcast?.let { mes(it, ChatType.Broadcast) }
@@ -86,9 +118,20 @@ constructor(
     private fun Player.sendVars() {
         client.write(VarpReset)
         chatboxUnlocked = displayName.isNotBlank()
-        hideRoofs = true
-        for (varp in transmitVars) {
-            if (varp in vars) {
+        val sent = HashSet<Int>()
+        for ((id, _) in vars) {
+            val varp = ServerCacheManager.getVarp(id) ?: continue
+            if (varp.transmit.never) {
+                continue
+            }
+            resyncVar(varp)
+            sent += id
+        }
+        // A varp with a clientcode (`configType`) is copied into a client field only when it
+        // arrives, and `VarpReset` does not do that copy. Left unsent at 0, the npc attack
+        // option stays on the client's own default of "Hidden" and Attack drops off every menu.
+        for (varp in ServerCacheManager.getTransmitVarps()) {
+            if (varp.configType > 0 && varp.id !in sent) {
                 resyncVar(varp)
             }
         }
@@ -100,6 +143,7 @@ constructor(
         resetCam()
         runClientScript(828, 1)
         runClientScript(5141)
+        runClientScript(626)
         sendPlayerOps()
         runClientScript(876, mapClock.cycle, 0, displayName, "REGULAR")
         sendStats()
@@ -118,16 +162,16 @@ constructor(
     }
 
     private fun Player.sendStats() {
-        for (stat in statTypes.values) {
-            val currXp = statMap.getXP(stat)
-            val currLvl = stat(stat)
-            val hiddenLvl = currLvl + invisibleLevels.get(this, stat)
+        for ((statInternal, stat) in statSyncEntries) {
+            val currXp = statMap.getXP(statInternal)
+            val currLvl = stat(statInternal)
+            val hiddenLvl = currLvl + invisibleLevels.get(this, statInternal)
             UpdateStat.update(this, stat, currXp, currLvl, hiddenLvl)
         }
     }
 
     private fun Player.sendRun() {
-        val weightInGrams = InvWeight.calculateWeightInGrams(this, objTypes)
+        val weightInGrams = InvWeight.calculateWeightInGrams(this)
         runWeight = weightInGrams
         UpdateRun.weight(this, kg = weightInGrams / 1000)
         UpdateRun.energy(this, runEnergy)
@@ -141,7 +185,8 @@ constructor(
         MiscOutput.setPlayerOp(this, slot = 8, op = "Report")
     }
 
-    private fun transmitVars(): List<UnpackedVarpType> {
-        return varpTypes.filterTransmitKeys().sorted().map(varpTypes::getValue)
-    }
+    private fun statSyncEntries(): List<Pair<String, StatType>> =
+        ServerCacheManager.getStats().values.map { stat ->
+            RSCM.getReverseMapping(RSCMType.STAT, stat.id) to stat
+        }
 }

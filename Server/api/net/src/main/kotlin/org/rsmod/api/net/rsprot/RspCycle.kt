@@ -1,23 +1,30 @@
 package org.rsmod.api.net.rsprot
 
+import dev.openrune.ServerCacheManager
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.util.Wearpos
 import net.rsprot.protocol.api.Session
-import net.rsprot.protocol.game.outgoing.info.npcinfo.NpcInfo
-import net.rsprot.protocol.game.outgoing.info.npcinfo.SetNpcUpdateOrigin
+import net.rsprot.protocol.game.outgoing.info.Infos
+import net.rsprot.protocol.game.outgoing.info.npcinfo.NpcInfoPacket
 import net.rsprot.protocol.game.outgoing.info.playerinfo.PlayerAvatarExtendedInfo
-import net.rsprot.protocol.game.outgoing.info.playerinfo.PlayerInfo
 import net.rsprot.protocol.game.outgoing.info.util.BuildArea
-import net.rsprot.protocol.game.outgoing.map.RebuildLogin
-import net.rsprot.protocol.game.outgoing.map.RebuildNormal
-import net.rsprot.protocol.game.outgoing.map.RebuildRegion
+import net.rsprot.protocol.game.outgoing.info.util.PacketResult
+import net.rsprot.protocol.game.outgoing.info.util.getOrThrow
+import net.rsprot.protocol.game.outgoing.info.util.isEmpty
+import net.rsprot.protocol.game.outgoing.info.util.safeReleaseOrThrow
+import net.rsprot.protocol.game.outgoing.map.RebuildLoginV2
+import net.rsprot.protocol.game.outgoing.map.RebuildNormalV2
+import net.rsprot.protocol.game.outgoing.map.RebuildRegionV2
 import net.rsprot.protocol.game.outgoing.map.util.RebuildRegionZone
-import net.rsprot.protocol.game.outgoing.map.util.XteaProvider
-import net.rsprot.protocol.game.outgoing.worldentity.SetActiveWorldV2
-import org.rsmod.api.config.refs.baseanimsets
+import net.rsprot.protocol.game.outgoing.map.util.ReferenceZone
+import net.rsprot.protocol.message.OutgoingGameMessage
 import org.rsmod.api.config.refs.params
+import org.rsmod.api.net.rsprot.ext.setFaceTarget
 import org.rsmod.api.player.righthand
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.game.client.ClientCycle
 import org.rsmod.game.entity.Player
+import org.rsmod.game.entity.player.Appearance
 import org.rsmod.game.entity.util.EntityFaceAngle
 import org.rsmod.game.headbar.Headbar
 import org.rsmod.game.hit.Hitmark
@@ -26,18 +33,18 @@ import org.rsmod.game.region.Region
 import org.rsmod.game.region.zone.RegionZoneCopy
 import org.rsmod.game.seq.EntitySeq
 import org.rsmod.game.spot.EntitySpotanim
-import org.rsmod.game.type.obj.ObjTypeList
-import org.rsmod.game.type.obj.Wearpos
+import org.rsmod.game.type.getInvObj
 import org.rsmod.map.CoordGrid
-import org.rsmod.map.square.MapSquareKey
 import org.rsmod.map.zone.ZoneKey
 
+/**
+ * Keeps a player's info avatar in step with the game each cycle and ships the result to their
+ * client. A null [session] is a server-driven player (see [BotSessions]): other clients still see
+ * the avatar, and the info packets computed for it are released unsent.
+ */
 class RspCycle(
-    private val session: Session<Player>,
-    private val playerInfo: PlayerInfo,
-    private val npcInfo: NpcInfo,
-    private val xteaProvider: XteaProvider,
-    private val objTypes: ObjTypeList,
+    private val session: Session<Player>?,
+    private val infos: Infos,
     private val regions: RegionRegistry,
 ) : ClientCycle {
     private var knownCoords: CoordGrid = CoordGrid.ZERO
@@ -50,7 +57,10 @@ class RspCycle(
 
     private var knownRegionUid: Int? = null
 
-    private var cachedRegionZoneProvider: RebuildRegion.RebuildRegionZoneProvider? = null
+    private var cachedRegionZoneProvider: RebuildRegionV2.RebuildRegionZoneProvider? = null
+
+    private val playerInfo
+        get() = infos.playerInfo
 
     private val playerExtendedInfo: PlayerAvatarExtendedInfo
         get() = playerInfo.avatar.extendedInfo
@@ -64,8 +74,8 @@ class RspCycle(
     }
 
     private fun Player.queueRebuildLogin() {
-        val rebuild = RebuildLogin(x shr 3, z shr 3, worldId, xteaProvider, playerInfo)
-        session.queue(rebuild)
+        val rebuild = RebuildLoginV2(x shr 3, z shr 3, worldId, playerInfo)
+        session?.queue(rebuild)
     }
 
     override fun update(player: Player) {
@@ -79,26 +89,71 @@ class RspCycle(
         player.applyAnim()
         player.applySpotanims()
         player.applySay()
+        player.applyTinting()
         player.applyHeadbars()
         player.applyHitmarks()
-        player.syncAppearance(objTypes)
+        player.syncAppearance()
     }
 
     override fun flush(player: Player) {
-        val origin =
-            SetNpcUpdateOrigin(
-                player.coords.x - player.buildArea.x,
-                player.coords.z - player.buildArea.z,
-            )
-        session.queue(SetActiveWorldV2(SetActiveWorldV2.RootWorldType(player.level)))
-        session.queue(playerInfo.toPacket())
-        session.queue(origin)
-        session.queue(npcInfo.toPacket(worldId))
+        if (session == null) {
+            release()
+            return
+        }
+        val infoPackets = infos.getPackets()
+        val rootPackets = infoPackets.rootWorldInfoPackets
+
+        session.queue(rootPackets.activeWorld)
+        session.queue(rootPackets.npcUpdateOrigin)
+        session.queuePacketResult(rootPackets.worldEntityInfo)
+        session.queuePacketResult(rootPackets.playerInfo)
+        session.queueNpcInfoPacket(rootPackets.npcInfo)
+
+        for (world in infoPackets.activeWorlds) {
+            session.queue(world.activeWorld)
+            session.queue(world.npcUpdateOrigin)
+            session.queueNpcInfoPacket(world.npcInfo)
+        }
+
+        session.queue(rootPackets.activeWorld)
     }
 
     override fun release() {
-        playerInfo.toPacket().safeRelease()
-        npcInfo.toPacket(worldId).safeRelease()
+        val infoPackets = infos.getPackets()
+        val rootPackets = infoPackets.rootWorldInfoPackets
+
+        releasePacketResult(rootPackets.worldEntityInfo)
+        releasePacketResult(rootPackets.playerInfo)
+        releaseNpcInfoPacket(rootPackets.npcInfo)
+        for (world in infoPackets.activeWorlds) {
+            releaseNpcInfoPacket(world.npcInfo)
+        }
+    }
+
+    private fun <T : OutgoingGameMessage> Session<Player>.queuePacketResult(
+        result: PacketResult<T>
+    ) {
+        queue(result.getOrThrow())
+    }
+
+    private fun Session<Player>.queueNpcInfoPacket(result: PacketResult<NpcInfoPacket>) {
+        if (result.isEmpty()) {
+            result.safeReleaseOrThrow()
+            return
+        }
+        queuePacketResult(result)
+    }
+
+    private fun <T : OutgoingGameMessage> releasePacketResult(result: PacketResult<T>) {
+        result.getOrThrow().safeRelease()
+    }
+
+    private fun releaseNpcInfoPacket(result: PacketResult<NpcInfoPacket>) {
+        if (result.isEmpty()) {
+            result.safeReleaseOrThrow()
+            return
+        }
+        result.getOrThrow().safeRelease()
     }
 
     private fun Player.updateMoveSpeed() {
@@ -108,7 +163,10 @@ class RspCycle(
             knownCachedSpeed = cachedMoveSpeed
         }
         val moveSpeed = resolvePendingMoveSpeed()
-        if (moveSpeed != cachedMoveSpeed && coords != knownCoords) {
+        // Telejumps always transmit their temp move speed; it is what tells the client to snap
+        // instead of interpolating, and `cachedMoveSpeed` is already `Stationary` until the
+        // player moves for the first time.
+        if ((moveSpeed != cachedMoveSpeed || pendingTelejump) && coords != knownCoords) {
             val extendedInfo = playerInfo.avatar.extendedInfo
             extendedInfo.setTempMoveSpeed(moveSpeed.steps)
         }
@@ -124,9 +182,7 @@ class RspCycle(
         }
 
     private fun Player.updateCoords() {
-        npcInfo.updateCoord(worldId, level, x, z)
-        playerInfo.updateCoord(level, x, z)
-        playerInfo.updateRenderCoord(worldId, level, x, z)
+        infos.updateRootCoord(level, x, z)
         knownCoords = coords
     }
 
@@ -135,8 +191,7 @@ class RspCycle(
         if (recalcBuildArea) {
             val zone = ZoneKey.from(buildArea)
             val area = BuildArea(zone.x, zone.z)
-            playerInfo.updateBuildArea(worldId, area)
-            npcInfo.updateBuildArea(worldId, area)
+            infos.updateRootBuildArea(area)
         }
 
         if (!recalcBuildArea) {
@@ -150,11 +205,11 @@ class RspCycle(
         }
 
         if (regionUid == null) {
-            val rebuild = RebuildNormal(x shr 3, z shr 3, worldId, xteaProvider)
+            val rebuild = RebuildNormalV2(x shr 3, z shr 3, worldId)
             knownBuildArea = buildArea
             knownRegionUid = null
             cachedRegionZoneProvider = null
-            session.queue(rebuild)
+            session?.queue(rebuild)
             return
         }
 
@@ -174,37 +229,26 @@ class RspCycle(
         }
 
         val zoneProvider = cachedRegionZoneProvider ?: createRegionZoneProvider(region)
-        val rebuild = RebuildRegion(x shr 3, z shr 3, true, zoneProvider)
+        val rebuild = RebuildRegionV2(x shr 3, z shr 3, true, zoneProvider)
         knownBuildArea = buildArea
         cachedRegionZoneProvider = zoneProvider
-        session.queue(rebuild)
+        session?.queue(rebuild)
     }
 
-    private fun createRegionZoneProvider(region: Region): RebuildRegion.RebuildRegionZoneProvider {
+    private fun createRegionZoneProvider(region: Region): RebuildRegionV2.RebuildRegionZoneProvider {
         val regionZones = region.toZoneList()
-        val rebuildZones =
-            regionZones.associateWith { zone ->
-                val copyZone = regions[zone]
-                if (copyZone == RegionZoneCopy.NULL) {
-                    return@associateWith null
-                }
-                val mapSquare = MapSquareKey.from(copyZone.normalZone().toCoords())
-                val xtea = xteaProvider.provide(mapSquare.id)
-                RebuildRegionZone(
-                    copyZone.normalX,
-                    copyZone.normalZ,
-                    copyZone.normalLevel,
-                    copyZone.rotation,
-                    xtea,
-                )
+        val rebuildZones = regionZones.associateWith { zone ->
+            val copyZone = regions[zone]
+            if (copyZone == RegionZoneCopy.NULL) {
+                return@associateWith null
             }
-        val zoneProvider =
-            object : RebuildRegion.RebuildRegionZoneProvider {
-                override fun provide(zoneX: Int, zoneZ: Int, level: Int): RebuildRegionZone? {
-                    val zoneKey = ZoneKey(zoneX, zoneZ, level)
-                    return rebuildZones[zoneKey]
-                }
+            ReferenceZone(copyZone.packed)
+        }
+        val zoneProvider = RebuildRegionV2.RebuildRegionZoneProvider { zoneX, zoneZ, level ->
+            rebuildZones[ZoneKey(zoneX, zoneZ, level)]?.let { ref ->
+                RebuildRegionZone(zoneX = ref.zoneX, zoneZ = ref.zoneZ, level = ref.level, rotation = ref.rotation)
             }
+        }
         return zoneProvider
     }
 
@@ -222,10 +266,9 @@ class RspCycle(
     }
 
     private fun Player.applyFacePathingEntity() {
-        val slot = faceEntity.entitySlot
-        if (knownFaceEntity != slot) {
-            playerExtendedInfo.setFacePathingEntity(slot)
-            knownFaceEntity = slot
+        if (knownFaceEntity != faceEntity.entitySlot) {
+            playerExtendedInfo.setFaceTarget(faceEntity)
+            knownFaceEntity = faceEntity.entitySlot
         }
     }
 
@@ -256,6 +299,18 @@ class RspCycle(
     private fun Player.applySay() {
         val text = pendingSay ?: return
         playerExtendedInfo.setSay(text)
+    }
+
+    private fun Player.applyTinting() {
+        val tint = pendingTinting ?: return
+        playerExtendedInfo.setTinting(
+            startTime = tint.startCycle,
+            endTime = tint.endCycle,
+            hue = tint.hue,
+            saturation = tint.saturation,
+            lightness = tint.lightness,
+            weight = tint.weight,
+        )
     }
 
     private fun Player.applyExactMove() {
@@ -300,7 +355,7 @@ class RspCycle(
         }
     }
 
-    private fun Player.syncAppearance(objTypes: ObjTypeList) {
+    private fun Player.syncAppearance() {
         if (!appearance.rebuild) {
             return
         }
@@ -343,23 +398,23 @@ class RspCycle(
         val runningAnim: Int
 
         if (bas != null) {
-            readyAnim = bas.readyAnim.id
-            turnOnSpotAnim = bas.turnOnSpot.id
-            walkForwardAnim = bas.walkForward.id
-            walkBackAnim = bas.walkBack.id
-            walkLeftAnim = bas.walkLeft.id
-            walkRightAnim = bas.walkRight.id
-            runningAnim = bas.running.id
+            readyAnim = bas.readyAnim
+            turnOnSpotAnim = bas.turnOnSpot
+            walkForwardAnim = bas.walkForward
+            walkBackAnim = bas.walkBack
+            walkLeftAnim = bas.walkLeft
+            walkRightAnim = bas.walkRight
+            runningAnim = bas.running
         } else if (transmog != null) {
-            readyAnim = transmog.readyAnim
-            turnOnSpotAnim = transmog.turnBackAnim
+            readyAnim = transmog.standAnim
+            turnOnSpotAnim = transmog.rotateBackAnim
             walkForwardAnim = transmog.walkAnim
             walkBackAnim = transmog.walkAnim
-            walkLeftAnim = transmog.turnLeftAnim
-            walkRightAnim = transmog.turnRightAnim
-            runningAnim = transmog.runAnim
+            walkLeftAnim = transmog.walkLeftAnim
+            walkRightAnim = transmog.walkRightAnim
+            runningAnim = transmog.runSequence
         } else if (weapon != null) {
-            val type = objTypes[weapon]
+            val type = getInvObj(weapon)
             readyAnim = type.param(params.bas_readyanim).id
             turnOnSpotAnim = type.param(params.bas_turnonspot).id
             walkForwardAnim = type.param(params.bas_walk_f).id
@@ -368,14 +423,16 @@ class RspCycle(
             walkRightAnim = type.param(params.bas_walk_r).id
             runningAnim = type.param(params.bas_running).id
         } else {
-            val default = baseanimsets.human_default
-            readyAnim = default.readyAnim.id
-            turnOnSpotAnim = default.turnOnSpot.id
-            walkForwardAnim = default.walkForward.id
-            walkBackAnim = default.walkBack.id
-            walkLeftAnim = default.walkLeft.id
-            walkRightAnim = default.walkRight.id
-            runningAnim = default.running.id
+            val default =
+                ServerCacheManager.getBas("bas.human_default".asRSCM())
+                    ?: error("Unable to find Bas Human")
+            readyAnim = default.readyAnim
+            turnOnSpotAnim = default.turnOnSpot
+            walkForwardAnim = default.walkForward
+            walkBackAnim = default.walkBack
+            walkLeftAnim = default.walkLeft
+            walkRightAnim = default.walkRight
+            runningAnim = default.running
         }
 
         info.setTransmogrification(transmog?.id ?: -1)
@@ -390,13 +447,22 @@ class RspCycle(
         )
 
         for (wearpos in Wearpos.visibleWearpos) {
-            val obj = worn[wearpos.slot]
-            if (obj == null) {
+            val override = appearance.wornOverride(wearpos.slot)
+            if (override == Appearance.HIDDEN_WORN_OVERRIDE) {
                 info.setWornObj(wearpos.slot, -1, -1, -1)
                 continue
             }
-            val objType = objTypes[obj]
-            info.setWornObj(wearpos.slot, obj.id, objType.wearpos2, objType.wearpos3)
+            val objType =
+                if (override != null) {
+                    ServerCacheManager.getItem(override)
+                } else {
+                    worn[wearpos.slot]?.let(::getInvObj)
+                }
+            if (objType == null) {
+                info.setWornObj(wearpos.slot, -1, -1, -1)
+                continue
+            }
+            info.setWornObj(wearpos.slot, objType.id, objType.wearpos2, objType.wearpos3)
         }
     }
 }

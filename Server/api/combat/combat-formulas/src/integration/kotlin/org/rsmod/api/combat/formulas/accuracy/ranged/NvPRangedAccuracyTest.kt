@@ -2,15 +2,15 @@ package org.rsmod.api.combat.formulas.accuracy.ranged
 
 import com.google.inject.AbstractModule
 import com.google.inject.Scopes
+import dev.openrune.definition.type.VarBitType
+import dev.openrune.types.ItemServerType
+import dev.openrune.types.NpcServerType
 import jakarta.inject.Inject
 import org.rsmod.api.combat.commons.CombatStance
 import org.rsmod.api.combat.formulas.test_npcs
 import org.rsmod.api.combat.weapon.scripts.WeaponAttackStylesScript
 import org.rsmod.api.combat.weapon.styles.AttackStyles
-import org.rsmod.api.config.refs.objs
 import org.rsmod.api.config.refs.stats
-import org.rsmod.api.config.refs.varbits
-import org.rsmod.api.config.refs.varps
 import org.rsmod.api.player.back
 import org.rsmod.api.player.feet
 import org.rsmod.api.player.front
@@ -28,9 +28,6 @@ import org.rsmod.api.testing.params.TestWithArgs
 import org.rsmod.api.testing.params.testArgsOfSingleParam
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.inv.InvObj
-import org.rsmod.game.type.npc.UnpackedNpcType
-import org.rsmod.game.type.obj.ObjType
-import org.rsmod.game.type.varbit.VarBitType
 
 class NvPRangedAccuracyTest {
     @TestWithArgs(MatchupProvider::class)
@@ -46,7 +43,7 @@ class NvPRangedAccuracyTest {
             player.setBaseLevel(stats.defence, matchup.baseDefenceLvl)
             player.setCurrentLevel(stats.hitpoints, matchup.hitpoints)
             player.setBaseLevel(stats.hitpoints, matchup.baseHitpointsLvl)
-            player.setVarp(varps.com_mode, matchup.blockStance.varValue)
+            player.setVarp("varp.com_mode", matchup.blockStance.varValue)
 
             player.hat = matchup.hat
             player.back = matchup.back
@@ -70,7 +67,7 @@ class NvPRangedAccuracyTest {
 
     data class Matchup(
         val expectedAccuracy: Double,
-        val npc: UnpackedNpcType = test_npcs.man,
+        val npc: NpcServerType = test_npcs.man,
         val blockStance: CombatStance = CombatStance.Stance1,
         val hat: InvObj? = null,
         val back: InvObj? = null,
@@ -88,27 +85,27 @@ class NvPRangedAccuracyTest {
         val baseHitpointsLvl: Int = 99,
         val prayers: Set<VarBitType> = emptySet(),
     ) {
-        fun withNpcSource(npc: UnpackedNpcType) = copy(npc = npc)
+        fun withNpcSource(npc: NpcServerType) = copy(npc = npc)
 
-        fun withHelm(obj: ObjType?) = copy(hat = obj?.let(::InvObj))
+        fun withHelm(obj: ItemServerType?) = copy(hat = obj?.let(::InvObj))
 
-        fun withCape(obj: ObjType?) = copy(back = obj?.let(::InvObj))
+        fun withCape(obj: ItemServerType?) = copy(back = obj?.let(::InvObj))
 
-        fun withAmulet(obj: ObjType?) = copy(front = obj?.let(::InvObj))
+        fun withAmulet(obj: ItemServerType?) = copy(front = obj?.let(::InvObj))
 
-        fun withWeapon(obj: ObjType?) = copy(righthand = obj?.let(::InvObj))
+        fun withWeapon(obj: ItemServerType?) = copy(righthand = obj?.let(::InvObj))
 
-        fun withBody(obj: ObjType?) = copy(torso = obj?.let(::InvObj))
+        fun withBody(obj: ItemServerType?) = copy(torso = obj?.let(::InvObj))
 
-        fun withShield(obj: ObjType?) = copy(lefthand = obj?.let(::InvObj))
+        fun withShield(obj: ItemServerType?) = copy(lefthand = obj?.let(::InvObj))
 
-        fun withLegs(obj: ObjType?) = copy(legs = obj?.let(::InvObj))
+        fun withLegs(obj: ItemServerType?) = copy(legs = obj?.let(::InvObj))
 
-        fun withGloves(obj: ObjType?) = copy(hands = obj?.let(::InvObj))
+        fun withGloves(obj: ItemServerType?) = copy(hands = obj?.let(::InvObj))
 
-        fun withFeet(obj: ObjType?) = copy(feet = obj?.let(::InvObj))
+        fun withFeet(obj: ItemServerType?) = copy(feet = obj?.let(::InvObj))
 
-        fun withRing(obj: ObjType?) = copy(ring = obj?.let(::InvObj))
+        fun withRing(obj: ItemServerType?) = copy(ring = obj?.let(::InvObj))
 
         fun withDefenceLevel(defenceLvl: Int) = copy(defenceLvl = defenceLvl)
 
@@ -183,37 +180,37 @@ class NvPRangedAccuracyTest {
                     .withDefenceLevel(defenceLvl = 99),
                 Matchup(expectedAccuracy = 17.78)
                     .withNpcSource(test_npcs.dagannoth_supreme)
-                    .withHelm(objs.torva_full_helm)
-                    .withBody(objs.torva_platebody)
-                    .withLegs(objs.torva_platelegs)
-                    .withCape(objs.infernal_cape)
-                    .withAmulet(objs.amulet_of_rancour)
-                    .withGloves(objs.ferocious_gloves)
-                    .withFeet(objs.primordial_boots)
-                    .withRing(objs.ultor_ring)
-                    .withPrayers(varbits.chivalry),
+                    .withHelm("obj.torva_helm")
+                    .withBody("obj.torva_chest")
+                    .withLegs("obj.torva_legs")
+                    .withCape("obj.infernal_cape")
+                    .withAmulet("obj.amulet_of_rancour")
+                    .withGloves("obj.ferocious_gloves")
+                    .withFeet("obj.primordial_boots")
+                    .withRing("obj.ultor_ring")
+                    .withPrayers("varbit.prayer_chivalry"),
                 Matchup(expectedAccuracy = 13.39)
                     .withNpcSource(test_npcs.flockleader_geerin)
-                    .withHelm(objs.justiciar_faceguard)
-                    .withBody(objs.justiciar_chestguard)
-                    .withLegs(objs.justiciar_legguards)
-                    .withCape(objs.infernal_cape)
-                    .withAmulet(objs.amulet_of_fury)
-                    .withGloves(objs.barrows_gloves)
-                    .withWeapon(objs.dinhs_bulwark)
-                    .withPrayers(varbits.piety),
+                    .withHelm("obj.justiciar_faceguard")
+                    .withBody("obj.justiciar_chestguard")
+                    .withLegs("obj.justiciar_leg_guards")
+                    .withCape("obj.infernal_cape")
+                    .withAmulet("obj.enchanted_onyx_amulet")
+                    .withGloves("obj.hundred_gauntlets_level_10")
+                    .withWeapon("obj.dinhs_bulwark")
+                    .withPrayers("varbit.prayer_piety"),
                 Matchup(expectedAccuracy = 11.05)
                     .withNpcSource(test_npcs.iorwerth_archer)
-                    .withHelm(objs.helm_of_neitiznot)
-                    .withBody(objs.fighter_torso)
-                    .withLegs(objs.obsidian_platelegs)
-                    .withCape(objs.fire_cape)
-                    .withAmulet(objs.amulet_of_fury)
-                    .withShield(objs.dragon_defender)
-                    .withGloves(objs.barrows_gloves)
-                    .withFeet(objs.dragon_boots)
-                    .withRing(objs.berserker_ring)
-                    .withPrayers(varbits.steel_skin),
+                    .withHelm("obj.fris_kingly_helm")
+                    .withBody("obj.barbassault_penance_fighter_torso")
+                    .withLegs("obj.obsidian_platelegs")
+                    .withCape("obj.tzhaar_cape_fire")
+                    .withAmulet("obj.enchanted_onyx_amulet")
+                    .withShield("obj.dragon_parryingdagger")
+                    .withGloves("obj.hundred_gauntlets_level_10")
+                    .withFeet("obj.dragon_boots")
+                    .withRing("obj.berzerker_ring")
+                    .withPrayers("varbit.prayer_steelskin"),
             )
         }
     }

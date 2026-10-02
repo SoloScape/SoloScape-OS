@@ -1,12 +1,12 @@
 package org.rsmod.api.player.hit
 
+import dev.openrune.types.HitmarkTypeGroup
+import dev.openrune.types.ItemServerType
 import kotlin.math.min
-import org.rsmod.api.config.refs.BaseHitmarkGroups
-import org.rsmod.api.config.refs.hitmark_groups
-import org.rsmod.api.player.hit.configs.hit_queues
+import org.rsmod.api.config.refs.done.BaseHitmarkGroups
+import org.rsmod.api.config.refs.done.hitmark_groups
 import org.rsmod.api.player.hit.modifier.NoopPlayerHitModifier
 import org.rsmod.api.player.hit.modifier.PlayerHitModifier
-import org.rsmod.api.player.hit.modifier.StandardPlayerHitModifier
 import org.rsmod.api.player.hit.processor.DamageOnlyPlayerHitProcessor
 import org.rsmod.api.player.hit.processor.InstantPlayerHitProcessor
 import org.rsmod.api.player.hit.processor.QueuedPlayerHitProcessor
@@ -18,8 +18,6 @@ import org.rsmod.game.entity.Player
 import org.rsmod.game.hit.Hit
 import org.rsmod.game.hit.HitBuilder
 import org.rsmod.game.hit.HitType
-import org.rsmod.game.type.hitmark.HitmarkTypeGroup
-import org.rsmod.game.type.obj.ObjType
 
 /* Standard hit functions. */
 /**
@@ -49,9 +47,9 @@ import org.rsmod.game.type.obj.ObjType
  *   reference [hitmark_groups] for a list of available hitmark groups.
  * @param specific If `true`, only this [Player] will see the hitsplat; this does not affect actual
  *   damage calculations.
- * @param sourceWeapon An optional [ObjType] reference of a "weapon" used by the [source] that hit
- *   modifiers and/or processors can use for specialized logic. Typically unnecessary when [source]
- *   is an [Npc], though there may be niche use cases.
+ * @param sourceWeapon An optional [ItemServerType] reference of a "weapon" used by the [source]
+ *   that hit modifiers and/or processors can use for specialized logic. Typically unnecessary when
+ *   [source] is an [Npc], though there may be niche use cases.
  * @param sourceSecondary Similar to [sourceWeapon], except this refers to objs that are **not** the
  *   primary weapon, such as ammunition for ranged attacks or objs tied to magic spells.
  * @param modifier A [PlayerHitModifier] used to adjust damage and other hit properties. By default,
@@ -64,11 +62,12 @@ public fun Player.queueHit(
     delay: Int,
     type: HitType,
     damage: Int,
+    modifier: PlayerHitModifier,
     hitmark: HitmarkTypeGroup = hitmark_groups.regular_damage,
     specific: Boolean = false,
-    sourceWeapon: ObjType? = null,
-    sourceSecondary: ObjType? = null,
-    modifier: PlayerHitModifier = StandardPlayerHitModifier,
+    sourceWeapon: ItemServerType? = null,
+    sourceSecondary: ItemServerType? = null,
+    penetration: Int = 0,
 ): Hit {
     val cappedDamage = min(hitpoints, damage)
     val builder =
@@ -82,6 +81,7 @@ public fun Player.queueHit(
             clientDelay = 0,
             specific = specific,
         )
+    builder.penetration = penetration
     return modifyAndStrongQueueHit(delay, builder, modifier)
 }
 
@@ -124,9 +124,9 @@ public fun Player.queueHit(
     delay: Int,
     type: HitType,
     damage: Int,
+    modifier: PlayerHitModifier,
     hitmark: HitmarkTypeGroup = hitmark_groups.regular_damage,
-    sourceSecondary: ObjType? = null,
-    modifier: PlayerHitModifier = StandardPlayerHitModifier,
+    sourceSecondary: ItemServerType? = null,
 ): Hit {
     val builder =
         InternalPlayerHits.createBuilder(
@@ -179,9 +179,9 @@ public fun Player.queueHit(
     delay: Int,
     type: HitType,
     damage: Int,
+    modifier: PlayerHitModifier,
     hitmark: HitmarkTypeGroup = hitmark_groups.regular_damage,
     specific: Boolean = false,
-    modifier: PlayerHitModifier = StandardPlayerHitModifier,
     strongQueue: Boolean = true,
 ): Hit {
     val builder =
@@ -208,7 +208,7 @@ private fun Player.modifyAndStrongQueueHit(
 ): Hit {
     modifier.modify(builder, this)
     val hit = builder.build()
-    strongQueue(hit_queues.standard, delay, hit)
+    strongQueue("queue.hit", delay.coerceAtLeast(1), hit)
     return hit
 }
 
@@ -219,7 +219,7 @@ private fun Player.modifyAndQueueHit(
 ): Hit {
     modifier.modify(builder, this)
     val hit = builder.build()
-    queue(hit_queues.standard, delay, hit)
+    queue("queue.hit", delay.coerceAtLeast(1), hit)
     return hit
 }
 
@@ -297,9 +297,9 @@ public fun Player.takeInstantHit(
  *   reference [hitmark_groups] for a list of available hitmark groups.
  * @param specific If `true`, only this [Player] will see the hitsplat; this does not affect actual
  *   damage calculations.
- * @param sourceWeapon An optional [ObjType] reference of a "weapon" used by the [source] that hit
- *   modifiers and/or processors can use for specialized logic. Typically unnecessary when [source]
- *   is an [Npc], though there may be niche use cases.
+ * @param sourceWeapon An optional [ItemServerType] reference of a "weapon" used by the [source]
+ *   that hit modifiers and/or processors can use for specialized logic. Typically unnecessary when
+ *   [source] is an [Npc], though there may be niche use cases.
  * @param sourceSecondary Similar to [sourceWeapon], except this refers to objs that are **not** the
  *   primary weapon, such as ammunition for ranged attacks or objs tied to magic spells.
  * @param modifier A [PlayerHitModifier] used to adjust damage and other hit properties. By default,
@@ -312,11 +312,12 @@ public fun Player.queueImpactHit(
     delay: Int,
     type: HitType,
     damage: Int,
+    modifier: PlayerHitModifier,
     hitmark: HitmarkTypeGroup = hitmark_groups.regular_damage,
     specific: Boolean = false,
-    sourceWeapon: ObjType? = null,
-    sourceSecondary: ObjType? = null,
-    modifier: PlayerHitModifier = StandardPlayerHitModifier,
+    sourceWeapon: ItemServerType? = null,
+    sourceSecondary: ItemServerType? = null,
+    penetration: Int = 0,
 ) {
     val builder =
         InternalPlayerHits.createBuilder(
@@ -329,6 +330,7 @@ public fun Player.queueImpactHit(
             clientDelay = 0,
             specific = specific,
         )
+    builder.penetration = penetration
     strongQueueImpactHit(delay, builder, modifier)
 }
 
@@ -372,9 +374,9 @@ public fun Player.queueImpactHit(
     delay: Int,
     type: HitType,
     damage: Int,
+    modifier: PlayerHitModifier,
     hitmark: HitmarkTypeGroup = hitmark_groups.regular_damage,
-    sourceSecondary: ObjType? = null,
-    modifier: PlayerHitModifier = StandardPlayerHitModifier,
+    sourceSecondary: ItemServerType? = null,
 ) {
     val builder =
         InternalPlayerHits.createBuilder(
@@ -425,9 +427,9 @@ public fun Player.queueImpactHit(
     delay: Int,
     type: HitType,
     damage: Int,
+    modifier: PlayerHitModifier,
     hitmark: HitmarkTypeGroup = hitmark_groups.regular_damage,
     specific: Boolean = false,
-    modifier: PlayerHitModifier = StandardPlayerHitModifier,
     strongQueue: Boolean = true,
 ) {
     val builder =
@@ -453,12 +455,12 @@ private fun Player.strongQueueImpactHit(
     modifier: PlayerHitModifier,
 ) {
     val deferred = DeferredPlayerHit(builder, modifier)
-    strongQueue(hit_queues.impact, delay, deferred)
+    strongQueue("queue.impact_hit", delay, deferred)
 }
 
 private fun Player.queueImpactHit(delay: Int, builder: HitBuilder, modifier: PlayerHitModifier) {
     val deferred = DeferredPlayerHit(builder, modifier)
-    queue(hit_queues.impact, delay, deferred)
+    queue("queue.impact_hit", delay, deferred)
 }
 
 /* Internal functions. */

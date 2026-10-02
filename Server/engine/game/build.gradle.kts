@@ -8,10 +8,12 @@ kotlin {
 
 dependencies {
     implementation(libs.fastutil)
+    api(libs.openrune.central.common)
     implementation(projects.engine.annotations)
+    implementation(projects.api.attr)
     implementation(projects.engine.coroutine)
     implementation(projects.engine.events)
-    implementation(projects.engine.map)
+    api(projects.engine.map)
     implementation(projects.engine.routefinder)
     implementation(projects.engine.utilsBits)
     implementation(projects.engine.utilsSorting)

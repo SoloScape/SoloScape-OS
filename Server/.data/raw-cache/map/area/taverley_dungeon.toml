@@ -1,0 +1,47 @@
+# Regenerated as rectangles from the OSRS wiki music map: 8769 tiles moved to
+# neighbouring music areas and 4032 tiles were added.
+
+[[area]]
+name = "Taverley Underground"
+area_id = "area.taverley_dungeon"
+levels = [0, 1, 2, 3]
+
+[[area.polygons]]
+vertices = [
+    [2752, 9664],
+    [2815, 9664],
+    [2815, 9856],
+    [2752, 9856],
+]
+
+[[area.polygons]]
+vertices = [
+    [2880, 9664],
+    [2999, 9664],
+    [2999, 9791],
+    [2880, 9791],
+]
+
+[[area.polygons]]
+vertices = [
+    [2816, 9728],
+    [2879, 9728],
+    [2879, 9855],
+    [2816, 9855],
+]
+
+[[area.polygons]]
+vertices = [
+    [3000, 9728],
+    [3007, 9728],
+    [3007, 9791],
+    [3000, 9791],
+]
+
+[[area.polygons]]
+vertices = [
+    [2880, 9792],
+    [2943, 9792],
+    [2943, 9919],
+    [2880, 9919],
+]

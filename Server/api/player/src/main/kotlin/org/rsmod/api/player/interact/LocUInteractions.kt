@@ -1,9 +1,15 @@
 package org.rsmod.api.player.interact
 
 import com.github.michaelbull.logging.InlineLogger
+import dev.openrune.ServerCacheManager
+import dev.openrune.types.ItemServerType
+import dev.openrune.types.ObjectServerType
+import dev.openrune.types.varp.baseVar
+import dev.openrune.types.varp.bits
 import jakarta.inject.Inject
 import org.rsmod.api.config.constants
 import org.rsmod.api.player.events.interact.ApEvent
+import org.rsmod.api.player.events.interact.LocUCategoryEvents
 import org.rsmod.api.player.events.interact.LocUContentEvents
 import org.rsmod.api.player.events.interact.LocUDefaultEvents
 import org.rsmod.api.player.events.interact.LocUEvents
@@ -17,32 +23,18 @@ import org.rsmod.game.inv.Inventory
 import org.rsmod.game.inv.isType
 import org.rsmod.game.loc.BoundLocInfo
 import org.rsmod.game.loc.LocEntity
-import org.rsmod.game.type.loc.LocTypeList
-import org.rsmod.game.type.loc.UnpackedLocType
-import org.rsmod.game.type.obj.ObjTypeList
-import org.rsmod.game.type.obj.UnpackedObjType
-import org.rsmod.game.type.varbit.VarBitTypeList
-import org.rsmod.game.type.varp.VarpTypeList
 import org.rsmod.game.vars.VarPlayerIntMap
 import org.rsmod.utils.bits.getBits
 
-public class LocUInteractions
-@Inject
-private constructor(
-    private val eventBus: EventBus,
-    private val objTypes: ObjTypeList,
-    private val locTypes: LocTypeList,
-    private val varpTypes: VarpTypeList,
-    private val varBitTypes: VarBitTypeList,
-) {
+public class LocUInteractions @Inject private constructor(private val eventBus: EventBus) {
     private val logger = InlineLogger()
 
     public suspend fun interactOp(
         access: ProtectedAccess,
         target: BoundLocInfo,
         base: BoundLocInfo,
-        locType: UnpackedLocType,
-        objType: UnpackedObjType,
+        locType: ObjectServerType,
+        objType: ItemServerType,
         inv: Inventory,
         invSlot: Int,
     ) {
@@ -56,8 +48,8 @@ private constructor(
         target: BoundLocInfo,
         base: BoundLocInfo,
         invSlot: Int,
-        locType: UnpackedLocType,
-        objType: UnpackedObjType,
+        locType: ObjectServerType,
+        objType: ItemServerType,
     ) {
         val script = opTrigger(target, base, locType, objType, invSlot)
         if (script != null) {
@@ -74,13 +66,13 @@ private constructor(
     public fun ProtectedAccess.opTrigger(
         target: BoundLocInfo,
         base: BoundLocInfo,
-        locType: UnpackedLocType,
-        objType: UnpackedObjType,
+        locType: ObjectServerType,
+        objType: ItemServerType,
         invSlot: Int,
     ): OpEvent? {
         val multiLoc = multiLoc(target, locType, player.vars)
         if (multiLoc != null) {
-            val multiLocType = locTypes[multiLoc]
+            val multiLocType = ServerCacheManager.getObject(multiLoc.id)!!
             val multiLocTrigger = opTrigger(multiLoc, base, multiLocType, objType, invSlot)
             if (multiLocTrigger != null) {
                 return multiLocTrigger
@@ -95,6 +87,21 @@ private constructor(
         val typeContentEvent = LocUContentEvents.OpType(base, target, locType, objType, invSlot)
         if (eventBus.contains(typeContentEvent::class.java, typeContentEvent.id)) {
             return typeContentEvent
+        }
+
+        if (locType.category >= 0) {
+            val categoryEvent = LocUCategoryEvents.Op(base, target, locType, objType, invSlot)
+            if (eventBus.contains(categoryEvent::class.java, categoryEvent.id)) {
+                return categoryEvent
+            }
+        }
+
+        val baseType = baseTypeOf(target, base)
+        if (baseType != null) {
+            val baseEvent = LocUEvents.Op(base, target, baseType, objType, invSlot)
+            if (eventBus.contains(baseEvent::class.java, baseEvent.id)) {
+                return baseEvent
+            }
         }
 
         val defaultTypeScript = LocUDefaultEvents.OpType(base, target, locType, objType, invSlot)
@@ -112,6 +119,13 @@ private constructor(
             return defGroupScript
         }
 
+        if (locType.category >= 0) {
+            val categoryDefaultEvent = LocUDefaultEvents.OpCategory(base, target, locType, objType, invSlot)
+            if (eventBus.contains(categoryDefaultEvent::class.java, categoryDefaultEvent.id)) {
+                return categoryDefaultEvent
+            }
+        }
+
         return null
     }
 
@@ -119,8 +133,8 @@ private constructor(
         access: ProtectedAccess,
         target: BoundLocInfo,
         base: BoundLocInfo,
-        locType: UnpackedLocType,
-        objType: UnpackedObjType,
+        locType: ObjectServerType,
+        objType: ItemServerType,
         inv: Inventory,
         invSlot: Int,
     ) {
@@ -133,8 +147,8 @@ private constructor(
     private suspend fun ProtectedAccess.apLocU(
         target: BoundLocInfo,
         base: BoundLocInfo,
-        locType: UnpackedLocType,
-        objType: UnpackedObjType,
+        locType: ObjectServerType,
+        objType: ItemServerType,
         invSlot: Int,
     ) {
         val script = apTrigger(target, base, locType, objType, invSlot)
@@ -148,13 +162,13 @@ private constructor(
     private fun ProtectedAccess.apTrigger(
         target: BoundLocInfo,
         base: BoundLocInfo,
-        locType: UnpackedLocType,
-        objType: UnpackedObjType,
+        locType: ObjectServerType,
+        objType: ItemServerType,
         invSlot: Int,
     ): ApEvent? {
         val multiLoc = multiLoc(target, locType, player.vars)
         if (multiLoc != null) {
-            val multiLocType = locTypes[multiLoc]
+            val multiLocType = ServerCacheManager.getObject(multiLoc.id)!!
             val multiLocTrigger = apTrigger(multiLoc, base, multiLocType, objType, invSlot)
             if (multiLocTrigger != null) {
                 return multiLocTrigger
@@ -169,6 +183,21 @@ private constructor(
         val locContentEvent = LocUContentEvents.ApType(base, target, locType, objType, invSlot)
         if (eventBus.contains(locContentEvent::class.java, locContentEvent.id)) {
             return locContentEvent
+        }
+
+        if (locType.category >= 0) {
+            val categoryEvent = LocUCategoryEvents.Ap(base, target, locType, objType, invSlot)
+            if (eventBus.contains(categoryEvent::class.java, categoryEvent.id)) {
+                return categoryEvent
+            }
+        }
+
+        val baseType = baseTypeOf(target, base)
+        if (baseType != null) {
+            val baseEvent = LocUEvents.Ap(base, target, baseType, objType, invSlot)
+            if (eventBus.contains(baseEvent::class.java, baseEvent.id)) {
+                return baseEvent
+            }
         }
 
         val defaultTypeScript = LocUDefaultEvents.ApType(base, target, locType, objType, invSlot)
@@ -186,15 +215,26 @@ private constructor(
             return defGroupScript
         }
 
+        if (locType.category >= 0) {
+            val categoryDefaultEvent = LocUDefaultEvents.ApCategory(base, target, locType, objType, invSlot)
+            if (eventBus.contains(categoryDefaultEvent::class.java, categoryDefaultEvent.id)) {
+                return categoryDefaultEvent
+            }
+        }
+
         return null
     }
 
+    /** Scripts on a multiloc's base loc still answer when the visible variant has none. */
+    private fun baseTypeOf(target: BoundLocInfo, base: BoundLocInfo): ObjectServerType? =
+        if (base.id == target.id) null else ServerCacheManager.getObject(base.id)
+
     public fun multiLoc(
         loc: BoundLocInfo,
-        type: UnpackedLocType,
+        type: ObjectServerType,
         vars: VarPlayerIntMap,
     ): BoundLocInfo? {
-        if (type.multiLoc.isEmpty() && type.multiLocDefault <= 0) {
+        if (type.multiLoc.isEmpty() && type.multiDefault <= 0) {
             return null
         }
         val varValue = type.multiVarValue(vars) ?: 0
@@ -202,28 +242,28 @@ private constructor(
             if (varValue in type.multiLoc.indices) {
                 type.multiLoc[varValue].toInt() and 0xFFFF
             } else {
-                type.multiLocDefault
+                type.multiDefault
             }
-        return if (!locTypes.containsKey(multiLoc)) {
+        return if (!ServerCacheManager.getObjects().containsKey(multiLoc)) {
             null
         } else {
             loc.copy(entity = LocEntity(multiLoc, loc.shapeId, loc.angleId))
         }
     }
 
-    private fun UnpackedLocType.multiVarValue(vars: VarPlayerIntMap): Int? {
-        if (multiVarp > 0) {
-            val varp = varpTypes[multiVarp] ?: return null
+    private fun ObjectServerType.multiVarValue(vars: VarPlayerIntMap): Int? {
+        if (multiVarp >= 0) {
+            val varp = ServerCacheManager.getVarp(multiVarp) ?: return null
             return vars[varp]
-        } else if (multiVarBit > 0) {
-            val varBit = varBitTypes[multiVarBit] ?: return null
+        } else if (multiVarBit >= 0) {
+            val varBit = ServerCacheManager.getVarbit(multiVarBit) ?: return null
             val packed = vars[varBit.baseVar]
             return packed.getBits(varBit.bits)
         }
         return null
     }
 
-    private fun objectVerify(inv: Inventory, obj: InvObj?, type: UnpackedObjType): Boolean {
+    private fun objectVerify(inv: Inventory, obj: InvObj?, type: ItemServerType): Boolean {
         if (obj == null || !obj.isType(type)) {
             resendSlot(inv, 0)
             return false

@@ -11,6 +11,7 @@ import org.rsmod.game.entity.NpcList
 import org.rsmod.game.entity.npc.NpcStateEvents
 import org.rsmod.map.CoordGrid
 import org.rsmod.map.zone.ZoneKey
+import java.util.concurrent.ConcurrentLinkedQueue
 
 public class NpcRepository
 @Inject
@@ -21,7 +22,7 @@ constructor(
 ) {
     private val addNpcs = ObjectArrayList<Npc>()
     private val delNpcs = ObjectArrayList<Npc>()
-    private val addDelayedNpcs = ArrayDeque<Npc>()
+    private val addDelayedNpcs = ConcurrentLinkedQueue<Npc>()
 
     /**
      * **Note**: If [duration] is equal to [Int.MAX_VALUE], the [npc] will have its `respawn` flag
@@ -123,8 +124,12 @@ constructor(
     public fun findAll(zone: ZoneKey, zoneRadius: Int): Sequence<Npc> {
         return sequence {
             for (x in -zoneRadius..zoneRadius) {
+                val targetX = zone.x + x
+                if (targetX !in 0..ZoneKey.X_BIT_MASK) continue
                 for (z in -zoneRadius..zoneRadius) {
-                    val translate = zone.translate(x, z)
+                    val targetZ = zone.z + z
+                    if (targetZ !in 0..ZoneKey.Z_BIT_MASK) continue
+                    val translate = ZoneKey(x = targetX, z = targetZ, level = zone.level)
                     val players = findAll(translate)
                     yieldAll(players)
                 }
@@ -174,22 +179,53 @@ constructor(
         addNpcs.clear()
     }
 
-    internal fun processDelayedAdd() {
-        if (addDelayedNpcs.isNotEmpty()) {
-            processAddDelayed()
+    internal fun processDelayedAdd(): Int {
+        if (addDelayedNpcs.isEmpty()) {
+            return 0
         }
+        return processAddDelayed(DELAYED_ADDS_PER_CYCLE)
     }
 
-    private fun processAddDelayed() {
+    /**
+     * Drains all due delayed NPC spawns without the per-cycle cap.
+     *
+     * Used during boot after plugin scripts are loaded so map NPCs exist before login opens.
+     * Runtime [addDelayed] calls continue to use the paced [processDelayedAdd] path.
+     */
+    internal fun flushDelayedAdds(): Int {
+        if (addDelayedNpcs.isEmpty()) {
+            return 0
+        }
+        return processAddDelayed(limit = Int.MAX_VALUE)
+    }
+
+    /**
+     * Spawns due delayed NPCs. During the game loop this is capped per cycle so map-wide
+     * [addDelayed] bursts do not stall the game thread for hundreds of milliseconds.
+     *
+     * Uses [MapClock.cycle] >= trigger so leftovers remain eligible on subsequent cycles.
+     */
+    private fun processAddDelayed(limit: Int): Int {
+        var added = 0
         val iterator = addDelayedNpcs.iterator()
-        while (iterator.hasNext()) {
+        while (iterator.hasNext() && added < limit) {
             val npc = iterator.next()
-            if (shouldTrigger(npc.lifecycleDelayedAddCycle)) {
+            if (mapClock.cycle >= npc.lifecycleDelayedAddCycle) {
                 add(npc, duration = npc.lifecycleDelayedAddDuration)
                 iterator.remove()
+                added++
             }
         }
+        return added
     }
 
     private fun shouldTrigger(triggerCycle: Int): Boolean = mapClock.cycle == triggerCycle
+
+    private companion object {
+        /**
+         * Cap for runtime [processDelayedAdd] so large [addDelayed] bursts do not stall a tick.
+         * Boot-time map spawns are fully drained via [flushDelayedAdds] before login opens.
+         */
+        private const val DELAYED_ADDS_PER_CYCLE: Int = 750
+    }
 }

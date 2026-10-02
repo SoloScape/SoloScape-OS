@@ -1,12 +1,16 @@
 package org.rsmod.api.game.process.player
 
 import jakarta.inject.Inject
+import org.rsmod.api.account.autosave.PlayerAutosaveOrchestrator
 import org.rsmod.api.game.process.GameLifecycle
+import org.rsmod.api.game.process.npc.hunt.AggressionTolerance
 import org.rsmod.api.player.forceDisconnect
+import org.rsmod.api.player.hook.PlayerPostTickHook
 import org.rsmod.api.player.output.MiscOutput
 import org.rsmod.api.utils.logging.GameExceptionHandler
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
+import org.rsmod.game.entity.PlayerPersistenceHints
 import org.rsmod.game.entity.util.EntityFaceAngle
 import org.rsmod.game.entity.util.ShuffledPlayerList
 import org.rsmod.game.seq.EntitySeq
@@ -25,6 +29,9 @@ constructor(
     private val invUpdates: PlayerInvUpdateProcessor,
     private val statUpdates: PlayerStatUpdateProcessor,
     private val exceptionHandler: GameExceptionHandler,
+    private val playerAutosave: PlayerAutosaveOrchestrator,
+    private val postTickHooks: Set<PlayerPostTickHook>,
+    private val tolerance: AggressionTolerance,
 ) {
     public fun process() {
         computeSharedBuffers()
@@ -51,15 +58,21 @@ constructor(
 
     private fun processPostTick() {
         for (player in playerList) {
-            player.tryOrDisconnect {
-                processMapChanges()
-                processClientCycle()
-                processZoneUpdates()
-                processInvUpdates()
-                processStatUpdates()
-                processRunUpdates()
-                processClientState()
-                cleanUpPendingUpdates()
+            PlayerPersistenceHints.enter(player)
+            try {
+                player.tryOrDisconnect {
+                    processMapChanges()
+                    processZoneUpdates()
+                    processInvUpdates()
+                    processStatUpdates()
+                    processRunUpdates()
+                    processPostTickHooks()
+                    processClientCycle()
+                    processClientState()
+                    cleanUpPendingUpdates()
+                }
+            } finally {
+                PlayerPersistenceHints.leave()
             }
         }
     }
@@ -92,6 +105,13 @@ constructor(
         runUpdates.process(this)
     }
 
+    private fun Player.processPostTickHooks() {
+        tolerance.tick(this, currentMapClock)
+        for (hook in postTickHooks) {
+            hook.onPostTick(this)
+        }
+    }
+
     private fun Player.processClientState() {
         if (closeClient) {
             closeClient = false
@@ -114,6 +134,7 @@ constructor(
 
     private fun Player.cleanUpPendingUpdates() {
         pendingSay = null
+        pendingTinting = null
         pendingStepCount = 0
         pendingTeleport = false
         pendingTelejump = false
@@ -128,6 +149,7 @@ constructor(
     }
 
     private fun finalizePostTick() {
+        playerAutosave.processEndOfTick(playerList)
         zoneUpdates.clearEnclosedBuffers()
         zoneUpdates.clearPendingZoneUpdates()
         invUpdates.cleanUp()

@@ -1,22 +1,26 @@
 package org.rsmod.api.combat
 
+import dev.openrune.rscm.RSCM
+import dev.openrune.rscm.RSCMType
 import jakarta.inject.Inject
 import org.rsmod.api.combat.commons.CombatAttack
+import org.rsmod.api.combat.manager.EnchantedBolts
 import org.rsmod.api.combat.manager.PlayerAttackManager
 import org.rsmod.api.combat.manager.RangedAmmoManager
 import org.rsmod.api.combat.player.activateMagicSpecial
 import org.rsmod.api.combat.player.activateMeleeSpecial
 import org.rsmod.api.combat.player.activateRangedSpecial
 import org.rsmod.api.combat.player.activateShieldSpecial
+import org.rsmod.api.combat.player.activateSpellSpecial
 import org.rsmod.api.combat.player.specialAttackType
 import org.rsmod.api.combat.weapon.WeaponSpeeds
 import org.rsmod.api.config.constants
-import org.rsmod.api.config.refs.categories
 import org.rsmod.api.config.refs.params
+import org.rsmod.api.death.NpcAttackValidateHook
+import org.rsmod.api.death.NpcAttackValidateResult
 import org.rsmod.api.npc.isValidTarget
 import org.rsmod.api.player.lefthand
 import org.rsmod.api.player.protect.ProtectedAccess
-import org.rsmod.api.player.quiver
 import org.rsmod.api.player.righthand
 import org.rsmod.api.specials.SpecialAttackRegistry
 import org.rsmod.api.specials.SpecialAttackType
@@ -27,19 +31,21 @@ import org.rsmod.api.weapons.WeaponRegistry
 import org.rsmod.api.weapons.attack
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.interact.InteractionOp
-import org.rsmod.game.type.obj.ObjTypeList
+import org.rsmod.game.type.getInvObj
+import org.rsmod.game.type.getOrNull
 
 internal class PvNCombat
 @Inject
 constructor(
-    private val objTypes: ObjTypeList,
     private val speeds: WeaponSpeeds,
     private val specialsReg: SpecialAttackRegistry,
     private val specialEnergy: SpecialAttackEnergy,
     private val weaponsReg: WeaponRegistry,
     private val manager: PlayerAttackManager,
     private val ammunition: RangedAmmoManager,
+    private val enchantedBolts: EnchantedBolts,
     private val spellsReg: SpellAttackRegistry,
+    private val attackValidateHooks: Set<NpcAttackValidateHook>,
 ) {
     suspend fun attack(access: ProtectedAccess, target: Npc, attack: CombatAttack.PlayerAttack) {
         when (attack) {
@@ -69,7 +75,9 @@ constructor(
         // helper function that does so) to re-engage in combat after performing the special attack.
         if (specialAttackType == SpecialAttackType.Weapon) {
             specialAttackType = SpecialAttackType.None
-            val activatedSpec = activateMeleeSpecial(npc, attack, specialsReg, specialEnergy)
+            val activatedSpec =
+                activateMeleeSpecial(npc, attack, specialsReg, specialEnergy) ||
+                    activateSpellSpecial(npc, attack.weapon, specialsReg, specialEnergy)
             if (activatedSpec) {
                 return
             }
@@ -133,7 +141,7 @@ constructor(
             }
         }
 
-        val righthandType = objTypes[attack.weapon]
+        val righthandType = getInvObj(attack.weapon)
 
         // Important: Weapon attack handlers are responsible for explicitly calling `opnpc2` (or a
         // helper function that does so) to re-engage in combat after performing their attack.
@@ -148,15 +156,17 @@ constructor(
         // `chargebows` are specialized and not worth trying to have as a generic system. As such,
         // they are required to be registered in `WeaponRegistry` and will return early if they
         // have reached this point (not handled by the previous `specializedWeapon` block).
-        val usingChargeBow = righthandType.isCategoryType(categories.chargebow)
+        val usingChargeBow = righthandType.isCategoryType("category.chargebow")
         if (usingChargeBow) {
             manager.stopCombat(player)
             mes("The bow refuses to fire.")
             return
         }
 
-        val quiver = player.quiver
-        val quiverType = objTypes.getOrNull(quiver)
+        // The ammo slot, or the ammunition stored in a worn Dizana's quiver when the ammo slot
+        // cannot supply anything this weapon can fire.
+        val quiver = ammunition.activeAmmo(player, righthandType)
+        val quiverType = getOrNull(quiver)
 
         val canUseAmmo = ammunition.attemptAmmoUsage(player, righthandType, quiverType)
         if (!canUseAmmo) {
@@ -168,23 +178,22 @@ constructor(
         // throwing weapons. For example, the Toxic blowpipe falls under this category but requires
         // special handling. Such weapons should be managed via the `Weapon` system to ensure
         // correct behavior and avoid unintended side effects.
-        val usingThrown = righthandType.isCategoryType(categories.throwing_weapon)
+        val usingThrown = righthandType.isCategoryType("category.throwing_weapon")
 
         val weaponType = if (usingThrown) righthandType else quiverType
         checkNotNull(weaponType) {
             "Unexpected null weapon type: righthand=$righthandType, quiver=$quiverType"
         }
 
-        val projanimType = righthandType.paramOrNull(params.proj_type)
+        val projectileID = righthandType.paramOrNull(params.proj_type)?.id
         val travelSpotanim = weaponType.paramOrNull(params.proj_travel)
-
-        // All valid ammunition requires a `proj_travel` spotanim type and `proj_type` projanim type
-        // param so that the projectile can be created and referenced for its proper delays.
-        if (projanimType == null || travelSpotanim == null) {
+        if (projectileID == null || travelSpotanim == null) {
             manager.stopCombat(player)
             mes("You are unable to fire your ammunition.")
             return
         }
+
+        val projanimType = RSCM.getReverseMapping(RSCMType.PROJANIM, projectileID)
 
         // All valid ranged weapons require an `attack_anim_stance1` seq type param to be used in
         // combat.
@@ -198,8 +207,10 @@ constructor(
         // Official behavior: If the weapon (quiver or righthand, based on the thrown weapon flag)
         // has no `proj_launch` param, a "null" (-1) spotanim will still be sent in the same slot
         // and height as usual.
-        val launchSpotanim = weaponType.paramOrNull(params.proj_launch)
-        spotanim(launchSpotanim, height = 96, slot = constants.spotanim_slot_combat)
+        val launchSpotanim = weaponType.paramOrNull(params.proj_launch)?.id ?: NULL_SPOTANIM_ID
+
+        val launchSpotanimName = launchSpotanim.takeUnless { it == NULL_SPOTANIM_ID }?.let { RSCM.getReverseMapping(RSCMType.SPOTANIM, it) }
+        spotanim(launchSpotanimName, height = 96, slot = constants.spotanim_slot_combat)
 
         val projanim = manager.spawnProjectile(player, npc, travelSpotanim, projanimType)
         val (serverDelay, clientDelay) = projanim.durations
@@ -210,11 +221,11 @@ constructor(
             ammunition.useQuiverAmmo(player, quiverType, npc.coords, dropDelay = serverDelay)
         }
 
-        val damage = manager.rollRangedDamage(player, npc, attack)
-        manager.giveCombatXp(player, npc, attack, damage)
-
         val hitAmmoObj = if (usingThrown) null else quiverType
-        manager.queueRangedHit(player, npc, hitAmmoObj, damage, clientDelay, serverDelay)
+        val shot = enchantedBolts.shoot(player, npc, attack, hitAmmoObj)
+        manager.giveCombatXp(player, npc, attack, shot.damage)
+        manager.queueRangedHit(player, npc, hitAmmoObj, shot.damage, clientDelay, serverDelay)
+        enchantedBolts.applyEffect(player, npc, shot, clientDelay, serverDelay)
 
         if (usingThrown && player.righthand == null) {
             mes("That was your last one!")
@@ -237,7 +248,23 @@ constructor(
         val attackRate = MAGIC_SPELL_ATTACK_RATE
         manager.setNextAttackDelay(player, attackRate)
 
-        val spell = spellsReg[attack.spell.obj]
+        if (specialAttackType == SpecialAttackType.Weapon) {
+            specialAttackType = SpecialAttackType.None
+            val activatedSpec =
+                activateSpellSpecial(npc, attack.weapon, specialsReg, specialEnergy)
+            if (activatedSpec) {
+                return
+            }
+        }
+        if (specialAttackType == SpecialAttackType.Shield) {
+            specialAttackType = SpecialAttackType.None
+            val activatedSpec = activateShieldSpecial(npc, player.lefthand, specialsReg)
+            if (activatedSpec) {
+                return
+            }
+        }
+
+        val spell = spellsReg[RSCM.getReverseMapping(RSCMType.OBJ, attack.spell.obj.id)]
         if (spell != null) {
             spell.attack(this, npc, attack)
             return
@@ -299,11 +326,30 @@ constructor(
     }
 
     private fun ProtectedAccess.canAttack(npc: Npc): Boolean {
+        for (hook in attackValidateHooks) {
+            when (val result = hook.validate(player, npc)) {
+                is NpcAttackValidateResult.Deny -> {
+                    if (result.message.isNotEmpty()) {
+                        mes(result.message)
+                    }
+                    return false
+                }
+                NpcAttackValidateResult.BypassSingleWayPvnRestriction,
+                NpcAttackValidateResult.Pass -> Unit
+            }
+        }
+
         if (!npc.isValidTarget()) {
             return false
         }
 
-        val hasAttackOp = npc.visType.hasOp(InteractionOp.Op2)
+        // Multi-npcs (quest npcs whose form follows a varbit) often carry the Attack option only
+        // on the form this player sees, so resolve that form rather than the spawned base type.
+        // A few npcs (the chompy bird) carry Attack outside the second slot.
+        val visType = npcVisType(npc)
+        val hasAttackOp =
+            visType.hasOp(InteractionOp.Op2.slot) ||
+                (0 until NPC_OP_SLOTS).any { visType.actions.getOpOrNull(it) == "Attack" }
         if (!hasAttackOp) {
             mes("You can't attack this npc.")
             return false
@@ -312,3 +358,5 @@ constructor(
         return true
     }
 }
+
+private const val NPC_OP_SLOTS = 5

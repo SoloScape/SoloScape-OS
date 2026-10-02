@@ -1,5 +1,6 @@
 package org.rsmod.api.combat.formulas.maxhit.melee
 
+import dev.openrune.util.Wearpos
 import java.util.EnumSet
 import kotlin.math.max
 import org.rsmod.api.combat.commons.styles.MeleeAttackStyle
@@ -7,15 +8,11 @@ import org.rsmod.api.combat.formulas.attributes.CombatMeleeAttributes
 import org.rsmod.api.combat.formulas.attributes.CombatNpcAttributes
 import org.rsmod.api.combat.formulas.scale
 import org.rsmod.api.combat.maxhit.player.PlayerMeleeMaxHit
-import org.rsmod.api.config.refs.stats
-import org.rsmod.api.config.refs.varbits
-import org.rsmod.api.config.refs.varps
 import org.rsmod.api.player.righthand
 import org.rsmod.api.player.stat.stat
 import org.rsmod.api.player.worn.EquipmentChecks
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.Inventory
-import org.rsmod.game.type.obj.Wearpos
 import org.rsmod.game.vars.VarPlayerIntMap
 
 private typealias MeleeAttr = CombatMeleeAttributes
@@ -174,7 +171,10 @@ public object MeleeMaxHitOperations {
         val unshieldedTormentedDemon =
             MeleeAttr.Crush in meleeAttributes && NpcAttr.TormentedDemonUnshielded in npcAttributes
         if (unshieldedTormentedDemon) {
-            val bonusDamage = max(0, (attackRate * attackRate) - 16)
+            var bonusDamage = max(0, (attackRate * attackRate) - 16)
+            if (NpcAttr.TormentedDemonOverheadMelee in npcAttributes) {
+                bonusDamage /= 3
+            }
             modified += bonusDamage
         }
 
@@ -204,8 +204,23 @@ public object MeleeMaxHitOperations {
         return modified
     }
 
+    /**
+     * A Tanglefoot can only be cut with magic secateurs, and how hard depends on how good a
+     * gardener the player is: their Farming level counts towards effective strength on top of
+     * everything else.
+     */
+    public fun farmingStrengthBonus(
+        player: Player,
+        meleeAttributes: EnumSet<CombatMeleeAttributes>,
+        npcAttributes: EnumSet<CombatNpcAttributes>,
+    ): Int {
+        val applies =
+            MeleeAttr.MagicSecateurs in meleeAttributes && NpcAttr.Tanglefoot in npcAttributes
+        return if (applies) player.stat("stat.farming") else 0
+    }
+
     public fun calculateEffectiveStrength(player: Player, attackStyle: MeleeAttackStyle?): Int {
-        val strengthLevel = player.stat(stats.strength)
+        val strengthLevel = player.stat("stat.strength")
         val soulreaperAxe = EquipmentChecks.isSoulreaperAxe(player.righthand)
         val soulStackBonus = if (soulreaperAxe) player.vars.soulStackBonus() else 1.0
         return calculateEffectiveStrength(
@@ -245,11 +260,11 @@ public object MeleeMaxHitOperations {
 
     private fun VarPlayerIntMap.prayerBonus(): Double =
         when {
-            this[varbits.burst_of_strength] == 1 -> 1.05
-            this[varbits.superhuman_strength] == 1 -> 1.1
-            this[varbits.ultimate_strength] == 1 -> 1.15
-            this[varbits.chivalry] == 1 -> 1.18
-            this[varbits.piety] == 1 -> 1.23
+            this["varbit.prayer_burstofstrength"] == 1 -> 1.05
+            this["varbit.prayer_superhumanstrength"] == 1 -> 1.1
+            this["varbit.prayer_ultimatestrength"] == 1 -> 1.15
+            this["varbit.prayer_chivalry"] == 1 -> 1.18
+            this["varbit.prayer_piety"] == 1 -> 1.23
             else -> 1.0
         }
 
@@ -278,7 +293,7 @@ public object MeleeMaxHitOperations {
     }
 
     private fun VarPlayerIntMap.soulStackBonus(): Double {
-        val souls = this[varps.soulreaper_souls]
+        val souls = this["varp.soulreaper_stacks"]
         return 1.0 + (souls * 0.06)
     }
 }

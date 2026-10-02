@@ -1,0 +1,14 @@
+/*
+symbols/.local/
+!gamevals/
+!gamevals-binary/
+!raw-cache/
+!symbols/
+!osrs-dumps/
+!.gitignore
+
+gamevals-binary/*
+!gamevals-binary/max-ids.toml
+
+osrs-dumps/*
+!osrs-dumps/dump.npc

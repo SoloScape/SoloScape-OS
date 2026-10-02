@@ -1,30 +1,25 @@
 package org.rsmod.api.combat.weapon.types
 
+import dev.openrune.types.ItemServerType
+import dev.openrune.util.WeaponCategory
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
-import jakarta.inject.Inject
 import org.rsmod.api.combat.commons.types.AttackType
 import org.rsmod.api.combat.weapon.righthand
-import org.rsmod.api.combat.weapon.types.configs.type_enums
-import org.rsmod.api.config.refs.varps
+import org.rsmod.api.enums.WeaponAttackEnums.weapon_attack_types
 import org.rsmod.game.entity.Player
-import org.rsmod.game.enums.EnumTypeMapResolver
-import org.rsmod.game.type.obj.ObjTypeList
-import org.rsmod.game.type.obj.UnpackedObjType
-import org.rsmod.game.type.obj.WeaponCategory
+import org.rsmod.game.type.getOrNull
 
-public class AttackTypes
-@Inject
-constructor(private val objTypes: ObjTypeList, private val enumResolver: EnumTypeMapResolver) {
+public class AttackTypes {
     private lateinit var weaponTypes: WeaponTypeMap
 
     public fun get(player: Player): AttackType? {
-        val type = objTypes.getOrNull(player.righthand)
-        val stance = player.vars[varps.com_mode]
+        val type = getOrNull(player.righthand)
+        val stance = player.vars["varp.com_mode"]
         return resolve(type = type, combatStance = stance)
     }
 
-    public fun resolve(type: UnpackedObjType?, combatStance: Int): AttackType? {
-        val weapon = WeaponCategory.getOrUnarmed(type?.weaponCategory)
+    public fun resolve(type: ItemServerType?, combatStance: Int): AttackType? {
+        val weapon = WeaponCategory.getOrUnarmed(type?.weaponCategory?.id)
         return resolve(weapon = weapon, combatStance = combatStance)
     }
 
@@ -40,7 +35,7 @@ constructor(private val objTypes: ObjTypeList, private val enumResolver: EnumTyp
     }
 
     private fun loadWeaponTypeMap(): WeaponTypeMap {
-        val typesEnum = enumResolver[type_enums.weapon_attack_types].filterValuesNotNull()
+        val typesEnum = weapon_attack_types.filterValuesNotNull()
         return WeaponTypeMap(Int2IntOpenHashMap(typesEnum.backing))
     }
 

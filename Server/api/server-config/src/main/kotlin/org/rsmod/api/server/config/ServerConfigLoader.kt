@@ -1,45 +1,75 @@
 package org.rsmod.api.server.config
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.github.michaelbull.logging.InlineLogger
-import jakarta.inject.Inject
 import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.io.path.notExists
 import kotlin.io.path.writeText
-import org.rsmod.api.parsers.toml.Toml
 
-public class ServerConfigLoader @Inject constructor(@Toml private val objectMapper: ObjectMapper) {
+public class ServerConfigLoader {
+
     private val logger = InlineLogger()
 
-    public fun loadOrCreate(file: Path): ServerConfig =
+    public fun loadOrCreate(file: Path): ServerConfig {
         if (file.exists()) {
-            load(file)
-        } else {
-            create(file)
+            return load(file)
         }
+        return create(file)
+    }
 
-    public fun load(file: Path): ServerConfig =
-        objectMapper.readValue(file.toFile(), ServerConfig::class.java)
+    public fun load(file: Path): ServerConfig {
+        migrateWorldBeforeLoad(file)
+        val config = yamlMapper.readValue(file.toFile(), ServerConfig::class.java)
+        SameInstanceCentralConfigValidation.validateAfterLoad(file, config)
+        return config
+    }
 
     public fun create(file: Path): ServerConfig {
         require(file.notExists()) { "File already exists: ${file.toAbsolutePath()}" }
+
         val config = createDefault()
-        val contents = objectMapper.writeValueAsString(config.toWriteConfig())
+        val contents = yamlMapper.writeValueAsString(config)
+
         file.writeText(contents)
+
         logger.info { "Created default server config in file: $file" }
         return config
     }
 
-    private fun createDefault(): ServerConfig {
-        return ServerConfig(realm = DEFAULT_REALM, world = DEFAULT_WORLD, firstLaunch = true)
+    private fun migrateWorldBeforeLoad(gameYml: Path) {
+        SameInstanceCentralWorldMigrator.migrateIfNeeded(
+            gameYml = gameYml,
+            exampleYml = gameYml.resolveSibling("game.example.yml"),
+            yamlMapper = yamlMapper,
+        )
     }
 
-    // We want to strip the `firstLaunch` flag in the config that will be written to disk.
-    private fun ServerConfig.toWriteConfig() = copy(firstLaunch = false)
+    private fun createDefault(): ServerConfig =
+        ServerConfig(
+            name = "OpenRune",
+            gamePort = 43594,
+            revision = 233,
+            environment = "LIVE",
+            world = DEFAULT_WORLD,
+            database =
+                GameDatabaseYaml(
+                    postgres =
+                        PostgresDbYaml(
+                            jdbcUrl = "jdbc:postgresql://127.0.0.1:5432/openrune_game",
+                            user = "openrune",
+                            password = "openrune",
+                        ),
+                ),
+            central = null,
+        )
 
     private companion object {
-        private const val DEFAULT_REALM = "dev"
-        private const val DEFAULT_WORLD = 1
+        private const val DEFAULT_WORLD = 255
+
+        private val yamlMapper: ObjectMapper =
+            ObjectMapper(YAMLFactory()).registerKotlinModule()
     }
 }

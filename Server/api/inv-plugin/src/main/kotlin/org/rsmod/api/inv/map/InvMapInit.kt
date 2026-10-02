@@ -1,15 +1,11 @@
 package org.rsmod.api.inv.map
 
-import jakarta.inject.Inject
-import org.rsmod.api.config.refs.BaseInvs
+import dev.openrune.types.InventoryServerType
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.Inventory
-import org.rsmod.game.type.inv.InvTypeList
-import org.rsmod.game.type.inv.UnpackedInvType
 
-public class InvMapInit @Inject constructor(invs: InvTypeList) {
-    public val defaultInvs: MutableSet<UnpackedInvType> =
-        hashSetOf(invs[BaseInvs.inv], invs[BaseInvs.worn])
+public class InvMapInit {
+    public val defaultInvs: MutableSet<String> = hashSetOf("inv.inv", "inv.worn")
 
     public fun init(player: Player) {
         putIfAbsent(player)
@@ -20,17 +16,23 @@ public class InvMapInit @Inject constructor(invs: InvTypeList) {
         for (default in defaultInvs) {
             if (default !in player.invMap) {
                 val create = Inventory.create(default)
+                create.owner = player
                 player.invMap[default] = create
             }
+        }
+        for (inventory in player.invMap.values) {
+            inventory.owner = player
         }
     }
 
     public fun cacheCommons(player: Player) {
-        player.inv = player.invMap.getValue(BaseInvs.inv)
-        player.worn = player.invMap.getValue(BaseInvs.worn)
+        player.inv = player.invMap.getValue("inv.inv")
+        player.worn = player.invMap.getValue("inv.worn")
+        player.inv.owner = player
+        player.worn.owner = player
     }
 
-    public operator fun plusAssign(inv: UnpackedInvType) {
+    public operator fun plusAssign(inv: String) {
         defaultInvs += inv
     }
 }

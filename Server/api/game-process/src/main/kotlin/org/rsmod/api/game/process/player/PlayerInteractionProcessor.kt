@@ -1,6 +1,8 @@
 package org.rsmod.api.game.process.player
 
 import jakarta.inject.Inject
+import kotlin.math.abs
+import kotlin.math.sign
 import org.rsmod.api.config.Constants
 import org.rsmod.api.npc.isValidTarget
 import org.rsmod.api.player.clearInteractionRoute
@@ -9,6 +11,7 @@ import org.rsmod.api.player.interact.LocTInteractions
 import org.rsmod.api.player.interact.NpcInteractions
 import org.rsmod.api.player.interact.NpcTInteractions
 import org.rsmod.api.player.interact.ObjInteractions
+import org.rsmod.api.player.interact.ObjTInteractions
 import org.rsmod.api.player.interact.PlayerInteractions
 import org.rsmod.api.player.interact.PlayerTInteractions
 import org.rsmod.api.player.isValidTarget
@@ -22,6 +25,7 @@ import org.rsmod.api.registry.obj.ObjRegistry
 import org.rsmod.api.route.BoundValidator
 import org.rsmod.api.route.RayCastValidator
 import org.rsmod.events.EventBus
+import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.Player
 import org.rsmod.game.interact.Interaction
 import org.rsmod.game.interact.InteractionLoc
@@ -31,6 +35,8 @@ import org.rsmod.game.interact.InteractionNpc
 import org.rsmod.game.interact.InteractionNpcOp
 import org.rsmod.game.interact.InteractionNpcT
 import org.rsmod.game.interact.InteractionObj
+import org.rsmod.game.interact.InteractionObjT
+import org.rsmod.game.interact.InteractionOp
 import org.rsmod.game.interact.InteractionPlayer
 import org.rsmod.game.interact.InteractionPlayerOp
 import org.rsmod.game.interact.InteractionPlayerT
@@ -39,6 +45,7 @@ import org.rsmod.interact.InteractionStep
 import org.rsmod.interact.InteractionTarget
 import org.rsmod.interact.Interactions
 import org.rsmod.map.CoordGrid
+import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.routefinder.flag.CollisionFlag
 
 public class PlayerInteractionProcessor
@@ -54,17 +61,25 @@ constructor(
     private val npcInteractions: NpcInteractions,
     private val npcTInteractions: NpcTInteractions,
     private val objInteractions: ObjInteractions,
+    private val objTInteractions: ObjTInteractions,
     private val playerInteractions: PlayerInteractions,
     private val playerTInteractions: PlayerTInteractions,
     private val protectedAccess: ProtectedAccessLauncher,
     private val movement: PlayerMovementProcessor,
+    private val collision: CollisionFlagMap,
 ) {
     public fun process(player: Player) {
         // Store the current interaction at this stage to ensure that if an interaction triggers a
         // new one (e.g., combat calling `opnpc2`), the original interaction completes before the
         // new one is processed.
         val interaction = player.interaction
-        val followOp = interaction is InteractionPlayerOp && interaction.isFollowOp()
+        // Player option 3 is "Follow" by default, but content may relabel the slot (Emir's Arena
+        // puts "Challenge" there); only follow when the slot still says so, otherwise let the
+        // op reach its script like any other option.
+        val followOp =
+            interaction is InteractionPlayerOp &&
+                interaction.isFollowOp() &&
+                player.options.getOrNull(InteractionOp.Op3.slot) == FOLLOW_OPTION
         var interacted = false
 
         if (interaction != null && !player.isAccessProtected) {
@@ -106,7 +121,7 @@ constructor(
                 player.clearMapFlag()
             }
 
-            if (interaction != null && !player.isAccessProtected && !followOp) {
+            if (interaction != null && !interaction.interacted && !player.isAccessProtected && !followOp) {
                 player.postMovementInteraction(interaction)
             }
         } else if (!player.hasMovedThisCycle && player.routeDestination.isEmpty()) {
@@ -133,8 +148,12 @@ constructor(
             processInteractionStep(this, step)
 
             if (!interaction.interacted && routeDestination.isEmpty() && !hasMovedThisCycle) {
-                clearInteractionRoute()
-                mes(Constants.dm_reach, ChatType.Engine)
+                if (interaction is InteractionNpc && isWithinObstacleReach(interaction)) {
+                    processInteractionStep(interaction, InteractionStep.TriggerScriptOp)
+                } else {
+                    clearInteractionRoute()
+                    mes(Constants.dm_reach, ChatType.Engine)
+                }
             }
         }
 
@@ -197,6 +216,9 @@ constructor(
             is InteractionObj -> {
                 /* no-op */
             }
+            is InteractionObjT -> {
+                /* no-op */
+            }
         }
 
     private fun Player.determinePreMovementStep(interaction: Interaction): InteractionStep =
@@ -204,6 +226,7 @@ constructor(
             is InteractionLoc -> preMovementStep(interaction)
             is InteractionNpc -> preMovementStep(interaction)
             is InteractionObj -> preMovementStep(interaction)
+            is InteractionObjT -> preMovementStep(interaction)
             is InteractionPlayer -> preMovementStep(interaction)
         }
 
@@ -212,6 +235,7 @@ constructor(
             is InteractionLoc -> postMovementStep(interaction)
             is InteractionNpc -> postMovementStep(interaction)
             is InteractionObj -> postMovementStep(interaction)
+            is InteractionObjT -> postMovementStep(interaction)
             is InteractionPlayer -> postMovementStep(interaction)
         }
 
@@ -222,6 +246,7 @@ constructor(
             is InteractionNpcOp -> triggerOp(this, interaction)
             is InteractionNpcT -> triggerOp(this, interaction)
             is InteractionObj -> triggerOp(this, interaction)
+            is InteractionObjT -> triggerOp(this, interaction)
             is InteractionPlayerOp -> triggerOp(this, interaction)
             is InteractionPlayerT -> triggerOp(this, interaction)
         }
@@ -233,6 +258,7 @@ constructor(
             is InteractionNpcOp -> triggerAp(this, interaction)
             is InteractionNpcT -> triggerAp(this, interaction)
             is InteractionObj -> triggerAp(this, interaction)
+            is InteractionObjT -> triggerAp(this, interaction)
             is InteractionPlayerOp -> triggerAp(this, interaction)
             is InteractionPlayerT -> triggerAp(this, interaction)
         }
@@ -307,6 +333,63 @@ constructor(
         return isWithinApRange
     }
 
+    /**
+     * Npcs that stand behind a counter or inside a jail cell can never be reached for an op. When
+     * the route has settled and the npc's op has no ap script handling this itself, the op still
+     * fires if the npc is within [OBSTACLE_REACH] tiles and either visible (bars and most counters
+     * do not block projectiles) or separated only by a single solid floor loc such as a counter.
+     */
+    private fun Player.isWithinObstacleReach(interaction: InteractionNpc): Boolean {
+        if (!interaction.hasOpTrigger || interaction.hasApTrigger) {
+            return false
+        }
+        val npc = interaction.target
+        if (npc.level != level || boundValidator.collides(avatar, npc.avatar)) {
+            return false
+        }
+        if (!isWithinDistance(npc, OBSTACLE_REACH)) {
+            return false
+        }
+        val hasLos =
+            rayCastValidator.hasLineOfSight(
+                source = coords,
+                destination = npc.coords,
+                destWidth = npc.size,
+                destLength = npc.size,
+            )
+        return hasLos || isFloorLocBetween(npc)
+    }
+
+    private fun Player.isFloorLocBetween(npc: Npc): Boolean {
+        val targetX = x.coerceIn(npc.x, npc.x + npc.size - 1)
+        val targetZ = z.coerceIn(npc.z, npc.z + npc.size - 1)
+        val dx = targetX - x
+        val dz = targetZ - z
+        val straightGap = (abs(dx) == 2 && dz == 0) || (abs(dz) == 2 && dx == 0)
+        if (!straightGap) {
+            return false
+        }
+        val stepX = dx.sign
+        val stepZ = dz.sign
+        val middleX = x + stepX
+        val middleZ = z + stepZ
+        if (collision[middleX, middleZ, level] and CollisionFlag.LOC == 0) {
+            return false
+        }
+        val (exitWall, entryWall) =
+            when {
+                stepX > 0 -> CollisionFlag.WALL_EAST to CollisionFlag.WALL_WEST
+                stepX < 0 -> CollisionFlag.WALL_WEST to CollisionFlag.WALL_EAST
+                stepZ > 0 -> CollisionFlag.WALL_NORTH to CollisionFlag.WALL_SOUTH
+                else -> CollisionFlag.WALL_SOUTH to CollisionFlag.WALL_NORTH
+            }
+        val walled =
+            collision[x, z, level] and exitWall != 0 ||
+                collision[middleX, middleZ, level] and (entryWall or exitWall) != 0 ||
+                collision[targetX, targetZ, level] and entryWall != 0
+        return !walled
+    }
+
     private fun Player.routeTo(interaction: InteractionNpc) {
         if (isWithinOpRange(interaction)) {
             return
@@ -339,6 +422,37 @@ constructor(
         boundValidator.touches(source = avatar, target = interaction.target)
 
     private fun Player.isWithinApRange(interaction: InteractionObj): Boolean =
+        isValidApRange(
+            target = interaction.target.coords,
+            width = 1,
+            length = 1,
+            distance = interaction.apRange,
+        )
+
+    /* Obj target (spell on ground obj) interactions */
+    private fun Player.preMovementStep(interaction: InteractionObjT): InteractionStep =
+        Interactions.earlyStep(
+            target = InteractionTarget.Static,
+            hasScriptOp = interaction.hasOpTrigger,
+            hasScriptAp = interaction.hasApTrigger,
+            validOpLine = isWithinOpRange(interaction),
+            validApLine = isWithinApRange(interaction),
+        )
+
+    private fun Player.postMovementStep(interaction: InteractionObjT): InteractionStep =
+        Interactions.lateStep(
+            hasMoved = hasMovedThisCycle,
+            target = InteractionTarget.Static,
+            hasScriptOp = interaction.hasOpTrigger,
+            hasScriptAp = interaction.hasApTrigger,
+            validOpLine = isWithinOpRange(interaction),
+            validApLine = isWithinApRange(interaction),
+        )
+
+    private fun Player.isWithinOpRange(interaction: InteractionObjT): Boolean =
+        boundValidator.touches(source = avatar, target = interaction.target)
+
+    private fun Player.isWithinApRange(interaction: InteractionObjT): Boolean =
         isValidApRange(
             target = interaction.target.coords,
             width = 1,
@@ -436,10 +550,13 @@ constructor(
 
     private fun Player.shouldCancelInteraction(interaction: Interaction): Boolean =
         when (interaction) {
-            is InteractionLoc -> !interaction.isValid()
-            is InteractionNpc -> !interaction.isValid()
-            is InteractionObj -> !interaction.isValid(this)
-            is InteractionPlayer -> !interaction.isValid()
+            is InteractionLoc -> level != interaction.target.coords.level || !interaction.isValid()
+            is InteractionNpc -> level != interaction.target.level || !interaction.isValid()
+            is InteractionObj ->
+                level != interaction.target.coords.level || !interaction.isValid(this)
+            is InteractionObjT ->
+                level != interaction.target.coords.level || !interaction.isValid(this)
+            is InteractionPlayer -> level != interaction.target.level || !interaction.isValid()
         }
 
     private fun InteractionLoc.isValid(): Boolean {
@@ -451,6 +568,10 @@ constructor(
     }
 
     private fun InteractionObj.isValid(observer: Player): Boolean {
+        return objRegistry.isValid(observer, target)
+    }
+
+    private fun InteractionObjT.isValid(observer: Player): Boolean {
         return objRegistry.isValid(observer, target)
     }
 
@@ -545,6 +666,32 @@ constructor(
         }
     }
 
+    private fun triggerOp(player: Player, interaction: InteractionObjT) {
+        val op =
+            objTInteractions.opTrigger(
+                interaction.target,
+                interaction.objType,
+                interaction.component,
+                interaction.comsub,
+            )
+        if (op != null) {
+            protectedAccess.launch(player) { eventBus.publish(this, op) }
+        }
+    }
+
+    public fun triggerAp(player: Player, interaction: InteractionObjT) {
+        val ap =
+            objTInteractions.apTrigger(
+                interaction.target,
+                interaction.objType,
+                interaction.component,
+                interaction.comsub,
+            )
+        if (ap != null) {
+            protectedAccess.launch(player) { eventBus.publish(this, ap) }
+        }
+    }
+
     public fun triggerOp(player: Player, interaction: InteractionPlayerOp) {
         val op = playerInteractions.opTrigger(interaction.target, interaction.op)
         if (op != null) {
@@ -581,3 +728,7 @@ constructor(
         }
     }
 }
+
+private const val FOLLOW_OPTION = "Follow"
+
+private const val OBSTACLE_REACH = 2
