@@ -36,6 +36,14 @@ fun findContentPlugins(): List<Project> =
     project(":content").subprojects.filter { it.name.endsWith("-pack") && it.buildFile.exists() }
 
 tasks {
+    register("generateApi", JavaExec::class) {
+        group = "cache"
+        description = "Generates API sources from the installed server cache"
+        classpath = sourceSets["main"].runtimeClasspath
+        mainClass.set("dev.openrune.CacheToolsKt")
+        args = listOf("GENERATE_API")
+    }
+
     register("buildCache",JavaExec::class) {
         group = "cache"
         description = "Build Cache"

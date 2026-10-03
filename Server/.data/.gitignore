@@ -3,9 +3,14 @@ symbols/.local/
 !gamevals/
 !gamevals-binary/
 !raw-cache/
+!cache/
 !symbols/
 !osrs-dumps/
 !.gitignore
+
+cache/*
+!cache/LIVE/
+!cache/SERVER/
 
 gamevals-binary/*
 !gamevals-binary/max-ids.toml

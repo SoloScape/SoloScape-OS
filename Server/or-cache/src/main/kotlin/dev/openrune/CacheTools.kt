@@ -81,6 +81,12 @@ fun main(args: Array<String>) {
 
     val command = args.first().uppercase()
 
+    if (command == "GENERATE_API") {
+        GameValProvider.load("../")
+        finalizeServerCache()
+        return
+    }
+
     if (command == "CLEAN_CS2") {
         DirectoryConstants.cleanCs2()
         return
