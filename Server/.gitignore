@@ -51,7 +51,8 @@ bin/
 game.yml
 xp-rates.yml
 /.idea
-/api/generated
+/api/generated/*
+!/api/generated/build.gradle.kts
 
 logs/
 *.log

@@ -55,6 +55,7 @@ the bosses that already have drop tables and only need the encounter writing.
 3. **Gradle bootstrap**
    - Open the Gradle tool window.
    - Run `OpenRune Server → Tasks → installation → install`.
+   - From a terminal in the server directory, use `./gradlew install` (`.\gradlew.bat install` on Windows). Run this before the first `build`: it downloads the cache and generates `api/generated/src`. The module's `build.gradle.kts` is checked in; its generated sources are ignored.
    - When the task completes, run `OpenRune Server → Tasks → application → run`.
 
 4. **Verify startup**
