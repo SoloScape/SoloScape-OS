@@ -47,6 +47,21 @@ class HouseLayout(
     fun createStarterHouse() {
         owned = true
     }
+
+    fun ensureStarterLayout(garden: Int, parlour: Int, portalHotspot: Int, portalRow: Int): Boolean {
+        val gardenSlot = slotKey(LEVEL_GROUND, 4, 4)
+        if (rooms.isNotEmpty() &&
+            (rooms.size != 1 || placed(gardenSlot)?.room != garden ||
+                built(gardenSlot, portalHotspot) != null)
+        ) {
+            return false
+        }
+        if (rooms.isEmpty()) place(gardenSlot, garden, rotation = 0)
+        place(slotKey(LEVEL_GROUND, 4, 5), parlour, rotation = 0)
+        build(gardenSlot, portalHotspot, portalRow)
+        return true
+    }
+
     fun placed(slot: Int): PlacedRoom? = rooms[slot]
 
     fun place(slot: Int, room: Int, rotation: Int) {

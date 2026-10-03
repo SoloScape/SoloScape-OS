@@ -234,7 +234,7 @@ Baseline numbers, taken from this repo's `SpawnInterface.kt` and the OSRS client
 ## Config
 
 - `game.yml`: name, `game-port: 43594`, `revision: 240.2`, environment, world id,
-  central-server link (PostgreSQL). `game.example.yml` documents extra keys, e.g.
+  central-server link (SQLite). `game.example.yml` documents extra keys, e.g.
   `gameplay.quest-requirements.mode` (`assume-completed` / `respect-progress` /
   `virtual-completions`) and remote central config.
 

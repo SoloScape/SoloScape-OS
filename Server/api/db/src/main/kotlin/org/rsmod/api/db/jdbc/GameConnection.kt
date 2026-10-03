@@ -19,6 +19,7 @@ constructor(
                 config.user,
                 config.password,
             )
+        dev.or2.central.db.SqliteDatabase.configure(connection)
         connection.autoCommit = false
         return connection
     }

@@ -24,6 +24,10 @@ import org.rsmod.api.script.onIfOverlayButton
 import org.rsmod.api.script.onPlayerQueueWithArgs
 import org.rsmod.api.spells.MagicSpellRegistry
 import org.rsmod.content.quest.manager.QuestRequirements
+import org.rsmod.content.skills.construction.HouseAccess
+import org.rsmod.content.skills.construction.house.HouseStore
+import org.rsmod.content.skills.construction.houseTeleportBuildMode
+import org.rsmod.content.skills.construction.houseTeleportOutside
 import org.rsmod.game.inv.isType
 import org.rsmod.map.CoordGrid
 import org.rsmod.plugin.scripts.PluginScript
@@ -36,6 +40,8 @@ constructor(
     private val runes: MagicRuneManager,
     private val teleportValidator: PlayerTeleportValidator,
     private val areaChecker: AreaChecker,
+    private val houseAccess: HouseAccess,
+    private val houseStore: HouseStore,
 ) : PluginScript() {
     override fun ScriptContext.startup() {
         for (teleport in SpellTeleport.entries) {
@@ -66,7 +72,12 @@ constructor(
         }
 
         val option = teleport.option(op)
-        val destination = teleport.destination(spell, option)
+        val house = if (teleport == SpellTeleport.TeleportToHouse) houseStore.state(player) else null
+        val destination = if (house != null) {
+            house.location.arrive.takeIf { house.owned }
+        } else {
+            teleport.destination(spell, option)
+        }
         if (destination == null) {
             mes(option.missingDestinationMessage)
             return
@@ -86,7 +97,10 @@ constructor(
         spotanim(style.spotanim, height = style.spotanimHeight)
         soundSynth(TeleportSound)
         clearQueue(TeleportQueue)
-        queue(TeleportQueue, TeleportDelay, PendingSpellTeleport(teleport, destination.packed))
+        val houseInside = house != null && op != IfButtonOp.Op2 && !player.houseTeleportOutside
+        queue(TeleportQueue, TeleportDelay, PendingSpellTeleport(
+            teleport, destination.packed, houseInside, houseInside && player.houseTeleportBuildMode,
+        ))
     }
 
     private fun ProtectedAccess.processQueuedTeleport(task: PendingSpellTeleport) {
@@ -94,7 +108,12 @@ constructor(
         if (!canTeleport()) {
             return
         }
-        telejump(CoordGrid(task.destination))
+        if (task.houseInside) {
+            houseAccess.enter(this, task.houseBuildMode)
+        } else {
+            houseAccess.clearSession(player)
+            telejump(CoordGrid(task.destination))
+        }
         task.teleport.style.endAnim?.let { anim(it) }
         statAdvance("stat.magic", spell.castXp)
     }
@@ -161,6 +180,8 @@ constructor(
     private data class PendingSpellTeleport(
         val teleport: SpellTeleport,
         val destination: Int,
+        val houseInside: Boolean = false,
+        val houseBuildMode: Boolean = false,
     )
 
     private enum class SpellTeleport(

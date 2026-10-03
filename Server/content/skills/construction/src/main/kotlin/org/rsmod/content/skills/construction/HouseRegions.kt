@@ -7,6 +7,7 @@ import org.rsmod.api.repo.region.RegionRepository
 import org.rsmod.api.repo.region.RegionTemplate
 import org.rsmod.game.region.Region
 import org.rsmod.game.region.util.RegionRotations
+import org.rsmod.game.region.zone.RegionZoneCopy
 import org.rsmod.map.CoordGrid
 import org.rsmod.map.zone.ZoneGrid
 import org.rsmod.map.zone.ZoneKey
@@ -19,31 +20,16 @@ import org.rsmod.map.zone.ZoneKey
 class HouseRegions
 @Inject
 constructor(private val regionRepo: RegionRepository, private val catalogue: ConstructionCatalogue) {
-    fun allocate(layout: HouseLayout): Region? {
-        val placements =
+    fun allocate(layout: HouseLayout, constructionLevel: Int): Region? {
+        val sources =
             layout.rooms.mapNotNull { (slot, placed) ->
                 val def = catalogue.room(placed.room) ?: return@mapNotNull null
-                Triple(slot, placed, def)
-            }
-        if (placements.isEmpty()) {
+                slot to def.sourceZone
+            }.toMap()
+        if (sources.isEmpty()) {
             return null
         }
-        val template =
-            RegionTemplate.create {
-                for ((slot, placed, def) in placements) {
-                    val zone = styledZone(def.sourceZone, layout.style, slotLevel(slot))
-                    val x = slotX(slot)
-                    val z = slotZ(slot)
-                    val level = slotLevel(slot)
-                    when (placed.rotation) {
-                        1 -> this[x, z, level] = zone.rotate90()
-                        2 -> this[x, z, level] = zone.rotate180()
-                        3 -> this[x, z, level] = zone.rotate270()
-                        else -> this[x, z, level] = zone
-                    }
-                }
-            }
-        return regionRepo.add(template)
+        return regionRepo.add(houseTemplate(layout, constructionLevel, sources))
     }
 
     fun roomBase(region: Region, slot: Int): CoordGrid =
@@ -89,6 +75,42 @@ constructor(private val regionRepo: RegionRepository, private val catalogue: Con
         }
         val grid = ZoneGrid(localX, localZ, 0)
         return base.translate(RegionRotations.translateCoords(rotation, grid))
+    }
+}
+
+internal fun houseTemplate(
+    layout: HouseLayout,
+    constructionLevel: Int,
+    sources: Map<Int, ZoneKey>,
+): RegionTemplate = RegionTemplate.create {
+    for ((slot, copy) in houseZoneCopies(layout, constructionLevel, sources)) {
+        this[slotX(slot), slotZ(slot), slotLevel(slot)] = copy
+    }
+}
+
+internal fun houseZoneCopies(
+    layout: HouseLayout,
+    constructionLevel: Int,
+    sources: Map<Int, ZoneKey>,
+): Map<Int, RegionZoneCopy> = buildMap {
+    val limits = HouseLimits.forLevel(constructionLevel)
+    val minimumX = minOf(limits.minimum, layout.rooms.keys.minOfOrNull(::slotX) ?: limits.minimum)
+    val maximumX = maxOf(limits.maximum, layout.rooms.keys.maxOfOrNull(::slotX) ?: limits.maximum)
+    val minimumZ = minOf(limits.minimum, layout.rooms.keys.minOfOrNull(::slotZ) ?: limits.minimum)
+    val maximumZ = maxOf(limits.maximum, layout.rooms.keys.maxOfOrNull(::slotZ) ?: limits.maximum)
+    val grass = styledZone(ZoneKey(233, 880, 0), layout.style)
+    for (x in (minimumX - 1).coerceAtLeast(0)..maximumX + 1) {
+        for (z in (minimumZ - 1).coerceAtLeast(0)..maximumZ + 1) {
+            if (slotKey(LEVEL_GROUND, x, z) !in sources) {
+                put(slotKey(LEVEL_GROUND, x, z), RegionZoneCopy(grass, rotation = 0, flag = null))
+            }
+        }
+    }
+    for ((slot, source) in sources) {
+        val placed = layout.rooms.getValue(slot)
+        val level = slotLevel(slot)
+        val zone = styledZone(source, layout.style, level)
+        put(slot, RegionZoneCopy(zone, placed.rotation, flag = null))
     }
 }
 

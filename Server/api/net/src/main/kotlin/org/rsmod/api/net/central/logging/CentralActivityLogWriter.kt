@@ -3,15 +3,15 @@ package org.rsmod.api.net.central.logging
 import com.github.michaelbull.logging.InlineLogger
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
-import dev.or2.central.logs.CentralActivityLog
 import dev.openrune.types.ItemServerType
+import dev.or2.central.logs.CentralActivityLog
 import dev.or2.central.logs.CentralActivityLogRepository
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
-import org.rsmod.api.db.jdbc.EmbeddedSameInstancePostgres
+import org.rsmod.api.db.DatabaseConfig
 import org.rsmod.api.server.config.ServerConfig
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.InvObj
@@ -46,6 +46,9 @@ constructor(
                         username = user
                         this.password = password
                         maximumPoolSize = min(4, poolSize)
+                        addDataSourceProperty("foreign_keys", "true")
+                        addDataSourceProperty("busy_timeout", "10000")
+                        addDataSourceProperty("journal_mode", "WAL")
                         poolName = "openrune-central-activity-log"
                     },
                 )
@@ -221,8 +224,7 @@ constructor(
         player: Player,
         itemId: String,
         quantity: Int,
-        log:
-            (
+        log: (
                 worldId: Int,
                 now: Long,
                 charId: Int,
@@ -255,21 +257,8 @@ constructor(
     private companion object {
         fun resolveCentralJdbc(config: ServerConfig): JdbcParams? {
             val central = config.central ?: return null
-            val pg = central.postgres ?: return null
-            val jdbcFromYaml = pg.jdbcUrl.trim()
-            val triple =
-                if (jdbcFromYaml.isNotEmpty()) {
-                    Triple(
-                        jdbcFromYaml,
-                        pg.user.trim().ifBlank { "openrune" },
-                        pg.password,
-                    )
-                } else if (central.sameInstance) {
-                    EmbeddedSameInstancePostgres.jdbcTripleIfEmbedded() ?: return null
-                } else {
-                    return null
-                }
-            return JdbcParams(triple.first, triple.second, triple.third, pg.poolSize)
+            val db = DatabaseConfig.create(config.copy(database = null))
+            return JdbcParams(db.jdbcUrl, db.user, db.password, central.sqlite.poolSize)
         }
     }
 

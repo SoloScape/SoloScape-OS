@@ -1,5 +1,6 @@
 package org.rsmod.content.generic.locs.doors
 
+import dev.openrune.rscm.RSCM.asRSCM
 import dev.openrune.types.ObjectServerType
 import jakarta.inject.Inject
 import org.rsmod.api.config.refs.params
@@ -13,6 +14,17 @@ import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
 class DoubleDoorScript @Inject constructor(private val locRepo: LocRepository) : PluginScript() {
+    fun operate(access: ProtectedAccess, loc: BoundLocInfo, type: ObjectServerType) {
+        with(access) {
+            when (type.contentGroup) {
+                "content.closed_left_door".asRSCM() -> openLeftDoor(loc, type)
+                "content.closed_right_door".asRSCM() -> openRightDoor(loc, type)
+                "content.opened_left_door".asRSCM() -> closeLeftDoor(loc, type)
+                "content.opened_right_door".asRSCM() -> closeRightDoor(loc, type)
+            }
+        }
+    }
+
     override fun ScriptContext.startup() {
         onOpContentLoc1("content.closed_left_door") { openLeftDoor(it.loc, it.type) }
         onOpContentLoc1("content.closed_right_door") { openRightDoor(it.loc, it.type) }

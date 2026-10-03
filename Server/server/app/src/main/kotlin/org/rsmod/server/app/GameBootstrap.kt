@@ -2,7 +2,6 @@ package org.rsmod.server.app
 
 import jakarta.inject.Inject
 import java.util.concurrent.atomic.AtomicBoolean
-import org.rsmod.api.db.jdbc.EmbeddedSameInstancePostgres
 import org.rsmod.api.net.central.OpenRuneCentralWorldLink
 import org.rsmod.api.net.central.embed.CentralEmbeddedLifecycle
 import org.rsmod.api.server.config.ServerConfig
@@ -18,7 +17,6 @@ class GameBootstrap @Inject constructor(
     private val serviceManager = ServiceManager.create(services)
 
     suspend fun startupUntilReady(): Thread {
-        EmbeddedSameInstancePostgres.ensureStarted(serverConfig)
         try {
             centralEmbedded.startIfConfigured()
             openRuneCentral.startInboundWatch()
@@ -31,7 +29,6 @@ class GameBootstrap @Inject constructor(
             return shutdownHook
         } catch (t: Throwable) {
             runCatching { centralEmbedded.stopIfRunning() }
-            EmbeddedSameInstancePostgres.stop()
             throw t
         }
     }
@@ -49,7 +46,6 @@ class GameBootstrap @Inject constructor(
                 }
             if (hookRemoved) {
                 runCatching { centralEmbedded.stopIfRunning() }
-                EmbeddedSameInstancePostgres.stop()
             }
         }
     }
@@ -66,7 +62,6 @@ class GameBootstrap @Inject constructor(
                     try {
                         Thread.sleep(FORCE_EXIT_AFTER_MS)
                         if (!completed.get()) {
-                            EmbeddedSameInstancePostgres.forceStopNow()
                             Runtime.getRuntime().halt(1)
                         }
                     } catch (_: InterruptedException) {
@@ -86,11 +81,8 @@ class GameBootstrap @Inject constructor(
                 cleanupTimeoutSecs = HOOK_TIMEOUT_SECS,
                 shutdownTimeoutSecs = HOOK_TIMEOUT_SECS,
             )
-            runCatching { centralEmbedded.stopIfRunning() }
-            EmbeddedSameInstancePostgres.stop()
-        } catch (_: Throwable) {
-            EmbeddedSameInstancePostgres.forceStopNow()
         } finally {
+            runCatching { centralEmbedded.stopIfRunning() }
             completed.set(true)
         }
     }

@@ -12,6 +12,13 @@ plugins {
 val centralServerBuild = providers.gradleProperty("openrune.central.includeBuild")
 if (centralServerBuild.isPresent) {
     includeBuild(centralServerBuild.get())
+} else {
+    includeBuild("central-sqlite") {
+        dependencySubstitution {
+            substitute(module("dev.or2:central-common")).using(project(":central-common"))
+            substitute(module("dev.or2:openrune-central")).using(project(":central-app"))
+        }
+    }
 }
 
 @Suppress("UnstableApiUsage")

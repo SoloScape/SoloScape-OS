@@ -79,14 +79,27 @@ Known remaining gaps:
 
 ## How a house is built
 
+On first entry, a purchased house receives a garden, its exit portal, and an adjoining parlour.
+Entering an older starter house containing only the original garden with an empty centrepiece
+also saves these missing starter pieces, preserving other garden furniture and its rotation.
+Expanded layouts and occupied centrepieces are left unchanged.
+
 A house is a grid of rooms: 8x8 per level, 4 levels, with level 1 the ground floor and level 0 the
 dungeon. `HouseLayout` holds it as two flat maps — slot to `PlacedRoom(room, rotation)`, and
 (slot, hotspot index) to furniture row — and encodes to a single string.
 
 `HouseRegions.allocate` turns that into a dynamic region: one `RegionTemplate` zone copy per placed
-room, at the room's grid slot, rotated by the placement's rotation. Everything else in the region
-stays empty. Rotation is applied to hotspot coordinates with `RegionRotations.translateCoords`, so a
+room, at the room's grid slot, rotated by the placement's rotation. Empty ground-floor slots and a
+one-zone yard border use the style's outdoor grass template at block offset (1, 0). Upper floors
+and dungeon slots remain empty unless a room is placed there. Rotation is applied to hotspot
+coordinates with `RegionRotations.translateCoords`, so a
 rotated room's furniture lands where the rotated chunk actually put the hotspot.
+
+Room additions use the player's base Construction level, including rooms created by stairs.
+The room cap starts at 24, rises to 25 at level 26 and by one every six levels through 92,
+then reaches 37 at 96 and 38 at 99. The buildable square grows from 3x3 to 4x4 at level 15,
+5x5 at 30, 6x6 at 45 and 7x7 at 60; the yard is two zones wider in each dimension.
+Existing saved rooms are retained even when outside the current limits.
 
 Built furniture is spawned as a normal loc at the hotspot's primary part. Hotspot locs carry no
 varbit transforms at all (`multiVarBit` and `transforms` are empty on every one of them), so the
@@ -110,6 +123,13 @@ Entering a house also sets `instance_exit_coord`, the attribute the login path a
 player who logs out inside their house comes back outside it rather than in dead region space.
 
 ## Entry points
+
+The settings tab's House Options panel supports switching building mode while keeping the player's
+position, leaving the house, persistent teleport-inside/default-building-mode preferences, and
+closed/open/hidden doors. Teleport to House honours these preferences; its Outside option always
+lands outside. Normal mode hides empty furniture and doorway hotspots. The native house viewer
+displays the layout and can return the player to the exit portal; rearranging rooms there is not
+implemented. Expel Guests and Call Servant explain that those systems are not available yet.
 
 - Any of the nine town portals (`loc.poh_rimmington_portal` and friends): op-1 enters, op-2 enters in
   building mode.
@@ -156,5 +176,5 @@ Built furniture that does something beyond standing there:
   magic stones, cloth and limestone. Furniture built from anything else awards no xp yet.
 - The max-content integration retains Blade's estate agents, purchasing/relocation, styles
   and stairs. New upper rooms, like other newly placed rooms, appear after re-entry.
-- Not implemented at all: servants, the house options window, dungeons as a separate
+- Not implemented at all: servants, dungeons as a separate
   build flow, the menagerie, and guests.

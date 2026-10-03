@@ -54,20 +54,12 @@ constructor(
 
         removeSpawnedLoc(spawnZone, regionLocKey, loc.coords)
 
-        // If we're restoring an existing map loc, make sure to rotate it accordingly based on the
-        // region zone's rotation.
-        val resolvedLoc: LocInfo
-        if (exactMapLocExists) {
-            val rotatedAngle = (loc.angleId + copiedZone.rotation) and ANGLE_BIT_MASK
-            val rotatedEntity = loc.entity.copy(angle = rotatedAngle)
-            resolvedLoc = loc.copy(entity = rotatedEntity)
-        } else {
+        if (!exactMapLocExists) {
             spawnZone[regionLocKey.packed] = loc.entity.packed
-            resolvedLoc = loc
         }
 
-        addLocCollision(resolvedLoc)
-        updates.locAdd(resolvedLoc)
+        addLocCollision(loc)
+        updates.locAdd(loc)
 
         return LocRegistryResult.Add.RegionSpawned(region)
     }
@@ -106,7 +98,7 @@ constructor(
             return LocRegistryResult.Delete.RegionSpawned(region)
         }
 
-        val deletedMapLoc = deleteStaticLoc(regionZone, regionLocKey, normalZone, normalLocKey, loc)
+        val deletedMapLoc = deleteStaticLoc(regionZone, regionLocKey, normalZone, normalLocKey, rotation, loc)
         if (deletedMapLoc) {
             return LocRegistryResult.Delete.RegionMapLoc(region)
         }
@@ -134,7 +126,7 @@ constructor(
         }
 
         val deletedMapLoc =
-            deleteStaticLoc(regionZone, regionLocKey, remappedZone, remappedLocKey, loc)
+            deleteStaticLoc(regionZone, regionLocKey, remappedZone, remappedLocKey, rotation, loc)
         if (deletedMapLoc) {
             return LocRegistryResult.Delete.RegionMapLoc(region)
         }
@@ -357,7 +349,8 @@ constructor(
                         continue
                     }
 
-                    val loc = LocInfo(regionLocKey.layer, regionCoords, entity)
+                    val rotatedEntity = entity.copy(angle = (entity.angle + copiedZone.rotation) and ANGLE_BIT_MASK)
+                    val loc = LocInfo(regionLocKey.layer, regionCoords, rotatedEntity)
                     yield(loc)
                 }
             }
@@ -457,6 +450,7 @@ constructor(
         regionLocKey: LocZoneKey,
         normalZone: ZoneKey,
         normalLocKey: LocZoneKey,
+        rotation: Int,
         loc: LocInfo,
     ): Boolean {
         val staticZone = mapLocs[normalZone] ?: return false
@@ -467,7 +461,8 @@ constructor(
         // This acts as a safeguard against trying to delete a loc info that may share the same
         // layer and zone grid as the found loc, but does not share other metadata such as its
         // type, which could lead to incorrect data being used for i.e., removing its collision.
-        if (loc.entity.packed != staticLoc) {
+        val normalEntity = loc.entity.copy(angle = (loc.angleId - rotation) and ANGLE_BIT_MASK)
+        if (normalEntity.packed != staticLoc) {
             return false
         }
 

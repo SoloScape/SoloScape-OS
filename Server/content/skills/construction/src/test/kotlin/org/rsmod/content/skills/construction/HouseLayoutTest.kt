@@ -10,6 +10,48 @@ import org.rsmod.map.zone.ZoneKey
 
 class HouseLayoutTest {
     @Test
+    fun `new starter house includes a saved exit portal and parlour`() {
+        val layout = HouseLayout(owned = true)
+        assertEquals(true, layout.ensureStarterLayout(1, 2, 0, 3))
+        val saved = HouseLayout.decode(layout.encode())
+        assertEquals(PlacedRoom(1, 0), saved.placed(slotKey(LEVEL_GROUND, 4, 4)))
+        assertEquals(PlacedRoom(2, 0), saved.placed(slotKey(LEVEL_GROUND, 4, 5)))
+        assertEquals(3, saved.built(slotKey(LEVEL_GROUND, 4, 4), 0))
+        assertEquals(false, saved.ensureStarterLayout(1, 2, 0, 3))
+    }
+
+    @Test
+    fun `legacy starter garden gains an exit without losing its rotation or furniture`() {
+        val garden = slotKey(LEVEL_GROUND, 4, 4)
+        val layout = HouseLayout(owned = true)
+        layout.place(garden, 1, rotation = 2)
+        layout.build(garden, 1, 4)
+        val saved = HouseLayout.decode(layout.encode())
+        assertEquals(true, saved.ensureStarterLayout(1, 2, 0, 3))
+        val repaired = HouseLayout.decode(saved.encode())
+        assertEquals(PlacedRoom(1, 2), repaired.placed(garden))
+        assertEquals(3, repaired.built(garden, 0))
+        assertEquals(4, repaired.built(garden, 1))
+        assertEquals(PlacedRoom(2, 0), repaired.placed(slotKey(LEVEL_GROUND, 4, 5)))
+    }
+
+    @Test
+    fun `starter repair preserves chosen centrepieces and expanded houses`() {
+        val garden = slotKey(LEVEL_GROUND, 4, 4)
+        val layout = HouseLayout(owned = true)
+        layout.place(garden, 1, rotation = 0)
+        layout.build(garden, 0, 4, variant = 5)
+        val original = layout.encode()
+        assertEquals(false, layout.ensureStarterLayout(1, 2, 0, 3))
+        assertEquals(original, layout.encode())
+        layout.demolish(garden, 0)
+        layout.place(slotKey(LEVEL_GROUND, 4, 5), 6, rotation = 1)
+        val expanded = layout.encode()
+        assertEquals(false, layout.ensureStarterLayout(1, 2, 0, 3))
+        assertEquals(expanded, layout.encode())
+    }
+
+    @Test
     fun `estate settings survive layout saves`() {
         val layout = HouseLayout(owned = true, location = HouseLocation.YANILLE, style = HouseStyle.FANCY_STONE)
         val decoded = HouseLayout.decode(layout.encode())

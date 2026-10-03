@@ -100,9 +100,6 @@ constructor(private val applier: CharacterInventoryApplier) : CharacterDataStage
                 OpenRuneSql.text("game/inventory/delete_obj_by_inventory_slot.sql"),
             )
 
-        // Note: Not all database engines support `ON CONFLICT`. This syntax works with our current
-        // database setup (PostgreSQL), but may need to be adapted for others (e.g., mysql uses
-        // `ON DUPLICATE KEY UPDATE` for similar functionality).
         val upsert =
             connection.prepareStatement(
                 OpenRuneSql.text("game/inventory/upsert_inventory_obj.sql"),

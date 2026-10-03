@@ -1,19 +1,17 @@
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.util.List;
 
 /**
  * Lists or deletes accounts in the embedded game database.
  *
- * The server must be running (the embedded PostgreSQL only listens while the server is up).
+ * Stop the server before deleting an account.
  *
  * Usage (from the repo root):
- *   java -cp <postgresql-driver.jar> tools/scripts/DeleteAccount.java list
- *   java -cp <postgresql-driver.jar> tools/scripts/DeleteAccount.java delete <account name>
+ *   java -cp <sqlite-driver.jar> tools/scripts/DeleteAccount.java list
+ *   java -cp <sqlite-driver.jar> tools/scripts/DeleteAccount.java delete <account name>
  */
 public class DeleteAccount {
     public static void main(String[] args) throws Exception {
@@ -21,10 +19,16 @@ public class DeleteAccount {
             System.err.println("usage: list | delete <account name>");
             System.exit(2);
         }
-        List<String> pid = Files.readAllLines(Path.of(".data", "postgres", "postmaster.pid"));
-        int port = Integer.parseInt(pid.get(3).trim());
-        String url = "jdbc:postgresql://localhost:" + port + "/postgres";
-        try (Connection c = DriverManager.getConnection(url, "postgres", "")) {
+        String url = System.getenv("OPENRUNE_JDBC_URL");
+        if (url == null || url.isBlank()) url = "jdbc:sqlite:.data/soloscape.db";
+        if (!url.startsWith("jdbc:sqlite:") || !java.nio.file.Files.isRegularFile(Path.of(url.substring(12)))) {
+            throw new IllegalArgumentException("SQLite database file does not exist: " + url);
+        }
+        try (Connection c = DriverManager.getConnection(url)) {
+            try (var statement = c.createStatement()) {
+                statement.execute("PRAGMA foreign_keys=ON");
+                statement.execute("PRAGMA busy_timeout=10000");
+            }
             if (args[0].equals("list")) {
                 String sql =
                     "SELECT a.id, a.account_name, a.rights, ch.id AS character_id, ch.display_name " +

@@ -54,16 +54,8 @@ public class ServerConfigLoader {
             revision = 233,
             environment = "LIVE",
             world = DEFAULT_WORLD,
-            database =
-                GameDatabaseYaml(
-                    postgres =
-                        PostgresDbYaml(
-                            jdbcUrl = "jdbc:postgresql://127.0.0.1:5432/openrune_game",
-                            user = "openrune",
-                            password = "openrune",
-                        ),
-                ),
-            central = null,
+            database = GameDatabaseYaml(),
+            central = OpenRuneCentralGameConfig(sameInstance = true),
         )
 
     private companion object {

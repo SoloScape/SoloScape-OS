@@ -10,26 +10,17 @@ public data class OpenRuneCentralGameConfig(
     val host: String = "",
     @JsonProperty("link-port") val linkPort: Int = 9091,
     @JsonProperty("world-key") val worldKey: String = "",
-    val postgres: CentralPostgresYaml? = null,
+    val sqlite: SqliteDbYaml = SqliteDbYaml(),
 )
 
-public data class CentralPostgresYaml(
-    @JsonProperty("jdbc-url") val jdbcUrl: String = "",
-    val user: String = "openrune",
-    val password: String = "openrune",
-    @JsonProperty("pool-size") val poolSize: Int = 10,
-    @JsonProperty("embedded-pgdata-dir") val embeddedPgdataDir: String = ".data/postgres",
+public data class SqliteDbYaml(
+    @JsonProperty("jdbc-url") val jdbcUrl: String = "jdbc:sqlite:.data/soloscape.db",
+    @JsonProperty("pool-size") val poolSize: Int = 4,
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public data class GameDatabaseYaml(
-    val postgres: PostgresDbYaml? = null,
-)
-
-public data class PostgresDbYaml(
-    @JsonProperty("jdbc-url") val jdbcUrl: String = "",
-    val user: String = "openrune",
-    val password: String = "openrune",
+    val sqlite: SqliteDbYaml = SqliteDbYaml(),
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)

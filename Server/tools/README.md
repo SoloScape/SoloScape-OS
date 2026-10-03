@@ -21,12 +21,12 @@ python tools/scripts/fix_gameval_conflicts.py --help
 `fix_gameval_conflicts.py` detects and rewrites custom IDs that collide with reserved IDs;
 review its options before running it.
 
-`scripts/DeleteAccount.java` lists or deletes accounts in the embedded database while
-the server is running. Supply the PostgreSQL JDBC driver on the classpath:
+`scripts/DeleteAccount.java` lists or deletes accounts in the SQLite database. Stop the server before deleting an account. Supply the
+SQLite JDBC driver and its SLF4J dependency on the classpath (from the server runtime libraries):
 
 ```powershell
-java -cp <postgresql-driver.jar> tools/scripts/DeleteAccount.java list
-java -cp <postgresql-driver.jar> tools/scripts/DeleteAccount.java delete <account name>
+java -cp "<sqlite-driver.jar>;<slf4j-api.jar>" tools/scripts/DeleteAccount.java list
+java -cp "<sqlite-driver.jar>;<slf4j-api.jar>" tools/scripts/DeleteAccount.java delete <account name>
 ```
 
 ## Content progress

@@ -7,24 +7,27 @@ import dev.openrune.rscm.RSCM
 import dev.openrune.rscm.RSCM.asRSCM
 import dev.openrune.rscm.RSCMType
 import jakarta.inject.Inject
-import org.rsmod.api.attr.AttributeKey
-import org.rsmod.api.instances.InstanceAttributes
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.output.runClientScript
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.protect.ProtectedAccessLauncher
+import org.rsmod.api.player.stat.baseConstructionLvl
 import org.rsmod.api.player.stat.constructionLvl
 import org.rsmod.api.player.ui.ifOpenMainModal
 import org.rsmod.api.player.ui.ifSetEvents
 import org.rsmod.api.player.ui.ifSetHide
 import org.rsmod.api.player.ui.ifSetPosition
+import org.rsmod.api.player.ui.ifSetText
 import org.rsmod.api.player.vars.boolVarBit
 import org.rsmod.api.repo.loc.LocRepository
 import org.rsmod.api.script.onCommand
+import org.rsmod.api.script.onIfModalButton
+import org.rsmod.api.script.onIfOpen
 import org.rsmod.api.script.onOpLoc1
 import org.rsmod.api.script.onOpLoc2
 import org.rsmod.api.script.onOpLoc3
 import org.rsmod.api.script.onOpLoc5
+import org.rsmod.api.script.onPlayerLogin
 import org.rsmod.api.script.onPlayerQueueWithArgs
 import org.rsmod.api.stats.xpmod.XpModifiers
 import org.rsmod.api.table.FurnitureRow
@@ -32,10 +35,7 @@ import org.rsmod.content.skills.construction.data.HouseStyle
 import org.rsmod.content.skills.construction.house.HouseStore
 import org.rsmod.game.cheat.Cheat
 import org.rsmod.game.entity.Player
-import org.rsmod.game.loc.LocEntity
-import org.rsmod.game.loc.LocInfo
 import org.rsmod.map.CoordGrid
-import org.rsmod.map.zone.ZoneKey
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -48,12 +48,50 @@ constructor(
     private val xpMods: XpModifiers,
     private val protectedAccess: ProtectedAccessLauncher,
     private val houseStore: HouseStore,
+    private val houseAccess: HouseAccess,
 ) : PluginScript() {
     private val logger = InlineLogger()
 
     private var Player.buildMode by boolVarBit(VARBIT_BUILD_MODE)
 
     override fun ScriptContext.startup() {
+        onPlayerLogin { player.buildMode = false }
+        onIfOpen("interface.poh_options") {
+            player.syncHouseOptions()
+            player.ifSetPosition("component.poh_options:icon_doors_none", 143, 123)
+            player.ifSetText("component.poh_options:roomcount", "Rooms: ${player.layout().rooms.size}")
+            player.ifSetEvents("component.poh_options:viewer", 0..20, IfEvent.Op1)
+            player.ifSetEvents("component.poh_options:expel_guests", 0..20, IfEvent.Op1)
+            player.ifSetEvents("component.poh_options:leave_house", 0..20, IfEvent.Op1)
+            player.ifSetEvents("component.poh_options:call_servant", 0..20, IfEvent.Op1)
+        }
+        onIfModalButton("component.poh_options:build_mode_on") { houseAccess.setBuildMode(this, true) }
+        onIfModalButton("component.poh_options:build_mode_off") { houseAccess.setBuildMode(this, false) }
+        onIfModalButton("component.poh_options:tele_on") { player.houseTeleportOutside = false }
+        onIfModalButton("component.poh_options:tele_off") { player.houseTeleportOutside = true }
+        onIfModalButton("component.poh_options:default_build_mode_on") { player.houseTeleportBuildMode = true }
+        onIfModalButton("component.poh_options:default_build_mode_off") {
+            player.houseTeleportBuildMode = false
+            player.syncHouseOptions()
+        }
+        for ((suffix, value) in listOf("closed" to 0, "open" to 1, "none" to 2)) {
+            for (component in listOf("doors_$suffix", "icon_doors_$suffix")) {
+                onIfModalButton("component.poh_options:$component") {
+                    player.houseDoors = value
+                    if (player.attr[SESSION] != null) houseAccess.setBuildMode(this, player.buildMode)
+                }
+            }
+        }
+        onIfModalButton("component.poh_options:leave_house") {
+            if (player.attr[SESSION] == null) mes("You are not inside a house.") else leaveHouse()
+        }
+        onIfModalButton("component.poh_options:expel_guests") {
+            mes("There are no guests to expel. House visits are not available yet.")
+        }
+        onIfModalButton("component.poh_options:call_servant") {
+            mes("You do not have a servant. House servants are not available yet.")
+        }
+
         for (portal in TOWN_PORTALS) {
             onOpLoc1(portal) { enterHouse(buildMode = false, portal = portal) }
             onOpLoc2(portal) { enterHouse(buildMode = true, portal = portal) }
@@ -208,40 +246,10 @@ constructor(
     }
 
     private fun ProtectedAccess.enterHouse(buildMode: Boolean, portal: String? = null) {
-        val layout = player.layout()
-        if (!layout.owned) {
-            mes("You don't own a house yet. Speak to an estate agent to buy one.")
-            return
-        }
-        if (portal != null && portal != layout.location.portal) {
-            mes("Your house is in ${layout.location.label}. Use the portal there.")
-            return
-        }
-        if (layout.rooms.isEmpty()) {
-            starterLayout(layout)
-            player.storeLayout(layout)
-        }
-        val region = houses.allocate(layout)
-        if (region == null) {
-            mes("There is no space for your house right now. Try again shortly.")
-            return
-        }
-        val session = HouseSession(region, layout)
-        player.attr[SESSION] = session
-        player.attr[InstanceAttributes.LOGIN_EXIT_COORD] = layout.location.arrive.packed
-        player.buildMode = buildMode
-        applyFurniture(session)
-        player.coords = entranceCoords(session)
+        houseAccess.enter(this, buildMode, portal)
     }
 
-    private fun ProtectedAccess.leaveHouse() {
-        val exit = player.attr[SESSION]?.layout?.location?.arrive ?: player.layout().location.arrive
-        player.attr.remove(SESSION)
-        player.attr.remove(InstanceAttributes.LOGIN_EXIT_COORD)
-        player.buildMode = false
-        player.coords = exit
-    }
-
+    private fun ProtectedAccess.leaveHouse() { houseAccess.leave(this) }
     private fun ProtectedAccess.climbStairs(at: CoordGrid, change: Int) {
         val session = player.attr[SESSION] ?: return
         val slot = session.slotAt(at) ?: return
@@ -255,18 +263,6 @@ constructor(
             return
         }
         telejump(CoordGrid(coords.x, coords.z, slotLevel(target)))
-    }
-
-    private fun starterLayout(layout: HouseLayout) {
-        val garden = catalogue.all().firstOrNull { it.row.name == "garden" } ?: return
-        layout.place(slotKey(LEVEL_GROUND, 4, 4), garden.id, rotation = 0)
-    }
-
-    private fun entranceCoords(session: HouseSession): CoordGrid {
-        val slot =
-            session.layout.rooms.keys.firstOrNull { slotLevel(it) == LEVEL_GROUND }
-                ?: session.layout.rooms.keys.first()
-        return houses.roomBase(session.region, slot).translate(3, 3)
     }
 
     private suspend fun ProtectedAccess.openBuildMenu(coords: CoordGrid, locId: Int? = null) {
@@ -348,6 +344,10 @@ constructor(
             mes("You don't have the materials to build that.")
             return
         }
+        stairRoomRefusal(target.slot, furniture)?.let {
+            mes(it)
+            return
+        }
         val variant = portalDestination(furniture) ?: if (isPortal(furniture)) return else null
         anim(SEQ_BUILD)
         weakQueue(
@@ -368,6 +368,10 @@ constructor(
         if (session.layout.built(task.slot, task.hotspot) != null) {
             return
         }
+        stairRoomRefusal(task.slot, furniture)?.let {
+            mes(it)
+            return
+        }
         for ((material, count) in furniture.materials()) {
             if (!takeMaterial(material, count)) {
                 mes("You don't have the materials to build that.")
@@ -386,6 +390,15 @@ constructor(
         spawnFurniture(session, task.slot, task.rotation, hotspot, furniture.rowId)
         statAdvance(STAT_CONSTRUCTION, furniture.xp() * xpMods.get(player, STAT_CONSTRUCTION))
         spam("You build a ${furniture.name}.")
+    }
+
+    private fun ProtectedAccess.stairRoomRefusal(slot: Int, furniture: FurnitureRow): String? {
+        val stairs = catalogue.builtLocIds(furniture).any { id ->
+            STAIR_TOPS.keys.any { it.asRSCM(RSCMType.LOC) == id }
+        }
+        if (!stairs || slotLevel(slot) + 1 >= HOUSE_LEVELS) return null
+        val upper = slotKey(slotLevel(slot) + 1, slotX(slot), slotZ(slot))
+        return player.attr[SESSION]?.layout?.additionRefusal(upper, player.baseConstructionLvl)
     }
 
     private data class BuildTask(
@@ -457,6 +470,10 @@ constructor(
             offerRoomRemoval(session, destination)
             return
         }
+        session.layout.additionRefusal(destination, player.baseConstructionLvl)?.let {
+            mes(it)
+            return
+        }
 
         val facing = (door.direction + 2) and 3
         val options =
@@ -475,6 +492,10 @@ constructor(
         val labels = options.map { "${it.name} (${it.cost} coins)" } + "Cancel"
         val room = options.getOrNull(menu("Build a room", hotkeys = false, choices = labels)) ?: return
 
+        session.layout.additionRefusal(destination, player.baseConstructionLvl)?.let {
+            mes(it)
+            return
+        }
         if (inv.count(OBJ_COINS) < room.cost) {
             mes("You need ${room.cost} coins to build a ${room.name}.")
             return
@@ -508,70 +529,13 @@ constructor(
         mes("You remove the ${room.name}. Re-enter your house to see it gone.")
     }
 
-    private fun applyFurniture(session: HouseSession) {
-        for ((slot, placed) in session.layout.rooms) {
-            val def = catalogue.room(placed.room) ?: continue
-            val window = session.layout.style.window.asRSCM(RSCMType.LOC)
-            val dynamicWindow = "loc.poh_dynamic_window".asRSCM(RSCMType.LOC)
-            val zone = ZoneKey.from(houses.roomBase(session.region, slot))
-            for (loc in locRepo.findAll(zone).filter { it.id == dynamicWindow }.toList()) {
-                locRepo.add(loc.copy(entity = loc.entity.copy(id = window)), HOUSE_LOC_DURATION)
-            }
-            for (hotspot in def.hotspots) {
-                val row = session.layout.built(slot, hotspot.index) ?: continue
-                spawnFurniture(session, slot, placed.rotation, hotspot, row)
-            }
-        }
-    }
-
-    private fun spawnFurniture(
-        session: HouseSession,
-        slot: Int,
-        rotation: Int,
-        hotspot: HotspotDef,
-        furnitureRow: Int,
-    ) {
-        for (loc in builtLocs(session, slot, rotation, hotspot, furnitureRow)) {
-            locRepo.add(loc, duration = HOUSE_LOC_DURATION)
-        }
+    private fun spawnFurniture(session: HouseSession, slot: Int, rotation: Int, hotspot: HotspotDef, furnitureRow: Int) {
+        houseAccess.spawnFurniture(session, slot, rotation, hotspot, furnitureRow)
     }
 
     private fun despawnFurniture(session: HouseSession, target: HotspotTarget, furnitureRow: Int) {
-        val locs =
-            builtLocs(session, target.slot, target.rotation, target.hotspot, furnitureRow)
-        for (loc in locs) {
-            locRepo.del(loc, duration = HOUSE_LOC_DURATION)
-        }
+        houseAccess.despawnFurniture(session, target, furnitureRow)
     }
-
-    /**
-     * A multi-tile piece covers every part of its hotspot, each with the loc for that part, so a rug
-     * lays its corners and sides rather than one tile at the hotspot's anchor.
-     */
-    private fun builtLocs(
-        session: HouseSession,
-        slot: Int,
-        rotation: Int,
-        hotspot: HotspotDef,
-        furnitureRow: Int,
-    ): List<LocInfo> {
-        val furniture = hotspot.builds.firstOrNull { it.rowId == furnitureRow } ?: return emptyList()
-        if (catalogue.builtLocIds(furniture).isEmpty()) {
-            logger.warn { "Furniture '${furniture.name}' has no matching loc to place." }
-            return emptyList()
-        }
-        val variant = session.layout.variant(slot, hotspot.index)
-        return hotspot.parts.mapNotNull { part ->
-            val locId = variant ?: catalogue.builtLocFor(furniture, part) ?: return@mapNotNull null
-            val coords = houses.partCoords(session.region, slot, rotation, part)
-            LocInfo(
-                part.layer,
-                coords,
-                LocEntity(locId, part.shapeId, (part.angleId + rotation) and 3),
-            )
-        }
-    }
-
     private fun ProtectedAccess.canBuild(furniture: FurnitureRow): Boolean {
         if (player.constructionLvl < furniture.buildLevel()) {
             return false
@@ -640,7 +604,7 @@ constructor(
         const val BUILD_TICKS = 3
         const val HOUSE_LOC_DURATION = Int.MAX_VALUE
 
-        val SESSION: AttributeKey<HouseSession> = AttributeKey(temp = true)
+        val SESSION = HouseAccess.SESSION
     }
 }
 
