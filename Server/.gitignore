@@ -54,7 +54,7 @@ xp-rates.yml
 /api/generated/*
 !/api/generated/build.gradle.kts
 
-logs/
+/logs/
 *.log
 /.cursor
 /.data/raw-cache/cs2
