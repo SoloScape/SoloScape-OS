@@ -1,18 +1,25 @@
 package org.rsmod.content.interfaces.equipment.prices
 
 import dev.openrune.cache.CacheDelegate
+import dev.openrune.types.InventoryServerType
+import dev.openrune.types.ItemServerType
 import io.netty.buffer.Unpooled
 import java.nio.ByteBuffer
 import net.rsprot.crypto.cipher.StreamCipher
 import net.rsprot.protocol.game.outgoing.codec.misc.player.RunClientScriptEncoder
 import net.rsprot.protocol.game.outgoing.misc.player.RunClientScript
+import org.rsmod.api.invtx.InvTransactions
+import org.rsmod.api.invtx.invTransfer
 import org.rsmod.content.other.grandexchange.GeItemData
 import org.rsmod.game.client.Client
 import org.rsmod.game.client.NoopClient
 import org.rsmod.game.entity.Player
+import org.rsmod.game.inv.InvObj
+import org.rsmod.game.inv.Inventory
 
 fun main() {
     checkPriceScriptSignature()
+    checkInventoryOperations()
     val messages = mutableListOf<Any>()
     val player = Player(object : Client<Any, Any> by NoopClient {
         override fun write(message: Any) { messages.add(message) }
@@ -81,5 +88,52 @@ private fun checkPriceScriptSignature() {
         check(intLocals >= intArgs && longLocals == 0)
     } finally {
         cache.close()
+    }
+}
+
+private fun checkInventoryOperations() {
+    val stackable = ItemServerType(id = 100, name = "Tradeable stack")
+    val other = ItemServerType(id = 101, name = "Other item")
+    val transactions = InvTransactions(
+        emptyMap(), emptyMap(), emptyMap(), setOf(stackable.id), emptySet(),
+    )
+    val field = Class.forName("org.rsmod.api.invtx.InvTransactionsScriptKt")
+        .getDeclaredField("cachedInventoryTransactions").apply { isAccessible = true }
+    val previous = field.get(null)
+    field.set(null, transactions)
+    try {
+        val player = Player()
+        player.ui.modals.backing[1] = 464
+        check(player.isAccessProtected)
+        val backpack = Inventory(InventoryServerType(id = 93, size = 28, flags = 0),
+            arrayOfNulls<InvObj>(28))
+        val checker = Inventory(InventoryServerType(id = 90, size = 28, flags = 1),
+            arrayOfNulls<InvObj>(28))
+        backpack[0] = InvObj(stackable, 3)
+        val blocked = player.invTransfer(backpack, 0, 1, checker)
+        check(blocked.failure && backpack[0]?.count == 3 && checker.isEmpty())
+
+        val operations = GuidePriceInventory(transactions)
+        check(operations.moveSlot(backpack, checker, 0, 1).success)
+        check(backpack[0]?.count == 2 && checker[0]?.count == 1)
+        check(operations.moveSlot(backpack, checker, 0, 5).success)
+        check(backpack[0] == null && checker[0]?.count == 3)
+        check(operations.moveSlot(checker, backpack, 0, 1, compress = true).success)
+        check(backpack[0]?.count == 1 && checker[0]?.count == 2)
+
+        backpack[1] = InvObj(other)
+        check(operations.moveAll(backpack, checker, keepSlots = setOf(1)).success)
+        check(backpack[1]?.id == other.id && checker[0]?.count == 3)
+        check(operations.moveAll(checker, backpack).success)
+        check(checker.isEmpty() && backpack[0]?.count == 3 && backpack[1]?.id == other.id)
+
+        val full = Inventory(InventoryServerType(id = 90, size = 28, flags = 1),
+            Array<InvObj?>(28) { InvObj(other) })
+        check(operations.moveSlot(backpack, full, 0, 1).noneCompleted())
+        check(backpack[0]?.count == 3 && full.all { it?.id == other.id })
+        println("PASS: modal add, partial Add-5, remove, Add-All exclusions, close returns and " +
+            "full-checker item preservation.")
+    } finally {
+        field.set(null, previous)
     }
 }
