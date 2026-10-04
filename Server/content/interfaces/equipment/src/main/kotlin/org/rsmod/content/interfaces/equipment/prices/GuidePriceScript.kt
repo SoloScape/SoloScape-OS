@@ -101,7 +101,7 @@ constructor(
                 "`tempInv` must be transmitted. (`startInvTransmit`)"
             }
         val priceList = tempInv.toPriceList()
-        updatePrices(priceList.prices)
+        updateGuidePriceSlots(priceList.prices)
         updateTotalPrice(priceList.totalPrice)
     }
 
@@ -132,11 +132,6 @@ constructor(
             internal = "component.ge_pricechecker:output",
             text = "${type.name}:<br><col=ffffff>${type.price.formatAmount} coins</col>",
         )
-    }
-
-    private fun Player.updatePrices(priceList: List<Int>) {
-        check(priceList.size == 28) { "ClientScript takes 28 exact prices." }
-        runClientScript(785, *priceList.toTypedArray())
     }
 
     private fun Iterable<InvObj?>.toPriceList(): PriceList {
@@ -233,4 +228,9 @@ constructor(
     }
 
     private data class PriceList(val prices: List<Int>, val totalPrice: Long)
+}
+
+internal fun Player.updateGuidePriceSlots(priceList: List<Int>) {
+    check(priceList.size == 28) { "ClientScript takes 28 exact prices." }
+    runClientScript(785, priceList.map { it.toLong() })
 }
