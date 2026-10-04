@@ -30,20 +30,15 @@ RSProx whenever a new version is published.
 
 Below is a quick guide demonstrating how to use RSProx.
 
-### Building from Source
+### Running a prebuilt client
 
-Clone the repository to develop RSProx or try changes that have not yet been released.
-For published versions, the installer is also available as described above.
+This checkout has no source build system. Source changes require a separately prepared
+build before they can be used.
 
-### Launching
-
-From a source checkout, run `net.rsprox.gui.ProxyToolGuiKt` in the `gui/proxy-tool` module,
-or launch it through Gradle with `./gradlew proxy` (`.\gradlew.bat proxy` on Windows).
-
-On Windows, `build.bat` builds and installs a standalone copy, and `run.bat` launches
-that copy without keeping Gradle or a Kotlin compiler running during play. The first
-launch builds it automatically if it is missing. Run `build.bat` again after changing
-source code. Optional JVM arguments can be supplied through `SOLOSCAPE_CLIENT_JAVA_OPTS`.
+On Windows, use Java 21 and run `run.bat`. It launches the standalone distribution
+under `build/install/rsprox/`, with optional JVM arguments supplied through
+`SOLOSCAPE_CLIENT_JAVA_OPTS`. If that distribution is missing, restore a prebuilt copy
+including its `lib/` directory. The launcher does not compile or download a build.
 
 > [!NOTE]
 > The OSRS Windows-native client can run on Windows and Linux using Wine or Proton.

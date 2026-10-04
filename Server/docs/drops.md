@@ -1,3 +1,5 @@
+> Historical build instructions: the build system and its workflows have been removed. Commands and build-file examples below require a separately configured build system.
+
 # Drop Tables
 
 How NPC loot works in OpenRune, how to add or edit drops, and what the DSL syntax means.

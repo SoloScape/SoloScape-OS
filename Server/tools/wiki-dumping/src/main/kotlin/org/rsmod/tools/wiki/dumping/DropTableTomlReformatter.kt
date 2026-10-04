@@ -99,7 +99,7 @@ fun main(args: Array<String>) {
 private fun findRepoRoot(): Path? {
     var dir = Path.of("").toAbsolutePath()
     repeat(8) {
-        if (dir.resolve("settings.gradle.kts").toFile().exists() || dir.resolve("build.gradle.kts").toFile().exists()) {
+        if (dir.resolve("game.example.yml").toFile().exists() && dir.resolve("content").toFile().isDirectory) {
             return dir
         }
         dir = dir.parent ?: return null

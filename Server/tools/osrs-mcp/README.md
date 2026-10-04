@@ -1,3 +1,5 @@
+> Historical build instructions: the build system has been removed. Commands below require a separately configured build system.
+
 # OSRS Wiki MCP Server
 
 Stdio [MCP](https://modelcontextprotocol.io/) server: OSRS Wiki search/pages, **`wiki_npc_spawns`**, **gameval** lookup, and **decoded cache** search. For local IDE use only; the game server does not depend on this module.

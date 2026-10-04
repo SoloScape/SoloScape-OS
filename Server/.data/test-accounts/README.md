@@ -1,3 +1,5 @@
+> Historical build instructions: the build system has been removed. Commands below require a separately configured build system.
+
 # Shared teleport testing account
 
 `test.sql` contains the `test` account and its character save, including 100 of

@@ -1,3 +1,5 @@
+> Historical build instructions: the build system and its workflows have been removed. Commands and build-file examples below require a separately configured build system.
+
 # Agility course verification
 
 An in-client pass over the six courses added on 2026-09-14. Their obstacle tiles came out of the

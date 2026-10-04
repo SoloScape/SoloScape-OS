@@ -1,3 +1,5 @@
+> Historical build instructions: the build system has been removed. Commands below require a separately configured build system.
+
 # Patcher
 
 RSProx comes with built-in patchers that perform necessary changes to make the

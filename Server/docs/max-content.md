@@ -1,3 +1,5 @@
+> Historical build instructions: the build system and its workflows have been removed. Commands and build-file examples below require a separately configured build system.
+
 # max-content integration
 
 This checkout starts from Blade9766's `Content-Drop` at `d586bfdf1` and integrates

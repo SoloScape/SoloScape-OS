@@ -1,3 +1,5 @@
+> Historical build instructions: the build system and its workflows have been removed. Commands and build-file examples below require a separately configured build system.
+
 # Agility
 
 What the module covers, what it does not, and the exact data the missing pieces need.

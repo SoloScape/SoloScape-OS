@@ -1,3 +1,5 @@
+> Historical build instructions: the build system and its workflows have been removed. Commands and build-file examples below require a separately configured build system.
+
 # SQLite storage
 
 Run `gradlew run` from `Server/`. The game and bundled Central create and share

@@ -258,7 +258,7 @@ class GameServer(private val skipTypeVerificationOverride: Boolean? = null) :
         val validRsaKey = rsaKey.isRegularFile()
 
         if (!vanillaCacheDirExists || !gameCacheDirExists || !gameConfig.exists()) {
-            error("Please run the install task first: gradlew install")
+            error("Restore the server cache under .data/cache and game.yml from a prebuilt distribution.")
         }
 
         if (!validRsaKey) {

@@ -1,3 +1,5 @@
+> Historical build instructions: the build system and its workflows have been removed. Commands and build-file examples below require a separately configured build system.
+
 # External Plugins
 
 This document explains how to ship a plugin as a standalone artifact that the server loads from

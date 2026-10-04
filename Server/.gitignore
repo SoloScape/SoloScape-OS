@@ -5,9 +5,7 @@
 
 .kotlin
 
-.gradle
 build/
-!gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
 
@@ -40,7 +38,6 @@ bin/
 /nbbuild/
 /dist/
 /nbdist/
-/.nb-gradle/
 
 ### VS Code ###
 .vscode/
@@ -52,7 +49,6 @@ game.yml
 xp-rates.yml
 /.idea
 /api/generated/*
-!/api/generated/build.gradle.kts
 
 /logs/
 *.log

@@ -23,38 +23,15 @@ Thanks for your interest in helping build Alter! Contributions from the communit
 
 ## 🛠️ Local Development Setup
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/Mark7625/Alter-custom.git
-   cd Alter-custom
-   ```
-2. **Install prerequisites**
-    - Java 17 (Temurin or an equivalent distribution)
-    - Gradle (wrapper is included)
-    - Node.js 18+ and npm (required for the `http-api` package)
-3. **Bootstrap the Kotlin backend**
-   ```bash
-   ./gradlew clean build
-   ```
-4. **Start the game server**
-   ```bash
-   ./gradlew :game-server:run
-   ```
-5. **Run the web client (optional)**
-   ```bash
-   cd http-api
-   npm install
-   npm run dev
-   ```
+Use Java 21 and a matching prebuilt server distribution as described in
+[the setup guide](../README.md). This checkout has no source build system;
+compiling changes requires a separately configured build.
 
 ---
 
 ## 🧪 Testing & Quality Checks
 
-- Run unit tests before pushing:
-  ```bash
-  ./gradlew test
-  ```
+- Source tests require a separately configured build system.
 - For frontend packages, run:
   ```bash
   cd http-api

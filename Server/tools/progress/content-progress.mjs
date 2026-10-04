@@ -96,11 +96,18 @@ function loadNpcs() {
 
 // ---------------------------------------------------------------- numerator
 
-/** Every content module, using the same rule settings.gradle.kts uses. */
+/** Every content directory with its own source tree. */
 function listModules() {
-  const builds = walk(P('content'), (n) => n === 'build.gradle.kts')
-  return builds.map((b) => {
-    const dir = path.dirname(b)
+  const dirs = []
+  function findModules(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name === 'build' || entry.name.startsWith('.')) continue
+      if (entry.name === 'src') dirs.push(dir)
+      else findModules(path.join(dir, entry.name))
+    }
+  }
+  findModules(P('content'))
+  return dirs.map((dir) => {
     const kt = walk(path.join(dir, 'src'), (n) => n.endsWith('.kt'))
     const sep = path.sep
     const main = kt.filter((f) => f.includes(sep + 'main' + sep))
@@ -393,7 +400,7 @@ function renderTables(categories) {
 
 function renderModules(modules) {
   const L = ['### All content modules', '']
-  L.push('Found the same way `settings.gradle.kts` finds them: any dir with a `build.gradle.kts`.')
+  L.push('Found by locating content directories with their own `src/` tree.')
   L.push('')
   L.push('| Module | Files | Lines | Tests | TODO | Last touched |')
   L.push('|---|---:|---:|---:|---:|---|')

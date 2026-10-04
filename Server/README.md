@@ -43,26 +43,16 @@ the bosses that already have drop tables and only need the encounter writing.
 <!-- content-progress:end -->
 ## 🛠️ Getting Started
 
+1. Install Java 21.
+2. Restore a prebuilt server distribution under `server/app/build/install/app/`,
+   including its `lib/` directory. Keep the matching `.data/` cache, gamevals and RSA
+   keys, plus your local `game.yml` configuration.
+3. Run `run.bat` from the server directory on Windows.
+4. A successful boot prints `OpenRune Server Successfully initialized`.
 
-
-1. **Clone the repository**
-   - `File → New → Project from Version Control` in IntelliJ, then paste `https://github.com/OpenRune/OpenRune-Server.git`.
-   - Alternatively, clone via Git CLI and open the project manually.
-
-2. **Install dependencies**
-   - Ensure you have [IntelliJ IDEA](https://www.jetbrains.com/idea/download/#section=windows).
-   - Set the project SDK to Java 21: `File → Project Structure → SDK`. (The `:tools:osrs-mcp` module is built with Java 17 via Gradle’s JVM toolchain; other modules target Java 21.)
-3. **Gradle bootstrap**
-   - Open the Gradle tool window.
-   - Run `OpenRune Server → Tasks → installation → install`.
-   - From a terminal in the server directory, use `./gradlew install` (`.\gradlew.bat install` on Windows). Run this before the first `build`: it downloads the cache and generates `api/generated/src`. The module's `build.gradle.kts` is checked in; its generated sources are ignored.
-   - When the task completes, run `OpenRune Server → Tasks → application → run`.
-
-4. **Verify startup**
-   - A successful boot prints `OpenRune Server Successfully initialized` in the terminal.
-   - If you only see `OpenRune Server Loaded up in x ms.` you likely skipped a step.
-
-Setup screenshots are available in [docs/images/](docs/images/).
+This checkout has no source build system. Source changes and cache resource changes
+require a separately prepared build before they can be used. A fresh clone does not
+include the ignored standalone distribution or all required runtime data.
 
 ## Project structure
 
@@ -73,29 +63,25 @@ Setup screenshots are available in [docs/images/](docs/images/).
 | `engine/` | Game loop, events, routing and plugin framework |
 | `server/` | Application entry point, installation, logging and services |
 | `or-cache/` | Cache builder and inspection tools |
-| `build-logic/`, `gradle/` | Shared build conventions, dependency versions and Gradle wrapper |
 | `example-plugin/` | Source template for external plugins |
 | `plugins/` | Installed external plugin jars and their local enabled state |
 | `.data/` | Gamevals, cache inputs, reference dumps and local runtime data |
 | [tools/](tools/README.md) | Developer utilities and maintenance scripts |
 | [docs/](docs/README.md) | Development guides, verification checklists and integration notes |
 
-Generated `build/`, `.gradle/` and `.kotlin/` directories are disposable and recreated by
-Gradle. Keep `.data/`, installed plugins and local configuration when cleaning a checkout.
+The prebuilt distribution used by `run.bat` lives inside `server/app/build/`. Keep it,
+`.data/`, installed plugins and local configuration when cleaning a checkout.
 
 ## Windows launchers
 
-On Windows, `build.bat` also prepares the standalone server used by `run.bat`.
-The first launch prepares it automatically if it is missing; subsequent launches
-run directly without Gradle or a Kotlin compiler. Run `build.bat` again after source
-changes, and rebuild the cache separately when changing pack resources or gamevals.
+On Windows, `run.bat` launches the prebuilt server directly with Java. If the
+distribution is missing, the launcher reports where to restore it and exits.
 
 The server starts with a 256 MB heap and allows it to grow to 2 GB. Total process
 memory includes additional native and JVM allocations. To increase the heap for
 a larger world, set `SOLOSCAPE_SERVER_HEAP` (for example, `set SOLOSCAPE_SERVER_HEAP=4g`)
 before running `run.bat`. Additional JVM arguments can be supplied through
-`SOLOSCAPE_SERVER_JAVA_OPTS`. Source builds use a temporary Gradle process with
-the Kotlin compiler inside it, a 2 GB heap limit, and at most two workers.
+`SOLOSCAPE_SERVER_JAVA_OPTS`.
 
 ## 🎮 Client Setup
 

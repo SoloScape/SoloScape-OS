@@ -24,7 +24,7 @@ the module table at the bottom before reading a 0 as "nothing exists".
 | 🟢 | <img src="https://oldschool.runescape.wiki/images/Defence_icon.png?ca0cd" height="20" alt=""> Defence | in `api/combat` | [wiki](https://oldschool.runescape.wiki/w/Defence) |
 | 🟢 | <img src="https://oldschool.runescape.wiki/images/Ranged_icon.png?01b0e" height="20" alt=""> Ranged | in `api/combat` | [wiki](https://oldschool.runescape.wiki/w/Ranged) |
 | 🟢 | <img src="https://oldschool.runescape.wiki/images/Hitpoints_icon.png?a4819" height="20" alt=""> Hitpoints | in `api/combat` | [wiki](https://oldschool.runescape.wiki/w/Hitpoints) |
-| 🟢 | <img src="https://oldschool.runescape.wiki/images/Magic_icon.png?334cf" height="20" alt=""> [Magic](content/skills/magic) | 2,737 loc | [wiki](https://oldschool.runescape.wiki/w/Magic) |
+| 🟢 | <img src="https://oldschool.runescape.wiki/images/Magic_icon.png?334cf" height="20" alt=""> [Magic](content/skills/magic) | 3,155 loc | [wiki](https://oldschool.runescape.wiki/w/Magic) |
 | 🟢 | <img src="https://oldschool.runescape.wiki/images/Prayer_icon.png?7e70b" height="20" alt=""> [Prayer](content/skills/prayer) | 2,633 loc | [wiki](https://oldschool.runescape.wiki/w/Prayer) |
 | 🟢 | <img src="https://oldschool.runescape.wiki/images/Runecraft_icon.png?c278c" height="20" alt=""> [Runecraft](content/skills/runecrafting) | 2,645 loc | [wiki](https://oldschool.runescape.wiki/w/Runecraft) |
 | 🟢 | <img src="https://oldschool.runescape.wiki/images/Slayer_icon.png?cd34f" height="20" alt=""> [Slayer](content/skills/slayer) | 5,519 loc | [wiki](https://oldschool.runescape.wiki/w/Slayer) |
@@ -35,11 +35,11 @@ the module table at the bottom before reading a 0 as "nothing exists".
 | 🟢 | <img src="https://oldschool.runescape.wiki/images/Cooking_icon.png?a0156" height="20" alt=""> [Cooking](content/skills/cooking) | 1,350 loc | [wiki](https://oldschool.runescape.wiki/w/Cooking) |
 | 🟢 | <img src="https://oldschool.runescape.wiki/images/Herblore_icon.png?ffa9e" height="20" alt=""> [Herblore](content/skills/herblore) | 1,289 loc | [wiki](https://oldschool.runescape.wiki/w/Herblore) |
 | 🟢 | <img src="https://oldschool.runescape.wiki/images/Fishing_icon.png?15a98" height="20" alt=""> [Fishing](content/skills/fishing) | 1,608 loc | [wiki](https://oldschool.runescape.wiki/w/Fishing) |
-| 🟢 | <img src="https://oldschool.runescape.wiki/images/Agility_icon.png?389e0" height="20" alt=""> [Agility](content/skills/agility) | 7,915 loc | [wiki](https://oldschool.runescape.wiki/w/Agility) |
+| 🟢 | <img src="https://oldschool.runescape.wiki/images/Agility_icon.png?389e0" height="20" alt=""> [Agility](content/skills/agility) | 7,926 loc | [wiki](https://oldschool.runescape.wiki/w/Agility) |
 | 🟢 | <img src="https://oldschool.runescape.wiki/images/Thieving_icon.png?973fe" height="20" alt=""> [Thieving](content/skills/thieving) | 3,387 loc | [wiki](https://oldschool.runescape.wiki/w/Thieving) |
 | 🟢 | <img src="https://oldschool.runescape.wiki/images/Crafting_icon.png?a1f71" height="20" alt=""> [Crafting](content/skills/crafting) | 6,413 loc | [wiki](https://oldschool.runescape.wiki/w/Crafting) |
 | 🟢 | <img src="https://oldschool.runescape.wiki/images/Fletching_icon.png?15cda" height="20" alt=""> [Fletching](content/skills/fletching) | 2,423 loc | [wiki](https://oldschool.runescape.wiki/w/Fletching) |
-| 🟢 | <img src="https://oldschool.runescape.wiki/images/Construction_icon.png?f9bf7" height="20" alt=""> [Construction](content/skills/construction) | 5,689 loc | [wiki](https://oldschool.runescape.wiki/w/Construction) |
+| 🟢 | <img src="https://oldschool.runescape.wiki/images/Construction_icon.png?f9bf7" height="20" alt=""> [Construction](content/skills/construction) | 6,170 loc | [wiki](https://oldschool.runescape.wiki/w/Construction) |
 | 🟢 | <img src="https://oldschool.runescape.wiki/images/Farming_icon.png?558fa" height="20" alt=""> [Farming](content/skills/farming) | 3,378 loc | [wiki](https://oldschool.runescape.wiki/w/Farming) |
 | 🟢 | <img src="https://oldschool.runescape.wiki/images/Hunter_icon.png?8762f" height="20" alt=""> [Hunter](content/skills/hunter) | 6,751 loc | [wiki](https://oldschool.runescape.wiki/w/Hunter) |
 
@@ -122,159 +122,160 @@ the module table at the bottom before reading a 0 as "nothing exists".
 
 ### All content modules
 
-Found the same way `settings.gradle.kts` finds them: any dir with a `build.gradle.kts`.
+Found by locating content directories with their own `src/` tree.
 
 | Module | Files | Lines | Tests | TODO | Last touched |
 |---|---:|---:|---:|---:|---|
-| `areas/city/alkharid` | 2 | 575 | 0 | 0 | 2026-09-18 |
-| `areas/city/ardougne` | 1 | 139 | 0 | 0 | 2026-09-25 |
-| `areas/city/draynor` | 16 | 3,138 | 4 | 0 | 2026-09-22 |
-| `areas/city/draynor/pack` | 1 | 6 | 0 | 0 | 2026-09-23 |
-| `areas/city/falador` | 6 | 1,272 | 0 | 0 | 2026-09-24 |
-| `areas/city/falador/pack` | 1 | 6 | 0 | 0 | 2026-09-22 |
-| `areas/city/lumbridge` | 26 | 6,315 | 0 | 3 | 2026-09-28 |
-| `areas/city/lumbridge/pack` | 1 | 6 | 0 | 0 | 2026-09-23 |
-| `areas/city/port-sarim` | 13 | 1,934 | 0 | 0 | 2026-09-21 |
-| `areas/city/port-sarim/pack` | 1 | 6 | 0 | 0 | 2026-09-22 |
-| `areas/city/prifddinas` | 1 | 82 | 0 | 0 | 2026-08-18 |
-| `areas/city/rimmington` | 6 | 734 | 0 | 0 | 2026-09-23 |
-| `areas/city/rimmington/pack` | 1 | 6 | 0 | 0 | 2026-09-22 |
-| `areas/city/taverley` | 1 | 77 | 0 | 0 | 2026-06-25 |
-| `areas/city/varrock` | 8 | 712 | 0 | 1 | 2026-09-26 |
-| `areas/godwars` | 2 | 154 | 0 | 0 | 2026-08-19 |
-| `areas/guilds` | 2 | 196 | 0 | 0 | 2026-09-23 |
-| `areas/misc/dog_shelter` | 2 | 151 | 0 | 0 | 2026-09-25 |
-| `areas/misc/dwarven-mine` | 3 | 599 | 0 | 0 | 2026-09-20 |
-| `areas/misc/kharidian-desert` | 3 | 486 | 0 | 0 | 2026-09-18 |
-| `areas/misc/mining-guild` | 8 | 714 | 0 | 0 | 2026-09-17 |
-| `areas/misc/motherlode-mine` | 13 | 1,402 | 0 | 0 | 2026-09-17 |
-| `areas/misc/motherlode-mine/pack` | 1 | 6 | 0 | 0 | 2026-09-17 |
-| `areas/misc/multiways` | 2 | 36 | 0 | 0 | 2026-05-03 |
-| `areas/misc/stronghold_of_security` | 8 | 1,580 | 0 | 0 | 2026-09-23 |
-| `areas/misc/ver_sinhaza` | 1 | 139 | 0 | 0 | 2026-09-25 |
-| `areas/misc/wizards_tower` | 4 | 1,087 | 0 | 0 | 2026-09-23 |
-| `areas/misc/wizards_tower/pack` | 1 | 6 | 0 | 0 | 2026-09-23 |
-| `areas/wilderness` | 20 | 1,529 | 0 | 0 | 2026-09-29 |
-| `areas/zeah` | 3 | 234 | 0 | 0 | 2026-08-18 |
-| `bosses/amoxliatl` | 2 | 387 | 0 | 0 | 2026-10-01 |
-| `bosses/barrows` | 16 | 1,638 | 3 | 0 | 2026-10-01 |
-| `bosses/barrows/pack` | 1 | 6 | 0 | 0 | 2026-09-29 |
-| `bosses/callisto` | 2 | 568 | 0 | 0 | 2026-09-30 |
-| `bosses/demonic-gorilla` | 1 | 320 | 0 | 0 | 2026-10-01 |
-| `bosses/duke-sucellus` | 3 | 1,239 | 0 | 0 | 2026-10-01 |
-| `bosses/gemstone-crab` | 6 | 659 | 0 | 0 | 2026-09-28 |
-| `bosses/graardor` | 2 | 166 | 0 | 0 | 2026-09-30 |
-| `bosses/kbd` | 2 | 143 | 0 | 1 | 2026-09-30 |
-| `bosses/kreearra` | 2 | 229 | 0 | 0 | 2026-09-30 |
-| `bosses/kril` | 2 | 191 | 0 | 0 | 2026-09-30 |
-| `bosses/leviathan` | 8 | 1,397 | 0 | 0 | 2026-09-30 |
-| `bosses/muspah` | 4 | 1,242 | 0 | 0 | 2026-10-01 |
-| `bosses/scurrius` | 2 | 384 | 0 | 0 | 2026-10-01 |
-| `bosses/spindel` | 2 | 522 | 0 | 0 | 2026-09-30 |
-| `bosses/tormented-demon` | 2 | 531 | 0 | 0 | 2026-10-01 |
-| `bosses/vardorvis` | 7 | 1,291 | 0 | 0 | 2026-10-01 |
-| `bosses/whisperer` | 5 | 1,853 | 0 | 0 | 2026-10-01 |
-| `bosses/zilyana` | 2 | 164 | 0 | 0 | 2026-09-30 |
-| `bosses/zulrah` | 9 | 3,521 | 0 | 0 | 2026-10-01 |
-| `bosses/zulrah/pack` | 1 | 6 | 0 | 0 | 2026-09-18 |
-| `drops` | 258 | 14,417 | 0 | 0 | 2026-09-29 |
-| `events/shooting-stars` | 9 | 1,261 | 0 | 0 | 2026-08-30 |
-| `events/shooting-stars/pack` | 2 | 440 | 0 | 0 | 2026-08-21 |
-| `generic/generic-locs` | 32 | 2,964 | 1 | 1 | 2026-09-29 |
-| `generic/generic-npcs` | 8 | 1,481 | 0 | 2 | 2026-09-25 |
-| `generic/generic-npcs/pack` | 1 | 6 | 0 | 0 | 2026-09-23 |
-| `generic/killcount` | 1 | 36 | 0 | 0 | 2026-09-27 |
-| `interfaces/bank` | 15 | 2,316 | 3 | 1 | 2026-09-08 |
-| `interfaces/collection-log` | 4 | 543 | 0 | 0 | 2026-08-18 |
-| `interfaces/combat-tab` | 1 | 616 | 1 | 0 | 2026-09-17 |
-| `interfaces/deposit-box` | 6 | 459 | 0 | 1 | 2026-08-08 |
-| `interfaces/emotes` | 2 | 634 | 2 | 0 | 2026-09-09 |
-| `interfaces/equipment` | 3 | 682 | 0 | 0 | 2026-09-25 |
-| `interfaces/fade-overlay` | 1 | 20 | 0 | 0 | 2026-05-03 |
-| `interfaces/gameframe` | 6 | 498 | 0 | 1 | 2026-08-18 |
-| `interfaces/journal-tab` | 4 | 272 | 0 | 0 | 2026-09-27 |
-| `interfaces/logout-tab` | 1 | 30 | 0 | 0 | 2026-05-03 |
-| `interfaces/menu` | 1 | 23 | 0 | 1 | 2026-05-03 |
-| `interfaces/music-tab` | 1 | 151 | 0 | 0 | 2026-09-06 |
-| `interfaces/omnishop` | 2 | 284 | 0 | 0 | 2026-09-27 |
-| `interfaces/prayer-tab` | 10 | 793 | 0 | 0 | 2026-09-15 |
-| `interfaces/settings` | 11 | 1,169 | 0 | 0 | 2026-09-29 |
-| `interfaces/skill-guides` | 1 | 114 | 0 | 0 | 2026-07-04 |
-| `interfaces/spellbook` | 1 | 45 | 0 | 0 | 2026-09-05 |
-| `interfaces/spellbook/pack` | 1 | 12 | 0 | 0 | 2026-09-05 |
-| `interfaces/worldmap` | 1 | 104 | 0 | 0 | 2026-07-04 |
-| `interfaces/xp-drops` | 1 | 41 | 0 | 0 | 2026-09-29 |
-| `other/castle-wars` | 16 | 4,966 | 1 | 0 | 2026-09-27 |
-| `other/castle-wars/pack` | 1 | 6 | 0 | 0 | 2026-09-27 |
-| `other/cheat-menu` | 3 | 1,133 | 1 | 0 | 2026-09-22 |
-| `other/combat-achievements` | 6 | 991 | 0 | 0 | 2026-09-27 |
-| `other/combat-achievements/pack` | 0 | 0 | 0 | 0 | 2026-09-27 |
-| `other/commands` | 7 | 2,034 | 0 | 0 | 2026-09-29 |
-| `other/consumables` | 38 | 8,742 | 0 | 0 | 2026-09-27 |
-| `other/dave/pack` | 1 | 6 | 0 | 0 | 2026-09-23 |
-| `other/defend-anims` | 2 | 188 | 1 | 0 | 2026-09-05 |
-| `other/discord` | 2 | 80 | 0 | 0 | 2026-07-01 |
-| `other/dizanas-quiver` | 3 | 270 | 0 | 0 | 2026-09-09 |
-| `other/emirs-arena` | 11 | 2,515 | 3 | 0 | 2026-09-27 |
-| `other/grand-exchange` | 7 | 1,847 | 1 | 0 | 2026-09-07 |
-| `other/ironman` | 5 | 352 | 0 | 0 | 2026-07-19 |
-| `other/level-up` | 5 | 639 | 1 | 0 | 2026-09-12 |
-| `other/login` | 1 | 193 | 0 | 0 | 2026-09-17 |
-| `other/mapclock` | 1 | 49 | 0 | 0 | 2026-08-18 |
-| `other/npc-aggression` | 2 | 142 | 1 | 0 | 2026-09-23 |
-| `other/npc-combat-anims` | 2 | 155 | 1 | 0 | 2026-09-29 |
-| `other/pets` | 101 | 7,872 | 1 | 0 | 2026-10-01 |
-| `other/pets/pack` | 7 | 1,292 | 0 | 0 | 2026-09-25 |
-| `other/playtime` | 1 | 72 | 0 | 0 | 2026-09-05 |
-| `other/poison` | 1 | 183 | 0 | 0 | 2026-09-22 |
-| `other/pouches` | 8 | 1,225 | 2 | 0 | 2026-09-26 |
-| `other/sandstorm` | 2 | 364 | 0 | 0 | 2026-08-18 |
-| `other/spawn` | 1 | 333 | 0 | 0 | 2026-09-23 |
-| `other/spawn/pack` | 1 | 6 | 0 | 0 | 2026-09-23 |
-| `other/special-attacks` | 21 | 3,332 | 0 | 0 | 2026-09-22 |
-| `other/special-weapons` | 18 | 3,151 | 0 | 1 | 2026-09-17 |
-| `other/transform-rings` | 1 | 143 | 0 | 0 | 2026-09-05 |
-| `other/windmill` | 2 | 133 | 0 | 0 | 2026-09-23 |
-| `other/windmill/pack` | 1 | 6 | 0 | 0 | 2026-09-23 |
-| `other/xp-rates` | 3 | 553 | 1 | 0 | 2026-09-17 |
-| `quest` | 617 | 139,255 | 21 | 0 | 2026-10-01 |
-| `quest/pack` | 1 | 6 | 0 | 0 | 2026-09-22 |
-| `skills/agility` | 10 | 2,197 | 3 | 0 | 2026-10-01 |
-| `skills/agility/pack` | 4 | 5,718 | 2 | 0 | 2026-09-23 |
-| `skills/construction` | 17 | 2,443 | 2 | 0 | 2026-10-01 |
-| `skills/construction/pack` | 3 | 3,246 | 1 | 0 | 2026-09-24 |
-| `skills/cooking` | 12 | 1,350 | 0 | 0 | 2026-09-22 |
-| `skills/crafting` | 30 | 3,688 | 0 | 0 | 2026-09-23 |
-| `skills/crafting/pack` | 2 | 2,725 | 0 | 0 | 2026-09-22 |
-| `skills/farming` | 20 | 2,987 | 3 | 0 | 2026-10-01 |
-| `skills/farming/pack` | 3 | 391 | 0 | 0 | 2026-10-01 |
-| `skills/firemaking` | 6 | 589 | 0 | 0 | 2026-08-08 |
-| `skills/fishing` | 13 | 1,402 | 0 | 0 | 2026-09-25 |
-| `skills/fishing/pack` | 3 | 206 | 0 | 0 | 2026-09-25 |
-| `skills/fletching` | 6 | 2,417 | 1 | 0 | 2026-10-01 |
-| `skills/fletching/pack` | 1 | 6 | 0 | 0 | 2026-09-18 |
-| `skills/herblore` | 12 | 1,289 | 0 | 0 | 2026-09-18 |
-| `skills/hunter` | 28 | 6,751 | 0 | 0 | 2026-09-29 |
-| `skills/magic/alchemy` | 1 | 253 | 0 | 0 | 2026-06-21 |
-| `skills/magic/spell-attacks` | 11 | 2,018 | 3 | 0 | 2026-09-29 |
-| `skills/magic/spell-teleports` | 1 | 324 | 0 | 0 | 2026-09-29 |
-| `skills/magic/spellbook-altars` | 1 | 37 | 0 | 0 | 2026-09-29 |
-| `skills/magic/telegrab` | 1 | 105 | 0 | 0 | 2026-09-12 |
-| `skills/mining` | 11 | 1,059 | 0 | 0 | 2026-09-29 |
-| `skills/prayer` | 30 | 2,633 | 0 | 0 | 2026-09-22 |
-| `skills/runecrafting` | 24 | 2,645 | 0 | 0 | 2026-09-22 |
-| `skills/slayer` | 45 | 5,519 | 0 | 0 | 2026-09-29 |
-| `skills/smithing` | 15 | 2,111 | 0 | 0 | 2026-09-22 |
-| `skills/thieving` | 11 | 2,477 | 1 | 0 | 2026-10-01 |
-| `skills/thieving/pack` | 2 | 910 | 1 | 0 | 2026-09-23 |
-| `skills/utils` | 2 | 316 | 0 | 0 | 2026-05-10 |
-| `skills/woodcutting` | 5 | 409 | 2 | 2 | 2026-07-22 |
-| `travel/ardougne-cloak` | 1 | 101 | 0 | 0 | 2026-09-23 |
-| `travel/canoe` | 6 | 1,122 | 1 | 2 | 2026-07-22 |
-| `travel/fairy-rings` | 3 | 440 | 1 | 0 | 2026-09-08 |
-| `travel/jewellery` | 2 | 504 | 1 | 0 | 2026-09-08 |
-| `travel/magic-carpet` | 3 | 688 | 0 | 0 | 2026-09-23 |
-| `travel/radas-blessing` | 1 | 160 | 0 | 0 | 2026-09-09 |
+| `areas/city/alkharid` | 2 | 575 | 0 | 0 | 2026-10-02 |
+| `areas/city/ardougne` | 1 | 139 | 0 | 0 | 2026-10-02 |
+| `areas/city/draynor` | 16 | 3,138 | 4 | 0 | 2026-10-02 |
+| `areas/city/draynor/pack` | 1 | 6 | 0 | 0 | 2026-10-02 |
+| `areas/city/falador` | 6 | 1,272 | 0 | 0 | 2026-10-02 |
+| `areas/city/falador/pack` | 1 | 6 | 0 | 0 | 2026-10-02 |
+| `areas/city/lumbridge` | 26 | 6,315 | 0 | 3 | 2026-10-02 |
+| `areas/city/lumbridge/pack` | 1 | 6 | 0 | 0 | 2026-10-02 |
+| `areas/city/port-sarim` | 13 | 1,934 | 0 | 0 | 2026-10-02 |
+| `areas/city/port-sarim/pack` | 1 | 6 | 0 | 0 | 2026-10-02 |
+| `areas/city/prifddinas` | 1 | 82 | 0 | 0 | 2026-10-02 |
+| `areas/city/rimmington` | 6 | 734 | 0 | 0 | 2026-10-02 |
+| `areas/city/rimmington/pack` | 1 | 6 | 0 | 0 | 2026-10-02 |
+| `areas/city/taverley` | 1 | 77 | 0 | 0 | 2026-10-02 |
+| `areas/city/varrock` | 8 | 712 | 0 | 1 | 2026-10-02 |
+| `areas/godwars` | 2 | 154 | 0 | 0 | 2026-10-02 |
+| `areas/guilds` | 2 | 196 | 0 | 0 | 2026-10-02 |
+| `areas/misc/dog_shelter` | 2 | 151 | 0 | 0 | 2026-10-02 |
+| `areas/misc/dwarven-mine` | 3 | 599 | 0 | 0 | 2026-10-02 |
+| `areas/misc/kharidian-desert` | 3 | 486 | 0 | 0 | 2026-10-02 |
+| `areas/misc/mining-guild` | 8 | 714 | 0 | 0 | 2026-10-02 |
+| `areas/misc/motherlode-mine` | 13 | 1,402 | 0 | 0 | 2026-10-02 |
+| `areas/misc/motherlode-mine/pack` | 1 | 6 | 0 | 0 | 2026-10-02 |
+| `areas/misc/multiways` | 2 | 36 | 0 | 0 | 2026-10-02 |
+| `areas/misc/stronghold_of_security` | 8 | 1,580 | 0 | 0 | 2026-10-02 |
+| `areas/misc/ver_sinhaza` | 1 | 139 | 0 | 0 | 2026-10-02 |
+| `areas/misc/wizards_tower` | 4 | 1,087 | 0 | 0 | 2026-10-02 |
+| `areas/misc/wizards_tower/pack` | 1 | 6 | 0 | 0 | 2026-10-02 |
+| `areas/wilderness` | 20 | 1,529 | 0 | 0 | 2026-10-02 |
+| `areas/zeah` | 3 | 234 | 0 | 0 | 2026-10-02 |
+| `bosses/amoxliatl` | 2 | 387 | 0 | 0 | 2026-10-02 |
+| `bosses/barrows` | 16 | 1,638 | 3 | 0 | 2026-10-02 |
+| `bosses/barrows/pack` | 1 | 6 | 0 | 0 | 2026-10-02 |
+| `bosses/callisto` | 2 | 568 | 0 | 0 | 2026-10-02 |
+| `bosses/demonic-gorilla` | 1 | 320 | 0 | 0 | 2026-10-02 |
+| `bosses/duke-sucellus` | 3 | 1,239 | 0 | 0 | 2026-10-02 |
+| `bosses/gemstone-crab` | 6 | 659 | 0 | 0 | 2026-10-02 |
+| `bosses/graardor` | 2 | 166 | 0 | 0 | 2026-10-02 |
+| `bosses/kbd` | 2 | 143 | 0 | 1 | 2026-10-02 |
+| `bosses/kreearra` | 2 | 229 | 0 | 0 | 2026-10-02 |
+| `bosses/kril` | 2 | 191 | 0 | 0 | 2026-10-02 |
+| `bosses/leviathan` | 8 | 1,397 | 0 | 0 | 2026-10-02 |
+| `bosses/muspah` | 4 | 1,242 | 0 | 0 | 2026-10-02 |
+| `bosses/scurrius` | 2 | 384 | 0 | 0 | 2026-10-02 |
+| `bosses/spindel` | 2 | 522 | 0 | 0 | 2026-10-02 |
+| `bosses/tormented-demon` | 2 | 531 | 0 | 0 | 2026-10-02 |
+| `bosses/vardorvis` | 7 | 1,291 | 0 | 0 | 2026-10-02 |
+| `bosses/whisperer` | 5 | 1,853 | 0 | 0 | 2026-10-02 |
+| `bosses/zilyana` | 2 | 164 | 0 | 0 | 2026-10-02 |
+| `bosses/zulrah` | 9 | 3,521 | 0 | 0 | 2026-10-02 |
+| `bosses/zulrah/pack` | 1 | 6 | 0 | 0 | 2026-10-02 |
+| `drops` | 258 | 14,417 | 0 | 0 | 2026-10-02 |
+| `events/shooting-stars` | 9 | 1,264 | 0 | 0 | 2026-10-04 |
+| `events/shooting-stars/pack` | 2 | 440 | 0 | 0 | 2026-10-04 |
+| `generic/generic-locs` | 32 | 2,976 | 1 | 1 | 2026-10-03 |
+| `generic/generic-npcs` | 8 | 1,481 | 0 | 2 | 2026-10-02 |
+| `generic/generic-npcs/pack` | 1 | 6 | 0 | 0 | 2026-10-02 |
+| `generic/killcount` | 1 | 36 | 0 | 0 | 2026-10-02 |
+| `interfaces/bank` | 15 | 2,316 | 3 | 1 | 2026-10-02 |
+| `interfaces/collection-log` | 4 | 543 | 0 | 0 | 2026-10-02 |
+| `interfaces/combat-tab` | 1 | 616 | 1 | 0 | 2026-10-02 |
+| `interfaces/deposit-box` | 6 | 459 | 0 | 1 | 2026-10-02 |
+| `interfaces/emotes` | 2 | 634 | 2 | 0 | 2026-10-02 |
+| `interfaces/equipment` | 3 | 682 | 0 | 0 | 2026-10-02 |
+| `interfaces/fade-overlay` | 1 | 20 | 0 | 0 | 2026-10-02 |
+| `interfaces/gameframe` | 6 | 498 | 0 | 1 | 2026-10-02 |
+| `interfaces/journal-tab` | 4 | 272 | 0 | 0 | 2026-10-02 |
+| `interfaces/logout-tab` | 1 | 30 | 0 | 0 | 2026-10-02 |
+| `interfaces/menu` | 1 | 23 | 0 | 1 | 2026-10-02 |
+| `interfaces/music-tab` | 1 | 151 | 0 | 0 | 2026-10-02 |
+| `interfaces/omnishop` | 2 | 284 | 0 | 0 | 2026-10-02 |
+| `interfaces/prayer-tab` | 10 | 793 | 0 | 0 | 2026-10-02 |
+| `interfaces/settings` | 11 | 1,169 | 0 | 0 | 2026-10-02 |
+| `interfaces/skill-guides` | 1 | 114 | 0 | 0 | 2026-10-02 |
+| `interfaces/spellbook` | 1 | 45 | 0 | 0 | 2026-10-02 |
+| `interfaces/spellbook/pack` | 1 | 12 | 0 | 0 | 2026-10-02 |
+| `interfaces/worldmap` | 1 | 104 | 0 | 0 | 2026-10-02 |
+| `interfaces/xp-drops` | 1 | 41 | 0 | 0 | 2026-10-02 |
+| `other/castle-wars` | 16 | 4,966 | 1 | 0 | 2026-10-02 |
+| `other/castle-wars/pack` | 1 | 6 | 0 | 0 | 2026-10-02 |
+| `other/cheat-menu` | 3 | 1,133 | 1 | 0 | 2026-10-02 |
+| `other/combat-achievements` | 6 | 991 | 0 | 0 | 2026-10-02 |
+| `other/combat-achievements/pack` | 0 | 0 | 0 | 0 | 2026-10-02 |
+| `other/commands` | 7 | 2,034 | 0 | 0 | 2026-10-02 |
+| `other/consumables` | 38 | 8,742 | 0 | 0 | 2026-10-02 |
+| `other/dave/pack` | 1 | 6 | 0 | 0 | 2026-10-02 |
+| `other/defend-anims` | 2 | 188 | 1 | 0 | 2026-10-02 |
+| `other/discord` | 2 | 80 | 0 | 0 | 2026-10-02 |
+| `other/dizanas-quiver` | 3 | 270 | 0 | 0 | 2026-10-02 |
+| `other/emirs-arena` | 11 | 2,515 | 3 | 0 | 2026-10-02 |
+| `other/grand-exchange` | 7 | 1,847 | 1 | 0 | 2026-10-02 |
+| `other/ironman` | 5 | 352 | 0 | 0 | 2026-10-02 |
+| `other/level-up` | 5 | 639 | 1 | 0 | 2026-10-02 |
+| `other/login` | 1 | 193 | 0 | 0 | 2026-10-02 |
+| `other/mapclock` | 1 | 49 | 0 | 0 | 2026-10-02 |
+| `other/npc-aggression` | 2 | 142 | 1 | 0 | 2026-10-02 |
+| `other/npc-combat-anims` | 2 | 155 | 1 | 0 | 2026-10-02 |
+| `other/pets` | 101 | 7,872 | 1 | 0 | 2026-10-02 |
+| `other/pets/pack` | 7 | 1,292 | 0 | 0 | 2026-10-02 |
+| `other/playtime` | 1 | 72 | 0 | 0 | 2026-10-02 |
+| `other/poison` | 1 | 183 | 0 | 0 | 2026-10-02 |
+| `other/pouches` | 8 | 1,225 | 2 | 0 | 2026-10-02 |
+| `other/sandstorm` | 2 | 364 | 0 | 0 | 2026-10-02 |
+| `other/spawn` | 1 | 333 | 0 | 0 | 2026-10-02 |
+| `other/spawn/pack` | 1 | 6 | 0 | 0 | 2026-10-02 |
+| `other/special-attacks` | 21 | 3,332 | 0 | 0 | 2026-10-02 |
+| `other/special-weapons` | 18 | 3,151 | 0 | 1 | 2026-10-02 |
+| `other/transform-rings` | 1 | 143 | 0 | 0 | 2026-10-02 |
+| `other/windmill` | 2 | 133 | 0 | 0 | 2026-10-02 |
+| `other/windmill/pack` | 1 | 6 | 0 | 0 | 2026-10-02 |
+| `other/xp-rates` | 3 | 553 | 1 | 0 | 2026-10-02 |
+| `quest` | 617 | 139,226 | 21 | 0 | 2026-10-02 |
+| `quest/pack` | 1 | 6 | 0 | 0 | 2026-10-02 |
+| `skills/agility` | 10 | 2,208 | 3 | 0 | 2026-10-02 |
+| `skills/agility/pack` | 4 | 5,718 | 2 | 0 | 2026-10-02 |
+| `skills/construction` | 23 | 2,924 | 9 | 0 | 2026-10-03 |
+| `skills/construction/pack` | 3 | 3,246 | 1 | 0 | 2026-10-02 |
+| `skills/cooking` | 12 | 1,350 | 0 | 0 | 2026-10-02 |
+| `skills/crafting` | 30 | 3,688 | 0 | 0 | 2026-10-02 |
+| `skills/crafting/pack` | 2 | 2,725 | 0 | 0 | 2026-10-02 |
+| `skills/farming` | 20 | 2,987 | 3 | 0 | 2026-10-02 |
+| `skills/farming/pack` | 3 | 391 | 0 | 0 | 2026-10-02 |
+| `skills/firemaking` | 6 | 589 | 0 | 0 | 2026-10-02 |
+| `skills/fishing` | 13 | 1,402 | 0 | 0 | 2026-10-02 |
+| `skills/fishing/pack` | 3 | 206 | 0 | 0 | 2026-10-02 |
+| `skills/fletching` | 6 | 2,417 | 1 | 0 | 2026-10-02 |
+| `skills/fletching/pack` | 1 | 6 | 0 | 0 | 2026-10-02 |
+| `skills/herblore` | 12 | 1,289 | 0 | 0 | 2026-10-02 |
+| `skills/hunter` | 28 | 6,751 | 0 | 0 | 2026-10-02 |
+| `skills/magic/alchemy` | 1 | 253 | 0 | 0 | 2026-10-02 |
+| `skills/magic/spell-attacks` | 11 | 2,018 | 3 | 0 | 2026-10-02 |
+| `skills/magic/spell-teleports` | 1 | 736 | 0 | 0 | 2026-10-04 |
+| `skills/magic/spell-teleports/pack` | 1 | 6 | 0 | 0 | 2026-10-04 |
+| `skills/magic/spellbook-altars` | 1 | 37 | 0 | 0 | 2026-10-02 |
+| `skills/magic/telegrab` | 1 | 105 | 0 | 0 | 2026-10-02 |
+| `skills/mining` | 11 | 1,059 | 0 | 0 | 2026-10-02 |
+| `skills/prayer` | 30 | 2,633 | 0 | 0 | 2026-10-02 |
+| `skills/runecrafting` | 24 | 2,645 | 0 | 0 | 2026-10-02 |
+| `skills/slayer` | 45 | 5,519 | 0 | 0 | 2026-10-02 |
+| `skills/smithing` | 15 | 2,111 | 0 | 0 | 2026-10-02 |
+| `skills/thieving` | 11 | 2,477 | 1 | 0 | 2026-10-02 |
+| `skills/thieving/pack` | 2 | 910 | 1 | 0 | 2026-10-02 |
+| `skills/utils` | 2 | 316 | 0 | 0 | 2026-10-02 |
+| `skills/woodcutting` | 5 | 409 | 2 | 2 | 2026-10-02 |
+| `travel/ardougne-cloak` | 1 | 101 | 0 | 0 | 2026-10-02 |
+| `travel/canoe` | 6 | 1,122 | 1 | 2 | 2026-10-02 |
+| `travel/fairy-rings` | 3 | 440 | 1 | 0 | 2026-10-02 |
+| `travel/jewellery` | 2 | 504 | 1 | 0 | 2026-10-02 |
+| `travel/magic-carpet` | 3 | 688 | 0 | 0 | 2026-10-02 |
+| `travel/radas-blessing` | 1 | 160 | 0 | 0 | 2026-10-02 |
 
 ---
 
