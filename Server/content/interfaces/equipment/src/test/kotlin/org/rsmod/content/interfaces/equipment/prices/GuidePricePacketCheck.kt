@@ -4,6 +4,7 @@ import io.netty.buffer.Unpooled
 import net.rsprot.crypto.cipher.StreamCipher
 import net.rsprot.protocol.game.outgoing.codec.misc.player.RunClientScriptEncoder
 import net.rsprot.protocol.game.outgoing.misc.player.RunClientScript
+import org.rsmod.content.other.grandexchange.GeItemData
 import org.rsmod.game.client.Client
 import org.rsmod.game.client.NoopClient
 import org.rsmod.game.entity.Player
@@ -18,10 +19,15 @@ fun main() {
         it.name.startsWith("encode-") && it.parameterTypes.last() == RunClientScript::class.java
     }
     val cipher = object : StreamCipher { override fun nextInt(): Int = 0 }
+    val guidePrices = GeItemData.load()
+    val coalPrice = guidePrices.entry(453)?.guidePrice ?: error("Missing coal guide price")
+    check(coalPrice > 0)
+    check(guidePrices.guidePrice(453) == coalPrice)
     val cases = listOf(
         List(28) { 0 },
         List(28) { slot -> if (slot % 3 == 0) 0 else if (slot % 3 == 1) slot else Int.MAX_VALUE },
         List(28) { Int.MAX_VALUE },
+        List(28) { guidePrices.guidePrice(453) },
     )
     for (prices in cases) {
         messages.clear()
@@ -51,6 +57,6 @@ fun main() {
             .exceptionOrNull() is IllegalStateException)
         check(messages.isEmpty())
     }
-    println("PASS: price checker encodes 28 long arguments for empty, mixed and maximum prices; " +
+    println("PASS: price checker encodes 28 long arguments for empty, mixed, maximum and GE guide prices; " +
         "invalid slot counts send no packet.")
 }
