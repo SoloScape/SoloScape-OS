@@ -17,10 +17,15 @@ import kotlin.math.min
  * Matching follows the wiki's description: a new buy offer trades against the cheapest existing
  * sell offers at *their* price, refunding the buyer the difference; a new sell offer trades
  * against the highest existing buy offers at *their* price, so the seller earns more than asked.
- * Older offers win ties. The seller pays the convenience fee on every item sold.
+ * Older offers win ties. The solo market fills the remainder at the guide price when the
+ * offer's price allows it. The seller pays the convenience fee on every item sold.
  */
-class GeExchange(private val items: GeItemData, private val clock: () -> Long) {
-    @Inject constructor(items: GeItemData) : this(items, System::currentTimeMillis)
+class GeExchange(
+    private val items: GeItemData,
+    private val fillAtGuidePrice: Boolean = true,
+    private val clock: () -> Long,
+) {
+    @Inject constructor(items: GeItemData) : this(items, clock = System::currentTimeMillis)
 
     interface Listener {
         /** A trade moved [offer] forward; [trade] is what the offer's owner bought or sold. */
@@ -142,6 +147,14 @@ class GeExchange(private val items: GeItemData, private val clock: () -> Long) {
         return taken
     }
 
+    fun processOffers() {
+        for (offer in offers.values.toList()) {
+            if (offer.isActive) {
+                match(offer)
+            }
+        }
+    }
+
     private fun match(offer: GeOffer) {
         val active = activeByItem[offer.item] ?: return
         val candidates =
@@ -165,6 +178,7 @@ class GeExchange(private val items: GeItemData, private val clock: () -> Long) {
             val sell = if (offer.type == GeOfferType.Sell) offer else other
             var quantity = min(buy.remaining, sell.remaining)
             quantity = min(quantity, remainingBuyLimit(buy.owner, buy.item))
+            quantity = min(quantity, (Int.MAX_VALUE - sell.gold) / other.price)
             if (quantity <= 0) {
                 if (buy === offer) {
                     // The new buyer is at their limit; nothing else on the book can help.
@@ -174,37 +188,66 @@ class GeExchange(private val items: GeItemData, private val clock: () -> Long) {
             }
             trade(buy, sell, quantity, other.price)
         }
+        fillFromGuidePrice(offer)
+    }
+
+    private fun fillFromGuidePrice(offer: GeOffer) {
+        if (!fillAtGuidePrice || !offer.isActive) {
+            return
+        }
+        val price = items.guidePrice(offer.item)
+        val canFill =
+            if (offer.type == GeOfferType.Buy) offer.price >= price else offer.price <= price
+        if (!canFill) {
+            return
+        }
+        var quantity = min(offer.remaining, (Int.MAX_VALUE - offer.gold) / price)
+        if (offer.type == GeOfferType.Buy) {
+            quantity = min(quantity, remainingBuyLimit(offer.owner, offer.item))
+        }
+        if (quantity <= 0) {
+            return
+        }
+        val trade = applyTrade(offer, quantity, price, clock())
+        notifyTrade(offer, trade)
     }
 
     private fun trade(buy: GeOffer, sell: GeOffer, quantity: Int, price: Int) {
         val now = clock()
+        val bought = applyTrade(buy, quantity, price, now)
+        val sold = applyTrade(sell, quantity, price, now)
+        notifyTrade(buy, bought)
+        notifyTrade(sell, sold)
+    }
+
+    private fun applyTrade(offer: GeOffer, quantity: Int, price: Int, now: Long): GeTrade {
         val gross = quantity * price
-        val tax = items.taxPerItem(buy.item, price) * quantity
-
-        buy.completed += quantity
-        buy.gold += gross
-        buy.collectItems += quantity
-        buy.collectCoins += quantity * (buy.price - price)
-
-        sell.completed += quantity
-        sell.gold += gross
-        sell.taxPaid += tax
-        sell.collectCoins += gross - tax
-
-        recordPurchase(buy.owner, buy.item, quantity, now)
-        val bought = GeTrade(now, GeOfferType.Buy, buy.item, quantity, gross, 0)
-        val sold = GeTrade(now, GeOfferType.Sell, sell.item, quantity, gross, tax)
-        addHistory(buy.owner, bought)
-        addHistory(sell.owner, sold)
-        dirty = true
-
-        listener?.onOfferTraded(buy, bought)
-        listener?.onOfferTraded(sell, sold)
-        if (buy.remaining <= 0) {
-            finish(buy, aborted = false)
+        val tax =
+            if (offer.type == GeOfferType.Sell) items.taxPerItem(offer.item, price) * quantity
+            else 0
+        offer.completed += quantity
+        offer.gold += gross
+        when (offer.type) {
+            GeOfferType.Buy -> {
+                offer.collectItems += quantity
+                offer.collectCoins += quantity * (offer.price - price)
+                recordPurchase(offer.owner, offer.item, quantity, now)
+            }
+            GeOfferType.Sell -> {
+                offer.taxPaid += tax
+                offer.collectCoins += gross - tax
+            }
         }
-        if (sell.remaining <= 0) {
-            finish(sell, aborted = false)
+        val trade = GeTrade(now, offer.type, offer.item, quantity, gross, tax)
+        addHistory(offer.owner, trade)
+        dirty = true
+        return trade
+    }
+
+    private fun notifyTrade(offer: GeOffer, trade: GeTrade) {
+        listener?.onOfferTraded(offer, trade)
+        if (offer.remaining <= 0) {
+            finish(offer, aborted = false)
         }
     }
 

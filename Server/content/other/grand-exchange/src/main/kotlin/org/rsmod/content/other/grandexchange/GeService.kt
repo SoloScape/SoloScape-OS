@@ -71,6 +71,7 @@ constructor(
     }
 
     fun tick() {
+        exchange.processOffers()
         if (!exchange.dirty) {
             return
         }
@@ -132,6 +133,9 @@ constructor(
 
     fun refresh(player: Player, slot: Int) {
         val offer = exchange.offer(player.accountId, slot)
+        if (offer == null && player.vars[GeConfig.VARBIT_SELECTED_SLOT] == slot + 1) {
+            back(player)
+        }
         val update =
             if (offer == null) {
                 UpdateStockMarketSlot.ResetStockMarketSlot
