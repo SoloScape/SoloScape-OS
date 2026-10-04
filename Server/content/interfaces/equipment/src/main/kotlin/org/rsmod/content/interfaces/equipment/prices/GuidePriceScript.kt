@@ -219,6 +219,9 @@ constructor(
 
     private fun Player.closeGuide() {
         val tempInv = invMap["inv.tradeoffer"] ?: return
+        if (tempInv.isEmpty()) {
+            return
+        }
         val result = invMoveAll(from = tempInv, into = inv)
         check(result.success) { "Could not move `tempInv` into `inv`: $tempInv" }
     }
@@ -233,5 +236,5 @@ constructor(
 
 internal fun Player.updateGuidePriceSlots(priceList: List<Int>) {
     check(priceList.size == 28) { "ClientScript takes 28 exact prices." }
-    runClientScript(785, priceList.map { it.toLong() })
+    runClientScript(785, priceList)
 }
