@@ -9,7 +9,6 @@ import dev.openrune.types.aconverted.interf.IfButtonOp
 import jakarta.inject.Inject
 import org.rsmod.api.invtx.invCompress
 import org.rsmod.api.invtx.invMoveAll
-import org.rsmod.api.market.MarketPrices
 import org.rsmod.api.player.output.ClientScripts.ifSetTextAlign
 import org.rsmod.api.player.output.objExamine
 import org.rsmod.api.player.output.runClientScript
@@ -21,10 +20,12 @@ import org.rsmod.api.script.onIfClose
 import org.rsmod.api.script.onIfModalButton
 import org.rsmod.api.script.onIfOverlayButton
 import org.rsmod.api.utils.format.formatAmount
+import org.rsmod.content.other.grandexchange.GeItemData
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.type.getInvObj
+import org.rsmod.game.type.uncert
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -33,10 +34,10 @@ class GuidePriceScript
 constructor(
     private val eventBus: EventBus,
     private val protectedAccess: ProtectedAccessLauncher,
-    private val marketPrices: MarketPrices,
+    private val guidePrices: GeItemData,
 ) : PluginScript() {
     private val ItemServerType.price: Int
-        get() = marketPrices[this] ?: 1
+        get() = guidePrices.guidePrice(uncert(this).id)
 
     override fun ScriptContext.startup() {
         onIfOverlayButton("component.wornitems:pricechecker") { player.selectGuidePrices() }
