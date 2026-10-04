@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "Server/content/interfaces/equipment/**"
+      - "Server/content/other/grand-exchange/**"
       - ".github/workflows/price-checker.yml"
 
 permissions:
@@ -34,12 +35,13 @@ jobs:
         run: |
           $testDir = Join-Path $env:RUNNER_TEMP "price-checker-tests"
           New-Item -ItemType Directory -Force $testDir | Out-Null
-          $libraries = @(Get-ChildItem "Server/server/app/build/install/app/lib" -Filter "*.jar" | Where-Object Name -NotLike "equipment-*" | ForEach-Object FullName)
+          $libraries = @(Get-ChildItem "Server/server/app/build/install/app/lib" -Filter "*.jar" | Where-Object { $_.Name -notlike "equipment-*" -and $_.Name -notlike "grand-exchange-*" } | ForEach-Object FullName)
           $classpath = $libraries -join [IO.Path]::PathSeparator
           $testJar = Join-Path $testDir "tests.jar"
           $sourceDirs = @(
               "Server/content/interfaces/equipment/src/main/kotlin",
-              "Server/content/interfaces/equipment/src/test/kotlin"
+              "Server/content/interfaces/equipment/src/test/kotlin",
+              "Server/content/other/grand-exchange/src/main/kotlin"
           )
           $sources = @(Get-ChildItem $sourceDirs -Recurse -Filter "*.kt" | ForEach-Object FullName)
           $compilerLib = (Resolve-Path .build-tools/kotlinc/lib).Path
@@ -48,7 +50,7 @@ jobs:
           $compilerArgs | ForEach-Object { '"' + $_.Replace('\', '/').Replace('"', '\"') + '"' } | Set-Content -Encoding utf8NoBOM $argFile
           & "$env:JAVA_HOME/bin/java.exe" -Xmx2g -cp "$compilerLib/*" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler "@$argFile"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $runtimeClasspath = ($testJar, $classpath) -join [IO.Path]::PathSeparator
+          $runtimeClasspath = ($testJar, $classpath, (Resolve-Path "Server/content/other/grand-exchange/src/main/resources").Path) -join [IO.Path]::PathSeparator
           $runArgs = @("-cp", $runtimeClasspath, "org.rsmod.content.interfaces.equipment.prices.GuidePricePacketCheckKt")
           $runArgFile = Join-Path $testDir "run.args"
           $runArgs | ForEach-Object { '"' + $_.Replace('\', '/').Replace('"', '\"') + '"' } | Set-Content -Encoding utf8NoBOM $runArgFile
