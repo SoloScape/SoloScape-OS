@@ -180,8 +180,7 @@ class GeExchange(
             quantity = min(quantity, remainingBuyLimit(buy.owner, buy.item))
             quantity = min(quantity, (Int.MAX_VALUE - sell.gold) / other.price)
             if (quantity <= 0) {
-                if (buy === offer) {
-                    // The new buyer is at their limit; nothing else on the book can help.
+                if (buy === offer && remainingBuyLimit(buy.owner, buy.item) <= 0) {
                     break
                 }
                 continue

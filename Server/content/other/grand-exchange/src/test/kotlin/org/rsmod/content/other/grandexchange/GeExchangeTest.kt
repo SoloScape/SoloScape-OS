@@ -220,7 +220,6 @@ class GeExchangeTest {
         assertEquals(13, sell.clientStatus())
     }
 
-
     @Test
     fun `solo buy completes at guide price and refunds unused escrow`() {
         val solo = GeExchange(items) { now }
@@ -426,6 +425,21 @@ class GeExchangeTest {
         } finally {
             Files.deleteIfExists(path)
         }
+    }
+
+    @Test
+    fun `a seller at the payout ceiling does not block other matching sellers`() {
+        exchange.place(BUYER, "buyer", 0, GeOfferType.Buy, COAL, Int.MAX_VALUE, 1)
+        val capped = exchange.place(SELLER, "seller", 0, GeOfferType.Sell, COAL, 1, 2)
+        val next = exchange.place(SELLER, "seller", 1, GeOfferType.Sell, COAL, 1, 1)
+        val buy = exchange.place(BUYER, "buyer", 1, GeOfferType.Buy, COAL, 1, 1)
+
+        assertEquals(Int.MAX_VALUE, capped.gold)
+        assertEquals(1, capped.remaining)
+        assertFalse(capped.finished)
+        assertTrue(next.finished)
+        assertTrue(buy.finished)
+        assertEquals(1, buy.collectItems)
     }
 
     private companion object {
