@@ -14,8 +14,8 @@ application {
     applicationDefaultJvmArgs =
         listOf(
             "-XX:AutoBoxCacheMax=65535",
-            "-Xms512m",
-            "-Xmx4g",
+            "-Xms256m",
+            "-Xmx2g",
             "-XX:MinHeapFreeRatio=5",
             "-XX:MaxHeapFreeRatio=20",
             "-XX:+G1PeriodicGCInvokesConcurrent",

@@ -6,5 +6,6 @@ inventoryModel = "models.poh_tablet_shootingstar"
 tradeable = false
 cost = 50
 examine = "A sky full of stars... and one might change your journey."
+interfaceOptions = ["Break"]
 [item.params]
 "param.shop_sale_restricted"=1

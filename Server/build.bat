@@ -24,7 +24,7 @@ set "BUILD_EXIT_CODE=%ERRORLEVEL%"
 if not "%BUILD_EXIT_CODE%"=="0" goto finish
 
 :build
-call gradlew.bat build %*
+call gradlew.bat build :server:app:installDist %*
 set "BUILD_EXIT_CODE=%ERRORLEVEL%"
 
 :finish

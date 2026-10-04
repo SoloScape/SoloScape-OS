@@ -40,6 +40,11 @@ For published versions, the installer is also available as described above.
 From a source checkout, run `net.rsprox.gui.ProxyToolGuiKt` in the `gui/proxy-tool` module,
 or launch it through Gradle with `./gradlew proxy` (`.\gradlew.bat proxy` on Windows).
 
+On Windows, `build.bat` builds and installs a standalone copy, and `run.bat` launches
+that copy without keeping Gradle or a Kotlin compiler running during play. The first
+launch builds it automatically if it is missing. Run `build.bat` again after changing
+source code. Optional JVM arguments can be supplied through `SOLOSCAPE_CLIENT_JAVA_OPTS`.
+
 > [!NOTE]
 > The OSRS Windows-native client can run on Windows and Linux using Wine or Proton.
 > Native macOS patching is not currently supported. RS3 has been verified on Windows;

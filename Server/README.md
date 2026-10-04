@@ -83,7 +83,22 @@ Setup screenshots are available in [docs/images/](docs/images/).
 Generated `build/`, `.gradle/` and `.kotlin/` directories are disposable and recreated by
 Gradle. Keep `.data/`, installed plugins and local configuration when cleaning a checkout.
 
+## Windows launchers
+
+On Windows, `build.bat` also prepares the standalone server used by `run.bat`.
+The first launch prepares it automatically if it is missing; subsequent launches
+run directly without Gradle or a Kotlin compiler. Run `build.bat` again after source
+changes, and rebuild the cache separately when changing pack resources or gamevals.
+
+The server starts with a 256 MB heap and allows it to grow to 2 GB. Total process
+memory includes additional native and JVM allocations. To increase the heap for
+a larger world, set `SOLOSCAPE_SERVER_HEAP` (for example, `set SOLOSCAPE_SERVER_HEAP=4g`)
+before running `run.bat`. Additional JVM arguments can be supplied through
+`SOLOSCAPE_SERVER_JAVA_OPTS`. Source builds use a temporary Gradle process with
+the Kotlin compiler inside it, a 2 GB heap limit, and at most two workers.
+
 ## 🎮 Client Setup
+
 > [!TIP]
 > Use [RSProx](https://github.com/blurite/rsprox/releases) to connect; it is actively maintained by trusted developers and supports the required OSRS protocols.
 

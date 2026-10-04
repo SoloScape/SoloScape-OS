@@ -1,0 +1,34 @@
+[[item]]
+id = "obj.poh_tablet_varrockteleport"
+inherit = "obj.poh_tablet_varrockteleport"
+interfaceOptions = ["Break"]
+
+[[item]]
+id = "obj.poh_tablet_lumbridgeteleport"
+inherit = "obj.poh_tablet_lumbridgeteleport"
+interfaceOptions = ["Break"]
+
+[[item]]
+id = "obj.poh_tablet_faladorteleport"
+inherit = "obj.poh_tablet_faladorteleport"
+interfaceOptions = ["Break"]
+
+[[item]]
+id = "obj.poh_tablet_camelotteleport"
+inherit = "obj.poh_tablet_camelotteleport"
+interfaceOptions = ["Break"]
+
+[[item]]
+id = "obj.poh_tablet_ardougneteleport"
+inherit = "obj.poh_tablet_ardougneteleport"
+interfaceOptions = ["Break"]
+
+[[item]]
+id = "obj.poh_tablet_watchtowerteleport"
+inherit = "obj.poh_tablet_watchtowerteleport"
+interfaceOptions = ["Break"]
+
+[[item]]
+id = "obj.poh_tablet_teleporttohouse"
+inherit = "obj.poh_tablet_teleporttohouse"
+interfaceOptions = ["Break"]

@@ -24,7 +24,9 @@ application {
 
 dependencies {
     implementation(project(":central-common"))
-    implementation("dev.or2:central-worldlink:2.0.1")
+    implementation("dev.or2:central-worldlink:2.0.1") {
+        exclude(group = "dev.or2", module = "central-common")
+    }
 
     implementation(platform("io.ktor:ktor-bom:3.1.1"))
     implementation("io.ktor:ktor-server-netty")

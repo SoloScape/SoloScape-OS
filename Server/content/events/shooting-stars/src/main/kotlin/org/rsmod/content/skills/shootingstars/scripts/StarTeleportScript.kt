@@ -47,8 +47,11 @@ constructor(
         }
 
         anim(BREAK_ANIM)
-        spotanim(BREAK_SPOTANIM, height = 92)
-        delay(TELEPORT_DELAY)
+        soundSynth("synth.poh_teleport_tablet")
+        delay(1)
+        spotanim(BREAK_SPOTANIM)
+        anim(TELEPORT_ANIM)
+        delay(1)
         telejump(dest)
     }
 
@@ -76,7 +79,7 @@ constructor(
     private companion object {
         private const val ITEM = "obj.poh_tablet_shootingstar"
         private const val BREAK_ANIM = "seq.poh_smash_magic_tablet"
+        private const val TELEPORT_ANIM = "seq.poh_absorb_tablet_teleport"
         private const val BREAK_SPOTANIM = "spotanim.poh_absorb_tablet_magic"
-        private const val TELEPORT_DELAY = 3
     }
 }

@@ -15,6 +15,11 @@ val s3Bucket = "cdn.rsprox.net"
 plugins {
     alias(libs.plugins.kotlin.jvm)
     `maven-publish`
+    application
+}
+
+application {
+    mainClass.set(guiMainClass)
 }
 
 allprojects {
