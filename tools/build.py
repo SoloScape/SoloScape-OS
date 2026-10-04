@@ -41,12 +41,49 @@ class Progress:
             print(flush=True)
 
 
-def file_hash(file):
+def file_hash(file, cache=None):
+    stat = file.stat()
+    stamp = [stat.st_size, stat.st_mtime_ns, getattr(stat, "st_ctime_ns", 0)]
+    cache_key = str(file.resolve())
+    if cache is not None:
+        cached = cache.get(cache_key)
+        if cached and cached.get("stamp") == stamp:
+            digest = cached.get("sha256")
+            if isinstance(digest, str):
+                return digest
+
     digest = hashlib.sha256()
     with file.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
-    return digest.hexdigest()
+    value = digest.hexdigest()
+    if cache is not None:
+        cache[cache_key] = {"stamp": stamp, "sha256": value}
+    return value
+
+
+def remember_hash(file, digest, cache):
+    stat = file.stat()
+    cache[str(file.resolve())] = {
+        "stamp": [stat.st_size, stat.st_mtime_ns, getattr(stat, "st_ctime_ns", 0)],
+        "sha256": digest,
+    }
+
+
+def load_hash_cache(file):
+    try:
+        value = json.loads(file.read_text(encoding="utf-8"))
+        if value.get("version") == 1 and isinstance(value.get("files"), dict):
+            return value["files"]
+    except (OSError, ValueError, AttributeError):
+        pass
+    return {}
+
+
+def save_hash_cache(file, cache):
+    temporary = file.with_suffix(".tmp")
+    temporary.write_text(json.dumps({"version": 1, "files": cache}), encoding="utf-8")
+    temporary.replace(file)
 
 
 def fingerprint(value):
@@ -182,29 +219,83 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
                   modules, sources, libraries, progress):
     runtime = output / "lib"
     manifest_file = output / "build-state.json"
+    hash_cache_file = output / "hash-cache.json"
+    hash_cache = load_hash_cache(hash_cache_file)
+
+    def flush_hash_cache():
+        try:
+            save_hash_cache(hash_cache_file, hash_cache)
+        except OSError:
+            # The hash cache is only a speed optimization; never fail a build because of it.
+            pass
+
     try:
         state = json.loads(manifest_file.read_text(encoding="utf-8"))
-        if not isinstance(state, dict) or state.get("version") != 1:
+        if not isinstance(state, dict) or state.get("version") != 2:
             state = {}
     except (OSError, ValueError):
         state = {}
     artifacts = state.get("artifacts", {})
 
+    def hash_file(file):
+        return file_hash(file, hash_cache)
+
     def valid_artifact(name):
         file = runtime / name
-        return file.is_file() and file_hash(file) == artifacts.get(name)
+        return file.is_file() and hash_file(file) == artifacts.get(name)
 
     progress.update(0.05, "Checking source and dependency changes")
-    library_hashes = {file.name: file_hash(file) for file in libraries}
-    compiler_hashes = {file.name: file_hash(file) for file in sorted(compiler_lib.glob("*.jar"))}
-    code_key = fingerprint({
-        "compiler": compiler_hashes, "kotlin": KOTLIN_VERSION,
+    library_hashes = {file.name: hash_file(file) for file in libraries}
+    compiler_hashes = {file.name: hash_file(file) for file in sorted(compiler_lib.glob("*.jar"))}
+    source_hashes = {file: hash_file(file) for file in sources}
+    compiler_flags = [project_name, "jvm21", "nested-type-aliases", "contracts",
+                      "backend-threads=0", "fast-jar-file-system",
+                      "InternalApi+serialization" if project_name == "Server" else ""]
+    common_inputs = {
+        "compiler": compiler_hashes,
+        "kotlin": KOTLIN_VERSION,
         "jdk": (home / "release").read_text(encoding="utf-8"),
-        "flags": [project_name, "jvm21", "nested-type-aliases", "contracts",
-                  "InternalApi+serialization" if project_name == "Server" else ""],
-        "sources": {file.relative_to(project).as_posix(): file_hash(file) for file in sources},
+        "flags": compiler_flags,
         "libraries": library_hashes,
-    })
+    }
+
+    # Most client edits are in GUI/proxy/transcriber code, while the historical protocol
+    # revisions are large and comparatively stable. Build that closed dependency layer once
+    # and compile the small app layer against it. -Xfriend-paths preserves Kotlin `internal`
+    # access that previously worked because the whole client was one compiler invocation.
+    core_sources = []
+    if project_name == "Client":
+        core_roots = {"cache", "shared", "protocol"}
+        core_modules = [module for module in modules
+                        if module.relative_to(project).parts[0] in core_roots]
+        core_sources = sorted(file for module in core_modules
+                              for file in (module / "src/main").rglob("*.kt"))
+    core_source_set = set(core_sources)
+    app_sources = [file for file in sources if file not in core_source_set]
+    core_name = "soloscape-client-core.jar" if core_sources else None
+    core_code_key = None
+    if core_sources:
+        core_code_key = fingerprint({
+            "common": common_inputs,
+            "module": "ClientCore",
+            "sources": {file.relative_to(project).as_posix(): source_hashes[file]
+                        for file in core_sources},
+        })
+        code_key = fingerprint({
+            "common": common_inputs,
+            "module": project_name,
+            "core": core_code_key,
+            "sources": {file.relative_to(project).as_posix(): source_hashes[file]
+                        for file in app_sources},
+        })
+    else:
+        code_key = fingerprint({
+            "common": common_inputs,
+            "module": project_name,
+            "sources": {file.relative_to(project).as_posix(): source_hashes[file]
+                        for file in app_sources},
+        })
+
     resource_inputs = {}
     for module in modules:
         resources = module / "src/main/resources"
@@ -213,19 +304,23 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
             name = module.relative_to(project).as_posix().replace("/", "-")
             directories = sorted(path for path in resources.rglob("*") if path.is_dir())
             key = fingerprint({"packaging": 1, "client_version": "1.0.5",
-                               "files": {file.relative_to(resources).as_posix(): file_hash(file)
+                               "files": {file.relative_to(resources).as_posix(): hash_file(file)
                                          for file in files},
                                "directories": [path.relative_to(resources).as_posix() for path in directories]})
             resource_inputs[f"resources-{name}.jar"] = (key, resources, files, directories)
     resource_keys = {name: value[0] for name, value in resource_inputs.items()}
     app_name = f"soloscape-{project_name.lower()}.jar"
     expected = {app_name, *library_hashes, *resource_keys}
+    if core_name:
+        expected.add(core_name)
     if (not rebuild and state.get("code_key") == code_key
+            and state.get("core_code_key") == core_code_key
             and state.get("resource_keys") == resource_keys
             and set(artifacts) == expected
             and runtime.is_dir()
             and {file.name for file in runtime.iterdir()} == expected
             and all(valid_artifact(name) for name in expected)):
+        flush_hash_cache()
         progress.finish("Up to date - compilation skipped")
         return
 
@@ -233,24 +328,53 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
     if stage.exists():
         shutil.rmtree(stage)
     stage.mkdir()
-    app_jar = stage / app_name
-    args = ["-no-stdlib", "-no-reflect", "-jvm-target", "21", "-Xnested-type-aliases",
-            "-opt-in=kotlin.contracts.ExperimentalContracts", "-module-name", project_name,
-            "-classpath", os.pathsep.join(str(file) for file in libraries), "-d", str(app_jar)]
-    if project_name == "Server":
-        args += ["-opt-in=org.rsmod.annotations.InternalApi",
-                 f"-Xplugin={compiler_lib / 'kotlin-serialization-compiler-plugin.jar'}"]
-    args += [str(file) for file in sources]
-    argfile = output / "compiler.args"
-    argfile.write_text("\n".join('"' + arg.replace("\\", "/").replace('"', '\\"') + '"'
-                                 for arg in args), encoding="utf-8")
-    if not rebuild and state.get("code_key") == code_key and valid_artifact(app_name):
-        reuse_file(runtime / app_name, app_jar)
-        progress.update(0.75, "Reusing compiled code")
-    else:
+
+    def compile_sources(source_files, destination, module_name, argfile_name,
+                        extra_classpath=(), friend_path=None, label=None):
+        classpath = [*libraries, *extra_classpath]
+        args = ["-no-stdlib", "-no-reflect", "-jvm-target", "21",
+                "-Xbackend-threads=0", "-Xuse-fast-jar-file-system",
+                "-Xnested-type-aliases", "-opt-in=kotlin.contracts.ExperimentalContracts",
+                "-module-name", module_name,
+                "-classpath", os.pathsep.join(str(file) for file in classpath),
+                "-d", str(destination)]
+        if friend_path is not None:
+            args += [f"-Xfriend-paths={friend_path}"]
+        if project_name == "Server":
+            args += ["-opt-in=org.rsmod.annotations.InternalApi",
+                     f"-Xplugin={compiler_lib / 'kotlin-serialization-compiler-plugin.jar'}"]
+        args += [str(file) for file in source_files]
+        argfile = output / argfile_name
+        argfile.write_text("\n".join('"' + arg.replace("\\", "/").replace('"', '\\"') + '"'
+                                     for arg in args), encoding="utf-8")
         run_compiler([str(home / "bin/java.exe"), "-Xmx4g", "-cp", str(compiler_lib / "*"),
                       "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler", "@" + str(argfile)],
-                     output / "compile.log", progress, f"Compiling {len(sources)} files")
+                     output / ("compile-core.log" if core_name and destination.name == core_name
+                               else "compile.log"),
+                     progress, label or f"Compiling {len(source_files)} files")
+
+    core_jar = None
+    if core_name:
+        core_jar = stage / core_name
+        if (not rebuild and state.get("core_code_key") == core_code_key
+                and valid_artifact(core_name)):
+            reuse_file(runtime / core_name, core_jar)
+            progress.update(0.12, f"Reusing client core ({len(core_sources)} files)")
+        else:
+            compile_sources(core_sources, core_jar, "ClientCore", "compiler-core.args",
+                            label=f"Compiling client core ({len(core_sources)} files)")
+
+    app_jar = stage / app_name
+    if not rebuild and state.get("code_key") == code_key and valid_artifact(app_name):
+        reuse_file(runtime / app_name, app_jar)
+        progress.update(0.75, "Reusing compiled app code")
+    else:
+        extra_classpath = (core_jar,) if core_jar is not None else ()
+        compile_sources(app_sources, app_jar, project_name, "compiler.args",
+                        extra_classpath=extra_classpath,
+                        friend_path=core_jar,
+                        label=f"Compiling app layer ({len(app_sources)} files)"
+                              if core_jar is not None else f"Compiling {len(app_sources)} files")
         progress.update(0.75, "Compilation complete")
 
     for index, library in enumerate(libraries):
@@ -276,8 +400,10 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
                     else:
                         bundle.write(file, resource_name)
         progress.update(0.85 + 0.10 * (index + 1) / len(resource_inputs), "Packaging resources")
-    new_state = {"version": 1, "code_key": code_key, "resource_keys": resource_keys,
-                 "artifacts": {file.name: file_hash(file) for file in stage.iterdir()}}
+
+    new_artifacts = {file.name: file_hash(file) for file in stage.iterdir()}
+    new_state = {"version": 2, "code_key": code_key, "core_code_key": core_code_key,
+                 "resource_keys": resource_keys, "artifacts": new_artifacts}
     progress.update(0.95, "Publishing build")
     previous = output / f"previous-{time.time_ns()}"
     if runtime.exists():
@@ -291,6 +417,13 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
         raise
     if previous.exists():
         shutil.rmtree(previous, ignore_errors=True)
+
+    # Seed the metadata cache for freshly published output so the next no-change build
+    # can validate artifacts without rereading every dependency jar from disk.
+    for name, digest in new_artifacts.items():
+        remember_hash(runtime / name, digest, hash_cache)
+    flush_hash_cache()
+
     temporary_manifest = output / "build-state.tmp"
     temporary_manifest.write_text(json.dumps(new_state, indent=2), encoding="utf-8")
     temporary_manifest.replace(manifest_file)
