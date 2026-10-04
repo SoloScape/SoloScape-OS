@@ -70,5 +70,8 @@ jobs:
           & "$env:JAVA_HOME/bin/java.exe" -Xmx2g -cp "$compilerLib/*" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler "@$argFile"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $runtimeClasspath = ($testJar, $classpath) -join [IO.Path]::PathSeparator
-          & "$env:JAVA_HOME/bin/java.exe" -jar $junit execute --class-path $runtimeClasspath --select-class org.rsmod.content.other.grandexchange.GeExchangeTest --fail-if-no-tests --details tree
+          $testRunArgs = @("-jar", $junit, "execute", "--class-path", $runtimeClasspath, "--select-class", "org.rsmod.content.other.grandexchange.GeExchangeTest", "--fail-if-no-tests", "--details", "tree")
+          $testRunArgFile = Join-Path $testDir "test-run.args"
+          $testRunArgs | ForEach-Object { '"' + $_.Replace('\', '/').Replace('"', '\"') + '"' } | Set-Content -Encoding utf8NoBOM $testRunArgFile
+          & "$env:JAVA_HOME/bin/java.exe" "@$testRunArgFile"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
