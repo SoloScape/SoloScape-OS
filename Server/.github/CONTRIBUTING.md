@@ -24,8 +24,8 @@ Thanks for your interest in helping build Alter! Contributions from the communit
 ## 🛠️ Local Development Setup
 
 Use Java 21 and a matching prebuilt server distribution as described in
-[the setup guide](../README.md). This checkout has no source build system;
-compiling changes requires a separately configured build.
+[the setup guide](../README.md). Install Python 3, run `build.bat` to compile runtime
+sources with standalone Kotlin, and use `run.bat` to launch the result.
 
 ---
 

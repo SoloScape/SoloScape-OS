@@ -43,16 +43,19 @@ the bosses that already have drop tables and only need the encounter writing.
 <!-- content-progress:end -->
 ## 🛠️ Getting Started
 
-1. Install Java 21.
+1. Install Java 21 and Python 3.
 2. Restore a prebuilt server distribution under `server/app/build/install/app/`,
    including its `lib/` directory. Keep the matching `.data/` cache, gamevals and RSA
    keys, plus your local `game.yml` configuration.
-3. Run `run.bat` from the server directory on Windows.
-4. A successful boot prints `OpenRune Server Successfully initialized`.
+3. Run `build.bat` to compile the current sources, then `run.bat` to launch the server.
+4. A successful boot prints `Server ready in` with startup timings.
 
-This checkout has no source build system. Source changes and cache resource changes
-require a separately prepared build before they can be used. A fresh clone does not
-include the ignored standalone distribution or all required runtime data.
+The build uses the standalone Kotlin 2.2.10 compiler, downloaded from JetBrains on
+the first build, and external dependency jars from the restored distribution.
+No Maven or Gradle is required. Generated API sources under `api/generated/src/main/`
+must also be present. A fresh clone does not include the ignored distribution,
+generated API sources or all required runtime data. Cache changes still require a
+separate cache rebuild; compiling Kotlin does not rebuild the game cache.
 
 ## Project structure
 
@@ -74,8 +77,11 @@ The prebuilt distribution used by `run.bat` lives inside `server/app/build/`. Ke
 
 ## Windows launchers
 
-On Windows, `run.bat` launches the prebuilt server directly with Java. If the
-distribution is missing, the launcher reports where to restore it and exits.
+On Windows, `build.bat` compiles runtime sources and packages plugin resources into
+`build/direct/lib/`. `run.bat` prefers that build and falls back to the prebuilt
+distribution. Run `build.bat` after source changes. A failed compilation preserves
+the previous successful build. Unit tests and standalone developer tools are not
+included in this runtime build.
 
 The server starts with a 256 MB heap and allows it to grow to 2 GB. Total process
 memory includes additional native and JVM allocations. To increase the heap for

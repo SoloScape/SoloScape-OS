@@ -1,0 +1,6 @@
+/.build-tools/
+/tools/__pycache__/
+
+# Leftover compiler/package outputs from the removed Maven build.
+/Client/**/target/
+/Server/**/target/

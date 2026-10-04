@@ -3,6 +3,17 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
+# The direct compiler build consumes the installed dependency libraries.
+# Keep these inputs available; all other files under the root build folder
+# (including direct/lib, staging, argument files and logs) remain generated.
+!/build/
+/build/*
+!/build/install/
+/build/install/*
+!/build/install/rsprox/
+/build/install/rsprox/*
+!/build/install/rsprox/lib/
+
 ### IntelliJ IDEA ###
 /.idea/*
 !/.idea/fileTemplates/*

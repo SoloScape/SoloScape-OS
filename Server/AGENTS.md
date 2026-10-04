@@ -6,13 +6,17 @@ touching.
 
 ## Build & run
 
-- Java 21 runtime. There is no source build system in this checkout.
-- Windows: `run.bat` launches the prebuilt distribution under
+- Java 21 and Python 3. `build.bat` uses the standalone Kotlin 2.2.10 compiler.
+  Maven and Gradle are not used. Runtime sources and plugin resources are packaged
+  under `build/direct/lib/`; unit tests and standalone tools are excluded.
+- Windows: `run.bat` prefers the direct source build and falls back to
   `server/app/build/install/app/`; entry point: `org.rsmod.server.app.GameServerKt`.
 - Restore a matching prebuilt distribution, `.data/` and `game.yml` when missing.
   The launcher does not compile or download builds.
-- Source tests and cache building require a separately configured build system.
-  Changes to Kotlin, pack resources or gamevals do not update the existing binaries.
+- Builds reuse external libraries from the prebuilt distribution and require
+  generated API sources under `api/generated/src/main/`. The first build downloads
+  the standalone compiler. Run `build.bat` again after Kotlin changes.
+- Source tests and cache rebuilding require separate configuration.
 - Historical developer guides contain commands from the removed build system.
 - Offline progress report: `node tools/progress/content-progress.mjs`; verify with `--check`.
 

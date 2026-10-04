@@ -30,15 +30,19 @@ RSProx whenever a new version is published.
 
 Below is a quick guide demonstrating how to use RSProx.
 
-### Running a prebuilt client
+### Building and running
 
-This checkout has no source build system. Source changes require a separately prepared
-build before they can be used.
+Install Java 21 and Python 3. Run `build.bat` to compile the current Kotlin sources
+with the standalone Kotlin 2.2.10 compiler, then `run.bat` to launch the result.
+The first build downloads the compiler from JetBrains. No Maven or Gradle is required.
 
-On Windows, use Java 21 and run `run.bat`. It launches the standalone distribution
-under `build/install/rsprox/`, with optional JVM arguments supplied through
-`SOLOSCAPE_CLIENT_JAVA_OPTS`. If that distribution is missing, restore a prebuilt copy
-including its `lib/` directory. The launcher does not compile or download a build.
+Builds use the external dependency jars from `build/install/rsprox/lib/`, which must
+be restored from a matching distribution. Output is written to `build/direct/lib/`.
+`run.bat` prefers that source build and falls back to the prebuilt distribution.
+Optional JVM arguments use `SOLOSCAPE_CLIENT_JAVA_OPTS`. Run `build.bat` again after
+source changes. A failed compilation preserves the previous successful build.
+This builds the proxy GUI and runtime modules; the installer launcher and RuneLite
+extension require separate SDKs and are excluded. Unit tests are not run by this build.
 
 > [!NOTE]
 > The OSRS Windows-native client can run on Windows and Linux using Wine or Proton.
