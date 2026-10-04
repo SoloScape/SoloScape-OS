@@ -23,6 +23,7 @@ import org.rsmod.api.player.events.interact.HeldDropEvents
 import org.rsmod.api.player.output.ClientScripts.mesLayerClose
 import org.rsmod.api.player.output.UpdateInventory.resendSlot
 import org.rsmod.api.player.protect.ProtectedAccess
+import org.rsmod.api.player.vars.resyncVar
 import org.rsmod.api.player.ui.IfModalDrag
 import org.rsmod.api.player.worn.WornUnequipOp
 import org.rsmod.api.player.worn.WornUnequipResult
@@ -76,6 +77,8 @@ import org.rsmod.plugin.scripts.ScriptContext
  * likely be the best approach. This should be straightforward as long as strict accuracy to the
  * original system is not a requirement.
  */
+private const val MAX_MAIN_BANK_VIEW_ITEMS = 1200
+
 class BankInvScript
 @Inject
 constructor(
@@ -816,7 +819,13 @@ constructor(
         val tab = BankTab.forIndex(tabIndex) ?: BankTab.Main
         if (tab == BankTab.Main) {
             if (op == IfButtonOp.Op1) {
-                selectedTab = tab
+                if (bank.occupiedSpace() > MAX_MAIN_BANK_VIEW_ITEMS) {
+                    selectedTab = BankTab.Tab1
+                    player.resyncVar("varbit.bank_currenttab")
+                    mes("This bank is too large for the all-tabs view. Use the individual tabs.")
+                } else {
+                    selectedTab = tab
+                }
             } else if (op == IfButtonOp.Op7) {
                 removePlaceholders(tab)
             }

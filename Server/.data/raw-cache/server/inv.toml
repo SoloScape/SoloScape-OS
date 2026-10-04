@@ -20,6 +20,7 @@ runWeight = true
 isServerOnly = true
 id = "inv.bank"
 inherit = "inv.bank"
+size = 32768
 
 scope = "Perm"
 stack = "Always"

@@ -710,32 +710,54 @@ constructor(
     private fun itemAll(cheat: Cheat) = with(cheat) {
         val definitions = ServerCacheManager.getItems().values
         val stackVariants = definitions.flatMap { it.countObj.orEmpty() }.toSet()
-        val items = definitions.filter {
-            it.id >= 0 && it.id !in stackVariants && !it.isCert && !it.isPlaceholder &&
-                !it.isDummyItem && it.name.isNotBlank() && !it.name.equals("null", true)
-        }.sortedBy { it.id }
+        val items =
+            definitions
+                .filter {
+                    it.id >= 0 && it.id !in stackVariants && !it.isCert && !it.isPlaceholder &&
+                        !it.isDummyItem && it.name.isNotBlank() && !it.name.equals("null", true)
+                }
+                .sortedBy { it.id }
         val bank = player.invMap.getOrPut("inv.bank")
-        val existingIds = bank.filterNotNull { true }.map { it.id }.toSet()
-        val missing = items.filter { it.id !in existingIds }
-        val requiredCapacity = bank.lastOccupiedSlot() + missing.size
+        val itemIds = items.mapTo(hashSetOf()) { it.id }
+        val existing = bank.filterNotNull()
+        val existingById = existing.associateBy { it.id }
+        val extras = existing.filter { it.id !in itemIds }
+        val requiredCapacity = items.size + extras.size
         if (requiredCapacity > 32768) {
             player.mes("Too many items to fit in the client's bank slot limit.")
             return@with
         }
+
         bank.ensureCapacity(requiredCapacity)
-        val itemIds = items.map { it.id }.toSet()
         for (slot in bank.indices) {
-            val obj = bank[slot] ?: continue
-            if (obj.id in itemIds) {
-                bank[slot] = obj.copy(count = Int.MAX_VALUE)
-            }
+            bank[slot] = null
         }
-        var slot = bank.lastOccupiedSlot()
-        for (item in missing) {
-            bank[slot++] = InvObj(item, Int.MAX_VALUE)
+
+        var slot = 0
+        for (item in items) {
+            val existingObj = existingById[item.id]
+            bank[slot++] = existingObj?.copy(count = Int.MAX_VALUE) ?: InvObj(item, Int.MAX_VALUE)
         }
+        for (obj in extras) {
+            bank[slot++] = obj
+        }
+
+        VarPlayerIntMapSetter.set(player, "varbit.bank_capacity", requiredCapacity)
+        val baseTabSize = requiredCapacity / ITEM_ALL_TAB_COUNT
+        val tabRemainder = requiredCapacity % ITEM_ALL_TAB_COUNT
+        for (index in 0 until ITEM_ALL_TAB_COUNT) {
+            val tabSize = baseTabSize + if (index < tabRemainder) 1 else 0
+            VarPlayerIntMapSetter.set(player, "varbit.bank_tab_${index + 1}", tabSize)
+        }
+        VarPlayerIntMapSetter.set(player, "varbit.bank_tab_main", 0)
+        VarPlayerIntMapSetter.set(player, "varbit.bank_currenttab", 1)
+        player.resyncVar("varbit.bank_currenttab")
+
         PlayerPersistenceHints.notify(player)
-        player.mes("Your bank now has ${items.size} items at max stack (2,147,483,647 each).")
+        player.mes(
+            "Your bank now has ${items.size} items at max stack (2,147,483,647 each), " +
+                "split across $ITEM_ALL_TAB_COUNT tabs."
+        )
         bank(cheat)
     }
 
@@ -1178,6 +1200,8 @@ constructor(
         return if (bestMatchScore >= 0.5) bestMatchName else null
     }
 }
+
+private const val ITEM_ALL_TAB_COUNT = 9
 
 private val STAT_ALIASES =
     mapOf(

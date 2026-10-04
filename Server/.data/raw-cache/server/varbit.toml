@@ -122,7 +122,7 @@ isServerOnly = true
 id = "varbit.bank_capacity"
 varp = "varp.inv_capacity_65530"
 startBit = 0
-endBit = 12
+endBit = 15
 
 [[varbit]]
 isServerOnly = true

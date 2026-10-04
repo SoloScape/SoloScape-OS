@@ -23,6 +23,7 @@ import org.rsmod.content.interfaces.bank.disableIfEvents
 import org.rsmod.content.interfaces.bank.highlightNoClickClear
 import org.rsmod.content.interfaces.bank.setBankWornBonuses
 import org.rsmod.content.interfaces.bank.setBanksideExtraOps
+import org.rsmod.content.interfaces.bank.syncSelectedBankTab
 import org.rsmod.content.interfaces.bank.util.offset
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
@@ -52,6 +53,7 @@ constructor(
             ifClose(eventBus)
             return
         }
+        syncSelectedBankTab()
         if (!disableIfEvents) {
             val capacityIncrease = bank_constants.purchasable_capacity
             withdrawCert = false
