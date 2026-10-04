@@ -168,6 +168,14 @@ def compiler():
     return compiler_lib
 
 
+def validate_server_runtime(jar):
+    with zipfile.ZipFile(jar) as bundle:
+        module = bundle.read("org/rsmod/module/ExtendedModule.class")
+    if b"<init>" not in module:
+        raise RuntimeError("Server compiler produced an incomplete ExtendedModule class; "
+                           "refusing to publish or reuse it. Run build.bat --rebuild.")
+
+
 def build_project(project_name, rebuild, home, compiler_lib):
     project = ROOT / project_name
     progress = Progress(project_name)
@@ -248,8 +256,10 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
     library_hashes = {file.name: hash_file(file) for file in libraries}
     compiler_hashes = {file.name: hash_file(file) for file in sorted(compiler_lib.glob("*.jar"))}
     source_hashes = {file: hash_file(file) for file in sources}
+    backend_threads = 1 if project_name == "Server" else 0
     compiler_flags = [project_name, "jvm21", "nested-type-aliases", "contracts",
-                      "backend-threads=0", "fast-jar-file-system",
+                      f"backend-threads={backend_threads}",
+                      "fast-jar-file-system" if project_name == "Client" else "standard-jar-file-system",
                       "InternalApi+serialization" if project_name == "Server" else ""]
     common_inputs = {
         "compiler": compiler_hashes,
@@ -320,6 +330,8 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
             and runtime.is_dir()
             and {file.name for file in runtime.iterdir()} == expected
             and all(valid_artifact(name) for name in expected)):
+        if project_name == "Server":
+            validate_server_runtime(runtime / app_name)
         flush_hash_cache()
         progress.finish("Up to date - compilation skipped")
         return
@@ -333,11 +345,13 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
                         extra_classpath=(), friend_path=None, label=None):
         classpath = [*libraries, *extra_classpath]
         args = ["-no-stdlib", "-no-reflect", "-jvm-target", "21",
-                "-Xbackend-threads=0", "-Xuse-fast-jar-file-system",
+                f"-Xbackend-threads={backend_threads}",
                 "-Xnested-type-aliases", "-opt-in=kotlin.contracts.ExperimentalContracts",
                 "-module-name", module_name,
                 "-classpath", os.pathsep.join(str(file) for file in classpath),
                 "-d", str(destination)]
+        if project_name == "Client":
+            args += ["-Xuse-fast-jar-file-system"]
         if friend_path is not None:
             args += [f"-Xfriend-paths={friend_path}"]
         if project_name == "Server":
@@ -376,6 +390,8 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
                         label=f"Compiling app layer ({len(app_sources)} files)"
                               if core_jar is not None else f"Compiling {len(app_sources)} files")
         progress.update(0.75, "Compilation complete")
+    if project_name == "Server":
+        validate_server_runtime(app_jar)
 
     for index, library in enumerate(libraries):
         if valid_artifact(library.name) and artifacts[library.name] == library_hashes[library.name]:
