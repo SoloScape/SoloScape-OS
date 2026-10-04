@@ -7,6 +7,15 @@ on:
       - "tools/build.py"
       - ".github/workflows/grand-exchange.yml"
   workflow_dispatch:
+    inputs:
+      full_server:
+        description: "Also compile the full server before testing"
+        type: boolean
+        default: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -24,7 +33,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Build server
+      - name: Cache Kotlin compiler
+        uses: actions/cache@v5
+        with:
+          path: .build-tools/kotlinc
+          key: ${{ runner.os }}-kotlin-2.2.10
+      - name: Prepare Kotlin compiler
+        run: python -c "import sys; sys.path.insert(0, 'tools'); import build; build.compiler()"
+      - name: Build full server
+        if: github.event_name == 'workflow_dispatch' && inputs.full_server
         run: python tools/build.py Server
       - name: Compile and run Grand Exchange regressions
         shell: pwsh
@@ -33,12 +50,21 @@ jobs:
           New-Item -ItemType Directory -Force $testDir | Out-Null
           $junit = Join-Path $testDir "junit-platform-console-standalone.jar"
           Invoke-WebRequest -Uri "https://repo.maven.apache.org/maven2/org/junit/platform/junit-platform-console-standalone/1.11.4/junit-platform-console-standalone-1.11.4.jar" -OutFile $junit
-          $libraries = @(Get-ChildItem Server/build/direct/lib -Filter "*.jar" | ForEach-Object FullName)
+          $libraryDir = "Server/server/app/build/install/app/lib"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ inputs.full_server }}" -eq "true") {
+              $libraryDir = "Server/build/direct/lib"
+          }
+          $libraries = @(Get-ChildItem $libraryDir -Filter "*.jar" | Where-Object Name -NotLike "grand-exchange-*" | ForEach-Object FullName)
           $classpath = ($libraries + $junit) -join [IO.Path]::PathSeparator
           $testJar = Join-Path $testDir "tests.jar"
-          $sources = @(Get-ChildItem Server/content/other/grand-exchange/src/test/kotlin -Recurse -Filter "*.kt" | ForEach-Object FullName)
+          $sourceDirs = @(
+              "Server/content/other/grand-exchange/src/main/kotlin",
+              "Server/content/other/grand-exchange/src/test/kotlin"
+          )
+          $sources = @(Get-ChildItem $sourceDirs -Recurse -Filter "*.kt" | ForEach-Object FullName)
+          Write-Host "Compiling $($sources.Count) Grand Exchange source files"
           $compilerLib = (Resolve-Path .build-tools/kotlinc/lib).Path
-          $compilerArgs = @("-no-stdlib", "-no-reflect", "-jvm-target", "21", "-Xnested-type-aliases", "-classpath", $classpath, "-d", $testJar) + $sources
+          $compilerArgs = @("-no-stdlib", "-no-reflect", "-jvm-target", "21", "-Xnested-type-aliases", "-opt-in=org.rsmod.annotations.InternalApi", "-classpath", $classpath, "-d", $testJar) + $sources
           $argFile = Join-Path $testDir "compiler.args"
           $compilerArgs | ForEach-Object { '"' + $_.Replace('\', '/').Replace('"', '\"') + '"' } | Set-Content -Encoding utf8NoBOM $argFile
           & "$env:JAVA_HOME/bin/java.exe" -Xmx2g -cp "$compilerLib/*" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler "@$argFile"
