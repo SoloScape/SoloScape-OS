@@ -4,6 +4,15 @@ OSRS-compatible game server (revision 240.2), Kotlin, modular fork of RSMod/Alte
 Gameplay ships as auto-loaded plugins in `content/` — core engine code rarely needs
 touching.
 
+## Required editing workflow
+
+Follow the repository root `AGENTS.md`: all repository edits must use the GitHub
+plugin exclusively. Never edit a local checkout or worktree, including intermediate
+changes or generated files. If the plugin cannot perform an edit, report the blocker
+and do not fall back to local editing. This applies to every agent and sub-agent.
+Use remote CI for builds or checks that would write local files; the commands below
+are reference instructions for that environment.
+
 ## Build & run
 
 - Java 21 and Python 3. `build.bat` uses the standalone Kotlin 2.2.10 compiler.
