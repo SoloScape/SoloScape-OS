@@ -7,8 +7,7 @@ import dev.openrune.rscm.RSCMType
 import dev.openrune.types.ItemServerType
 import dev.openrune.types.aconverted.interf.IfButtonOp
 import jakarta.inject.Inject
-import org.rsmod.api.invtx.invCompress
-import org.rsmod.api.invtx.invMoveAll
+import org.rsmod.api.invtx.InvTransactions
 import org.rsmod.api.player.output.ClientScripts.ifSetTextAlign
 import org.rsmod.api.player.output.objExamine
 import org.rsmod.api.player.output.runClientScript
@@ -36,6 +35,8 @@ constructor(
     private val protectedAccess: ProtectedAccessLauncher,
     private val guidePrices: GeItemData,
 ) : PluginScript() {
+    private val checkerInventory by lazy { GuidePriceInventory(InvTransactions.from()) }
+
     private val ItemServerType.price: Int
         get() = guidePrices.guidePrice(uncert(this).id)
 
@@ -167,7 +168,7 @@ constructor(
             return
         }
         val untradableSlots = inv.mapSlots { slot, obj -> obj != null && !ocTradable(obj) }
-        val transaction = invMoveInv(inv, tempInv, keepSlots = untradableSlots)
+        val transaction = checkerInventory.moveAll(inv, tempInv, keepSlots = untradableSlots)
 
         if (transaction.noneCompleted()) {
             mes("You have items that cannot be traded.")
@@ -191,7 +192,11 @@ constructor(
         }
 
         val count = resolveCount(op) ?: error("Invalid op: $op (slot=$fromSlot)")
-        invMoveFromSlot(from = inv, into = tempInv, fromSlot = fromSlot, count = count)
+        val result = checkerInventory.moveSlot(inv, tempInv, fromSlot, count)
+        if (result.noneCompleted()) {
+            mes("There is not enough space in the price checker.")
+            return
+        }
         player.updateGuidePrices()
     }
 
@@ -202,8 +207,11 @@ constructor(
             return
         }
         val count = resolveCount(op) ?: error("Invalid op: $op (slot=$fromSlot)")
-        invMoveFromSlot(from = tempInv, into = inv, fromSlot = fromSlot, count = count)
-        player.invCompress(tempInv)
+        val result = checkerInventory.moveSlot(tempInv, inv, fromSlot, count, compress = true)
+        if (result.noneCompleted()) {
+            mes("You don't have enough inventory space.")
+            return
+        }
         player.updateGuidePrices()
     }
 
@@ -222,7 +230,7 @@ constructor(
         if (tempInv.isEmpty()) {
             return
         }
-        val result = invMoveAll(from = tempInv, into = inv)
+        val result = checkerInventory.moveAll(tempInv, inv)
         check(result.success) { "Could not move `tempInv` into `inv`: $tempInv" }
     }
 
