@@ -13,8 +13,18 @@ import java.util.BitSet
 import org.rsmod.game.entity.Player
 import org.rsmod.game.type.isAssociatedWith
 
-public class Inventory(public val type: InventoryServerType, public val objs: Array<InvObj?>) :
+public class Inventory(public val type: InventoryServerType, objs: Array<InvObj?>) :
     Iterable<InvObj?> {
+    public var objs: Array<InvObj?> = objs
+        private set
+
+    public fun ensureCapacity(capacity: Int) {
+        require(capacity in 0..32768)
+        if (capacity > size) {
+            objs = objs.copyOf(capacity)
+        }
+    }
+
     public var owner: Player? = null
 
     public val modifiedSlots: BitSet = BitSet()

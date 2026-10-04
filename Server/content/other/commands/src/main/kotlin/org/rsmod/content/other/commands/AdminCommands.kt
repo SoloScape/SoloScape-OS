@@ -57,6 +57,8 @@ import org.rsmod.game.cheat.Cheat
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.PlayerList
+import org.rsmod.game.entity.PlayerPersistenceHints
+import org.rsmod.game.inv.InvObj
 import org.rsmod.game.entity.util.PathingEntityCommon
 import org.rsmod.game.loc.LocAngle
 import org.rsmod.game.loc.LocEntity
@@ -158,6 +160,7 @@ constructor(
 
         onCommand("invadd", "Spawn obj into inv", ::invAdd)
         onCommand("item", "Spawn obj into inv (ex: ::item 995 100 or ::item coins 100)", ::invAdd)
+        onCommand("itemall", "Give every item at max stack in your bank", ::itemAll)
 
         onCommand("invclear", "Remove all objs from inv", ::invClear)
         onCommand("varp", "Set varp value", ::setVarp) {
@@ -703,6 +706,38 @@ constructor(
             }
             player.mes("Spawned inv obj `$objName` x ${spawned.completed().formatAmount}")
         }
+
+    private fun itemAll(cheat: Cheat) = with(cheat) {
+        val definitions = ServerCacheManager.getItems().values
+        val stackVariants = definitions.flatMap { it.countObj.orEmpty() }.toSet()
+        val items = definitions.filter {
+            it.id >= 0 && it.id !in stackVariants && !it.isCert && !it.isPlaceholder &&
+                !it.isDummyItem && it.name.isNotBlank() && !it.name.equals("null", true)
+        }.sortedBy { it.id }
+        val bank = player.invMap.getOrPut("inv.bank")
+        val existingIds = bank.filterNotNull { true }.map { it.id }.toSet()
+        val missing = items.filter { it.id !in existingIds }
+        val requiredCapacity = bank.lastOccupiedSlot() + missing.size
+        if (requiredCapacity > 32768) {
+            player.mes("Too many items to fit in the client's bank slot limit.")
+            return@with
+        }
+        bank.ensureCapacity(requiredCapacity)
+        val itemIds = items.map { it.id }.toSet()
+        for (slot in bank.indices) {
+            val obj = bank[slot] ?: continue
+            if (obj.id in itemIds) {
+                bank[slot] = obj.copy(count = Int.MAX_VALUE)
+            }
+        }
+        var slot = bank.lastOccupiedSlot()
+        for (item in missing) {
+            bank[slot++] = InvObj(item, Int.MAX_VALUE)
+        }
+        PlayerPersistenceHints.notify(player)
+        player.mes("Your bank now has ${items.size} items at max stack (2,147,483,647 each).")
+        bank(cheat)
+    }
 
     private fun invClear(cheat: Cheat) = with(cheat) { player.invClear(player.inv) }
 

@@ -24,5 +24,20 @@ var ProtectedAccess.bankFillerMode by enumVarBit<BankFillerMode>("varbit.bank_fi
 
 internal var Player.disableIfEvents by boolVarBit("varbit.bank_disable_ifevents")
 
-val ProtectedAccess.bankCapacity by intVarBit("varbit.bank_capacity")
-var Player.bankCapacity by intVarBit("varbit.bank_capacity")
+val ProtectedAccess.bankCapacity: Int
+    get() = player.bankCapacity
+
+private var Player.purchasedBankCapacity by intVarBit("varbit.bank_capacity")
+
+var Player.bankCapacity: Int
+    get() {
+        val bank = invMap["inv.bank"]
+        return if (bank != null && bank.size > bank.type.size) {
+            maxOf(purchasedBankCapacity, bank.size)
+        } else {
+            purchasedBankCapacity
+        }
+    }
+    set(value) {
+        purchasedBankCapacity = value
+    }

@@ -13,6 +13,13 @@ public object UpdateInventory {
     /** @see [UpdateInvFull] */
     public fun updateInvFull(player: Player, inv: Inventory) {
         val highestSlot = inv.lastOccupiedSlot()
+        if (highestSlot > MAX_FULL_SLOTS) {
+            player.client.write(
+                UpdateInvFull(-(1234 + inv.type.id), inv.type.id, 0, RspObjProvider(inv.objs))
+            )
+            writePartial(player, inv, (0 until highestSlot).asSequence())
+            return
+        }
         val provider = RspObjProvider(inv.objs)
         val message = UpdateInvFull(-(1234 + inv.type.id), inv.type.id, highestSlot, provider)
         player.client.write(message)
@@ -54,10 +61,18 @@ public object UpdateInventory {
 
     /** @see [UpdateInvPartial] */
     public fun updateInvPartial(player: Player, inv: Inventory) {
-        val changedSlots = inv.modifiedSlots.asSequence().iterator()
-        val provider = RspIndexedObjProvider(inv.objs, changedSlots)
-        val message = UpdateInvPartial(-1, -(1234 + inv.type.id), inv.type.id, provider)
-        player.client.write(message)
+        writePartial(player, inv, inv.modifiedSlots.asSequence())
+    }
+
+    // Max stacks use seven bytes per full slot, or nine with a partial slot index.
+    private const val MAX_FULL_SLOTS = 8000
+    private const val PARTIAL_CHUNK_SLOTS = 5000
+
+    private fun writePartial(player: Player, inv: Inventory, slots: Sequence<Int>) {
+        for (chunk in slots.chunked(PARTIAL_CHUNK_SLOTS)) {
+            val provider = RspIndexedObjProvider(inv.objs, chunk.iterator())
+            player.client.write(UpdateInvPartial(-1, -(1234 + inv.type.id), inv.type.id, provider))
+        }
     }
 
     /** @see [UpdateInvStopTransmit] */

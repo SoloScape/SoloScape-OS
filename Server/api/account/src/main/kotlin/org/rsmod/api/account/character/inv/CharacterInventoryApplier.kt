@@ -11,6 +11,9 @@ public class CharacterInventoryApplier : CharacterDataStage.Applier<CharacterInv
     override fun apply(player: Player, data: CharacterInventoryData) {
         for (loaded in data.inventories) {
             val inventory = player.invMap.getOrPut(loaded.invKey)
+            if (loaded.invKey == "inv.bank") {
+                inventory.ensureCapacity((loaded.objs.keys.maxOrNull() ?: -1) + 1)
+            }
 
             for ((slot, obj) in loaded.objs) {
                 inventory[slot] = InvObj(obj.objKey, count = obj.count, vars = obj.vars)
