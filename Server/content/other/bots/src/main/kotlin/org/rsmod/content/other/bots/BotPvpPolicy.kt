@@ -54,6 +54,11 @@ internal object BotPvpPolicy {
             (if (it == current) 20 else 0) - (if (it in retaliating) 40 else 0)
     }
 
+    fun specialConsumed(before: Int, current: Int): Boolean = current < before
+
+    fun crossesDitch(currentZ: Int, destinationZ: Int): Boolean =
+        currentZ in 3518..3524 && (currentZ <= 3521) != (destinationZ <= 3521)
+
     fun nextReview(cycle: Int, range: IntRange, random: Random): Int =
         cycle + random.nextInt(range.first, range.last + 1)
 }

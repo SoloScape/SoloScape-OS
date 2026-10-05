@@ -18,7 +18,7 @@ internal class BotPvpState(
     var nextMove = 0
     var nextVengeance = 0
     var specialQueuedAt = -1
-    var attackDelayAtSpec = 0
+    var energyAtSpec = 0
     var returnStyle = loadout.primaryStyle
     var retreatStartedAt = -1
     var restockAt = -1

@@ -246,7 +246,8 @@ constructor(
     private fun locations(player: Player, names: Set<String>, radius: Int): Sequence<LocInfo> =
         zones(player.coords, radius).flatMap(locRegistry::findAll)
             .filter { near(player.coords, it.coords, radius) }
-            .filter { named(ServerCacheManager.getObject(it.id)?.name.orEmpty(), names) }
+            .filter { loc -> names.any { it.startsWith("loc.") && it.asRSCM() == loc.id } ||
+                named(ServerCacheManager.getObject(loc.id)?.name.orEmpty(), names) }
             .sortedBy { player.coords.chebyshevDistance(it.coords) }
 
     private fun routeLoc(player: Player, loc: LocInfo, type: ObjectServerType) {

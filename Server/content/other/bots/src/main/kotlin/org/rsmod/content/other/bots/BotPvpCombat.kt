@@ -171,7 +171,8 @@ class BotPvpCombat @Inject constructor(
         }
 
         if (state.specialQueuedAt >= 0) {
-            val attacked = player.actionDelay > state.attackDelayAtSpec
+            val attacked = BotPvpPolicy.specialConsumed(state.energyAtSpec,
+                native.specialEnergy(player))
             if (attacked || cycle - state.specialQueuedAt >= 5) {
                 native.cancelSpecial(player)
                 native.equip(player, state.loadout.styles.getValue(state.returnStyle))
@@ -218,7 +219,7 @@ class BotPvpCombat @Inject constructor(
                 state.returnStyle = state.style
                 if (native.special(player)) {
                     state.specialQueuedAt = cycle
-                    state.attackDelayAtSpec = player.actionDelay
+                    state.energyAtSpec = native.specialEnergy(player)
                     native.attack(player, target)
                     return "special attack"
                 }
@@ -227,7 +228,8 @@ class BotPvpCombat @Inject constructor(
         }
 
         val freeze = state.loadout.freezeSpell
-        if (cycle >= state.nextFreezeReview && freeze != null && !target.frozen &&
+        if (player.actionDelay <= cycle && distance <= 10 &&
+                cycle >= state.nextFreezeReview && freeze != null && !target.frozen &&
                 !target.freezeImmune && native.canCast(player, freeze)) {
             state.nextFreezeReview = next(cycle, state.profile.freezeReview)
             if (random.nextDouble() < (if (pressure) state.profile.nextHitFreezeChance
@@ -290,9 +292,9 @@ class BotPvpCombat @Inject constructor(
             return "teleporting away"
         }
         if (!player.frozen && cycle >= state.nextMove) {
-            val south = CoordGrid(player.coords.x, maxOf(3520, player.coords.z - 12),
+            val south = CoordGrid(player.coords.x, maxOf(3518, player.coords.z - 12),
                 player.coords.level)
-            walkTowards(player, if (south == player.coords) CoordGrid(3087, 3520) else south)
+            walkTowards(player, if (south == player.coords) CoordGrid(3087, 3518) else south)
             state.nextMove = cycle + 3
         }
         return "retreating"
@@ -309,6 +311,10 @@ class BotPvpCombat @Inject constructor(
     }
 
     private fun walkTowards(player: Player, destination: CoordGrid) {
+        if (player.coords.level == 0 && destination.level == 0 &&
+                BotPvpPolicy.crossesDitch(player.coords.z, destination.z) &&
+                movement.operate(player, setOf("loc.ditch_wilderness_cover",
+                    "loc.ditch_wilderness_cover_members"), "Cross", 3)) return
         val next = if (player.coords.chebyshevDistance(destination) <= 48) destination
             else BotRoutes.path(player.coords, destination).firstOrNull() ?: CoordGrid(
                 player.coords.x + (destination.x - player.coords.x).coerceIn(-32, 32),

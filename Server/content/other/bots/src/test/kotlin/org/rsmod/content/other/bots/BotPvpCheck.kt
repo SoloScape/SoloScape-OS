@@ -53,6 +53,14 @@ object BotPvpCheck {
         check(!BotPvpPolicy.shouldSpec(0, 99, 35, 1000, 500, elite, 0.1))
         check(!BotPvpPolicy.shouldSpec(20, 99, 35, 1000, Int.MAX_VALUE, elite, 0.1))
 
+        check(!BotPvpPolicy.specialConsumed(1000, 1000)) // Eating delays do not spend energy.
+        check(BotPvpPolicy.specialConsumed(1000, 500))
+        check(!BotPvpPolicy.specialConsumed(500, 600)) // Regeneration is not a special.
+        check(BotPvpPolicy.crossesDitch(3523, 3518))
+        check(BotPvpPolicy.crossesDitch(3519, 3550))
+        check(!BotPvpPolicy.crossesDitch(3523, 3550))
+        check(!BotPvpPolicy.crossesDitch(3540, 3518))
+
         val distance: (Int) -> Int = { if (it == 1) 2 else 10 }
         val free: (Int) -> Int = { 0 }
         check(BotPvpPolicy.chooseTarget(emptyList(), null, emptySet(), distance, free) == null)
