@@ -12,6 +12,11 @@ ROOT = Path(__file__).resolve().parents[1]
 LOG_FILE = ROOT / "build.log"
 TIMINGS_FILE = ROOT / ".build-tools" / "build-progress.json"
 COMPILE_RE = re.compile(r"^Compiling(?: client core| app layer)? \(?([0-9]+) files\)?$")
+COMPILER_COMPAT_FLAGS = (
+    "-Xannotation-default-target=param-property",
+    "-Xconsistent-data-class-copy-visibility",
+)
+COMPILER_COMPAT_KEY = "|".join(COMPILER_COMPAT_FLAGS)
 
 
 class BuildLogger:
@@ -181,6 +186,30 @@ class FriendlyProgress(build_impl.Progress):
             print(flush=True)
 
 
+def install_compiler_compat_flags():
+    """Inject Kotlin migration flags without changing the standalone build implementation.
+
+    build.py writes the compiler arguments to an @argfile immediately before invoking
+    run_compiler. Prefixing that file here keeps direct build.py behavior untouched while
+    making every build.bat entry point opt in to the Kotlin 2.3-compatible semantics.
+    """
+    original_run_compiler = build_impl.run_compiler
+
+    def run_compiler(command, logfile, progress, label):
+        argref = next((arg for arg in command if isinstance(arg, str) and arg.startswith("@")), None)
+        if argref:
+            argfile = Path(argref[1:])
+            if argfile.is_file():
+                text = argfile.read_text(encoding="utf-8")
+                missing = [flag for flag in COMPILER_COMPAT_FLAGS if f'"{flag}"' not in text]
+                if missing:
+                    prefix = "\n".join(f'"{flag}"' for flag in missing) + "\n"
+                    argfile.write_text(prefix + text, encoding="utf-8")
+        return original_run_compiler(command, logfile, progress, label)
+
+    build_impl.run_compiler = run_compiler
+
+
 def append_compiler_logs(project_name, progress):
     if not progress or not progress.saw_compile:
         return
@@ -191,15 +220,25 @@ def append_compiler_logs(project_name, progress):
 
 def build_one(project_name, rebuild, home, compiler_lib):
     before = len(PROGRESS_INSTANCES)
-    LOGGER.write(f"Starting {project_name} build{' (--rebuild)' if rebuild else ''}")
+    compat_key = f"compiler-compat:{project_name}"
+    compat_changed = TIMINGS.get(compat_key) != COMPILER_COMPAT_KEY
+    effective_rebuild = rebuild or compat_changed
+    LOGGER.write(
+        f"Starting {project_name} build"
+        f"{' (--rebuild)' if effective_rebuild else ''}"
+        f"{' [compiler compatibility refresh]' if compat_changed else ''}"
+    )
     try:
-        build_impl.build_project(project_name, rebuild, home, compiler_lib)
+        build_impl.build_project(project_name, effective_rebuild, home, compiler_lib)
     except Exception:
         progress = PROGRESS_INSTANCES[-1] if len(PROGRESS_INSTANCES) > before else None
         append_compiler_logs(project_name, progress)
         raise
     progress = PROGRESS_INSTANCES[-1] if len(PROGRESS_INSTANCES) > before else None
     append_compiler_logs(project_name, progress)
+    if compat_changed:
+        TIMINGS[compat_key] = COMPILER_COMPAT_KEY
+        save_timings(TIMINGS)
     LOGGER.write(f"{project_name} build completed successfully")
 
 
@@ -210,6 +249,7 @@ def main():
     options = parser.parse_args()
 
     build_impl.Progress = FriendlyProgress
+    install_compiler_compat_flags()
     home = build_impl.java_home()
     compiler_lib = build_impl.compiler()
 
