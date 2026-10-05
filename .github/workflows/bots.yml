@@ -54,9 +54,9 @@ jobs:
           $compilerArgs | ForEach-Object { '"' + $_.Replace('\', '/').Replace('"', '\"') + '"' } | Set-Content -Encoding utf8NoBOM $argFile
           & "$env:JAVA_HOME/bin/java.exe" -Xmx2g -cp "$compilerLib/*" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler "@$argFile"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $runtimeClasspath = ($testJar, $classpath, (Resolve-Path "Server/content/other/grand-exchange/src/main/resources").Path) -join [IO.Path]::PathSeparator
+          $runtimeClasspath = ($testJar, $classpath, (Resolve-Path "Server/content/other/bots/src/main/resources").Path, (Resolve-Path "Server/content/other/grand-exchange/src/main/resources").Path) -join [IO.Path]::PathSeparator
           Set-Location Server
-          foreach ($check in @("BotActionsCheck", "BotPlannerCheck")) {
+          foreach ($check in @("BotActionsCheck", "BotPlannerCheck", "BotPortCheckKt")) {
           $runArgs = @("-cp", $runtimeClasspath, "org.rsmod.content.other.bots.$check")
           $runArgFile = Join-Path $testDir "run.args"
           $runArgs | ForEach-Object { '"' + $_.Replace('\', '/').Replace('"', '\"') + '"' } | Set-Content -Encoding utf8NoBOM $runArgFile
