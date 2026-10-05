@@ -19,6 +19,16 @@ public fun main() {
     check(BotSkills.all.distinct().size == BotSkills.all.size)
     check(BotSkills.all.all { it.startsWith("stat.") })
 
+    check(WildernessPatrols.centers.size >= 10)
+    check(WildernessPatrols.centers.distinct().size == WildernessPatrols.centers.size)
+    check(WildernessPatrols.centers.all { it.level == 0 && it.z >= 3520 })
+    check(
+        (1..WildernessPatrols.centers.size)
+            .map(WildernessPatrols::center)
+            .toSet()
+            .size == WildernessPatrols.centers.size
+    )
+
     val tasks = SourceBotCatalog.tasks
     check(tasks.any { it.kind == BotTaskKind.Trade })
     check(tasks.any { it.kind == BotTaskKind.DropParty })
