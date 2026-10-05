@@ -24,7 +24,7 @@ constructor(
     private val eventBus: EventBus,
     private val protectedAccess: ProtectedAccessLauncher,
 ) {
-    fun tick(player: Player, recipe: String? = null): Boolean {
+    fun tick(player: Player, recipe: String? = null, keep: Set<String> = emptySet()): Boolean {
         if (player.isDelayed) return true
         val coroutine = player.activeCoroutine
         if (coroutine?.isAwaiting(ResumePCountDialogInput::class) == true) {
@@ -73,8 +73,9 @@ constructor(
         if (shop != null && player.ui.containsModal("interface.shopmain")) {
             val sale = player.inv.indices.firstOrNull {
                 val obj = player.inv[it]
-                obj != null && !getInvObj(obj).name.equals("Coins", true) &&
-                    (recipe == null || !getInvObj(obj).name.equals(recipe, true))
+                obj != null && SALE_OUTPUTS.any { getInvObj(obj).name.equals(it, true) } &&
+                    keep.none { getInvObj(obj).name.equals(it, true) } &&
+                    !getInvObj(obj).name.equals(recipe, true)
             }
             if (sale != null) {
                 val type = getInvObj(player.inv[sale]!!)
@@ -84,8 +85,8 @@ constructor(
             }
             val purchase = shop.inv.indices.firstOrNull {
                 val obj = shop.inv[it]
-                obj != null && obj.count > 0 &&
-                    (recipe == null || getInvObj(obj).name.equals(recipe, true))
+                recipe != null && obj != null && obj.count > 0 &&
+                    getInvObj(obj).name.equals(recipe, true)
             }
             if (purchase != null && player.inv.indices.any { player.inv[it] == null }) {
                 val type = getInvObj(shop.inv[purchase]!!)
@@ -97,6 +98,13 @@ constructor(
             return true
         }
         return false
+    }
+
+    private companion object {
+        val SALE_OUTPUTS = setOf(
+            "Steel dagger", "Ball of wool", "Bow string", "Logs", "Oak logs",
+            "Willow logs", "Maple logs", "Yew logs", "Magic logs",
+        )
     }
 
     private fun button(
