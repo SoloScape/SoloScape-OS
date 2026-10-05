@@ -42,6 +42,10 @@ public object BotRoutes {
     )
 
     private val crossings: Map<Pair<CoordGrid, CoordGrid>, BotTraversal> = buildMap {
+        put(CoordGrid(3267, 3228, 0) to CoordGrid(3268, 3228, 0), BotTraversal(setOf("gate"), "open"))
+        put(CoordGrid(3268, 3228, 0) to CoordGrid(3267, 3228, 0), BotTraversal(setOf("gate"), "open"))
+        put(CoordGrid(2936, 3450, 0) to CoordGrid(2935, 3450, 0), BotTraversal(setOf("gate"), "open"))
+        put(CoordGrid(2935, 3450, 0) to CoordGrid(2936, 3450, 0), BotTraversal(setOf("gate"), "open"))
         put(CoordGrid(2985, 3296, 0) to CoordGrid(2841, 4829, 0), BotTraversal(setOf("mysterious ruins"), "enter", "air talisman", false))
         put(CoordGrid(2841, 4829, 0) to CoordGrid(2985, 3296, 0), BotTraversal(setOf("portal"), "exit", null, false))
         put(CoordGrid(3278, 3191, 0) to CoordGrid(3277, 3191, 0), BotTraversal(setOf("door", "gate"), "open", null, false))
