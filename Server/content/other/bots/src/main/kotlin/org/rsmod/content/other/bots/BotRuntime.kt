@@ -102,9 +102,13 @@ class BotPopulation @Inject constructor(
     private val random = Random.Default
     private var nextIdentity = 1
     private val configured = Properties().apply {
-        javaClass.getResourceAsStream("/bots.properties")?.use { load(it) }
-        val override = Path.of(".data", "bots.properties")
-        if (Files.isRegularFile(override)) Files.newInputStream(override).use { load(it) }
+        val config = Path.of(".data", "bots.properties")
+        if (!Files.exists(config)) {
+            Files.createDirectories(config.parent)
+            val defaults = checkNotNull(javaClass.getResourceAsStream("/bots.properties"))
+            defaults.use { Files.copy(it, config) }
+        }
+        Files.newInputStream(config).use { load(it) }
     }
     val count: Int get() = bots.size + minigames.count
     fun players(): List<Player> = bots.keys.toList()
@@ -118,13 +122,10 @@ class BotPopulation @Inject constructor(
         }
     }
 
-    fun spawn(
-        mode: BotMode,
-        requested: Int,
-        difficulty: BotPvpDifficulty = BotPvpDifficulty.parse(
+    private fun spawn(mode: BotMode, requested: Int): Int {
+        val difficulty = BotPvpDifficulty.parse(
             configured.getProperty("pvp.difficulty", "standard")
-        ) ?: BotPvpDifficulty.Standard,
-    ): Int {
+        ) ?: BotPvpDifficulty.Standard
         var added = 0
         repeat(requested.coerceIn(0, MAX_BOTS - bots.size)) {
             val slot = registry.nextFreeSlot() ?: return added

@@ -4,12 +4,34 @@ Wilderness and clan bots use a tick-based controller adapted from the PK behavio
 [RSPSApp/tsps](https://github.com/RSPSApp/tsps/tree/c40e57fd95c8edb400ded74e1dde9fe87c3e8d7e/server/plugins/bots).
 This is a native Kotlin adaptation, not a JavaScript runtime or a replacement combat engine.
 
-## Spawn and configure
+## Configure
 
-`::bots wildy 10 elite` spawns ten elite Wilderness bots.
-The optional third argument accepts `novice`, `standard`, `veteran` or `elite`.
-It also applies to `clana` and `clanb`; `::botinfo` displays difficulty, loadout and current action.
-The default is `pvp.difficulty=standard` in `bots.properties`, overridden by `.data/bots.properties`.
+World bot population is controlled by `.data/bots.properties` under the server working
+directory. The server creates this file from the bundled defaults if it is missing.
+Edit the file and restart the server to apply changes; settings are read at startup.
+
+For example, to run ten elite Wilderness bots and disable the other world populations:
+
+```properties
+enabled=true
+members=true
+skilling=0
+progressive=0
+combat=0
+wilderness=10
+trade=0
+dropparty=0
+clanone=0
+clantwo=0
+pvp.difficulty=elite
+```
+
+Each mode's value sets its bot count; zero disables that population. `enabled=false`
+disables world bot spawning. `members` selects members or F2P builds.
+`pvp.difficulty` accepts `novice`, `standard`, `veteran` or `elite` and applies to
+Wilderness and both clan populations. The default is `standard`.
+`::botinfo` displays difficulty, loadout and current action.
+Population changes use the properties file; the spawn/removal commands are removed.
 Existing skilling, trading, progression and Castle Wars controllers remain separate.
 
 ## Behaviours
@@ -52,7 +74,7 @@ the existing bot checks plus `BotPvpCheck`. Decision checks cover reaction cance
 counter-style selection, frozen positioning, eating/retreat thresholds, spec energy,
 target priority and loadout invariants.
 
-Live acceptance: spawn each difficulty, attack it with changing weapons/protection prayers,
+Live acceptance: configure each difficulty and restart the server, attack it with changing weapons/protection prayers,
 check food and rune depletion, confirm specs obey attack delays, freeze/teleblock a retreating
 bot, and kill one to verify loot and return behaviour. Test both singles and multiway and F2P.
 A live client is needed to assess combat feel and the installed cache's item/spell availability.
