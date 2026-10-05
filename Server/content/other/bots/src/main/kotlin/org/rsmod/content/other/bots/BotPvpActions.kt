@@ -406,7 +406,7 @@ class BotPvpActions @Inject constructor(
             if (player.worn[wearpos.slot] != null) {
                 return "primary item $symbol conflicts at wear position $wearpos"
             }
-            player.worn[wearpos.slot] = InvObj(type.id, if (type.stackable) 500 else 1)
+            player.worn[wearpos.slot] = InvObj(type, if (type.stackable) 500 else 1)
         }
 
         for (symbol in extras) {
