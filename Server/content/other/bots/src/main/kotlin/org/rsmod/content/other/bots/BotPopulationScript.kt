@@ -27,7 +27,7 @@ class BotPopulationScript @Inject constructor(
         onEvent<GameLifecycle.StartCycle> { population.tick(clock.cycle) }
         onEvent<GameLifecycle.LateCycle> {
             for (player in registry.playerList) {
-                if (player == null || population.isBot(player)) continue
+                if (population.isBot(player)) continue
                 val message = player.publicMessage ?: continue
                 if (heard.put(player, message) !== message && message.clanType == null) {
                     social.hear(player, message.text, population.players(), clock.cycle)
