@@ -64,11 +64,11 @@ object BotPvpLoadouts {
     private val supplies = mapOf(
         "obj.4dose2attack" to 1, "obj.4dose2strength" to 1,
         "obj.4doseprayerrestore" to 1, "obj.4dose2restore" to 1,
-        "obj.4dosebrew" to 1, "obj.cooked_karambwan" to 3,
+        "obj.4dosepotionofsaradomin" to 1, "obj.tbwt_cooked_karambwan" to 3,
         "obj.poh_tablet_lumbridgeteleport" to 1,
     )
     private val mageSupplies = mapOf(
-        "obj.4doseprayerrestore" to 2, "obj.cooked_karambwan" to 3,
+        "obj.4doseprayerrestore" to 2, "obj.tbwt_cooked_karambwan" to 3,
         "obj.poh_tablet_lumbridgeteleport" to 1,
     )
 
@@ -167,7 +167,7 @@ object BotPvpLoadouts {
                 "obj.chaosrune" to 300, "obj.lawrune" to 300, "obj.deathrune" to 300,
             ),
             consumables = mapOf(
-                "obj.4doseprayerrestore" to 1, "obj.cooked_karambwan" to 2,
+                "obj.4doseprayerrestore" to 1, "obj.tbwt_cooked_karambwan" to 2,
                 "obj.poh_tablet_lumbridgeteleport" to 1,
             ),
         ),

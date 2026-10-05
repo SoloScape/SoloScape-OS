@@ -1,5 +1,6 @@
 package org.rsmod.content.other.bots
 
+import dev.openrune.gamevals.GameValProvider
 import kotlin.random.Random
 import org.rsmod.api.combat.commons.magic.Spellbook
 
@@ -83,6 +84,18 @@ object BotPvpCheck {
         check(BotPvpLoadouts.all.any { it.styles.size == 3 })
         check(BotPvpLoadouts.all.any { it.id == "f2p_ranged_ko" })
         check(BotPvpLoadouts.all.any { it.spellbook == Spellbook.Standard && it.freezeSpell != null })
+        val itemMappings = checkNotNull(GameValProvider.loadIsolated().mappings["obj"])
+        val requiredItems = BotPvpLoadouts.all.flatMap { loadout ->
+            loadout.styles.values.flatten() + loadout.specialWeapons + loadout.food +
+                loadout.consumables.keys + loadout.runes.keys +
+                listOfNotNull(loadout.attackSpell, loadout.freezeSpell).filter {
+                    it.startsWith("obj.")
+                } + if (loadout.vengeance) listOf("obj.94_vengeance") else emptyList()
+        }.distinct()
+        val missingItems = requiredItems.filter { (itemMappings[it] ?: -1) < 0 }
+        check(missingItems.isEmpty()) { "PvP loadout mappings missing: $missingItems" }
+        println("PvP gameval checks passed: ${requiredItems.size} native item mappings.")
+
         for (loadout in BotPvpLoadouts.all) {
             check(loadout.primaryStyle in loadout.styles)
             check(loadout.levels.values.all { it in 1..99 })
