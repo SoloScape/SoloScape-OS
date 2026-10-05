@@ -84,6 +84,8 @@ object BotPvpCheck {
         val knownVariantIds = BotPvpTspsCatalog.variants.mapTo(hashSetOf()) { it.id }
         check(BotPvpTspsCatalog.families.values.flatten().all { it in knownVariantIds })
         check(BotPvpTspsCatalog.families.values.flatten().toSet() == knownVariantIds)
+        check(BotPvpTspsStats.byId.size == 89)
+        check(BotPvpTspsStats.byId.keys == knownVariantIds)
 
         check(BotPvpHotspots.all.size == 5)
         check(BotPvpHotspots.all.map { it.id }.toSet() == setOf(
@@ -98,6 +100,7 @@ object BotPvpCheck {
             check(hotspot.contains(hotspot.anchor))
         }
 
+        check(BotPvpLoadouts.nativeTemplateCount == 18)
         check(BotPvpLoadouts.all.size == 89)
         check(BotPvpLoadouts.all.map { it.id }.distinct().size == BotPvpLoadouts.all.size)
         check(BotPvpLoadouts.available(false).all { !it.members })
@@ -108,6 +111,10 @@ object BotPvpCheck {
         check(BotPvpLoadouts.all.any { it.styles.size == 3 })
         check(BotPvpLoadouts.all.any { it.id == "gmaul_rusher" && "obj.granite_maul" in it.specialWeapons })
         check(BotPvpLoadouts.all.any { it.spellbook == Spellbook.Standard && it.freezeSpell != null })
+        check(BotPvpLoadouts.get("mid_tank_dcb_ags")?.spellbook == Spellbook.Standard)
+        check(BotPvpLoadouts.get("void_pure_claws")?.spellbook == Spellbook.Lunars)
+        check(BotPvpLoadouts.get("budget_anti_pk")?.spellbook == Spellbook.Ancients)
+        check(BotPvpLoadouts.get("low_level_nh_pure")?.attackSpell == "Ice blitz")
         for (hotspot in BotPvpHotspots.available(true, BotPvpDifficulty.Elite)) {
             val chosen = BotPvpLoadouts.choose(73, true, BotPvpDifficulty.Elite, hotspot.id)
             check(BotPvpTspsCatalog.familyIdsForVariant(chosen.id).any { it in hotspot.families(true) })
@@ -132,8 +139,17 @@ object BotPvpCheck {
             check(loadout.specialWeapons.all { it.startsWith("obj.") })
             check(loadout.runes.values.all { it > 0 })
             check(!loadout.vengeance || loadout.spellbook == Spellbook.Lunars)
+            val exact = checkNotNull(BotPvpTspsStats.byId[loadout.id])
+            check(loadout.levels["stat.attack"] == exact[0])
+            check(loadout.levels["stat.defence"] == exact[1])
+            check(loadout.levels["stat.strength"] == exact[2])
+            check(loadout.levels["stat.hitpoints"] == exact[3])
+            check(loadout.levels["stat.ranged"] == exact[4])
+            check(loadout.levels["stat.prayer"] == exact[5])
+            check(loadout.levels["stat.magic"] == exact[6])
         }
         println("PvP decision checks passed: reaction latency, counter-styles, food, retreats, " +
-            "finite spec energy, target priorities, 89 TSPS variants, 28 families and 5 hotspots.")
+            "finite spec energy, exact TSPS stats/spellbooks, 18 native templates, 89 variants, " +
+            "28 families and 5 hotspots.")
     }
 }
