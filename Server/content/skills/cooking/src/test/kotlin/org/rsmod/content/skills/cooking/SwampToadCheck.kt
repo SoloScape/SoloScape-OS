@@ -22,7 +22,7 @@ fun main() {
     field.set(null, InvTransactions(emptyMap(), emptyMap(), emptyMap(), emptySet(), emptySet()))
     try {
         for (full in listOf(false, true)) {
-            val player = Player()
+            val player = Player().apply { inv = invMap.getOrPut("inv.inv") }
             val inv = player.inv
             if (full) {
                 for (slot in inv.indices) inv[slot] = InvObj(filler)
