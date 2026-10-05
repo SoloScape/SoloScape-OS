@@ -65,6 +65,10 @@ constructor(
             }
         }
         if (player.ui.containsModal("interface.tanner")) {
+            if (player.inv.objs.filterNotNull().none { getInvObj(it).name.equals("Cowhide", true) }) {
+                player.ifClose(eventBus)
+                return true
+            }
             return protectedAccess.launch(player) {
                 eventBus.publish(this, button("component.tanner:tanning_a_all"))
             }
@@ -88,7 +92,10 @@ constructor(
                 recipe != null && obj != null && obj.count > 0 &&
                     getInvObj(obj).name.equals(recipe, true)
             }
-            if (purchase != null && player.inv.indices.any { player.inv[it] == null }) {
+            val hasCoins = player.inv.objs.filterNotNull().any {
+                getInvObj(it).name.equals("Coins", true) && it.count > 0
+            }
+            if (purchase != null && hasCoins && player.inv.indices.any { player.inv[it] == null }) {
                 val type = getInvObj(shop.inv[purchase]!!)
                 return protectedAccess.launch(player) {
                     eventBus.publish(this, button("component.shopmain:items", purchase + 1, type, IfButtonOp.Op2))
