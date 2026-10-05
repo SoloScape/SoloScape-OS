@@ -93,7 +93,9 @@ constructor(
         }
 
         val victim = context.player
-        val carried = victim.inv.filterNotNull { true } + victim.worn.filterNotNull { true }
+        val invItems = victim.inv.indices.mapNotNull { slot -> victim.inv[slot]?.let { slot to it } }
+        val wornItems = victim.worn.indices.mapNotNull { slot -> victim.worn[slot]?.let { slot to it } }
+        val carried = invItems.map { it.second } + wornItems.map { it.second }
         if (carried.isEmpty()) return
 
         val bundleId = store.create(carried)
@@ -109,7 +111,15 @@ constructor(
         }
 
         val groundKey = Obj.fromPvp(killer, victim, key)
-        objRepo.add(groundKey, handling.dropDuration, handling.revealDelay)
-        killer.mes("Your inventory is full, so the loot key has been dropped on the ground.")
+        if (objRepo.add(groundKey, handling.dropDuration, handling.revealDelay)) {
+            store.bindGround(groundKey, bundleId)
+            killer.mes("Your inventory is full, so the loot key has been dropped on the ground.")
+            return
+        }
+
+        store.remove(bundleId)
+        for ((slot, item) in invItems) victim.inv[slot] = item
+        for ((slot, item) in wornItems) victim.worn[slot] = item
+        killer.mes("The loot key could not be created, so the bot's items will drop normally.")
     }
 }
