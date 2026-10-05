@@ -93,6 +93,7 @@ class FriendlyProgress(build_impl.Progress):
         self.compile_started = None
         self.compile_base = 0.15
         self.last_non_tty_emit = 0.0
+        self.last_compile_log_percent = -1
         self.saw_compile = False
         PROGRESS_INSTANCES.append(self)
 
@@ -130,6 +131,7 @@ class FriendlyProgress(build_impl.Progress):
             self.compile_total = total
             self.compile_started = time.monotonic()
             self.compile_base = max(0.15, self.last_fraction)
+            self.last_compile_log_percent = -1
             self.saw_compile = True
             if LOGGER:
                 LOGGER.write(f"{self.project}: {label}")
@@ -145,6 +147,18 @@ class FriendlyProgress(build_impl.Progress):
         ratio = min(0.985, elapsed / max(expected, elapsed + 10.0))
         estimated_done = min(total - 1, int(total * ratio)) if total > 1 else 0
         fraction = self.compile_base + (0.74 - self.compile_base) * ratio
+
+        # Keep the persistent log useful without writing a line every 250ms. The console still
+        # updates continuously; the log records 5% compile milestones so a captured build shows
+        # that a long standalone Kotlin invocation was making progress.
+        compile_percent = min(95, int(ratio * 100) // 5 * 5)
+        if LOGGER and compile_percent >= 5 and compile_percent > self.last_compile_log_percent:
+            LOGGER.write(
+                f"{self.project}: Compiling ~{estimated_done}/{total} files (estimated) "
+                f"[{compile_percent}% of compile estimate, {fraction:.1%} overall]"
+            )
+            self.last_compile_log_percent = compile_percent
+
         return fraction, f"Compiling ~{estimated_done}/{total} files (estimated)"
 
     def update(self, fraction, label):
