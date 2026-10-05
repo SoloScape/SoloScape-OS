@@ -1,5 +1,6 @@
 package org.rsmod.content.other.bots
 
+import kotlin.math.roundToInt
 import org.rsmod.api.combat.commons.magic.Spellbook
 
 // Native equivalents of RSPSApp/tsps loadout archetypes; see resources/TSPS-LICENSE.txt.
@@ -28,6 +29,15 @@ object BotPvpLoadouts {
         "stat.hitpoints" to hitpoints, "stat.ranged" to ranged, "stat.magic" to magic,
         "stat.prayer" to prayer,
     )
+
+    private fun exactLevels(id: String): Map<String, Int> {
+        val stats = checkNotNull(BotPvpTspsStats.byId[id]) { "Missing TSPS stats for $id" }
+        check(stats.size == 7)
+        return levels(
+            attack = stats[0], defence = stats[1], strength = stats[2], hitpoints = stats[3],
+            ranged = stats[4], prayer = stats[5], magic = stats[6],
+        )
+    }
 
     private val melee = listOf(
         "obj.abyssal_whip", "obj.rune_full_helm", "obj.rune_chainbody",
@@ -109,8 +119,9 @@ object BotPvpLoadouts {
     )
 
     /**
-     * Small native equipment primitives. TSPS has 89 archetypes but many differ only in a switch,
-     * finisher, stat line or spellbook; sharing primitives keeps every referenced gameval valid.
+     * Eighteen native SoloScape equipment templates expand into all 89 TSPS archetypes. The
+     * archetype keeps its exact TSPS stats/profile/weight/spellbook while equipment is expressed
+     * through verified native gameval primitives so every generated switch can be equipped.
      */
     private val templates: List<BotPvpLoadout> = listOf(
         member(
@@ -211,22 +222,48 @@ object BotPvpLoadouts {
                 primaryStyle = BotPvpStyle.Ranged,
                 styles = mapOf(BotPvpStyle.Melee to f2pKo, BotPvpStyle.Ranged to f2pRanged),
             ),
-            BotPvpLoadout(
-                "f2p_magic", false, levels(attack = 1, defence = 1, strength = 60, hitpoints = 76, ranged = 82, magic = 75, prayer = 1),
-                mapOf(BotPvpStyle.Magic to f2pMagic, BotPvpStyle.Ranged to f2pRanged),
-                BotPvpStyle.Magic, emptyList(), Spellbook.Standard,
-                "Fire blast", "Bind", false, "obj.swordfish", emptyMap(), f2pMagicRunes,
-            ),
-            BotPvpLoadout(
-                "f2p_bind_ko", false, levels(attack = 40, defence = 1, strength = 75, hitpoints = 78, ranged = 1, magic = 79, prayer = 1),
-                mapOf(BotPvpStyle.Magic to f2pMagic, BotPvpStyle.Melee to f2pKo),
-                BotPvpStyle.Magic, emptyList(), Spellbook.Standard,
-                "Fire blast", "Bind", false, "obj.swordfish", emptyMap(), f2pMagicRunes,
-            ),
         )
     }
 
+    internal val nativeTemplateCount: Int get() = templates.size
     private val templateById = templates.associateBy { it.id }
+
+    private val ancientVariants = setOf(
+        "low_level_nh_pure", "med_tribrid_ags", "spear_tribrid_ags", "sotd_hybrid_claws",
+        "toxic_sotd_hybrid", "ancients_hybrid", "elite_ancients_dbow", "tribrid_main",
+        "nh_pure", "elite_nh_ags", "elite_nh_claws", "volatile_nh", "budget_nh_dds",
+        "budget_nh_ags", "anti_pk_rcb", "anti_pk_whip", "budget_anti_pk",
+        "budget_max_tribrid", "budget_zerker_tribrid", "budget_med_tribrid",
+        "budget_pure_tribrid", "budget_gmaul_tribrid", "budget_range_tank",
+        "budget_ancient_msb_dds", "rune_pure_nh_anchor", "med_nh_anchor", "dwh_zerker_nh",
+    )
+    private val lunarVariants = setOf(
+        "void_pure_claws", "void_pure_ballista", "mid_tank_whip_ags", "main_whip",
+        "full_dharok", "zerker_whip", "zerker_dscim", "zerker_venge_ags",
+        "ancient_gs_venge", "zerker_whip_claws", "med_whip_ags", "karils_venge_ags",
+        "veracs_venge_claws", "blowpipe_venge_ags", "dhalberd_venge_ags",
+        "void_melee_claws", "void_melee_ags", "budget_venge_dscim_rcb",
+        "budget_venge_msb_gmaul", "budget_lunar_ranged_tank", "ags_zerker",
+    )
+    private val attackSpells = mapOf(
+        "low_level_nh_pure" to "Ice blitz",
+        "f2p_bind_blast" to "Fire blast", "f2p_bind_maple" to "Fire bolt",
+        "f2p_fire_blast_pure" to "Fire blast", "f2p_wind_blast_pure" to "Wind blast",
+        "f2p_bind_r2h" to "Fire blast", "f2p_bind_rbaxe" to "Fire bolt",
+        "med_tribrid_ags" to "Ice barrage", "spear_tribrid_ags" to "Ice barrage",
+        "sotd_hybrid_claws" to "Ice barrage", "toxic_sotd_hybrid" to "Ice barrage",
+        "ancients_hybrid" to "Ice barrage", "elite_ancients_dbow" to "Ice barrage",
+        "tribrid_main" to "Ice barrage", "nh_pure" to "Ice barrage",
+        "elite_nh_ags" to "Ice barrage", "elite_nh_claws" to "Ice barrage",
+        "volatile_nh" to "Ice barrage", "budget_nh_dds" to "Ice blitz",
+        "budget_nh_ags" to "Ice blitz", "anti_pk_rcb" to "Ice barrage",
+        "anti_pk_whip" to "Ice barrage", "budget_anti_pk" to "Ice barrage",
+        "budget_max_tribrid" to "Ice blitz", "budget_zerker_tribrid" to "Ice blitz",
+        "budget_med_tribrid" to "Ice blitz", "budget_pure_tribrid" to "Ice blitz",
+        "budget_gmaul_tribrid" to "Ice blitz", "budget_range_tank" to "Ice blitz",
+        "budget_ancient_msb_dds" to "Ice blitz", "rune_pure_nh_anchor" to "Ice blitz",
+        "med_nh_anchor" to "Ice blitz", "dwh_zerker_nh" to "Ice blitz",
+    )
 
     private fun specialsFor(id: String, base: BotPvpLoadout): List<String> = when {
         id.startsWith("f2p_") || id == "full_dharok" || id == "obby_rusher" -> emptyList()
@@ -240,56 +277,59 @@ object BotPvpLoadouts {
     }
 
     private fun nativeVariant(definition: BotPvpVariantDefinition): BotPvpLoadout {
-        val base = checkNotNull(templateById[definition.template]) {
+        val templateId = when (definition.template) {
+            "f2p_magic", "f2p_bind_ko" -> "f2p_pure"
+            else -> definition.template
+        }
+        val base = checkNotNull(templateById[templateId]) {
             "Unknown TSPS native template ${definition.template} for ${definition.id}"
         }
         val id = definition.id
-        val ancient = !id.startsWith("f2p_") && (
-            "nh" in id || "tribrid" in id || id == "ancients_hybrid" ||
-                id == "elite_ancients_dbow" || id.startsWith("anti_pk_") ||
-                id == "toxic_sotd_hybrid" || id == "sotd_hybrid_claws" ||
-                id == "spear_tribrid_ags" || id == "volatile_nh"
-            )
-        val lunar = !ancient && ("venge" in id || "lunar" in id || base.vengeance)
+        val book = when (id) {
+            in ancientVariants -> Spellbook.Ancients
+            in lunarVariants -> Spellbook.Lunars
+            else -> Spellbook.Standard
+        }
+        val f2pMageOnly = id in setOf("f2p_bind_blast", "f2p_fire_blast_pure", "f2p_wind_blast_pure")
+        val f2pMageRange = id == "f2p_bind_maple"
+        val f2pMageMelee = id == "f2p_bind_r2h" || id == "f2p_bind_rbaxe"
         val styles = when {
-            id.startsWith("f2p_") -> base.styles
-            ancient && BotPvpStyle.Magic !in base.styles -> base.styles + (BotPvpStyle.Magic to magic)
+            f2pMageOnly -> mapOf(BotPvpStyle.Magic to f2pMagic)
+            f2pMageRange -> mapOf(BotPvpStyle.Magic to f2pMagic, BotPvpStyle.Ranged to f2pRanged)
+            f2pMageMelee -> mapOf(BotPvpStyle.Magic to f2pMagic, BotPvpStyle.Melee to f2pKo)
+            book == Spellbook.Ancients && BotPvpStyle.Magic !in base.styles ->
+                base.styles + (BotPvpStyle.Magic to magic)
             else -> base.styles
         }
-        val book = when {
-            ancient -> Spellbook.Ancients
-            lunar -> Spellbook.Lunars
-            else -> base.spellbook
+        val primary = when {
+            f2pMageOnly || f2pMageRange || f2pMageMelee -> BotPvpStyle.Magic
+            book == Spellbook.Ancients && BotPvpStyle.Magic in styles -> BotPvpStyle.Magic
+            else -> base.primaryStyle
         }
-        val attackSpell = when {
-            id.startsWith("f2p_fire_blast") || id.startsWith("f2p_bind") -> "Fire blast"
-            id.startsWith("f2p_wind_blast") -> "Wind blast"
-            ancient && ("budget" in id || "low_level" in id || "rune_pure_nh" in id || "med_nh" in id) -> "Ice blitz"
-            ancient -> "Ice barrage"
-            else -> base.attackSpell
-        }
+        val attackSpell = attackSpells[id]
         val freezeSpell = when {
-            id.startsWith("f2p_bind") -> "Bind"
-            ancient -> attackSpell
-            else -> base.freezeSpell
+            id.startsWith("f2p_bind_") -> "Bind"
+            book == Spellbook.Ancients -> attackSpell
+            else -> null
         }
         val runes = when {
             id.startsWith("f2p_") && attackSpell != null -> f2pMagicRunes
-            ancient -> ancientRunes
-            lunar -> lunarRunes
-            else -> base.runes
+            book == Spellbook.Ancients -> ancientRunes
+            book == Spellbook.Lunars -> lunarRunes
+            else -> emptyMap()
         }
         return base.copy(
             id = id,
             members = !definition.f2p,
+            levels = exactLevels(id),
             styles = styles,
-            primaryStyle = if (ancient && BotPvpStyle.Magic in styles) BotPvpStyle.Magic else base.primaryStyle,
+            primaryStyle = primary,
             specialWeapons = specialsFor(id, base),
             spellbook = book,
             attackSpell = attackSpell,
             freezeSpell = freezeSpell,
-            vengeance = lunar,
-            food = if (definition.f2p) "obj.swordfish" else base.food,
+            vengeance = book == Spellbook.Lunars,
+            food = if (definition.f2p) "obj.swordfish" else "obj.shark",
             consumables = if (definition.f2p) emptyMap() else base.consumables,
             runes = runes,
         )
@@ -307,7 +347,19 @@ object BotPvpLoadouts {
 
     fun allowedAt(loadoutId: String, hotspotId: String?): Boolean {
         val hotspot = BotPvpHotspots.get(hotspotId) ?: return true
-        return BotPvpTspsCatalog.familyIdsForVariant(loadoutId).any { it in hotspot.families(get(loadoutId)?.members == true) }
+        val loadout = get(loadoutId) ?: return false
+        return BotPvpTspsCatalog.familyIdsForVariant(loadoutId)
+            .any { it in hotspot.families(loadout.members) }
+    }
+
+    private fun effectiveWeight(
+        definition: BotPvpVariantDefinition,
+        hotspot: BotPvpHotspot?,
+    ): Int {
+        val style = byId[definition.id]?.primaryStyle
+        val styleWeight = style?.let { hotspot?.styleWeights?.get(it) } ?: 1.0
+        return (definition.weight.coerceAtLeast(1) * styleWeight * 1000.0)
+            .roundToInt().coerceAtLeast(1)
     }
 
     fun choose(
@@ -330,13 +382,14 @@ object BotPvpLoadouts {
             }
         }
         check(definitions.isNotEmpty()) { "No TSPS PvP variants for $difficulty members=$members" }
-        val total = definitions.sumOf { it.weight.coerceAtLeast(1) }
+        val weighted = definitions.map { it to effectiveWeight(it, hotspot) }
+        val total = weighted.sumOf { it.second }
         val salt = hotspotId?.hashCode() ?: 0
         var roll = Math.floorMod(identity * 1103515245 + salt, total)
-        for (definition in definitions) {
-            roll -= definition.weight.coerceAtLeast(1)
+        for ((definition, weight) in weighted) {
+            roll -= weight
             if (roll < 0) return checkNotNull(byId[definition.id])
         }
-        return checkNotNull(byId[definitions.last().id])
+        return checkNotNull(byId[weighted.last().first.id])
     }
 }
