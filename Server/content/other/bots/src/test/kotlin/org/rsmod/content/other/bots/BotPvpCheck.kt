@@ -87,9 +87,12 @@ object BotPvpCheck {
         check(BotPvpTspsStats.byId.size == 89)
         check(BotPvpTspsStats.byId.keys == knownVariantIds)
 
-        check(BotPvpHotspots.all.size == 5)
+        check(BotPvpHotspots.all.size == 16)
         check(BotPvpHotspots.all.map { it.id }.toSet() == setOf(
             "edge_ditch", "edge_south", "varrock_ditch", "revs_entrance", "green_drags_gate",
+            "dark_warriors", "crazy_archaeologist", "eastern_unicorns", "black_chins",
+            "eastern_mid", "chaos_fanatic", "demonic_ruins", "mage_arena", "resource_area",
+            "rogues_castle", "frozen_plateau",
         ))
         for (hotspot in BotPvpHotspots.all) {
             check(hotspot.targetBots in 1..hotspot.maxBots)
@@ -99,6 +102,17 @@ object BotPvpCheck {
             check(hotspot.freeWorldFamilies.all { it in BotPvpTspsCatalog.families })
             check(hotspot.contains(hotspot.anchor))
         }
+        val memberRegions = BotPvpHotspots.available(true, BotPvpDifficulty.Standard)
+        check(memberRegions.any { it.anchor.z < 3600 })
+        check(memberRegions.any { it.anchor.z > 3900 })
+        check(memberRegions.any { it.anchor.x < 3000 })
+        check(memberRegions.any { it.anchor.x > 3280 })
+        val assignments = (1..memberRegions.size * 4)
+            .map { BotPvpHotspots.choose(it, true, BotPvpDifficulty.Standard).id }
+            .groupingBy { it }
+            .eachCount()
+        check(assignments.keys == memberRegions.mapTo(hashSetOf()) { it.id })
+        check(assignments.values.max() - assignments.values.min() <= 1)
 
         check(BotPvpLoadouts.nativeTemplateCount == 18)
         check(BotPvpLoadouts.all.size == 89)
@@ -158,6 +172,6 @@ object BotPvpCheck {
         }
         println("PvP decision checks passed: reaction latency, counter-styles, food, retreats, " +
             "finite spec energy, exact TSPS stats/spellbooks, 18 native templates, 89 variants, " +
-            "28 families and 5 hotspots.")
+            "28 families and 16 Wilderness regions.")
     }
 }
