@@ -107,6 +107,9 @@ object BotPvpCheck {
         check(BotPvpLoadouts.available(true).all { it.members })
         check((1..80).all { !BotPvpLoadouts.choose(it, false).members })
         check((1..80).all { BotPvpLoadouts.choose(it, true).members })
+        check(BotPvpLoadouts.all.count { it.spellbook == Spellbook.Standard } == 41)
+        check(BotPvpLoadouts.all.count { it.spellbook == Spellbook.Ancients } == 27)
+        check(BotPvpLoadouts.all.count { it.spellbook == Spellbook.Lunars } == 21)
         check(BotPvpLoadouts.all.any { it.vengeance })
         check(BotPvpLoadouts.all.any { it.styles.size == 3 })
         check(BotPvpLoadouts.all.any { it.id == "gmaul_rusher" && "obj.granite_maul" in it.specialWeapons })
@@ -115,6 +118,11 @@ object BotPvpCheck {
         check(BotPvpLoadouts.get("void_pure_claws")?.spellbook == Spellbook.Lunars)
         check(BotPvpLoadouts.get("budget_anti_pk")?.spellbook == Spellbook.Ancients)
         check(BotPvpLoadouts.get("low_level_nh_pure")?.attackSpell == "Ice blitz")
+        val f2pBindRunes = checkNotNull(BotPvpLoadouts.get("f2p_bind_blast")).runes.keys
+        check(setOf("obj.airrune", "obj.waterrune", "obj.earthrune", "obj.deathrune", "obj.naturerune")
+            .all { it in f2pBindRunes })
+        val f2pBoltRunes = checkNotNull(BotPvpLoadouts.get("f2p_bind_maple")).runes.keys
+        check("obj.chaosrune" in f2pBoltRunes)
         for (hotspot in BotPvpHotspots.available(true, BotPvpDifficulty.Elite)) {
             val chosen = BotPvpLoadouts.choose(73, true, BotPvpDifficulty.Elite, hotspot.id)
             check(BotPvpTspsCatalog.familyIdsForVariant(chosen.id).any { it in hotspot.families(true) })
