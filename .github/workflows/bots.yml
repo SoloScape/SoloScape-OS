@@ -1,0 +1,65 @@
+name: Bot port checks
+
+on:
+  pull_request:
+    paths:
+      - "Server/content/other/bots/**"
+      - "Server/content/other/castle-wars/**"
+      - "Server/content/other/grand-exchange/**"
+      - ".github/workflows/bots.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  bots:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Cache Kotlin compiler
+        uses: actions/cache@v5
+        with:
+          path: .build-tools/kotlinc
+          key: ${{ runner.os }}-kotlin-2.2.10
+      - name: Prepare Kotlin compiler
+        run: python -c "import sys; sys.path.insert(0, 'tools'); import build; build.compiler()"
+      - name: Compile Kotlin bot port and run regression checks
+        shell: pwsh
+        run: |
+          $testDir = Join-Path $env:RUNNER_TEMP "bots-tests"
+          New-Item -ItemType Directory -Force $testDir | Out-Null
+          $libraries = @(Get-ChildItem "Server/server/app/build/install/app/lib" -Filter "*.jar" | Where-Object { $_.Name -notlike "bots-*" -and $_.Name -notlike "castle-wars-*" -and $_.Name -notlike "grand-exchange-*" } | ForEach-Object FullName)
+          $classpath = $libraries -join [IO.Path]::PathSeparator
+          $testJar = Join-Path $testDir "tests.jar"
+          $sourceDirs = @(
+              "Server/content/other/bots/src/main/kotlin",
+              "Server/content/other/bots/src/test/kotlin",
+              "Server/content/other/grand-exchange/src/main/kotlin",
+              "Server/content/other/castle-wars/src/main/kotlin"
+          )
+          $sources = @(Get-ChildItem $sourceDirs -Recurse -Filter "*.kt" | ForEach-Object FullName)
+          $compilerLib = (Resolve-Path .build-tools/kotlinc/lib).Path
+          $compilerArgs = @("-no-stdlib", "-no-reflect", "-jvm-target", "21", "-Xnested-type-aliases", "-opt-in=org.rsmod.annotations.InternalApi", "-classpath", $classpath, "-d", $testJar) + $sources
+          $argFile = Join-Path $testDir "compiler.args"
+          $compilerArgs | ForEach-Object { '"' + $_.Replace('\', '/').Replace('"', '\"') + '"' } | Set-Content -Encoding utf8NoBOM $argFile
+          & "$env:JAVA_HOME/bin/java.exe" -Xmx2g -cp "$compilerLib/*" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler "@$argFile"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $runtimeClasspath = ($testJar, $classpath, (Resolve-Path "Server/content/other/bots/src/main/resources").Path, (Resolve-Path "Server/content/other/grand-exchange/src/main/resources").Path) -join [IO.Path]::PathSeparator
+          Set-Location Server
+          foreach ($check in @("BotActionsCheck", "BotPlannerCheck", "BotPortCheckKt")) {
+          $runArgs = @("-cp", $runtimeClasspath, "org.rsmod.content.other.bots.$check")
+          $runArgFile = Join-Path $testDir "run.args"
+          $runArgs | ForEach-Object { '"' + $_.Replace('\', '/').Replace('"', '\"') + '"' } | Set-Content -Encoding utf8NoBOM $runArgFile
+          & "$env:JAVA_HOME/bin/java.exe" "@$runArgFile"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
