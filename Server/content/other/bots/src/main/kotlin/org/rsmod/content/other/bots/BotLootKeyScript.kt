@@ -1,6 +1,8 @@
 package org.rsmod.content.other.bots
 
 import jakarta.inject.Inject
+import org.rsmod.api.invtx.add
+import org.rsmod.api.invtx.delete
 import org.rsmod.api.invtx.invTransaction
 import org.rsmod.api.invtx.select
 import org.rsmod.api.market.MarketPrices
