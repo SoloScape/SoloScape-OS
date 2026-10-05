@@ -43,6 +43,16 @@ constructor(
     ): DeathDropResult {
         val allCarried = carried.sortedByDescending { marketPriceSingle(it) }
 
+        if (handling.destroyAllCarried) {
+            return DeathDropResult(
+                kept = emptyList(),
+                supplyPile = emptyList(),
+                lostTradeable = emptyList(),
+                lostUntradeable = emptyList(),
+                coinsForKiller = 0L,
+            )
+        }
+
         if (handling.dropAllCarried) {
             return selectAllDrops(allCarried, handling)
         }
