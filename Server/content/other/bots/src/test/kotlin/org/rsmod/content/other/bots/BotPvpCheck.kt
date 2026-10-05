@@ -54,9 +54,9 @@ object BotPvpCheck {
         check(!BotPvpPolicy.shouldSpec(0, 99, 35, 1000, 500, elite, 0.1))
         check(!BotPvpPolicy.shouldSpec(20, 99, 35, 1000, Int.MAX_VALUE, elite, 0.1))
 
-        check(!BotPvpPolicy.specialConsumed(1000, 1000)) // Eating delays do not spend energy.
+        check(!BotPvpPolicy.specialConsumed(1000, 1000))
         check(BotPvpPolicy.specialConsumed(1000, 500))
-        check(!BotPvpPolicy.specialConsumed(500, 600)) // Regeneration is not a special.
+        check(!BotPvpPolicy.specialConsumed(500, 600))
         check(BotPvpPolicy.crossesDitch(3523, 3518))
         check(BotPvpPolicy.crossesDitch(3519, 3550))
         check(!BotPvpPolicy.crossesDitch(3523, 3550))
@@ -77,13 +77,42 @@ object BotPvpCheck {
             check(next in 103..105)
         }
         check(BotPvpPolicy.nextReview(100, 1..1, random) == 101)
+
+        check(BotPvpTspsCatalog.variants.size == 89)
+        check(BotPvpTspsCatalog.variants.map { it.id }.distinct().size == 89)
+        check(BotPvpTspsCatalog.families.size == 28)
+        val knownVariantIds = BotPvpTspsCatalog.variants.mapTo(hashSetOf()) { it.id }
+        check(BotPvpTspsCatalog.families.values.flatten().all { it in knownVariantIds })
+        check(BotPvpTspsCatalog.families.values.flatten().toSet() == knownVariantIds)
+
+        check(BotPvpHotspots.all.size == 5)
+        check(BotPvpHotspots.all.map { it.id }.toSet() == setOf(
+            "edge_ditch", "edge_south", "varrock_ditch", "revs_entrance", "green_drags_gate",
+        ))
+        for (hotspot in BotPvpHotspots.all) {
+            check(hotspot.targetBots in 1..hotspot.maxBots)
+            check(hotspot.styleWeights.values.sum() in 0.999..1.001)
+            check(hotspot.activityWeights.values.sum() in 0.999..1.001)
+            check(hotspot.allowedFamilies.all { it in BotPvpTspsCatalog.families })
+            check(hotspot.freeWorldFamilies.all { it in BotPvpTspsCatalog.families })
+            check(hotspot.contains(hotspot.anchor))
+        }
+
+        check(BotPvpLoadouts.all.size == 89)
         check(BotPvpLoadouts.all.map { it.id }.distinct().size == BotPvpLoadouts.all.size)
         check(BotPvpLoadouts.available(false).all { !it.members })
-        check((1..40).all { !BotPvpLoadouts.choose(it, false).members })
+        check(BotPvpLoadouts.available(true).all { it.members })
+        check((1..80).all { !BotPvpLoadouts.choose(it, false).members })
+        check((1..80).all { BotPvpLoadouts.choose(it, true).members })
         check(BotPvpLoadouts.all.any { it.vengeance })
         check(BotPvpLoadouts.all.any { it.styles.size == 3 })
-        check(BotPvpLoadouts.all.any { it.id == "f2p_ranged_ko" })
+        check(BotPvpLoadouts.all.any { it.id == "gmaul_rusher" && "obj.granite_maul" in it.specialWeapons })
         check(BotPvpLoadouts.all.any { it.spellbook == Spellbook.Standard && it.freezeSpell != null })
+        for (hotspot in BotPvpHotspots.available(true, BotPvpDifficulty.Elite)) {
+            val chosen = BotPvpLoadouts.choose(73, true, BotPvpDifficulty.Elite, hotspot.id)
+            check(BotPvpTspsCatalog.familyIdsForVariant(chosen.id).any { it in hotspot.families(true) })
+        }
+
         val itemMappings = checkNotNull(GameValProvider.loadIsolated().mappings["obj"])
         val requiredItems = BotPvpLoadouts.all.flatMap { loadout ->
             loadout.styles.values.flatten() + loadout.specialWeapons + loadout.food +
@@ -104,7 +133,7 @@ object BotPvpCheck {
             check(loadout.runes.values.all { it > 0 })
             check(!loadout.vengeance || loadout.spellbook == Spellbook.Lunars)
         }
-        println("PvP decision checks passed: reaction latency, counter-styles, food, " +
-            "retreats, finite spec energy, target priorities and ${BotPvpLoadouts.all.size} loadouts.")
+        println("PvP decision checks passed: reaction latency, counter-styles, food, retreats, " +
+            "finite spec energy, target priorities, 89 TSPS variants, 28 families and 5 hotspots.")
     }
 }
