@@ -18,7 +18,9 @@ class BotProfileStore(private val directory: Path = Path.of(".data", "bots")) {
         if (!Files.isRegularFile(file)) return null
         val data = Properties().apply { Files.newInputStream(file).use { load(it) } }
         for (skill in BotSkills.all) {
-            val xp = data.getProperty(skill)?.toIntOrNull() ?: continue
+            val stored = data.getProperty(skill)
+                ?: if (skill == "stat.runecrafting") data.getProperty("stat.runecraft") else null
+            val xp = stored?.toIntOrNull() ?: continue
             val level = PlayerSkillXPTable.getLevelFromFineXP(xp).coerceIn(1, 99)
             player.statMap.setFineXP(skill, xp)
             player.statMap.setBaseLevel(skill, level.toByte())
@@ -86,10 +88,9 @@ object BotSkills {
         "stat.prayer", "stat.magic", "stat.cooking", "stat.woodcutting", "stat.fletching",
         "stat.fishing", "stat.firemaking", "stat.crafting", "stat.smithing", "stat.mining",
         "stat.herblore", "stat.agility", "stat.thieving", "stat.slayer", "stat.farming",
-        "stat.runecraft", "stat.hunter", "stat.construction",
+        "stat.runecrafting", "stat.hunter", "stat.construction",
     )
     fun levels(player: Player): Map<String, Int> =
-        all.associate { it.removePrefix("stat.").let { name ->
-            (if (name == "runecraft") "runecrafting" else name) to player.statMap.getBaseLevel(it).toInt()
-        } } + ("combat" to player.appearance.combatLevel)
+        all.associate { it.removePrefix("stat.") to player.statMap.getBaseLevel(it).toInt() } +
+            ("combat" to player.appearance.combatLevel)
 }
