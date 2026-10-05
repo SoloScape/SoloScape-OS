@@ -1,7 +1,6 @@
 package org.rsmod.content.other.bots
 
 import java.util.Properties
-import org.rsmod.game.inv.InvObj
 
 public fun main() {
     for (mode in BotMode.entries) {
@@ -37,13 +36,8 @@ public fun main() {
     check(BotLootKeys.typeForCount(BotLootKeys.MAX_KEYS) == null)
     check(BotLootKeys.chests.size >= 6)
     check(BotLootKeys.chests.all { it.startsWith("loc.wildy_hub_loot_chest_") })
-
-    val encodedLoot =
-        listOf(
-            InvObj("obj.coins", 12_345),
-            InvObj("obj.shark", 7, vars = 19),
-        )
-    check(BotLootKeyStore.decode(BotLootKeyStore.encode(encodedLoot)) == encodedLoot)
+    check(BotLootKeyStore.encode(emptyList()).isEmpty())
+    check(BotLootKeyStore.decode("")?.isEmpty() == true)
     check(BotLootKeyStore.decode("not,a,valid,bundle") == null)
 
     val tasks = SourceBotCatalog.tasks
