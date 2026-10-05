@@ -53,6 +53,7 @@ import org.rsmod.game.interact.HeldOp
 import org.rsmod.game.interact.InteractionOp
 import org.rsmod.game.interact.InteractionPlayerOp
 import org.rsmod.game.interact.InteractionPlayerT
+import org.rsmod.map.CoordGrid
 
 /**
  * Turns decisions into ordinary player actions. The combat scripts own all attack delays, rune
@@ -300,6 +301,18 @@ class BotPvpActions @Inject constructor(
         val type = item("obj.poh_tablet_lumbridgeteleport") ?: return false
         val slot = player.inv.indices.firstOrNull { player.inv[it]?.id == type.id } ?: return false
         return access.launch(player) { held.interact(this, player.inv, slot, HeldOp.Op1) }
+    }
+
+    /**
+     * Synthetic population relocation after a safe restock. This deliberately uses an exempt
+     * telejump rather than making a respawned deep-Wilderness bot walk from Lumbridge through the
+     * ditch on every death.
+     */
+    fun relocate(player: Player, destination: CoordGrid): Boolean {
+        val launched = access.launch(player) {
+            telejump(destination, TeleportType.Exempt)
+        }
+        return launched && player.coords == destination
     }
 
     /**
