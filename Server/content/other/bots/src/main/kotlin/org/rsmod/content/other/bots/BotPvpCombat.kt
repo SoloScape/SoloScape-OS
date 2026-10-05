@@ -160,8 +160,11 @@ class BotPvpCombat @Inject constructor(
         if (target == null) {
             native.clearPrayers(player)
             if (cycle >= state.nextMove && !player.frozen && player.routeRequest == null) {
-                val dest = CoordGrid(patrol.x + random.nextInt(-7, 8),
-                    patrol.z + random.nextInt(-7, 8), patrol.level)
+                val dest = BotPvpHotspots.get(state.hotspotId)?.spawn(random) ?: CoordGrid(
+                    patrol.x + random.nextInt(-7, 8),
+                    patrol.z + random.nextInt(-7, 8),
+                    patrol.level,
+                )
                 walkTowards(player, dest)
                 state.nextMove = cycle + 5
             }
