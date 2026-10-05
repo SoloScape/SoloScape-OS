@@ -150,7 +150,7 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
                     .firstOrNull { it.name.startsWith("Raw ", true) }
                 raw != null && actions.useItemOnLoc(player, raw.name, task.targets)
             }
-            BotTaskKind.Smelting -> actions.useItemOnLoc(player, "Iron ore", task.targets)
+            BotTaskKind.Smelting -> actions.operate(player, task.targets, "Smelt")
             BotTaskKind.Smithing -> actions.useItemOnLoc(player, "Steel bar", task.targets)
             BotTaskKind.Spinning -> actions.operate(player, task.targets, "Spin")
             BotTaskKind.Tanning -> actions.operate(player, task.targets, "Trade")
