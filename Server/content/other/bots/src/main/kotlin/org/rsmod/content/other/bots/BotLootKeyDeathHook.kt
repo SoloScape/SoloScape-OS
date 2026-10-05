@@ -58,6 +58,7 @@ constructor(private val population: BotPopulation) : PlayerDeathHook {
             revealDelay = PVP_REVEAL_DELAY,
             supplyPile = false,
             untradeableHandling = UntradeableHandling.DROP,
+            dropAllCarried = true,
         )
     }
 
