@@ -74,7 +74,7 @@ jobs:
           )
           $sources = @(Get-ChildItem $sourceDirs -Recurse -Filter "*.kt" | ForEach-Object FullName)
           $compilerLib = (Resolve-Path .build-tools/kotlinc/lib).Path
-          $compilerArgs = @("-no-stdlib", "-no-reflect", "-jvm-target", "21", "-Xnested-type-aliases", "-opt-in=org.rsmod.annotations.InternalApi", "-classpath", $classpath, "-d", $testJar) + $sources
+          $compilerArgs = @("-no-stdlib", "-no-reflect", "-jvm-target", "21", "-Xnested-type-aliases", "-Xannotation-default-target=param-property", "-Xconsistent-data-class-copy-visibility", "-opt-in=org.rsmod.annotations.InternalApi", "-classpath", $classpath, "-d", $testJar) + $sources
           $argFile = Join-Path $testDir "compiler.args"
           $compilerArgs | ForEach-Object { '"' + $_.Replace('\', '/').Replace('"', '\"') + '"' } | Set-Content -Encoding utf8NoBOM $argFile
           & "$env:JAVA_HOME/bin/java.exe" -Xmx2g -cp "$compilerLib/*" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler "@$argFile"
