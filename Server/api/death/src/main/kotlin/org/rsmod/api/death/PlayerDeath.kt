@@ -104,7 +104,9 @@ constructor(
 
         val result = drops.selectDrops(player, context, handling)
         drops.applyDrops(player, result, handling, deathCoords)
-        drops.spawnRemains(deathCoords, handling)
+        if (handling.spawnRemains) {
+            drops.spawnRemains(deathCoords, handling)
+        }
 
         player.attr.remove(DEATH_KILLER_ATTR)
         player.attr.remove(DEATH_CAUSE_ATTR)
