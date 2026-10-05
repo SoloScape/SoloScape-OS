@@ -30,7 +30,7 @@ object BotPvpLoadouts {
     )
 
     private val melee = listOf(
-        "obj.abyssal_whip", "obj.rune_full_helm", "obj.rune_platebody",
+        "obj.abyssal_whip", "obj.rune_full_helm", "obj.rune_chainbody",
         "obj.rune_platelegs", "obj.rune_kiteshield", "obj.amulet_of_glory",
         "obj.death_climbingboots",
     )
@@ -132,7 +132,7 @@ object BotPvpLoadouts {
             "tribrid", levels(),
             mapOf(
                 BotPvpStyle.Magic to magic,
-                BotPvpStyle.Melee to listOf("obj.abyssal_whip", "obj.rune_platebody",
+                BotPvpStyle.Melee to listOf("obj.abyssal_whip", "obj.rune_chainbody",
                     "obj.rune_platelegs"),
                 BotPvpStyle.Ranged to listOf("obj.magic_shortbow", "obj.rune_arrow",
                     "obj.black_dragonhide_body", "obj.black_dragonhide_chaps"),
@@ -155,7 +155,7 @@ object BotPvpLoadouts {
             mapOf(
                 BotPvpStyle.Magic to listOf("obj.staff_of_fire", "obj.mystic_robe_top",
                     "obj.mystic_robe_bottom", "obj.amulet_of_glory"),
-                BotPvpStyle.Melee to listOf("obj.abyssal_whip", "obj.rune_platebody",
+                BotPvpStyle.Melee to listOf("obj.abyssal_whip", "obj.rune_chainbody",
                     "obj.rune_platelegs"),
                 BotPvpStyle.Ranged to listOf("obj.magic_shortbow", "obj.rune_arrow",
                     "obj.black_dragonhide_body", "obj.black_dragonhide_chaps"),
@@ -175,11 +175,11 @@ object BotPvpLoadouts {
             "f2p", false, levels(attack = 40, defence = 40, prayer = 45),
             mapOf(
                 BotPvpStyle.Melee to listOf(
-                    "obj.rune_scimitar", "obj.rune_full_helm", "obj.rune_platebody",
+                    "obj.rune_scimitar", "obj.rune_full_helm", "obj.rune_chainbody",
                     "obj.rune_platelegs", "obj.rune_kiteshield", "obj.amulet_of_strength",
                 ),
                 BotPvpStyle.Ranged to listOf(
-                    "obj.maple_shortbow", "obj.adamant_arrow", "obj.dragonhide_body",
+                    "obj.maple_shortbow", "obj.adamant_arrow", "obj.leather_armour",
                     "obj.dragonhide_chaps", "obj.dragon_vambraces", "obj.coif",
                 ),
             ),
@@ -213,7 +213,7 @@ object BotPvpLoadouts {
             f2p.copy(
                 id = "f2p_ranged_ko", primaryStyle = BotPvpStyle.Ranged,
                 styles = f2p.styles + (BotPvpStyle.Melee to listOf(
-                    "obj.rune_2h_sword", "obj.rune_full_helm", "obj.rune_platebody",
+                    "obj.rune_2h_sword", "obj.rune_full_helm", "obj.rune_chainbody",
                     "obj.rune_platelegs", "obj.amulet_of_strength",
                 )),
             ),

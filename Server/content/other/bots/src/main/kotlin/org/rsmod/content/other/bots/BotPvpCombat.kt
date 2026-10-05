@@ -266,7 +266,9 @@ class BotPvpCombat @Inject constructor(
             if (movement.operate(player, setOf("Door", "Gate"), "Open", 2)) return "opening gate"
         }
         native.attack(player, target,
-            if (state.style == BotPvpStyle.Magic) state.loadout.attackSpell else null)
+            if (state.style == BotPvpStyle.Magic) state.loadout.attackSpell?.takeIf {
+                native.canCast(player, it)
+            } else null)
         return "fighting ${target.displayName} (${state.style})"
     }
 
@@ -297,8 +299,10 @@ class BotPvpCombat @Inject constructor(
     }
 
     private fun disengage(player: Player, state: BotPvpState) {
-        player.clearPendingAction(events)
-        native.cancelSpecial(player)
+        if (!player.isDelayed && !player.isAccessProtected) {
+            player.clearPendingAction(events)
+            native.cancelSpecial(player)
+        }
         state.target = null
         state.specialQueuedAt = -1
         state.reaction.reset()

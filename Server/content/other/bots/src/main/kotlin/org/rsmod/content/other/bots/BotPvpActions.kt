@@ -177,7 +177,7 @@ class BotPvpActions @Inject constructor(
         val type = item(finisher) ?: return Int.MAX_VALUE
         // Specialized costs (< 10) require weapon-specific rules, so omit those weapons from
         // generic bot finishers instead of assuming they are free.
-        val cost = when (val special = specials[InvObj(type.id)]) {
+        val cost = when (val special = specials[InvObj(type)]) {
             is SpecialAttack.Melee -> special.energyInHundreds
             is SpecialAttack.Ranged -> special.energyInHundreds
             is SpecialAttack.Magic -> special.energyInHundreds
@@ -367,7 +367,7 @@ class BotPvpActions @Inject constructor(
             loadout.runes.size + loadout.consumables.entries.sumOf {
                 if (types.getValue(it.key).stackable) 1 else it.value
             }
-        if (fixedSlots > 25) return false
+        if (fixedSlots > 24) return false
         VarPlayerIntMapSetter.set(player, "varbit.spellbook", loadout.spellbook.varValue)
         player.inv.fillNulls()
         player.worn.fillNulls()
@@ -385,8 +385,8 @@ class BotPvpActions @Inject constructor(
             player.invAdd(player.inv, types.getValue(symbol).id, count)
         }
         val free = player.inv.objs.count { it == null }
-        if (free < 3) return false
-        player.invAdd(player.inv, types.getValue(loadout.food).id, free)
+        if (free < 4) return false
+        player.invAdd(player.inv, types.getValue(loadout.food).id, free - 1)
         player.rebuildAppearance()
         return foodCount(player) >= 3
     }
