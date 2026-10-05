@@ -39,7 +39,10 @@ public object SourceBotCatalog {
         mapOf("wilderness" to 30, "skilling" to 50, "progressive" to 10,
             "trade" to 50, "drop_party" to 20, "clan_team" to 20, "castle_wars" to 2)
 
-    public val tasks: List<BotTaskDefinition> = listOf(
+    public val tasks: List<BotTaskDefinition> =
+        activities0() + activities1() + activities2() + activities3() + activities4() + activities5() + activities6() + activities7() + activities8() + activities9() + activities10() + activities11()
+
+    private fun activities0(): List<BotTaskDefinition> = listOf(
         BotTaskDefinition("AirRuneRunecrafting", BotTaskKind.Runecrafting, 1, CoordGrid(0, 3012, 3355),
             listOf(CoordGrid(0, 3012, 3359), CoordGrid(0, 3008, 3359), CoordGrid(0, 3007, 3342), CoordGrid(0, 3006, 3322), CoordGrid(0, 2992, 3311), CoordGrid(0, 2985, 3296), CoordGrid(0, 2841, 4829)), setOf("mysterious ruins", "altar"), "enter", "runecrafting",
             minimumLevel = 1, members = false, requiredItems = mapOf("air talisman" to 1, "rune essence" to 500), ignoredLoot = emptySet(),
@@ -89,7 +92,10 @@ public object SourceBotCatalog {
             listOf(CoordGrid(0, 3091, 3490), CoordGrid(0, 3081, 3483), CoordGrid(0, 3080, 3467), CoordGrid(0, 3086, 3464), CoordGrid(0, 3091, 3448), CoordGrid(0, 3100, 3434)), setOf("fishing spot"), "lure", "fishing",
             minimumLevel = 20, members = false, requiredItems = mapOf("fly fishing rod" to 1, "feather" to 200), ignoredLoot = emptySet(),
             requiredLevels = mapOf("fishing" to 20, "cooking" to 15), minimumCombatLevel = 3, maximumCombatLevel = 126,
-            progressionBelow = mapOf("fishing" to 40, "cooking" to 40), progressionAnyBelow = true),
+            progressionBelow = mapOf("fishing" to 40, "cooking" to 40), progressionAnyBelow = true)
+    )
+
+    private fun activities1(): List<BotTaskDefinition> = listOf(
         BotTaskDefinition("BodyRuneRunecrafting", BotTaskKind.Runecrafting, 1, CoordGrid(0, 3094, 3491),
             listOf(CoordGrid(0, 3090, 3490), CoordGrid(0, 3081, 3483), CoordGrid(0, 3080, 3467), CoordGrid(0, 3086, 3463), CoordGrid(0, 3079, 3453), CoordGrid(0, 3073, 3450), CoordGrid(0, 3070, 3445), CoordGrid(0, 3060, 3438), CoordGrid(0, 3056, 3441), CoordGrid(0, 2523, 4828)), setOf("mysterious ruins", "altar"), "enter", "runecrafting",
             minimumLevel = 20, members = false, requiredItems = mapOf("body talisman" to 1, "rune essence" to 500), ignoredLoot = emptySet(),
@@ -139,7 +145,10 @@ public object SourceBotCatalog {
             listOf(CoordGrid(0, 3092, 3247), CoordGrid(0, 3087, 3247), CoordGrid(0, 3087, 3241)), setOf("fishing spot"), "net", "fishing",
             minimumLevel = 1, members = false, requiredItems = mapOf("small fishing net" to 1), ignoredLoot = emptySet(),
             requiredLevels = emptyMap(), minimumCombatLevel = 15, maximumCombatLevel = 126,
-            progressionBelow = mapOf("fishing" to 20, "cooking" to 15), progressionAnyBelow = true),
+            progressionBelow = mapOf("fishing" to 20, "cooking" to 15), progressionAnyBelow = true)
+    )
+
+    private fun activities2(): List<BotTaskDefinition> = listOf(
         BotTaskDefinition("DraynorOakWoodcutting", BotTaskKind.Woodcutting, 3, CoordGrid(0, 3092, 3245),
             listOf(CoordGrid(0, 3093, 3247), CoordGrid(0, 3099, 3250), CoordGrid(0, 3107, 3251)), setOf("oak"), "chop down", "woodcutting",
             minimumLevel = 15, members = false, requiredItems = mapOf("bronze axe" to 1), ignoredLoot = emptySet(),
@@ -189,7 +198,10 @@ public object SourceBotCatalog {
             listOf(CoordGrid(0, 3182, 3432), CoordGrid(0, 3163, 3426), CoordGrid(0, 3149, 3426), CoordGrid(0, 3135, 3432), CoordGrid(0, 3127, 3441), CoordGrid(0, 3115, 3449), CoordGrid(0, 3115, 3450), CoordGrid(0, 3116, 9843), CoordGrid(0, 3114, 9836)), setOf("hill giant"), "attack", null,
             minimumLevel = 1, members = false, requiredItems = mapOf("brass key" to 1, "trout" to 16), ignoredLoot = setOf("pink skirt", "bronze med helm", "iron dagger", "bronze mace", "unfired pot", "beer"),
             requiredLevels = emptyMap(), minimumCombatLevel = 23, maximumCombatLevel = 126,
-            progressionBelow = emptyMap(), progressionAnyBelow = false),
+            progressionBelow = emptyMap(), progressionAnyBelow = false)
+    )
+
+    private fun activities3(): List<BotTaskDefinition> = listOf(
         BotTaskDefinition("EdgevilleDungeonNorthMossGiantCombat", BotTaskKind.Combat, 2, CoordGrid(0, 3253, 3420),
             listOf(CoordGrid(0, 3253, 3428), CoordGrid(0, 3247, 3432), CoordGrid(0, 3245, 3444), CoordGrid(0, 3243, 3455), CoordGrid(0, 3238, 3458), CoordGrid(0, 3243, 9870), CoordGrid(0, 3244, 9890), CoordGrid(0, 3246, 9892), CoordGrid(0, 3247, 9892), CoordGrid(0, 3268, 9892), CoordGrid(0, 3275, 9893), CoordGrid(0, 3281, 9898), CoordGrid(0, 3281, 9907), CoordGrid(0, 3272, 9915), CoordGrid(0, 3257, 9915), CoordGrid(0, 3246, 9916), CoordGrid(0, 3245, 9916), CoordGrid(0, 3241, 9911), CoordGrid(0, 3241, 9910), CoordGrid(0, 3241, 9907), CoordGrid(0, 3224, 9908), CoordGrid(0, 3217, 9908), CoordGrid(0, 3210, 9899), CoordGrid(0, 3210, 9897), CoordGrid(0, 3208, 9890), CoordGrid(0, 3188, 9890), CoordGrid(0, 3180, 9895), CoordGrid(0, 3164, 9894), CoordGrid(0, 3159, 9896)), setOf("moss giant"), "attack", null,
             minimumLevel = 1, members = false, requiredItems = mapOf("trout" to 16), ignoredLoot = setOf("magic staff", "spinach roll"),
@@ -239,7 +251,10 @@ public object SourceBotCatalog {
             listOf(CoordGrid(0, 2946, 3374), CoordGrid(0, 2954, 3379), CoordGrid(0, 2966, 3390)), setOf("guard"), "attack", null,
             minimumLevel = 1, members = false, requiredItems = mapOf("trout" to 16), ignoredLoot = setOf("jug", "grain"),
             requiredLevels = emptyMap(), minimumCombatLevel = 16, maximumCombatLevel = 32,
-            progressionBelow = emptyMap(), progressionAnyBelow = false),
+            progressionBelow = emptyMap(), progressionAnyBelow = false)
+    )
+
+    private fun activities4(): List<BotTaskDefinition> = listOf(
         BotTaskDefinition("FaladorImpCombat", BotTaskKind.Combat, 1, CoordGrid(0, 3012, 3355),
             listOf(CoordGrid(0, 3012, 3359), CoordGrid(0, 3008, 3359), CoordGrid(0, 3008, 3343), CoordGrid(0, 3008, 3325), CoordGrid(0, 3004, 3302)), setOf("imp"), "attack", null,
             minimumLevel = 1, members = false, requiredItems = mapOf("trout" to 10), ignoredLoot = setOf("tinderbox", "ashes", "cadava berries", "bronze arrow", "flyer", "pot", "jug", "egg", "grain", "bread"),
@@ -289,7 +304,10 @@ public object SourceBotCatalog {
             emptyList(), setOf("leather"), "craft", "crafting",
             minimumLevel = 1, members = false, requiredItems = mapOf("thread" to 200, "needle" to 1), ignoredLoot = emptySet(),
             requiredLevels = emptyMap(), minimumCombatLevel = 3, maximumCombatLevel = 126,
-            progressionBelow = emptyMap(), progressionAnyBelow = false),
+            progressionBelow = emptyMap(), progressionAnyBelow = false)
+    )
+
+    private fun activities5(): List<BotTaskDefinition> = listOf(
         BotTaskDefinition("LumbridgeCowCombat", BotTaskKind.Combat, 10, CoordGrid(0, 3269, 3167),
             listOf(CoordGrid(0, 3273, 3167), CoordGrid(0, 3275, 3176), CoordGrid(0, 3270, 3178), CoordGrid(0, 3269, 3193), CoordGrid(0, 3269, 3212), CoordGrid(0, 3268, 3228), CoordGrid(0, 3267, 3228), CoordGrid(0, 3258, 3247), CoordGrid(0, 3252, 3254), CoordGrid(0, 3252, 3267), CoordGrid(0, 3253, 3267), CoordGrid(0, 3258, 3277)), setOf("cow"), "attack", null,
             minimumLevel = 1, members = false, requiredItems = mapOf("trout" to 10), ignoredLoot = setOf("raw beef"),
@@ -339,7 +357,10 @@ public object SourceBotCatalog {
             listOf(CoordGrid(0, 2725, 3486), CoordGrid(0, 2718, 3484), CoordGrid(0, 2716, 3472), CoordGrid(0, 2715, 3472), CoordGrid(0, 2715, 3471), CoordGrid(1, 2715, 3471), CoordGrid(1, 2712, 3471)), setOf("spinning wheel"), "spin", "crafting",
             minimumLevel = 1, members = true, requiredItems = emptyMap(), ignoredLoot = emptySet(),
             requiredLevels = emptyMap(), minimumCombatLevel = 21, maximumCombatLevel = 126,
-            progressionBelow = emptyMap(), progressionAnyBelow = false),
+            progressionBelow = emptyMap(), progressionAnyBelow = false)
+    )
+
+    private fun activities6(): List<BotTaskDefinition> = listOf(
         BotTaskDefinition("SeersMagicTreeWoodcutting", BotTaskKind.Woodcutting, 2, CoordGrid(0, 2725, 3493),
             listOf(CoordGrid(0, 2725, 3486), CoordGrid(0, 2718, 3484), CoordGrid(0, 2718, 3463), CoordGrid(0, 2718, 3456), CoordGrid(0, 2709, 3448), CoordGrid(0, 2707, 3434), CoordGrid(0, 2700, 3427)), setOf("magic tree"), "chop down", "woodcutting",
             minimumLevel = 75, members = true, requiredItems = mapOf("bronze axe" to 1), ignoredLoot = emptySet(),
@@ -389,7 +410,10 @@ public object SourceBotCatalog {
             listOf(CoordGrid(0, 3254, 3428), CoordGrid(0, 3265, 3429), CoordGrid(0, 3273, 3429), CoordGrid(0, 3275, 3445)), setOf("tree"), "chop down", "woodcutting",
             minimumLevel = 1, members = false, requiredItems = mapOf("bronze axe" to 1), ignoredLoot = emptySet(),
             requiredLevels = emptyMap(), minimumCombatLevel = 3, maximumCombatLevel = 126,
-            progressionBelow = mapOf("woodcutting" to 15), progressionAnyBelow = false),
+            progressionBelow = mapOf("woodcutting" to 15), progressionAnyBelow = false)
+    )
+
+    private fun activities7(): List<BotTaskDefinition> = listOf(
         BotTaskDefinition("VarrockGuardCombat", BotTaskKind.Combat, 3, CoordGrid(0, 3185, 3436),
             listOf(CoordGrid(0, 3182, 3432), CoordGrid(0, 3191, 3432), CoordGrid(0, 3200, 3438), CoordGrid(0, 3212, 3438), CoordGrid(0, 3212, 3449), CoordGrid(0, 3212, 3462)), setOf("guard"), "attack", null,
             minimumLevel = 1, members = false, requiredItems = mapOf("trout" to 16), ignoredLoot = setOf("jug", "grain"),
@@ -439,7 +463,10 @@ public object SourceBotCatalog {
             listOf(CoordGrid(0, 3182, 3432), CoordGrid(0, 3170, 3428), CoordGrid(0, 3163, 3420)), setOf("oak"), "chop down", "woodcutting",
             minimumLevel = 15, members = false, requiredItems = mapOf("bronze axe" to 1), ignoredLoot = emptySet(),
             requiredLevels = mapOf("woodcutting" to 15), minimumCombatLevel = 3, maximumCombatLevel = 126,
-            progressionBelow = mapOf("woodcutting" to 30), progressionAnyBelow = false),
+            progressionBelow = mapOf("woodcutting" to 30), progressionAnyBelow = false)
+    )
+
+    private fun activities8(): List<BotTaskDefinition> = listOf(
         BotTaskDefinition("VarrockWestTreeWoodcutting", BotTaskKind.Woodcutting, 3, CoordGrid(0, 3185, 3436),
             listOf(CoordGrid(0, 3182, 3432), CoordGrid(0, 3170, 3428), CoordGrid(0, 3163, 3420)), setOf("tree"), "chop down", "woodcutting",
             minimumLevel = 1, members = false, requiredItems = mapOf("bronze axe" to 1), ignoredLoot = emptySet(),
@@ -489,7 +516,10 @@ public object SourceBotCatalog {
             listOf(CoordGrid(0, 2644, 3284), CoordGrid(0, 2634, 3290), CoordGrid(0, 2628, 3297), CoordGrid(0, 2614, 3297), CoordGrid(0, 2614, 3295), CoordGrid(0, 2614, 3294)), setOf("bob"), "trade", null,
             minimumLevel = 1, members = true, requiredItems = emptyMap(), ignoredLoot = emptySet(),
             requiredLevels = emptyMap(), minimumCombatLevel = 3, maximumCombatLevel = 126,
-            progressionBelow = emptyMap(), progressionAnyBelow = false),
+            progressionBelow = emptyMap(), progressionAnyBelow = false)
+    )
+
+    private fun activities9(): List<BotTaskDefinition> = listOf(
         BotTaskDefinition("ArdougnePlatebodyShop", BotTaskKind.Shop, 1, CoordGrid(0, 2655, 3283),
             listOf(CoordGrid(0, 2644, 3284), CoordGrid(0, 2642, 3295), CoordGrid(0, 2639, 3302), CoordGrid(0, 2643, 3306), CoordGrid(0, 2652, 3306), CoordGrid(0, 2654, 3297), CoordGrid(0, 2654, 3295)), setOf("zenesha"), "trade", null,
             minimumLevel = 1, members = true, requiredItems = emptyMap(), ignoredLoot = emptySet(),
@@ -539,7 +569,10 @@ public object SourceBotCatalog {
             listOf(CoordGrid(0, 2946, 3374), CoordGrid(0, 2954, 3379), CoordGrid(0, 2961, 3384), CoordGrid(0, 2967, 3396), CoordGrid(0, 2975, 3410), CoordGrid(0, 2987, 3421), CoordGrid(0, 2989, 3428), CoordGrid(0, 3005, 3433), CoordGrid(0, 3022, 3437), CoordGrid(0, 3031, 3447), CoordGrid(0, 3040, 3458), CoordGrid(0, 3042, 3470), CoordGrid(0, 3033, 3470), CoordGrid(0, 3022, 3462), CoordGrid(0, 3016, 3455), CoordGrid(0, 3020, 9839), CoordGrid(0, 3018, 9823), CoordGrid(0, 3017, 9813), CoordGrid(0, 3002, 9814), CoordGrid(0, 2999, 9829), CoordGrid(0, 2999, 9841)), setOf("nurmof"), "trade", null,
             minimumLevel = 1, members = false, requiredItems = emptyMap(), ignoredLoot = emptySet(),
             requiredLevels = emptyMap(), minimumCombatLevel = 3, maximumCombatLevel = 126,
-            progressionBelow = emptyMap(), progressionAnyBelow = false),
+            progressionBelow = emptyMap(), progressionAnyBelow = false)
+    )
+
+    private fun activities10(): List<BotTaskDefinition> = listOf(
         BotTaskDefinition("EdgevilleGeneralStore", BotTaskKind.Shop, 1, CoordGrid(0, 3096, 3494),
             listOf(CoordGrid(0, 3092, 3500), CoordGrid(0, 3080, 3506), CoordGrid(0, 3080, 3507)), setOf("shop keeper"), "trade", null,
             minimumLevel = 1, members = false, requiredItems = emptyMap(), ignoredLoot = emptySet(),
@@ -589,7 +622,10 @@ public object SourceBotCatalog {
             listOf(CoordGrid(0, 3253, 3428), CoordGrid(0, 3239, 3428), CoordGrid(0, 3233, 3428), CoordGrid(0, 3233, 3427)), setOf("lowe"), "trade", null,
             minimumLevel = 1, members = false, requiredItems = emptyMap(), ignoredLoot = emptySet(),
             requiredLevels = emptyMap(), minimumCombatLevel = 3, maximumCombatLevel = 126,
-            progressionBelow = emptyMap(), progressionAnyBelow = false),
+            progressionBelow = emptyMap(), progressionAnyBelow = false)
+    )
+
+    private fun activities11(): List<BotTaskDefinition> = listOf(
         BotTaskDefinition("VarrockArmourShopChainbody", BotTaskKind.Shop, 1, CoordGrid(0, 3253, 3420),
             listOf(CoordGrid(0, 3253, 3428), CoordGrid(0, 3239, 3428), CoordGrid(0, 3231, 3432), CoordGrid(0, 3231, 3433)), setOf("horvik"), "trade", null,
             minimumLevel = 1, members = false, requiredItems = emptyMap(), ignoredLoot = emptySet(),
