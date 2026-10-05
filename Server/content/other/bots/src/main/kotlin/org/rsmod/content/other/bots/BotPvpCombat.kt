@@ -42,7 +42,10 @@ class BotPvpCombat @Inject constructor(
             player.statMap.setCurrentLevel(stat, level.toByte())
         }
         player.appearance.combatLevel = PlayerSkillXP.calculateCombatLevel(player)
-        if (!native.seed(player, loadout)) return false
+        val seedFailure = native.seedFailure(player, loadout)
+        check(seedFailure == null) {
+            "Unable to seed PvP bot loadout ${loadout.id}: $seedFailure"
+        }
         VarPlayerIntMapSetter.set(player, "varp.sa_energy", 1000)
         states[player] = state
         return true
