@@ -19,6 +19,24 @@ jobs:
       - uses: actions/checkout@v4
         with:
           lfs: true
+      - name: Snapshot pinned TSPS PvP source
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "tsps-pvp-source"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          $root = "https://raw.githubusercontent.com/RSPSApp/tsps/c40e57fd95c8edb400ded74e1dde9fe87c3e8d7e/server/data/definitions"
+          Invoke-WebRequest "$root/pvp-bot-loadouts.json" -OutFile (Join-Path $dir "pvp-bot-loadouts.json")
+          Invoke-WebRequest "$root/pvp-bot-hotspots.json" -OutFile (Join-Path $dir "pvp-bot-hotspots.json")
+          $loadoutBlob = git hash-object (Join-Path $dir "pvp-bot-loadouts.json")
+          $hotspotBlob = git hash-object (Join-Path $dir "pvp-bot-hotspots.json")
+          if ($loadoutBlob -ne "65424df7d773d680cd31221f1b17da92930ef92b") { throw "Unexpected TSPS loadout blob $loadoutBlob" }
+          if ($hotspotBlob -ne "b47301dce4fafa424022c7f8bf5bc9e174bae3c1") { throw "Unexpected TSPS hotspot blob $hotspotBlob" }
+      - name: Upload pinned TSPS PvP source
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsps-pvp-source
+          path: ${{ runner.temp }}/tsps-pvp-source
+          retention-days: 1
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
