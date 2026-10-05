@@ -1,8 +1,8 @@
 package org.rsmod.content.other.bots
 
 import jakarta.inject.Inject
-import org.rsmod.api.invtx.add
-import org.rsmod.api.invtx.delete
+import org.rsmod.api.invtx.add as txAdd
+import org.rsmod.api.invtx.delete as txDelete
 import org.rsmod.api.invtx.invTransaction
 import org.rsmod.api.invtx.select
 import org.rsmod.api.market.MarketPrices
@@ -77,7 +77,7 @@ constructor(
         val transaction =
             player.invTransaction(inv, autoCommit = false) {
                 val target = select(inv)
-                delete(
+                txDelete(
                     inv = target,
                     obj = key.id,
                     count = 1,
@@ -86,7 +86,7 @@ constructor(
                     placehold = false,
                 )
                 for (item in loot) {
-                    add(
+                    txAdd(
                         inv = target,
                         obj = item.id,
                         count = item.count,
