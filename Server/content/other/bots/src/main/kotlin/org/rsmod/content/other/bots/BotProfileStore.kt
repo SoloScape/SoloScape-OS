@@ -24,8 +24,9 @@ class BotProfileStore(private val directory: Path = Path.of(".data", "bots")) {
             player.statMap.setBaseLevel(skill, level.toByte())
             player.statMap.setCurrentLevel(skill, level.toByte())
         }
+        val bank = player.invMap.getOrPut("inv.bank")
         restore(player.inv, data, "inv")
-        restore(player.bank, data, "bank")
+        restore(bank, data, "bank")
         restore(player.worn, data, "worn")
         player.appearance.combatLevel = PlayerSkillXP.calculateCombatLevel(player)
         player.rebuildAppearance()
@@ -37,8 +38,9 @@ class BotProfileStore(private val directory: Path = Path.of(".data", "bots")) {
         val data = Properties()
         for (skill in BotSkills.all) data.setProperty(skill, player.statMap.getFineXP(skill).toString())
         task?.let { data.setProperty("task", it) }
+        val bank = player.invMap.getOrPut("inv.bank")
         capture(player.inv, data, "inv")
-        capture(player.bank, data, "bank")
+        capture(bank, data, "bank")
         capture(player.worn, data, "worn")
         val file = path(player.username)
         val temporary = Files.createTempFile(directory, "bot-", ".tmp")
