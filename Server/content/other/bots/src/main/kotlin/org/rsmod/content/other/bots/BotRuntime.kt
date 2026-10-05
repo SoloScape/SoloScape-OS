@@ -315,11 +315,21 @@ class BotPopulation @Inject constructor(
             bot.patrol = choices.randomOrNull(random) ?: WildernessPatrols.centers.first()
             bot.nextPatrolChange = player.currentMapClock + random.nextInt(500, 1200)
         }
-        val opponents = bots.values.filter {
-            if (wilderness) it.mode == BotMode.Wilderness && it.player.coords.z >= 3520
-            else (bot.mode == BotMode.ClanOne && it.mode == BotMode.ClanTwo) ||
-                (bot.mode == BotMode.ClanTwo && it.mode == BotMode.ClanOne)
-        }.map { it.player }.filter { it !== player }
+        val opponents = if (wilderness) {
+            val wildernessBots = bots.values
+                .filter { it.mode == BotMode.Wilderness && it.player.coords.z >= 3520 }
+                .map { it.player }
+                .filter { it !== player }
+            val realPlayers = registry.playerList.mapNotNull { it }.filter {
+                it !== player && it !in bots && it.coords.z >= 3520
+            }
+            wildernessBots + realPlayers
+        } else {
+            bots.values.filter {
+                (bot.mode == BotMode.ClanOne && it.mode == BotMode.ClanTwo) ||
+                    (bot.mode == BotMode.ClanTwo && it.mode == BotMode.ClanOne)
+            }.map { it.player }.filter { it !== player }
+        }
         minigames.tickCombat(player, opponents)
         bot.status = "seeking opponent"
         if (player.interaction == null && player.routeRequest == null) {
