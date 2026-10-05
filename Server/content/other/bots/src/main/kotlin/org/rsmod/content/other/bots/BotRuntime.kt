@@ -24,6 +24,8 @@ import org.rsmod.map.CoordGrid
 
 enum class BotMode {
     Skilling, Progressive, Combat, Wilderness, Trade, DropParty, ClanOne, ClanTwo;
+
+    val isPvp: Boolean get() = this in setOf(Wilderness, ClanOne, ClanTwo)
     companion object {
         fun parse(text: String): BotMode? = entries.firstOrNull {
             it.name.equals(text.replace("_", "").replace("-", ""), true)
@@ -92,6 +94,7 @@ class BotPopulation @Inject constructor(
     private val minigames: BotMinigames,
     private val access: ProtectedAccessLauncher,
     private val events: EventBus,
+    private val pvpCombat: BotPvpCombat,
 ) {
     private val logger = InlineLogger()
     private val bots = LinkedHashMap<Player, WorldBot>()
@@ -115,7 +118,13 @@ class BotPopulation @Inject constructor(
         }
     }
 
-    fun spawn(mode: BotMode, requested: Int): Int {
+    fun spawn(
+        mode: BotMode,
+        requested: Int,
+        difficulty: BotPvpDifficulty = BotPvpDifficulty.parse(
+            configured.getProperty("pvp.difficulty", "standard")
+        ) ?: BotPvpDifficulty.Standard,
+    ): Int {
         var added = 0
         repeat(requested.coerceIn(0, MAX_BOTS - bots.size)) {
             val slot = registry.nextFreeSlot() ?: return added
@@ -152,7 +161,11 @@ class BotPopulation @Inject constructor(
             }
             try {
                 initializeLevels(player, mode, initial)
-                supplies.seed(player, initial, mode == BotMode.Progressive)
+                if (mode.isPvp) {
+                    check(pvpCombat.register(player, identity, difficulty)) {
+                        "Unable to seed PvP bot loadout"
+                    }
+                } else supplies.seed(player, initial, mode == BotMode.Progressive)
                 val restoredTask = if (mode == BotMode.Progressive) profiles.load(player) else null
                 val task = SourceBotCatalog.tasks.firstOrNull { it.id == restoredTask } ?: initial
                 val bot = WorldBot(player, mode, task, patrol)
@@ -176,6 +189,7 @@ class BotPopulation @Inject constructor(
             } catch (error: Exception) {
                 logger.error(error) { "Could not initialize bot $name" }
                 bots.remove(player)
+                pvpCombat.remove(player)
                 registry.del(player)
                 sessions.detach(player)
             }
@@ -269,6 +283,10 @@ class BotPopulation @Inject constructor(
                 remove(player)
                 continue
             }
+            if (bot.mode.isPvp) {
+                pvp(bot)
+                continue
+            }
             if (cycle < bot.nextThink) continue
             bot.nextThink = cycle + 3
             if (menus.tick(player)) continue
@@ -304,12 +322,6 @@ class BotPopulation @Inject constructor(
     private fun pvp(bot: WorldBot) {
         val player = bot.player
         val wilderness = bot.mode == BotMode.Wilderness
-        if (wilderness && player.hitpoints * 3 < player.baseHitpointsLvl) {
-            player.clearPendingAction(events)
-            actions.walk(player, CoordGrid(3087, 3520))
-            bot.status = "escaping"
-            return
-        }
         if (wilderness && player.currentMapClock >= bot.nextPatrolChange) {
             val choices = WildernessPatrols.centers.filter { it != bot.patrol }
             bot.patrol = choices.randomOrNull(random) ?: WildernessPatrols.centers.first()
@@ -317,11 +329,10 @@ class BotPopulation @Inject constructor(
         }
         val opponents = if (wilderness) {
             val wildernessBots = bots.values
-                .filter { it.mode == BotMode.Wilderness && it.player.coords.z >= 3520 }
-                .map { it.player }
-                .filter { it !== player }
+                .filter { it.mode == BotMode.Wilderness }
+                .map { it.player }.filter { it !== player }
             val realPlayers = registry.playerList.mapNotNull { it }.filter {
-                it !== player && it !in bots && it.coords.z >= 3520
+                it !== player && it !in bots
             }
             wildernessBots + realPlayers
         } else {
@@ -330,32 +341,8 @@ class BotPopulation @Inject constructor(
                     (bot.mode == BotMode.ClanTwo && it.mode == BotMode.ClanOne)
             }.map { it.player }.filter { it !== player }
         }
-        minigames.tickCombat(player, opponents)
-        bot.status = "seeking opponent"
-        if (player.interaction == null && player.routeRequest == null) {
-            if (wilderness) {
-                val hunt = opponents.asSequence()
-                    .filter { it.coords.level == player.coords.level }
-                    .map { it to player.coords.chebyshevDistance(it.coords) }
-                    .filter { (_, distance) -> distance in 8..48 }
-                    .minByOrNull { (_, distance) -> distance }
-                    ?.first
-                val center = hunt?.coords ?: bot.patrol ?: WildernessPatrols.centers.first()
-                val radius = if (hunt != null) 2 else 7
-                actions.walk(
-                    player,
-                    CoordGrid(
-                        center.x + random.nextInt(-radius, radius + 1),
-                        center.z + random.nextInt(-radius, radius + 1),
-                        center.level,
-                    ),
-                )
-            } else {
-                val center = CoordGrid(3224, 3682)
-                actions.walk(player, CoordGrid(center.x + random.nextInt(-8, 9),
-                    center.z + random.nextInt(-8, 9), center.level))
-            }
-        }
+        bot.status = pvpCombat.tick(player, opponents, wilderness,
+            bot.patrol ?: CoordGrid(3224, 3682))
     }
 
     private fun think(bot: WorldBot, cycle: Int) {
@@ -474,7 +461,7 @@ class BotPopulation @Inject constructor(
     }
 
     fun describe(): List<String> = bots.values.map {
-        "${it.player.displayName} ${it.mode}: ${it.status} " +
+        "${it.player.displayName} ${it.mode} ${pvpCombat.description(it.player)}: ${it.status} " +
             "(${it.player.coords.x},${it.player.coords.z},${it.player.coords.level})"
     }
 
@@ -486,6 +473,7 @@ class BotPopulation @Inject constructor(
     private fun remove(player: Player) {
         val bot = bots.remove(player)
         if (bot?.mode == BotMode.Progressive) save(bot)
+        pvpCombat.remove(player)
         social.remove(player)
         minigames.remove(player)
         player.clearPendingAction(events)

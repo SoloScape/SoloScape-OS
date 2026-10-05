@@ -37,11 +37,17 @@ class BotPopulationScript @Inject constructor(
         }
         onEvent<GameLifecycle.Shutdown> { population.removeAll() }
         onCommand("bots") {
-            desc = "Add bots: ::bots skilling|progressive|combat|wildy|trade|dropparty|clana|clanb|castlewars|all [count]"
+            desc = "Add bots: ::bots skilling|progressive|combat|wildy|trade|dropparty|clana|clanb|castlewars|all [count] [novice|standard|veteran|elite]"
             requiredRights = Rights.ADMINISTRATOR
             cheat {
                 val mode = args.firstOrNull()?.lowercase() ?: "all"
                 val requested = args.getOrNull(1)?.toIntOrNull()
+                val difficultyText = args.getOrNull(2)
+                val difficulty = difficultyText?.let(BotPvpDifficulty::parse)
+                if (difficultyText != null && difficulty == null) {
+                    player.mes("Difficulty must be novice, standard, veteran or elite.")
+                    return@cheat
+                }
                 if (requested != null && requested !in 1..BotPopulation.MAX_BOTS) {
                     player.mes("Count must be between 1 and ${BotPopulation.MAX_BOTS}.")
                     return@cheat
@@ -59,7 +65,8 @@ class BotPopulationScript @Inject constructor(
                                 BotMode.DropParty, BotMode.ClanOne, BotMode.ClanTwo -> 20
                                 BotMode.Combat -> 0
                             }
-                            total += population.spawn(kind, amount)
+                            total += if (difficulty == null) population.spawn(kind, amount)
+                                else population.spawn(kind, amount, difficulty)
                         }
                         total + minigames.fill(player, requested ?: 2)
                     }
@@ -69,7 +76,8 @@ class BotPopulationScript @Inject constructor(
                             player.mes("Unknown bot mode. Use ::bots all or ::botinfo.")
                             return@cheat
                         }
-                        population.spawn(kind, requested ?: 1)
+                        if (difficulty == null) population.spawn(kind, requested ?: 1)
+                        else population.spawn(kind, requested ?: 1, difficulty)
                     }
                 }
                 player.mes("Added $added bots. Total: ${population.count}.")

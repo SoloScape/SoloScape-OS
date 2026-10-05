@@ -56,7 +56,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $runtimeClasspath = ($testJar, $classpath, (Resolve-Path "Server/content/other/bots/src/main/resources").Path, (Resolve-Path "Server/content/other/grand-exchange/src/main/resources").Path) -join [IO.Path]::PathSeparator
           Set-Location Server
-          foreach ($check in @("BotActionsCheck", "BotPlannerCheck", "BotPortCheckKt")) {
+          foreach ($check in @("BotActionsCheck", "BotPlannerCheck", "BotPortCheckKt", "BotPvpCheck")) {
           $runArgs = @("-cp", $runtimeClasspath, "org.rsmod.content.other.bots.$check")
           $runArgFile = Join-Path $testDir "run.args"
           $runArgs | ForEach-Object { '"' + $_.Replace('\', '/').Replace('"', '\"') + '"' } | Set-Content -Encoding utf8NoBOM $runArgFile
