@@ -94,7 +94,12 @@ class BotPvpCombat @Inject constructor(
                 state.reaction.reset()
                 state.restockAt = -1
                 state.retreatStartedAt = -1
-                state.returning = true
+                state.returning = if (wilderness) {
+                    val destination = BotPvpHotspots.get(state.hotspotId)?.spawn(random) ?: patrol
+                    !native.relocate(player, destination)
+                } else {
+                    true
+                }
             }
         }
         val food = native.foodCount(player)
