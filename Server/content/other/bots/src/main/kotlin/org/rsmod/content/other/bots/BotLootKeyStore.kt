@@ -1,6 +1,7 @@
 package org.rsmod.content.other.bots
 
 import com.github.michaelbull.logging.InlineLogger
+import dev.openrune.types.util.UncheckedType
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import java.nio.file.Files
@@ -93,6 +94,7 @@ internal class BotLootKeyStore @Inject constructor() {
         internal fun encode(items: List<InvObj>): String =
             items.joinToString(";") { "${it.id},${it.count},${it.vars}" }
 
+        @OptIn(UncheckedType::class)
         internal fun decode(value: String): List<InvObj>? =
             runCatching {
                 if (value.isBlank()) return@runCatching emptyList()
