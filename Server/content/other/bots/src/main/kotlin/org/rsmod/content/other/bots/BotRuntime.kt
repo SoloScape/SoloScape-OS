@@ -45,6 +45,7 @@ private class WorldBot(
     val mode: BotMode,
     var task: BotTaskDefinition,
     var patrol: CoordGrid? = null,
+    val hotspot: BotPvpHotspot? = null,
 ) {
     var phase = BotPhase.Outbound
     var path = task.route
@@ -59,28 +60,6 @@ private class WorldBot(
     var recoveries = 0
     var status = "starting"
     var needsPlan = true
-    var nextPatrolChange = 0
-}
-
-internal object WildernessPatrols {
-    val centers: List<CoordGrid> = listOf(
-        CoordGrid(3048, 3556), CoordGrid(3088, 3550), CoordGrid(3130, 3558),
-        CoordGrid(3172, 3554), CoordGrid(3215, 3556), CoordGrid(3045, 3600),
-        CoordGrid(3090, 3605), CoordGrid(3135, 3600), CoordGrid(3180, 3605),
-        CoordGrid(3225, 3600), CoordGrid(3070, 3640), CoordGrid(3145, 3640),
-        CoordGrid(3215, 3640),
-    )
-
-    fun center(identity: Int): CoordGrid = centers[(identity - 1) % centers.size]
-
-    fun spawn(identity: Int, random: Random): CoordGrid {
-        val center = center(identity)
-        return CoordGrid(
-            center.x + random.nextInt(-4, 5),
-            center.z + random.nextInt(-4, 5),
-            center.level,
-        )
-    }
 }
 
 @Singleton
@@ -126,6 +105,7 @@ class BotPopulation @Inject constructor(
         val difficulty = BotPvpDifficulty.parse(
             configured.getProperty("pvp.difficulty", "standard")
         ) ?: BotPvpDifficulty.Standard
+        val membersWorld = configured.getProperty("members", "true").toBoolean()
         var added = 0
         repeat(requested.coerceIn(0, MAX_BOTS - bots.size)) {
             val slot = registry.nextFreeSlot() ?: return added
@@ -133,7 +113,10 @@ class BotPopulation @Inject constructor(
             val identity = freeIdentity()
             val name = SourceBotCatalog.names[(identity - 1) % SourceBotCatalog.names.size]
             val initial = initialTask(mode) ?: return added
-            val patrol = if (mode == BotMode.Wilderness) WildernessPatrols.center(identity) else null
+            val hotspot = if (mode == BotMode.Wilderness) {
+                BotPvpHotspots.choose(identity, membersWorld, difficulty)
+            } else null
+            val patrol = hotspot?.anchor
             val player = Player().apply {
                 accountId = 0
                 characterId = 0
@@ -145,10 +128,10 @@ class BotPopulation @Inject constructor(
                 observerUUID = key
                 username = "worldbot_$identity"
                 displayName = name
-                members = configured.getProperty("members", "true").toBoolean()
+                members = membersWorld
                 slotId = slot
                 coords = when (mode) {
-                    BotMode.Wilderness -> WildernessPatrols.spawn(identity, random)
+                    BotMode.Wilderness -> checkNotNull(hotspot).spawn(random)
                     BotMode.ClanOne -> CoordGrid(3217, 3682)
                     BotMode.ClanTwo -> CoordGrid(3232, 3682)
                     else -> initial.start
@@ -163,16 +146,13 @@ class BotPopulation @Inject constructor(
             try {
                 initializeLevels(player, mode, initial)
                 if (mode.isPvp) {
-                    check(pvpCombat.register(player, identity, difficulty)) {
+                    check(pvpCombat.register(player, identity, difficulty, hotspot?.id)) {
                         "Unable to seed PvP bot loadout"
                     }
                 } else supplies.seed(player, initial, mode == BotMode.Progressive)
                 val restoredTask = if (mode == BotMode.Progressive) profiles.load(player) else null
                 val task = SourceBotCatalog.tasks.firstOrNull { it.id == restoredTask } ?: initial
-                val bot = WorldBot(player, mode, task, patrol)
-                if (mode == BotMode.Wilderness) {
-                    bot.nextPatrolChange = player.currentMapClock + random.nextInt(500, 1200)
-                }
+                val bot = WorldBot(player, mode, task, patrol, hotspot)
                 bots[player] = bot
                 if (mode == BotMode.Progressive) {
                     chooseTask(bot)
@@ -323,11 +303,6 @@ class BotPopulation @Inject constructor(
     private fun pvp(bot: WorldBot) {
         val player = bot.player
         val wilderness = bot.mode == BotMode.Wilderness
-        if (wilderness && player.currentMapClock >= bot.nextPatrolChange) {
-            val choices = WildernessPatrols.centers.filter { it != bot.patrol }
-            bot.patrol = choices.randomOrNull(random) ?: WildernessPatrols.centers.first()
-            bot.nextPatrolChange = player.currentMapClock + random.nextInt(500, 1200)
-        }
         val opponents = if (wilderness) {
             val wildernessBots = bots.values
                 .filter { it.mode == BotMode.Wilderness }
@@ -419,8 +394,7 @@ class BotPopulation @Inject constructor(
                 if (bot.stalled >= 5) recover(bot)
                 return
             }
-            if (bot.stalled >= 3 &&
-                actions.operate(player, setOf("Door", "Gate"), "Open", 2)) return
+            if (bot.stalled >= 3 && actions.operate(player, setOf("Door", "Gate"), "Open", 2)) return
             actions.walk(player, target)
             return
         }
