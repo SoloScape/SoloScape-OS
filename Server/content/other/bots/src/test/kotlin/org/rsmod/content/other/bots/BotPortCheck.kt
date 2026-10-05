@@ -29,6 +29,17 @@ public fun main() {
             .size == WildernessPatrols.centers.size
     )
 
+    check(BotLootKeys.types == List(BotLootKeys.MAX_KEYS) { "obj.wildy_loot_key$it" })
+    check(BotLootKeys.types.distinct().size == BotLootKeys.MAX_KEYS)
+    check(BotLootKeys.typeForCount(0) == "obj.wildy_loot_key0")
+    check(BotLootKeys.typeForCount(BotLootKeys.MAX_KEYS - 1) == "obj.wildy_loot_key4")
+    check(BotLootKeys.typeForCount(BotLootKeys.MAX_KEYS) == null)
+    check(BotLootKeys.chests.size >= 6)
+    check(BotLootKeys.chests.all { it.startsWith("loc.wildy_hub_loot_chest_") })
+    check(BotLootKeyStore.encode(emptyList()).isEmpty())
+    check(BotLootKeyStore.decode("")?.isEmpty() == true)
+    check(BotLootKeyStore.decode("not,a,valid,bundle") == null)
+
     val tasks = SourceBotCatalog.tasks
     check(tasks.any { it.kind == BotTaskKind.Trade })
     check(tasks.any { it.kind == BotTaskKind.DropParty })
@@ -61,6 +72,6 @@ public fun main() {
 
     println(
         "Bot port contracts passed: ${BotMode.entries.size} modes, ${tasks.size} activities, " +
-            "$configuredBots configured world bots."
+            "$configuredBots configured world bots, ${BotLootKeys.MAX_KEYS} loot key slots."
     )
 }
