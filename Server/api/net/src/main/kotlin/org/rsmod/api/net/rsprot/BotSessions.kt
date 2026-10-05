@@ -30,7 +30,10 @@ constructor(private val service: NetworkService<Player>, private val regions: Re
         val cycle = RspCycle(session = null, infos = infos, regions = regions)
         player.client = BotClient(player)
         player.clientCycle = cycle
-        cycle.init(player)
+        // Bots do not have a network session, so they must not create a login rebuild packet.
+        // Initialise only the player-info root coordinate; the regular post-tick update handles
+        // the rest of the avatar state and releases unsent packet buffers every cycle.
+        infos.updateRootCoord(player.level, player.x, player.z)
     }
 
     fun detach(player: Player) {
