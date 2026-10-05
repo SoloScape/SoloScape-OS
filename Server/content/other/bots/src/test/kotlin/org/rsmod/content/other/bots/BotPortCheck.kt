@@ -14,6 +14,11 @@ public fun main() {
     check(BotMode.parse("clanb") == BotMode.ClanTwo)
     check(BotMode.parse("unknown") == null)
 
+    check("stat.runecrafting" in BotSkills.all)
+    check("stat.runecraft" !in BotSkills.all)
+    check(BotSkills.all.distinct().size == BotSkills.all.size)
+    check(BotSkills.all.all { it.startsWith("stat.") })
+
     val tasks = SourceBotCatalog.tasks
     check(tasks.any { it.kind == BotTaskKind.Trade })
     check(tasks.any { it.kind == BotTaskKind.DropParty })
