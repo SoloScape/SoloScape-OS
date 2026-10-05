@@ -308,12 +308,10 @@ class BotPvpActions @Inject constructor(
      * telejump rather than making a respawned deep-Wilderness bot walk from Lumbridge through the
      * ditch on every death.
      */
-    fun relocate(player: Player, destination: CoordGrid): Boolean {
-        val launched = access.launch(player) {
+    fun relocate(player: Player, destination: CoordGrid): Boolean =
+        access.launch(player) {
             telejump(destination, TeleportType.Exempt)
         }
-        return launched && player.coords == destination
-    }
 
     /**
      * Side-effect-free target prefilter. Native attack scripts remain authoritative for opt-out,
