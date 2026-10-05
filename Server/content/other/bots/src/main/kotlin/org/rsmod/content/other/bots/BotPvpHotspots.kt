@@ -3,7 +3,11 @@ package org.rsmod.content.other.bots
 import kotlin.random.Random
 import org.rsmod.map.CoordGrid
 
-/** Native copy of the five enabled TSPS wilderness hotspot definitions. */
+/**
+ * The five enabled TSPS hotspot definitions are retained below, then supplemented with native
+ * Wilderness roaming regions so large bot populations cover low, mid and deep Wilderness instead
+ * of accumulating around the southern ditch.
+ */
 data class BotPvpHotspot(
     val id: String,
     val anchor: CoordGrid,
@@ -44,13 +48,66 @@ object BotPvpHotspots {
         "f2p_addy_pure", "f2p_mage_pure", "f2p_bind_ko",
     )
 
+    /**
+     * Native roaming regions accept every compatible TSPS family. The members/F2P split is still
+     * enforced by [BotPvpHotspot.families], and difficulty gates remain enforced when choosing the
+     * concrete variant.
+     */
+    private val roamingFamilies = BotPvpTspsCatalog.families.keys.toSet()
+
+    private fun roaming(
+        id: String,
+        anchor: CoordGrid,
+        radiusX: Int,
+        radiusZ: Int,
+        deep: Boolean = false,
+    ): BotPvpHotspot =
+        BotPvpHotspot(
+            id = id,
+            anchor = anchor,
+            minX = anchor.x - radiusX,
+            maxX = anchor.x + radiusX,
+            minZ = anchor.z - radiusZ,
+            maxZ = anchor.z + radiusZ,
+            targetBots = 8,
+            maxBots = 32,
+            roamRadius = maxOf(radiusX, radiusZ),
+            lingerCycles = if (deep) 24 else 20,
+            maxSimultaneousFights = null,
+            allowedProfiles = BotPvpDifficulty.entries.toSet(),
+            allowedFamilies = roamingFamilies,
+            styleWeights = if (deep) {
+                mapOf(
+                    BotPvpStyle.Melee to 0.15,
+                    BotPvpStyle.Ranged to 0.30,
+                    BotPvpStyle.Magic to 0.55,
+                )
+            } else {
+                mapOf(
+                    BotPvpStyle.Melee to 0.34,
+                    BotPvpStyle.Ranged to 0.31,
+                    BotPvpStyle.Magic to 0.35,
+                )
+            },
+            activityWeights = if (deep) {
+                mapOf("seek" to 0.42, "bait" to 0.12, "fight" to 0.16, "escape" to 0.30)
+            } else {
+                mapOf("seek" to 0.55, "bait" to 0.15, "fight" to 0.15, "escape" to 0.15)
+            },
+        )
+
     val all: List<BotPvpHotspot> = listOf(
+        // Original TSPS hotspots.
         BotPvpHotspot(
             id = "edge_ditch", anchor = CoordGrid(3085, 3528),
             minX = 3078, maxX = 3091, minZ = 3525, maxZ = 3535,
             targetBots = 13, maxBots = 18, roamRadius = 6, lingerCycles = 15,
             maxSimultaneousFights = 5,
-            allowedProfiles = setOf(BotPvpDifficulty.Standard, BotPvpDifficulty.Veteran, BotPvpDifficulty.Elite),
+            allowedProfiles = setOf(
+                BotPvpDifficulty.Standard,
+                BotPvpDifficulty.Veteran,
+                BotPvpDifficulty.Elite,
+            ),
             allowedFamilies = setOf(
                 "edge_main_melee", "edge_ranged_melee", "low_level_pure", "rune_pure_members",
                 "edge_venge_zerker", "edge_med_level", "edge_void_risk", "void_pure",
@@ -58,8 +115,17 @@ object BotPvpHotspots {
                 "rusher", "budget_pk",
             ),
             freeWorldFamilies = f2p,
-            styleWeights = mapOf(BotPvpStyle.Melee to 0.45, BotPvpStyle.Ranged to 0.25, BotPvpStyle.Magic to 0.30),
-            activityWeights = mapOf("seek" to 0.62, "bait" to 0.25, "fight" to 0.05, "escape" to 0.08),
+            styleWeights = mapOf(
+                BotPvpStyle.Melee to 0.45,
+                BotPvpStyle.Ranged to 0.25,
+                BotPvpStyle.Magic to 0.30,
+            ),
+            activityWeights = mapOf(
+                "seek" to 0.62,
+                "bait" to 0.25,
+                "fight" to 0.05,
+                "escape" to 0.08,
+            ),
         ),
         BotPvpHotspot(
             id = "edge_south", anchor = CoordGrid(3099, 3529),
@@ -74,8 +140,17 @@ object BotPvpHotspots {
                 "edge_barrows_venge", "mid_tank", "edge_unorthodox_risk",
             ),
             freeWorldFamilies = f2p,
-            styleWeights = mapOf(BotPvpStyle.Melee to 0.30, BotPvpStyle.Ranged to 0.33, BotPvpStyle.Magic to 0.37),
-            activityWeights = mapOf("seek" to 0.44, "bait" to 0.18, "fight" to 0.20, "escape" to 0.18),
+            styleWeights = mapOf(
+                BotPvpStyle.Melee to 0.30,
+                BotPvpStyle.Ranged to 0.33,
+                BotPvpStyle.Magic to 0.37,
+            ),
+            activityWeights = mapOf(
+                "seek" to 0.44,
+                "bait" to 0.18,
+                "fight" to 0.20,
+                "escape" to 0.18,
+            ),
         ),
         BotPvpHotspot(
             id = "varrock_ditch", anchor = CoordGrid(3243, 3526),
@@ -84,38 +159,87 @@ object BotPvpHotspots {
             maxSimultaneousFights = 8,
             allowedProfiles = BotPvpDifficulty.entries.toSet(),
             allowedFamilies = f2p,
-            styleWeights = mapOf(BotPvpStyle.Melee to 0.48, BotPvpStyle.Ranged to 0.30, BotPvpStyle.Magic to 0.22),
-            activityWeights = mapOf("seek" to 0.50, "bait" to 0.16, "fight" to 0.22, "escape" to 0.12),
+            styleWeights = mapOf(
+                BotPvpStyle.Melee to 0.48,
+                BotPvpStyle.Ranged to 0.30,
+                BotPvpStyle.Magic to 0.22,
+            ),
+            activityWeights = mapOf(
+                "seek" to 0.50,
+                "bait" to 0.16,
+                "fight" to 0.22,
+                "escape" to 0.12,
+            ),
         ),
         BotPvpHotspot(
             id = "revs_entrance", anchor = CoordGrid(3134, 3838),
             minX = 3129, maxX = 3139, minZ = 3833, maxZ = 3843,
             targetBots = 6, maxBots = 12, roamRadius = 4, lingerCycles = 16,
             maxSimultaneousFights = null,
-            allowedProfiles = setOf(BotPvpDifficulty.Standard, BotPvpDifficulty.Veteran, BotPvpDifficulty.Elite),
+            allowedProfiles = setOf(
+                BotPvpDifficulty.Standard,
+                BotPvpDifficulty.Veteran,
+                BotPvpDifficulty.Elite,
+            ),
             allowedFamilies = setOf(
                 "deep_wild_hybrid", "deep_wild_nh", "low_level_nh", "deep_wild_budget_nh",
                 "deep_wild_staff_spec", "edge_unorthodox_risk", "anti_pk_hybrid",
                 "edge_ranged_melee", "edge_med_level",
             ),
-            styleWeights = mapOf(BotPvpStyle.Melee to 0.12, BotPvpStyle.Ranged to 0.28, BotPvpStyle.Magic to 0.60),
-            activityWeights = mapOf("seek" to 0.46, "bait" to 0.14, "fight" to 0.10, "escape" to 0.30),
+            styleWeights = mapOf(
+                BotPvpStyle.Melee to 0.12,
+                BotPvpStyle.Ranged to 0.28,
+                BotPvpStyle.Magic to 0.60,
+            ),
+            activityWeights = mapOf(
+                "seek" to 0.46,
+                "bait" to 0.14,
+                "fight" to 0.10,
+                "escape" to 0.30,
+            ),
         ),
         BotPvpHotspot(
             id = "green_drags_gate", anchor = CoordGrid(2988, 3610),
             minX = 2974, maxX = 3002, minZ = 3598, maxZ = 3622,
             targetBots = 6, maxBots = 12, roamRadius = 8, lingerCycles = 16,
             maxSimultaneousFights = null,
-            allowedProfiles = setOf(BotPvpDifficulty.Novice, BotPvpDifficulty.Standard, BotPvpDifficulty.Veteran),
+            allowedProfiles = setOf(
+                BotPvpDifficulty.Novice,
+                BotPvpDifficulty.Standard,
+                BotPvpDifficulty.Veteran,
+            ),
             allowedFamilies = setOf(
                 "budget_pk", "anti_pk_hybrid", "low_level_nh", "edge_main_melee",
                 "low_level_pure", "edge_venge_zerker", "edge_med_level", "edge_void_melee",
                 "mid_tank", "edge_barrows_venge", "edge_unorthodox_risk",
                 "deep_wild_budget_nh", "deep_wild_staff_spec",
             ),
-            styleWeights = mapOf(BotPvpStyle.Melee to 0.44, BotPvpStyle.Ranged to 0.18, BotPvpStyle.Magic to 0.38),
-            activityWeights = mapOf("seek" to 0.54, "bait" to 0.16, "fight" to 0.08, "escape" to 0.22),
+            styleWeights = mapOf(
+                BotPvpStyle.Melee to 0.44,
+                BotPvpStyle.Ranged to 0.18,
+                BotPvpStyle.Magic to 0.38,
+            ),
+            activityWeights = mapOf(
+                "seek" to 0.54,
+                "bait" to 0.16,
+                "fight" to 0.08,
+                "escape" to 0.22,
+            ),
         ),
+
+        // Native coverage regions. Anchors are established Wilderness activity/NPC areas from the
+        // installed map cache, spread west-to-east and low-to-deep Wilderness.
+        roaming("dark_warriors", CoordGrid(3029, 3638), radiusX = 15, radiusZ = 14),
+        roaming("crazy_archaeologist", CoordGrid(2977, 3702), radiusX = 14, radiusZ = 14),
+        roaming("eastern_unicorns", CoordGrid(3218, 3678), radiusX = 15, radiusZ = 14),
+        roaming("black_chins", CoordGrid(3148, 3770), radiusX = 12, radiusZ = 12),
+        roaming("eastern_mid", CoordGrid(3309, 3765), radiusX = 15, radiusZ = 15),
+        roaming("chaos_fanatic", CoordGrid(2979, 3846), radiusX = 13, radiusZ = 12, deep = true),
+        roaming("demonic_ruins", CoordGrid(3287, 3883), radiusX = 11, radiusZ = 11, deep = true),
+        roaming("mage_arena", CoordGrid(3102, 3938), radiusX = 14, radiusZ = 14, deep = true),
+        roaming("resource_area", CoordGrid(3185, 3933), radiusX = 13, radiusZ = 13, deep = true),
+        roaming("rogues_castle", CoordGrid(3284, 3946), radiusX = 12, radiusZ = 12, deep = true),
+        roaming("frozen_plateau", CoordGrid(2964, 3944), radiusX = 14, radiusZ = 14, deep = true),
     )
 
     private val byId = all.associateBy { it.id }
@@ -133,15 +257,13 @@ object BotPvpHotspots {
             }
         }
 
-    /** Population weighting follows TSPS targetBots; the identity makes assignment deterministic. */
+    /**
+     * Spread consecutive world-bot identities evenly across every compatible region. TSPS
+     * targetBots/maxBots remain available as source metadata, but no single imported hotspot is
+     * allowed to dominate a large SoloScape population.
+     */
     fun choose(identity: Int, members: Boolean, difficulty: BotPvpDifficulty): BotPvpHotspot {
         val choices = available(members, difficulty).ifEmpty { all }
-        val total = choices.sumOf { it.targetBots.coerceAtLeast(1) }
-        var roll = Math.floorMod(identity * 37 - 1, total)
-        for (hotspot in choices) {
-            roll -= hotspot.targetBots.coerceAtLeast(1)
-            if (roll < 0) return hotspot
-        }
-        return choices.last()
+        return choices[Math.floorMod(identity - 1, choices.size)]
     }
 }
