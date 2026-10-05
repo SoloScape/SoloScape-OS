@@ -36,6 +36,8 @@ public data class PlayerDeathHandling(
     val supplyPile: Boolean,
     val untradeableHandling: UntradeableHandling,
     val dropAllCarried: Boolean = false,
+    val destroyAllCarried: Boolean = false,
+    val spawnRemains: Boolean = true,
 )
 
 public enum class UntradeableHandling {
