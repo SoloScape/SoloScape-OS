@@ -3,7 +3,6 @@ package org.rsmod.content.other.bots
 import jakarta.inject.Inject
 import org.rsmod.api.death.PlayerDeathContext
 import org.rsmod.api.death.PlayerDeathDrops.Companion.DROP_DURATION_PVP
-import org.rsmod.api.death.PlayerDeathDrops.Companion.PVP_REVEAL_DELAY
 import org.rsmod.api.death.PlayerDeathHandling
 import org.rsmod.api.death.PlayerDeathHook
 import org.rsmod.api.death.PlayerDeathItemHook
@@ -53,21 +52,21 @@ constructor(private val population: BotPopulation) : PlayerDeathHook {
         if (!eligible(context)) return null
         return PlayerDeathHandling(
             keepCount = 0,
-            dropReceiver = context.killer,
+            dropReceiver = null,
             dropDuration = DROP_DURATION_PVP,
-            revealDelay = PVP_REVEAL_DELAY,
+            // Keep any fallback ground key private for its entire lifetime.
+            revealDelay = DROP_DURATION_PVP + 1,
             supplyPile = false,
-            untradeableHandling = UntradeableHandling.DROP,
+            untradeableHandling = UntradeableHandling.DESTROY,
+            destroyAllCarried = true,
+            spawnRemains = false,
         )
     }
 
-    private fun eligible(context: PlayerDeathContext): Boolean {
-        val killer = context.killer ?: return false
-        return context.wildernessLevel > 0 &&
+    private fun eligible(context: PlayerDeathContext): Boolean =
+        context.wildernessLevel > 0 &&
             !context.inInstance &&
-            population.isBot(context.player) &&
-            !population.isBot(killer)
-    }
+            population.isBot(context.player)
 
     private companion object {
         private const val BOT_DEATH_PRIORITY = 50
@@ -82,44 +81,46 @@ constructor(
     private val objRepo: ObjRepository,
 ) : PlayerDeathItemHook {
     override fun beforeDrops(context: PlayerDeathContext, handling: PlayerDeathHandling) {
-        val killer = context.killer ?: return
         if (context.wildernessLevel <= 0 || context.inInstance) return
-        if (!population.isBot(context.player) || population.isBot(killer)) return
+        if (!population.isBot(context.player)) return
+
+        // Bot-vs-bot (or environment) deaths never create economic loot. The bot death handling
+        // destroys the carried inventory after this hook, so only a real player killer can receive
+        // a copy of the loot through a Wilderness loot key.
+        val killer = context.killer ?: return
+        if (population.isBot(killer)) return
+
+        val victim = context.player
+        val carried = victim.inv.filterNotNull { true } + victim.worn.filterNotNull { true }
+        if (carried.isEmpty()) return
 
         val keyType = BotLootKeys.nextType(killer)
         if (keyType == null) {
-            killer.mes("You are already carrying the maximum of ${BotLootKeys.MAX_KEYS} loot keys.")
+            killer.mes(
+                "You are already carrying the maximum of ${BotLootKeys.MAX_KEYS} loot keys; " +
+                    "the bot's loot was discarded."
+            )
             return
         }
 
-        val victim = context.player
-        val invItems = victim.inv.indices.mapNotNull { slot -> victim.inv[slot]?.let { slot to it } }
-        val wornItems = victim.worn.indices.mapNotNull { slot -> victim.worn[slot]?.let { slot to it } }
-        val carried = invItems.map { it.second } + wornItems.map { it.second }
-        if (carried.isEmpty()) return
-
         val bundleId = store.create(carried)
         val key = InvObj(keyType, vars = bundleId)
-
-        victim.inv.fillNulls()
-        victim.worn.fillNulls()
-
         val added = killer.invAdd(killer.inv, key.id, key.count, key.vars)
         if (added.success) {
-            killer.mes("The bot's loot has been stored in a loot key.")
+            killer.mes("The bot's loot has been stored in a Wilderness loot key.")
             return
         }
 
         val groundKey = Obj.fromPvp(killer, victim, key)
         if (objRepo.add(groundKey, handling.dropDuration, handling.revealDelay)) {
             store.bindGround(groundKey, bundleId)
-            killer.mes("Your inventory is full, so the loot key has been dropped on the ground.")
+            killer.mes(
+                "Your inventory is full, so your Wilderness loot key has been dropped privately."
+            )
             return
         }
 
         store.remove(bundleId)
-        for ((slot, item) in invItems) victim.inv[slot] = item
-        for ((slot, item) in wornItems) victim.worn[slot] = item
-        killer.mes("The loot key could not be created, so the bot's items will drop normally.")
+        killer.mes("The Wilderness loot key could not be created, so the bot's loot was discarded.")
     }
 }
