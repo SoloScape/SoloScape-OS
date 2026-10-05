@@ -38,7 +38,12 @@ enum class BotMode {
 
 private enum class BotPhase { Outbound, Working, Returning, Banking, Changing }
 
-private class WorldBot(val player: Player, val mode: BotMode, var task: BotTaskDefinition) {
+private class WorldBot(
+    val player: Player,
+    val mode: BotMode,
+    var task: BotTaskDefinition,
+    var patrol: CoordGrid? = null,
+) {
     var phase = BotPhase.Outbound
     var path = task.route
     var waypoint = 0
@@ -52,6 +57,28 @@ private class WorldBot(val player: Player, val mode: BotMode, var task: BotTaskD
     var recoveries = 0
     var status = "starting"
     var needsPlan = true
+    var nextPatrolChange = 0
+}
+
+internal object WildernessPatrols {
+    val centers: List<CoordGrid> = listOf(
+        CoordGrid(3048, 3556), CoordGrid(3088, 3550), CoordGrid(3130, 3558),
+        CoordGrid(3172, 3554), CoordGrid(3215, 3556), CoordGrid(3045, 3600),
+        CoordGrid(3090, 3605), CoordGrid(3135, 3600), CoordGrid(3180, 3605),
+        CoordGrid(3225, 3600), CoordGrid(3070, 3640), CoordGrid(3145, 3640),
+        CoordGrid(3215, 3640),
+    )
+
+    fun center(identity: Int): CoordGrid = centers[(identity - 1) % centers.size]
+
+    fun spawn(identity: Int, random: Random): CoordGrid {
+        val center = center(identity)
+        return CoordGrid(
+            center.x + random.nextInt(-4, 5),
+            center.z + random.nextInt(-4, 5),
+            center.level,
+        )
+    }
 }
 
 @Singleton
@@ -96,6 +123,7 @@ class BotPopulation @Inject constructor(
             val identity = freeIdentity()
             val name = SourceBotCatalog.names[(identity - 1) % SourceBotCatalog.names.size]
             val initial = initialTask(mode) ?: return added
+            val patrol = if (mode == BotMode.Wilderness) WildernessPatrols.center(identity) else null
             val player = Player().apply {
                 accountId = 0
                 characterId = 0
@@ -110,7 +138,7 @@ class BotPopulation @Inject constructor(
                 members = configured.getProperty("members", "true").toBoolean()
                 slotId = slot
                 coords = when (mode) {
-                    BotMode.Wilderness -> CoordGrid(3087, 3523)
+                    BotMode.Wilderness -> WildernessPatrols.spawn(identity, random)
                     BotMode.ClanOne -> CoordGrid(3217, 3682)
                     BotMode.ClanTwo -> CoordGrid(3232, 3682)
                     else -> initial.start
@@ -127,7 +155,10 @@ class BotPopulation @Inject constructor(
                 supplies.seed(player, initial, mode == BotMode.Progressive)
                 val restoredTask = if (mode == BotMode.Progressive) profiles.load(player) else null
                 val task = SourceBotCatalog.tasks.firstOrNull { it.id == restoredTask } ?: initial
-                val bot = WorldBot(player, mode, task)
+                val bot = WorldBot(player, mode, task, patrol)
+                if (mode == BotMode.Wilderness) {
+                    bot.nextPatrolChange = player.currentMapClock + random.nextInt(500, 1200)
+                }
                 bots[player] = bot
                 if (mode == BotMode.Progressive) {
                     chooseTask(bot)
@@ -279,17 +310,51 @@ class BotPopulation @Inject constructor(
             bot.status = "escaping"
             return
         }
-        val opponents = bots.values.filter {
-            if (wilderness) it.mode == BotMode.Wilderness && it.player.coords.z >= 3520
-            else (bot.mode == BotMode.ClanOne && it.mode == BotMode.ClanTwo) ||
-                (bot.mode == BotMode.ClanTwo && it.mode == BotMode.ClanOne)
-        }.map { it.player }.filter { it !== player }
+        if (wilderness && player.currentMapClock >= bot.nextPatrolChange) {
+            val choices = WildernessPatrols.centers.filter { it != bot.patrol }
+            bot.patrol = choices.randomOrNull(random) ?: WildernessPatrols.centers.first()
+            bot.nextPatrolChange = player.currentMapClock + random.nextInt(500, 1200)
+        }
+        val opponents = if (wilderness) {
+            val wildernessBots = bots.values
+                .filter { it.mode == BotMode.Wilderness && it.player.coords.z >= 3520 }
+                .map { it.player }
+                .filter { it !== player }
+            val realPlayers = registry.playerList.mapNotNull { it }.filter {
+                it !== player && it !in bots && it.coords.z >= 3520
+            }
+            wildernessBots + realPlayers
+        } else {
+            bots.values.filter {
+                (bot.mode == BotMode.ClanOne && it.mode == BotMode.ClanTwo) ||
+                    (bot.mode == BotMode.ClanTwo && it.mode == BotMode.ClanOne)
+            }.map { it.player }.filter { it !== player }
+        }
         minigames.tickCombat(player, opponents)
         bot.status = "seeking opponent"
         if (player.interaction == null && player.routeRequest == null) {
-            val center = if (wilderness) CoordGrid(3091, 3550) else CoordGrid(3224, 3682)
-            actions.walk(player, CoordGrid(center.x + random.nextInt(-8, 9),
-                center.z + random.nextInt(-8, 9), center.level))
+            if (wilderness) {
+                val hunt = opponents.asSequence()
+                    .filter { it.coords.level == player.coords.level }
+                    .map { it to player.coords.chebyshevDistance(it.coords) }
+                    .filter { (_, distance) -> distance in 8..48 }
+                    .minByOrNull { (_, distance) -> distance }
+                    ?.first
+                val center = hunt?.coords ?: bot.patrol ?: WildernessPatrols.centers.first()
+                val radius = if (hunt != null) 2 else 7
+                actions.walk(
+                    player,
+                    CoordGrid(
+                        center.x + random.nextInt(-radius, radius + 1),
+                        center.z + random.nextInt(-radius, radius + 1),
+                        center.level,
+                    ),
+                )
+            } else {
+                val center = CoordGrid(3224, 3682)
+                actions.walk(player, CoordGrid(center.x + random.nextInt(-8, 9),
+                    center.z + random.nextInt(-8, 9), center.level))
+            }
         }
     }
 
