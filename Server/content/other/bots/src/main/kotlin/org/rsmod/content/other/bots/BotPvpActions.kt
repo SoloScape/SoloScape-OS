@@ -4,6 +4,7 @@ import dev.openrune.ServerCacheManager
 import dev.openrune.rscm.RSCM.asRSCM
 import dev.openrune.rscm.RSCMType
 import dev.openrune.types.ItemServerType
+import dev.openrune.util.Wearpos
 import dev.openrune.types.aconverted.interf.IfButtonOp
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
@@ -354,41 +355,87 @@ class BotPvpActions @Inject constructor(
      * Spawn/safe-restock only. Call after setting loadout levels and spellbook, never in combat.
      * Primary gear is equipped before swaps and supplies are added so the inventory fits 28 slots.
      */
-    fun seed(player: Player, loadout: BotPvpLoadout): Boolean {
+    fun seed(player: Player, loadout: BotPvpLoadout): Boolean =
+        seedFailure(player, loadout) == null
+
+    /**
+     * Returns null after a successful safe-state seed, otherwise a diagnostic explaining exactly
+     * why this loadout could not be constructed. Initial equipment is written directly to worn
+     * slots on purpose: Player worn-state setters are intended for initialization/debugging, while
+     * HeldEquipOp is an interactive action and may reject synthetic players through normal player
+     * restrictions. Live combat switches still go through HeldEquipOp in [equip].
+     */
+    fun seedFailure(player: Player, loadout: BotPvpLoadout): String? {
         if ((player.processedMapClock > 0 && player.isInCombat()) ||
             player.isAccessProtected || player.isDelayed
-        ) return false
-        val primary = loadout.styles[loadout.primaryStyle] ?: return false
-        val extras = (loadout.styles.values.flatten() + loadout.specialWeapons).distinct() - primary.toSet()
+        ) return "player is not in a safe seed state"
+
+        val primary = loadout.styles[loadout.primaryStyle]
+            ?: return "primary style ${loadout.primaryStyle} has no equipment"
+        val extras = (loadout.styles.values.flatten() + loadout.specialWeapons).distinct() -
+            primary.toSet()
         val required = (primary + extras + loadout.runes.keys + loadout.consumables.keys +
             loadout.food).distinct()
-        val types = required.associateWith { item(it) ?: return false }
+
+        val types = LinkedHashMap<String, ItemServerType>(required.size)
+        for (symbol in required) {
+            val type = item(symbol)
+                ?: return "item $symbol is missing from the installed cache"
+            types[symbol] = type
+        }
+
         val fixedSlots = extras.size +
             loadout.runes.size + loadout.consumables.entries.sumOf {
                 if (types.getValue(it.key).stackable) 1 else it.value
             }
-        if (fixedSlots > 24) return false
+        if (fixedSlots > 24) {
+            return "loadout reserves $fixedSlots inventory slots before food (maximum 24)"
+        }
+
         VarPlayerIntMapSetter.set(player, "varbit.spellbook", loadout.spellbook.varValue)
         player.inv.fillNulls()
         player.worn.fillNulls()
+
         for (symbol in primary) {
             val type = types.getValue(symbol)
-            player.invAdd(player.inv, type.id, if (type.stackable) 500 else 1)
-            val slot = player.inv.indices.firstOrNull { player.inv[it]?.id == type.id } ?: return false
-            if (equipment.equip(player, slot, player.inv) !is HeldEquipResult.Success) return false
+            val wearpos = Wearpos[type.wearpos1]
+                ?: return "primary item $symbol has no wearable slot"
+            if (wearpos.isClientOnly) {
+                return "primary item $symbol resolves to client-only wear position $wearpos"
+            }
+            if (player.worn[wearpos.slot] != null) {
+                return "primary item $symbol conflicts at wear position $wearpos"
+            }
+            player.worn[wearpos.slot] = InvObj(type.id, if (type.stackable) 500 else 1)
         }
+
         for (symbol in extras) {
             val type = types.getValue(symbol)
             player.invAdd(player.inv, type.id, if (type.stackable) 500 else 1)
+            if (player.inv.objs.none { it?.id == type.id }) {
+                return "could not add swap/special item $symbol to inventory"
+            }
         }
         for ((symbol, count) in loadout.runes + loadout.consumables) {
-            player.invAdd(player.inv, types.getValue(symbol).id, count)
+            val type = types.getValue(symbol)
+            player.invAdd(player.inv, type.id, count)
+            val present = player.inv.objs.filterNotNull()
+                .filter { it.id == type.id }
+                .sumOf { it.count }
+            if (present < count) {
+                return "could not add $count x $symbol to inventory (found $present)"
+            }
         }
+
         val free = player.inv.objs.count { it == null }
-        if (free < 4) return false
-        player.invAdd(player.inv, types.getValue(loadout.food).id, free - 1)
+        if (free < 4) return "only $free inventory slots remain for food"
+        val food = types.getValue(loadout.food)
+        player.invAdd(player.inv, food.id, free - 1)
         player.rebuildAppearance()
-        return foodCount(player) >= 3
+        if (foodCount(player) < 3) {
+            return "food ${loadout.food} was not recognized as edible after seeding"
+        }
+        return null
     }
 
     // Native consumable handlers update inventory synchronously, including a dose/portion ID
