@@ -1,6 +1,7 @@
 package org.rsmod.content.other.bots
 
 import java.util.Properties
+import org.rsmod.game.inv.InvObj
 
 public fun main() {
     for (mode in BotMode.entries) {
@@ -28,6 +29,22 @@ public fun main() {
             .toSet()
             .size == WildernessPatrols.centers.size
     )
+
+    check(BotLootKeys.types == List(BotLootKeys.MAX_KEYS) { "obj.wildy_loot_key$it" })
+    check(BotLootKeys.types.distinct().size == BotLootKeys.MAX_KEYS)
+    check(BotLootKeys.typeForCount(0) == "obj.wildy_loot_key0")
+    check(BotLootKeys.typeForCount(BotLootKeys.MAX_KEYS - 1) == "obj.wildy_loot_key4")
+    check(BotLootKeys.typeForCount(BotLootKeys.MAX_KEYS) == null)
+    check(BotLootKeys.chests.size >= 6)
+    check(BotLootKeys.chests.all { it.startsWith("loc.wildy_hub_loot_chest_") })
+
+    val encodedLoot =
+        listOf(
+            InvObj("obj.coins", 12_345),
+            InvObj("obj.shark", 7, vars = 19),
+        )
+    check(BotLootKeyStore.decode(BotLootKeyStore.encode(encodedLoot)) == encodedLoot)
+    check(BotLootKeyStore.decode("not,a,valid,bundle") == null)
 
     val tasks = SourceBotCatalog.tasks
     check(tasks.any { it.kind == BotTaskKind.Trade })
@@ -61,6 +78,6 @@ public fun main() {
 
     println(
         "Bot port contracts passed: ${BotMode.entries.size} modes, ${tasks.size} activities, " +
-            "$configuredBots configured world bots."
+            "$configuredBots configured world bots, ${BotLootKeys.MAX_KEYS} loot key slots."
     )
 }
