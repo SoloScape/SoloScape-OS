@@ -194,28 +194,32 @@ constructor(
             obj != null && keep.none { matches(obj, it) }
         }
         if (slots.isEmpty()) return true
-        val transaction = player.invTransaction(player.inv, player.bank, autoCommit = false) {
-            val from = select(player.inv)
-            val into = select(player.bank)
-            for (slot in slots) {
-                transfer(from, slot, player.inv[slot]!!.count, into, uncert = true)
+        return protectedAccess.launch(player) {
+            val transaction = player.invTransaction(inv, bank, autoCommit = false) {
+                val from = select(inv)
+                val into = select(bank)
+                for (slot in slots) {
+                    val count = inv[slot]?.count ?: continue
+                    transfer(from, slot, count, into, uncert = true)
+                }
+            }
+            if (transaction.success) {
+                transaction.commitAll()
             }
         }
-        if (!transaction.success) return false
-        transaction.commitAll()
-        return true
     }
 
     fun withdraw(player: Player, item: String, count: Int): Boolean {
         if (busy(player) || count <= 0 || !atBank(player)) return false
-        val slot = player.bank.indices.firstOrNull { matches(player.bank[it], item) }
-            ?: return false
-        val transaction = player.invTransfer(
-            player.bank, slot, count, player.inv, strict = true, autoCommit = false
-        )
-        if (!transaction.success) return false
-        transaction.commitAll()
-        return true
+        return protectedAccess.launch(player) {
+            val slot = bank.indices.firstOrNull { matches(bank[it], item) } ?: return@launch
+            val transaction = player.invTransfer(
+                bank, slot, count, inv, strict = true, autoCommit = false
+            )
+            if (transaction.success) {
+                transaction.commitAll()
+            }
+        }
     }
 
     private fun atBank(player: Player): Boolean {
