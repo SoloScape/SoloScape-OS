@@ -178,9 +178,13 @@ class BotPvpCombat @Inject constructor(
                 native.equip(player, state.loadout.styles.getValue(state.returnStyle))
                 state.style = state.returnStyle
                 state.specialQueuedAt = -1
+                state.instantSpecialQueued = false
                 state.nextSpecReview = next(cycle, state.profile.specReview)
             } else {
-                native.attack(player, target)
+                // Instant specials execute from the combat-interface button itself. Reissuing a
+                // normal attack while that button event is pending would turn a G-maul combo into
+                // an ordinary delayed swing, so only armed specials should drive attack interaction.
+                if (!state.instantSpecialQueued) native.attack(player, target)
                 return "special attack"
             }
         }
@@ -217,10 +221,14 @@ class BotPvpCombat @Inject constructor(
                     random.nextDouble() < state.profile.specSwitchChance &&
                     native.equip(player, listOf(finisher))) {
                 state.returnStyle = state.style
+                val energyBefore = native.specialEnergy(player)
                 if (native.special(player)) {
                     state.specialQueuedAt = cycle
-                    state.energyAtSpec = native.specialEnergy(player)
-                    native.attack(player, target)
+                    state.energyAtSpec = energyBefore
+                    // TSPS marks Granite Maul as its one-tick weapon. SoloScape registers this
+                    // class of special as Instant, so the button event owns the hit and energy use.
+                    state.instantSpecialQueued = finisher == "obj.granite_maul"
+                    if (!state.instantSpecialQueued) native.attack(player, target)
                     return "special attack"
                 }
                 native.equip(player, state.loadout.styles.getValue(state.returnStyle))
@@ -307,6 +315,7 @@ class BotPvpCombat @Inject constructor(
         }
         state.target = null
         state.specialQueuedAt = -1
+        state.instantSpecialQueued = false
         state.reaction.reset()
     }
 
