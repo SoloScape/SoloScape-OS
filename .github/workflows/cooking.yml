@@ -54,5 +54,6 @@ jobs:
           $runArgs = @("-cp", $runtimeClasspath, "org.rsmod.content.skills.cooking.SwampToadCheckKt")
           $runArgFile = Join-Path $testDir "run.args"
           $runArgs | ForEach-Object { '"' + $_.Replace('\', '/').Replace('"', '\"') + '"' } | Set-Content -Encoding utf8NoBOM $runArgFile
+          Set-Location Server
           & "$env:JAVA_HOME/bin/java.exe" "@$runArgFile"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
