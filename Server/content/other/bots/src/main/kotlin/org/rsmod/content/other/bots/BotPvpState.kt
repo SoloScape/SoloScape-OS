@@ -1,10 +1,12 @@
 package org.rsmod.content.other.bots
 
 import org.rsmod.game.entity.Player
+import org.rsmod.map.CoordGrid
 
 internal class BotPvpState(
     val profile: BotPvpProfile,
     val loadout: BotPvpLoadout,
+    val hotspotId: String? = null,
 ) {
     val reaction = BotPvpReaction()
     var target: Player? = null
@@ -17,6 +19,8 @@ internal class BotPvpState(
     var nextSupport = 0
     var nextMove = 0
     var nextVengeance = 0
+    var nextOneTickCheck = 0
+    var lastOneTickAt = -10_000
     var specialQueuedAt = -1
     var instantSpecialQueued = false
     var energyAtSpec = 0
@@ -25,6 +29,6 @@ internal class BotPvpState(
     var restockAt = -1
     var dead = false
     var returning = false
-    var lastCoords = org.rsmod.map.CoordGrid(0, 0)
+    var lastCoords = CoordGrid(0, 0)
     var stationary = 0
 }
