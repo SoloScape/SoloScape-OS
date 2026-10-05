@@ -1,4 +1,5 @@
 /.build-tools/
+/build.log
 /tools/__pycache__/
 
 # Leftover compiler/package outputs from the removed Maven build.
