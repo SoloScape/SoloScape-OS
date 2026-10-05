@@ -17,6 +17,7 @@ import org.rsmod.api.player.interact.LocTInteractions
 import org.rsmod.api.player.interact.NpcInteractions
 import org.rsmod.api.player.interact.ObjInteractions
 import org.rsmod.api.player.protect.ProtectedAccessLauncher
+import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.player.protect.clearPendingAction
 import org.rsmod.api.registry.loc.LocRegistry
 import org.rsmod.api.registry.npc.NpcRegistry
@@ -264,7 +265,8 @@ constructor(
         } else named(type.name, setOf(item))
     }
 
-    private fun busy(player: Player): Boolean = player.isDelayed || player.isAccessProtected
+    private fun busy(player: Player): Boolean =
+        player.isDelayed || player.isAccessProtected || player.hitpoints <= 0
 
     companion object {
         private const val BANK_RADIUS = 2
@@ -280,8 +282,8 @@ constructor(
 
         internal fun zones(coords: CoordGrid, radius: Int): Sequence<ZoneKey> = sequence {
             val distance = radius.coerceIn(0, 32)
-            for (x in ((coords.x - distance).coerceAtLeast(0) / 8)..((coords.x + distance) / 8)) {
-                for (z in ((coords.z - distance).coerceAtLeast(0) / 8)..((coords.z + distance) / 8)) {
+            for (x in ((coords.x - distance).coerceAtLeast(0) / 8)..((coords.x + distance) / 8).coerceAtMost(ZoneKey.X_BIT_MASK)) {
+                for (z in ((coords.z - distance).coerceAtLeast(0) / 8)..((coords.z + distance) / 8).coerceAtMost(ZoneKey.Z_BIT_MASK)) {
                     yield(ZoneKey(x, z, coords.level))
                 }
             }
