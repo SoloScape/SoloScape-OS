@@ -28,9 +28,14 @@ class BotPvpCombat @Inject constructor(
     private val states = LinkedHashMap<Player, BotPvpState>()
     private val random = Random.Default
 
-    fun register(player: Player, identity: Int, difficulty: BotPvpDifficulty): Boolean {
-        val loadout = BotPvpLoadouts.choose(identity, player.members)
-        val state = BotPvpState(BotPvpProfiles.get(difficulty), loadout)
+    fun register(
+        player: Player,
+        identity: Int,
+        difficulty: BotPvpDifficulty,
+        hotspotId: String? = null,
+    ): Boolean {
+        val loadout = BotPvpLoadouts.choose(identity, player.members, difficulty, hotspotId)
+        val state = BotPvpState(BotPvpProfiles.get(difficulty), loadout, hotspotId)
         for ((stat, level) in loadout.levels) {
             player.statMap.setFineXP(stat, PlayerSkillXPTable.getFineXPFromLevel(level))
             player.statMap.setBaseLevel(stat, level.toByte())
@@ -48,8 +53,13 @@ class BotPvpCombat @Inject constructor(
     }
 
     fun description(player: Player): String = states[player]?.let {
-        "${it.profile.id}/${it.loadout.id}"
+        "${it.profile.id}/${it.loadout.id}${it.hotspotId?.let { hotspot -> "@$hotspot" } ?: ""}"
     } ?: ""
+
+    fun canUseHotspot(player: Player, hotspotId: String): Boolean = states[player]?.let { state ->
+        BotPvpHotspots.get(hotspotId)?.allowedProfiles?.contains(state.profile.id) == true &&
+            BotPvpLoadouts.allowedAt(state.loadout.id, hotspotId)
+    } == true
 
     fun tick(
         player: Player,
@@ -137,9 +147,7 @@ class BotPvpCombat @Inject constructor(
             val selected = BotPvpPolicy.chooseTarget(
                 indices, eligible.indexOf(state.target).takeIf { it >= 0 }, retaliation,
                 { player.coords.chebyshevDistance(eligible[it].coords) },
-                { targetIndex ->
-                    states.values.count { it.target === eligible[targetIndex] }
-                },
+                { targetIndex -> states.values.count { it.target === eligible[targetIndex] } },
             )?.let { eligible[it] }
             if (selected !== state.target) {
                 state.target = selected
@@ -171,9 +179,10 @@ class BotPvpCombat @Inject constructor(
         }
 
         if (state.specialQueuedAt >= 0) {
-            val attacked = BotPvpPolicy.specialConsumed(state.energyAtSpec,
-                native.specialEnergy(player))
-            if (attacked || cycle - state.specialQueuedAt >= 5) {
+            val attacked = BotPvpPolicy.specialConsumed(state.energyAtSpec, native.specialEnergy(player))
+            // TSPS keeps the spec weapon visible for roughly 0.7-1.3s after a one-tick activation.
+            val oneTickHold = state.instantSpecialQueued && cycle - state.specialQueuedAt < 2
+            if ((attacked && !oneTickHold) || cycle - state.specialQueuedAt >= 5) {
                 native.cancelSpecial(player)
                 native.equip(player, state.loadout.styles.getValue(state.returnStyle))
                 state.style = state.returnStyle
@@ -181,9 +190,6 @@ class BotPvpCombat @Inject constructor(
                 state.instantSpecialQueued = false
                 state.nextSpecReview = next(cycle, state.profile.specReview)
             } else {
-                // Instant specials execute from the combat-interface button itself. Reissuing a
-                // normal attack while that button event is pending would turn a G-maul combo into
-                // an ordinary delayed swing, so only armed specials should drive attack interaction.
                 if (!state.instantSpecialQueued) native.attack(player, target)
                 return "special attack"
             }
@@ -194,30 +200,66 @@ class BotPvpCombat @Inject constructor(
             random.nextDouble() < state.profile.nextHitScriptChance
         if (cycle >= state.nextCombatAction || pressure) {
             val usable = state.loadout.styles.keys.filter {
-                it != BotPvpStyle.Magic || state.loadout.attackSpell?.let {
-                    spell -> native.canCast(player, spell)
+                it != BotPvpStyle.Magic || state.loadout.attackSpell?.let { spell ->
+                    native.canCast(player, spell)
                 } == true
             }.toSet()
-            val best = BotPvpPolicy.chooseStyle(usable.ifEmpty { setOf(state.style) },
-                state.style, native.protection(target), player.frozen, target.frozen,
-                distance, random.nextDouble())
-            if (best != state.style && random.nextDouble() < (if (pressure) state.profile.nextHitStyleSwitchChance
-                        else state.profile.switchChance) &&
+            val best = BotPvpPolicy.chooseStyle(
+                usable.ifEmpty { setOf(state.style) }, state.style, native.protection(target),
+                player.frozen, target.frozen, distance, random.nextDouble(),
+            )
+            if (best != state.style && random.nextDouble() <
+                    (if (pressure) state.profile.nextHitStyleSwitchChance else state.profile.switchChance) &&
                     native.equip(player, state.loadout.styles.getValue(best))) {
                 state.style = best
             }
             native.prayOffensive(player, state.style)
             state.nextCombatAction = next(cycle, state.profile.combatAction)
         }
+
+        // TSPS one-tick path: veteran/elite only, attack-ready within two ticks, melee range,
+        // dedicated cooldown/chance, then equip + activate Granite Maul without reissuing attack.
+        // SoloScape's G-maul special owns its queued blows, so the combat-interface event must be
+        // allowed to execute before switching back to the primary style.
+        val oneTickWeapon = "obj.granite_maul"
+        val committed = (player.interaction as? InteractionPlayerOp)?.target === target
+        if (state.profile.confidenceTier >= 3 && oneTickWeapon in state.loadout.specialWeapons &&
+                cycle >= state.nextOneTickCheck &&
+                cycle - state.lastOneTickAt >= state.profile.oneTickCooldown &&
+                player.actionDelay <= cycle + 2 && committed && distance <= 1) {
+            state.nextOneTickCheck = cycle + 1
+            val maxHit = native.estimatedMaxHit(player, target, BotPvpStyle.Melee, null)
+            val chance = minOf(0.98, state.profile.oneTickUseChance + state.profile.oneTickGmaulChance)
+            if (BotPvpPolicy.shouldSpec(
+                    target.hitpoints, target.baseHitpointsLvl, maxHit,
+                    native.specialEnergy(player), native.specialCost(oneTickWeapon), state.profile,
+                    random.nextDouble(),
+                ) && random.nextDouble() <= maxOf(0.05, chance)) {
+                state.returnStyle = state.style
+                if (native.equip(player, listOf(oneTickWeapon))) {
+                    val energyBefore = native.specialEnergy(player)
+                    if (native.special(player)) {
+                        state.specialQueuedAt = cycle
+                        state.energyAtSpec = energyBefore
+                        state.instantSpecialQueued = true
+                        state.lastOneTickAt = cycle
+                        state.nextSpecReview = next(cycle, state.profile.specReview)
+                        return "one-tick G-maul combo"
+                    }
+                    native.equip(player, state.loadout.styles.getValue(state.returnStyle))
+                }
+            }
+        }
+
         if (cycle >= state.nextSpecReview && state.loadout.specialWeapons.isNotEmpty()) {
             state.nextSpecReview = next(cycle, state.profile.specReview)
             val finisher = state.loadout.specialWeapons.random(random)
-            val maxHit = native.estimatedMaxHit(player, target, state.style,
-                state.loadout.attackSpell)
-            if (BotPvpPolicy.shouldSpec(target.hitpoints, target.baseHitpointsLvl, maxHit,
+            val maxHit = native.estimatedMaxHit(player, target, state.style, state.loadout.attackSpell)
+            if (BotPvpPolicy.shouldSpec(
+                    target.hitpoints, target.baseHitpointsLvl, maxHit,
                     native.specialEnergy(player), native.specialCost(finisher), state.profile,
-                    random.nextDouble()) &&
-                    !(player.frozen && distance > 1) &&
+                    random.nextDouble(),
+                ) && !(player.frozen && distance > 1) &&
                     random.nextDouble() < state.profile.specSwitchChance &&
                     native.equip(player, listOf(finisher))) {
                 state.returnStyle = state.style
@@ -225,9 +267,7 @@ class BotPvpCombat @Inject constructor(
                 if (native.special(player)) {
                     state.specialQueuedAt = cycle
                     state.energyAtSpec = energyBefore
-                    // TSPS marks Granite Maul as its one-tick weapon. SoloScape registers this
-                    // class of special as Instant, so the button event owns the hit and energy use.
-                    state.instantSpecialQueued = finisher == "obj.granite_maul"
+                    state.instantSpecialQueued = finisher == oneTickWeapon
                     if (!state.instantSpecialQueued) native.attack(player, target)
                     return "special attack"
                 }
@@ -240,8 +280,8 @@ class BotPvpCombat @Inject constructor(
                 cycle >= state.nextFreezeReview && freeze != null && !target.frozen &&
                 !target.freezeImmune && native.canCast(player, freeze)) {
             state.nextFreezeReview = next(cycle, state.profile.freezeReview)
-            if (random.nextDouble() < (if (pressure) state.profile.nextHitFreezeChance
-                        else state.profile.freezeUseChance) &&
+            if (random.nextDouble() <
+                    (if (pressure) state.profile.nextHitFreezeChance else state.profile.freezeUseChance) &&
                     native.equip(player, state.loadout.styles.getValue(BotPvpStyle.Magic))) {
                 state.style = BotPvpStyle.Magic
                 native.prayOffensive(player, state.style)
@@ -275,10 +315,12 @@ class BotPvpCombat @Inject constructor(
             state.stationary = 0
             if (movement.operate(player, setOf("Door", "Gate"), "Open", 2)) return "opening gate"
         }
-        native.attack(player, target,
+        native.attack(
+            player, target,
             if (state.style == BotPvpStyle.Magic) state.loadout.attackSpell?.takeIf {
                 native.canCast(player, it)
-            } else null)
+            } else null,
+        )
         return "fighting ${target.displayName} (${state.style})"
     }
 
@@ -294,14 +336,12 @@ class BotPvpCombat @Inject constructor(
             VarPlayerIntMapSetter.set(player, "varp.option_nodef", 0)
             return "restocking"
         }
-        if (cycle - state.retreatStartedAt >= 9 && cycle >= state.nextMove &&
-                native.teleport(player)) {
+        if (cycle - state.retreatStartedAt >= 9 && cycle >= state.nextMove && native.teleport(player)) {
             state.nextMove = cycle + 5
             return "teleporting away"
         }
         if (!player.frozen && cycle >= state.nextMove) {
-            val south = CoordGrid(player.coords.x, maxOf(3518, player.coords.z - 12),
-                player.coords.level)
+            val south = CoordGrid(player.coords.x, maxOf(3518, player.coords.z - 12), player.coords.level)
             walkTowards(player, if (south == player.coords) CoordGrid(3087, 3518) else south)
             state.nextMove = cycle + 3
         }
@@ -322,8 +362,10 @@ class BotPvpCombat @Inject constructor(
     private fun walkTowards(player: Player, destination: CoordGrid) {
         if (player.coords.level == 0 && destination.level == 0 &&
                 BotPvpPolicy.crossesDitch(player.coords.z, destination.z) &&
-                movement.operate(player, setOf("loc.ditch_wilderness_cover",
-                    "loc.ditch_wilderness_cover_members"), "Cross", 3)) return
+                movement.operate(
+                    player, setOf("loc.ditch_wilderness_cover", "loc.ditch_wilderness_cover_members"),
+                    "Cross", 3,
+                )) return
         val next = if (player.coords.chebyshevDistance(destination) <= 48) destination
             else BotRoutes.path(player.coords, destination).firstOrNull() ?: CoordGrid(
                 player.coords.x + (destination.x - player.coords.x).coerceIn(-32, 32),
