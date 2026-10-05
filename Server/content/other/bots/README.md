@@ -3,6 +3,8 @@
 Wilderness and clan bots use a tick-based controller adapted from the PK behaviours in
 [RSPSApp/tsps](https://github.com/RSPSApp/tsps/tree/c40e57fd95c8edb400ded74e1dde9fe87c3e8d7e/server/plugins/bots).
 This is a native Kotlin adaptation, not a JavaScript runtime or a replacement combat engine.
+The workflow pins the TSPS PvP loadout and hotspot JSON blobs at that revision before running
+the port checks.
 
 ## Configure
 
@@ -30,21 +32,32 @@ Each mode's value sets its bot count; zero disables that population. `enabled=fa
 disables world bot spawning. `members` selects members or F2P builds.
 `pvp.difficulty` accepts `novice`, `standard`, `veteran` or `elite` and applies to
 Wilderness and both clan populations. The default is `standard`.
-`::botinfo` displays difficulty, loadout and current action.
+`::botinfo` displays difficulty, TSPS archetype/hotspot and current action.
 Population changes use the properties file; the spawn/removal commands are removed.
 Existing skilling, trading, progression and Castle Wars controllers remain separate.
 
 ## Behaviours
 
-- Four difficulty profiles vary reactions, eating, style switches, movement and spec decisions.
-- Eighteen native loadouts include pures, zerkers, tanks, mains, ranged, Vengeance,
-  standard magic, ancient hybrid/tribrid and F2P range-to-two-handed builds.
+- Four difficulty profiles vary reactions, eating, style switches, movement, specials,
+  next-hit decisions and one-tick G-maul probability/cooldown.
+- All 89 pinned TSPS archetype ids, weights and exact seven-stat lines are represented.
+  Their pinned spellbooks and autocast spells are copied explicitly, including F2P bind/magic
+  packages. The archetypes expand from 18 verified native SoloScape equipment templates.
+- The 89 archetypes retain all 28 TSPS loadout-family memberships. Wilderness assignment filters
+  families by world type and difficulty before applying archetype and hotspot style weights.
+- The five enabled TSPS Wilderness hotspots are represented with their source anchors, areas,
+  target/max populations, roam radii, profile/family gates, style/activity weights and fight caps.
+  Spawn distribution follows `targetBots`; idle roaming is constrained to the assigned hotspot.
 - Protection and offensive prayers use native requirements and drain. Reaction delay follows
   a stable observed opponent style instead of instantly countering every equipment change.
 - Bots counter protection prayers, avoid melee when frozen out of range, use finisher specs
   when energy and target health permit, and return to their normal gear afterward.
+- Veteran/elite G-maul archetypes can use the TSPS-style one-tick path when already committed to
+  the target, attack-ready within two ticks and in melee range. The native special button owns
+  the queued G-maul blows and energy spend; the bot holds the spec weapon briefly before switching.
 - Supported spells use normal spellbook, rune, level and quest validation. Ancient attacks
-  freeze through the normal combat system; standard magic presets can use binding spells.
+  freeze through the normal combat system; standard/F2P magic builds carry the runes required
+  for their copied autocasts and Bind where applicable.
 - Frozen opponents can be kited or stepped underneath between attacks.
 - Vengeance, regular food plus karambwan combos, prayer/stat restoration and combat boosts
   use ordinary item and spell handlers. Supplies and special energy are finite during fights.
@@ -56,32 +69,42 @@ Existing skilling, trading, progression and Castle Wars controllers remain separ
 
 ## Deliberate native differences
 
-SoloScape registers granite maul as an ordinary combat special with two queued hits.
-This port prepares and switches that weapon but preserves the engine attack delay; it
-does not reproduce TSPS's instant G-maul combos or bypass PvP legality to fabricate them.
-Special finisher prediction uses the equipped normal max hit plus a low-HP threshold;
-it is a heuristic, not an exact prediction of switched special damage.
+The 89 TSPS archetypes keep their source identity, weighting, stats and magic configuration,
+but their full per-slot TSPS equipment/inventory randomisation is not copied item-for-item.
+They map onto 18 native equipment templates whose gameval symbols are validated in CI. This keeps
+all switches executable in SoloScape while retaining the source archetype distribution.
 
-TSPS's randomized healing and free stat boosts are replaced with real consumables.
-The loadouts are native equivalents of combat families, not a copy of all 89 TSPS gear
-archetypes or its hotspot weighting. Existing native quest/prayer unlocks still apply.
-This change does not alter official OSRS accuracy or Castle Wars objective logic.
+SoloScape's existing combat engine remains authoritative. The one-tick G-maul controller does not
+fabricate hits, bypass attack legality or alter weapon special rules; it only schedules the native
+G-maul special in the TSPS timing window. Special finisher prediction remains a heuristic based on
+the native equipped max hit and target health rather than an exact switched-special damage model.
+
+TSPS's randomized healing and free stat boosts are replaced with real consumables. Hotspot
+`activityWeights` and `maxSimultaneousFights` are retained as source metadata; assignment, family
+selection, style weighting and bounded roaming are active, while those two higher-level population
+signals are not used to replace SoloScape's native combat/target ownership rules. Existing native
+quest/prayer unlocks still apply. This change does not alter official OSRS accuracy or Castle Wars
+objective logic.
 
 ## Verification
 
-The bot workflow compiles the changed Kotlin against the bundled server libraries and runs
-the existing bot checks plus `BotPvpCheck`. Decision checks cover reaction cancellation,
-counter-style selection, frozen positioning, eating/retreat thresholds, spec energy,
-target priority and loadout invariants.
+The bot workflow compiles the changed Kotlin against the bundled server libraries and runs the
+existing bot checks plus `BotPvpCheck`. Before compiling, it downloads the two pinned TSPS PvP
+JSON files and rejects them unless their Git blob hashes match the expected source revision.
+Decision checks cover reaction cancellation, counter-style selection, frozen positioning,
+eating/retreat thresholds, finite spec energy, target priority, exactly 89 archetypes/28 families,
+exact TSPS stats and 41/27/21 normal/ancient/lunar spellbook counts, five hotspot contracts,
+18 native templates, F2P magic rune coverage and native gameval mappings.
 
-Live acceptance: configure each difficulty and restart the server, attack it with changing weapons/protection prayers,
-check food and rune depletion, confirm specs obey attack delays, freeze/teleblock a retreating
-bot, and kill one to verify loot and return behaviour. Test both singles and multiway and F2P.
-A live client is needed to assess combat feel and the installed cache's item/spell availability.
+Live acceptance: configure each difficulty and restart the server, attack it with changing
+weapons/protection prayers, check food/rune depletion and hotspot roaming, confirm ordinary specs
+obey native attack delays, exercise a veteran/elite G-maul build in melee range, freeze/teleblock a
+retreating bot, and kill one to verify loot and return behaviour. Test singles, multiway and F2P.
+A live client is still needed to assess combat feel and installed-cache item/spell availability.
 
 ## Attribution
 
-Difficulty parameters and behavioural design derive from RSPSApp/tsps at
-`c40e57fd95c8edb400ded74e1dde9fe87c3e8d7e`.
-Its BSD-2-Clause notice is preserved in `src/main/resources/TSPS-LICENSE.txt` and is
-packaged with this module. Existing SoloScape/RS Mod licensing is unchanged.
+Difficulty parameters, archetype metadata, hotspot definitions and behavioural design derive from
+RSPSApp/tsps at `c40e57fd95c8edb400ded74e1dde9fe87c3e8d7e`.
+Its BSD-2-Clause notice is preserved in `src/main/resources/TSPS-LICENSE.txt` and is packaged with
+this module. Existing SoloScape/RS Mod licensing is unchanged.
