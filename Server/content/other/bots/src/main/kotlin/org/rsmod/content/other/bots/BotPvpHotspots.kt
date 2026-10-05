@@ -22,9 +22,11 @@ data class BotPvpHotspot(
     val styleWeights: Map<BotPvpStyle, Double>,
     val activityWeights: Map<String, Double>,
 ) {
-    fun families(members: Boolean): Set<String> =
-        if (members) allowedFamilies else (allowedFamilies + freeWorldFamilies)
-            .filterTo(linkedSetOf()) { it.startsWith("f2p_") }
+    fun families(members: Boolean): Set<String> = if (members) {
+        allowedFamilies.filterTo(linkedSetOf()) { !it.startsWith("f2p_") }
+    } else {
+        (allowedFamilies + freeWorldFamilies).filterTo(linkedSetOf()) { it.startsWith("f2p_") }
+    }
 
     fun contains(coord: CoordGrid): Boolean =
         coord.level == anchor.level && coord.x in minX..maxX && coord.z in minZ..maxZ
@@ -126,7 +128,7 @@ object BotPvpHotspots {
                 BotPvpTspsCatalog.families[family].orEmpty().any { variantId ->
                     val variant = BotPvpTspsCatalog.get(variantId)
                     variant != null && variant.minimumDifficulty.ordinal <= difficulty.ordinal &&
-                        (members || variant.f2p)
+                        (if (members) !variant.f2p else variant.f2p)
                 }
             }
         }
