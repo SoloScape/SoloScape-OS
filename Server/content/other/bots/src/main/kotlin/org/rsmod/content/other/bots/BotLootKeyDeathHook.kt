@@ -40,7 +40,7 @@ internal object BotLootKeys {
 
     fun nextType(player: Player): String? = typeForCount(count(player))
 
-    fun isKey(obj: InvObj?): Boolean = types.any(obj::isType)
+    fun isKey(obj: InvObj?): Boolean = obj != null && types.any { obj.isType(it) }
 }
 
 internal class BotLootKeyDeathHook
@@ -61,12 +61,13 @@ constructor(private val population: BotPopulation) : PlayerDeathHook {
         )
     }
 
-    private fun eligible(context: PlayerDeathContext): Boolean =
-        context.wildernessLevel > 0 &&
+    private fun eligible(context: PlayerDeathContext): Boolean {
+        val killer = context.killer ?: return false
+        return context.wildernessLevel > 0 &&
             !context.inInstance &&
             population.isBot(context.player) &&
-            context.killer != null &&
-            !population.isBot(context.killer)
+            !population.isBot(killer)
+    }
 
     private companion object {
         private const val BOT_DEATH_PRIORITY = 50
