@@ -116,6 +116,7 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
                 if (transaction.success) transaction.commitAll()
             }
         }
+        if (task != null) equipRequired(player, task)
     }
 
     fun replenish(player: Player, task: BotTaskDefinition, actions: BotActions): Boolean {
@@ -133,6 +134,7 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
             val amount = minOf(count - inInventory, available, if (type.stackable) count else free)
             if (amount > 0 && !actions.withdraw(player, item, amount)) supplied = false
         }
+        equipRequired(player, task)
         return supplied && canSupply(player, task)
     }
 
@@ -167,6 +169,18 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
             }
             else -> actions.operate(player, task.targets, task.option)
         }
+
+    private fun equipRequired(player: Player, task: BotTaskDefinition) {
+        val required = requirements(task, levels(player)).keys
+        for (slot in player.inv.indices) {
+            val obj = player.inv[slot] ?: continue
+            val type = getInvObj(obj)
+            if (type.isEquipable && required.any { type.name.equals(it, true) }) {
+                equipment.equip(player, slot, player.inv)
+            }
+        }
+        player.rebuildAppearance()
+    }
 
     private fun add(player: Player, inv: Inventory, name: String, count: Int) {
         val type = resolve(name) ?: return
