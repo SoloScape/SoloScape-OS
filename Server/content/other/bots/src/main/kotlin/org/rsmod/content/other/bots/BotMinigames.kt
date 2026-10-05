@@ -6,6 +6,7 @@ import kotlin.math.abs
 import org.rsmod.api.player.interact.PlayerInteractions
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.content.other.castlewars.bots.CastleWarsBots
+import org.rsmod.content.other.castlewars.CastleWarsGame
 import org.rsmod.game.entity.Player
 import org.rsmod.game.interact.InteractionOp
 import org.rsmod.game.interact.InteractionPlayerOp
@@ -14,6 +15,7 @@ import org.rsmod.map.CoordGrid
 @Singleton
 public class BotMinigames @Inject internal constructor(
     private val castleWars: CastleWarsBots,
+    private val game: CastleWarsGame,
     private val interactions: PlayerInteractions,
     private val actions: BotActions,
 ) {
@@ -23,8 +25,11 @@ public class BotMinigames @Inject internal constructor(
     public val count: Int
         get() = castleWars.count
 
-    public fun fill(requester: Player, limit: Int): Int =
-        castleWars.fill(requester, limit.coerceIn(0, 40))
+    public fun fill(requester: Player, limit: Int): Int {
+        val added = castleWars.fill(requester, limit.coerceIn(0, 40))
+        if (added > 0 && !game.running) game.startGame()
+        return added
+    }
 
     public fun removeAll() {
         castleWars.removeAll()
