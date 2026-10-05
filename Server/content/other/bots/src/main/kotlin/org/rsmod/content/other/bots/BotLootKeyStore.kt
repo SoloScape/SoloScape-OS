@@ -8,13 +8,16 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.util.Properties
+import java.util.WeakHashMap
 import org.rsmod.game.inv.InvObj
+import org.rsmod.game.obj.Obj
 
 @Singleton
 internal class BotLootKeyStore @Inject constructor() {
     private val logger = InlineLogger()
     private val path = Path.of(".data", "bot-loot-keys.properties")
     private val bundles = LinkedHashMap<Int, List<InvObj>>()
+    private val groundBundles = WeakHashMap<Obj, Int>()
     private var nextId = 1
 
     init {
@@ -36,8 +39,25 @@ internal class BotLootKeyStore @Inject constructor() {
     @Synchronized
     fun remove(id: Int): List<InvObj>? {
         val removed = bundles.remove(id) ?: return null
+        groundBundles.entries.removeIf { it.value == id }
         persist()
         return removed.map { InvObj(it) }
+    }
+
+    @Synchronized
+    fun bindGround(obj: Obj, bundleId: Int) {
+        require(bundleId in bundles)
+        groundBundles[obj] = bundleId
+    }
+
+    @Synchronized
+    fun groundBundle(obj: Obj): Int? = groundBundles[obj]
+
+    @Synchronized
+    fun unbindGround(obj: Obj, bundleId: Int): Boolean {
+        if (groundBundles[obj] != bundleId) return false
+        groundBundles.remove(obj)
+        return true
     }
 
     private fun allocateId(): Int {
