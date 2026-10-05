@@ -43,6 +43,10 @@ constructor(
     ): DeathDropResult {
         val allCarried = carried.sortedByDescending { marketPriceSingle(it) }
 
+        if (handling.dropAllCarried) {
+            return selectAllDrops(allCarried, handling)
+        }
+
         if (rules.isUIM) {
             return selectUimDrops(allCarried, handling, rules)
         }
@@ -83,6 +87,28 @@ constructor(
         val isUIM: Boolean = false,
         val isPvpDeath: Boolean = false,
     )
+
+    private fun selectAllDrops(
+        allCarried: List<InvObj>,
+        handling: PlayerDeathHandling,
+    ): DeathDropResult {
+        val (supply, remaining) = if (handling.supplyPile) {
+            allCarried.partition { isSupplyPileItem(it) }
+        } else {
+            emptyList<InvObj>() to allCarried
+        }
+        val (lostUntradeable, lostTradeable) = remaining.partition { isUntradeable(it) }
+        val coinsForKiller = if (handling.untradeableHandling == UntradeableHandling.COINS) {
+            lostUntradeable.sumOf { untradeableConversionValue(it) }
+        } else 0L
+        return DeathDropResult(
+            kept = emptyList(),
+            supplyPile = supply,
+            lostTradeable = lostTradeable,
+            lostUntradeable = lostUntradeable,
+            coinsForKiller = coinsForKiller,
+        )
+    }
 
     private fun selectInstanceDrops(
         slotlessKept: List<InvObj>,
