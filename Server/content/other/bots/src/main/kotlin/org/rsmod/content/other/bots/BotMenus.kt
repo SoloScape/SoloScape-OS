@@ -34,17 +34,20 @@ constructor(
         }
         if (coroutine?.isAwaiting(ResumePauseButtonInput::class) == true) {
             val options = listOf(
-                Triple("interface.skillmulti", "component.skillmulti:a", 28),
-                Triple("interface.chat_left", "component.chat_left:continue", 0),
-                Triple("interface.chat_right", "component.chat_right:continue", 0),
+                Triple("interface.skillmulti",
+                    if (recipe.equals("Steel bar", true)) "component.skillmulti:b" else "component.skillmulti:a", 28),
+                Triple("interface.chat_left", "component.chat_left:continue", -1),
+                Triple("interface.chat_right", "component.chat_right:continue", -1),
                 Triple("interface.chatmenu", "component.chatmenu:options", 1),
-                Triple("interface.messagebox", "component.messagebox:continue", 0),
-                Triple("interface.objectbox", "component.objectbox:universe", 0),
+                Triple("interface.messagebox", "component.messagebox:continue", -1),
+                Triple("interface.objectbox", "component.objectbox:universe", -1),
             )
             for ((interf, component, sub) in options) {
                 if (!player.ui.containsModal(interf)) continue
                 val type = ServerCacheManager.fromComponent(component)
-                if (sub >= 0 && !player.ui.hasEvent(type, sub, IfEvent.PauseButton)) continue
+                val enabled = if (sub == -1) type.hasEvent(IfEvent.PauseButton)
+                    else player.ui.hasEvent(type, sub, IfEvent.PauseButton)
+                if (!enabled) continue
                 val modal = player.ui.modals.getComponent(
                     UserInterface(interf.asRSCM(RSCMType.INTERFACE))
                 ) ?: continue
