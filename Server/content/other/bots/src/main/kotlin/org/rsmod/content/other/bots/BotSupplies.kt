@@ -5,6 +5,7 @@ import dev.openrune.types.ItemServerType
 import jakarta.inject.Inject
 import java.util.Collections
 import java.util.WeakHashMap
+import kotlin.random.Random
 import org.rsmod.api.invtx.invAdd
 import org.rsmod.api.invtx.invTransfer
 import org.rsmod.api.player.worn.HeldEquipOp
@@ -13,7 +14,49 @@ import org.rsmod.game.inv.Inventory
 import org.rsmod.game.type.getInvObj
 
 class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
+    private data class CombatLoadout(
+        val attack: Int,
+        val defence: Int,
+        val strength: Int = 1,
+        val members: Boolean = false,
+        val items: List<String>,
+    )
+
     private val seeded = Collections.newSetFromMap(WeakHashMap<Player, Boolean>())
+    private val random = Random.Default
+    private val combatLoadouts = listOf(
+        CombatLoadout(1, 1, items = listOf(
+            "Steel sword", "Steel full helm", "Steel platebody", "Steel platelegs",
+            "Steel kiteshield", "Amulet of strength",
+        )),
+        CombatLoadout(30, 30, items = listOf(
+            "Adamant scimitar", "Adamant full helm", "Adamant platebody", "Adamant platelegs",
+            "Adamant kiteshield", "Amulet of strength",
+        )),
+        CombatLoadout(40, 40, items = listOf(
+            "Rune scimitar", "Rune full helm", "Rune platebody", "Rune platelegs",
+            "Rune kiteshield", "Amulet of power",
+        )),
+        CombatLoadout(50, 40, strength = 50, members = true, items = listOf(
+            "Granite maul", "Rune full helm", "Rune platebody", "Rune platelegs",
+            "Amulet of glory", "Climbing boots",
+        )),
+        CombatLoadout(60, 40, members = true, items = listOf(
+            "Dragon scimitar", "Rune full helm", "Rune platebody", "Rune platelegs",
+            "Rune kiteshield", "Amulet of glory", "Climbing boots",
+        )),
+        CombatLoadout(60, 40, members = true, items = listOf(
+            "Dragon longsword", "Rune full helm", "Rune platebody", "Rune platelegs",
+            "Rune kiteshield", "Amulet of glory", "Rune boots",
+        )),
+        CombatLoadout(70, 40, members = true, items = listOf(
+            "Abyssal whip", "Rune full helm", "Rune platebody", "Rune platelegs",
+            "Rune kiteshield", "Amulet of glory", "Rune boots",
+        )),
+    )
+    private val memberAccessories = listOf(
+        "Amulet of glory", "Combat bracelet", "Obsidian cape", "Rune boots", "Climbing boots",
+    )
 
     fun requirements(task: BotTaskDefinition, levels: Map<String, Int>): Map<String, Int> {
         val result = task.requiredItems.toMutableMap()
@@ -95,11 +138,18 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
                     add(player, bank, item, count.coerceAtLeast(1))
                 }
             }
-            add(player, player.inv, "Steel sword", 1)
-            add(player, player.inv, "Steel kiteshield", 1)
+            if (task?.kind == BotTaskKind.Combat) {
+                seedCombatEquipment(player)
+            } else {
+                add(player, player.inv, "Steel sword", 1)
+                add(player, player.inv, "Steel kiteshield", 1)
+            }
         }
         for (slot in player.inv.indices) {
             if (player.inv[slot] != null) equipment.equip(player, slot, player.inv)
+        }
+        if (!progressive && task?.kind == BotTaskKind.Combat) {
+            add(player, player.inv, if (player.members) "Shark" else "Lobster", 12)
         }
         player.rebuildAppearance()
         if (task != null) {
@@ -172,6 +222,29 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
             }
             else -> actions.operate(player, task.targets, task.option)
         }
+
+    private fun seedCombatEquipment(player: Player) {
+        val attack = player.statMap.getBaseLevel("stat.attack").toInt()
+        val defence = player.statMap.getBaseLevel("stat.defence").toInt()
+        val strength = player.statMap.getBaseLevel("stat.strength").toInt()
+        val eligible = combatLoadouts.filter {
+            attack >= it.attack && defence >= it.defence && strength >= it.strength &&
+                (!it.members || player.members)
+        }
+        val memberEligible = eligible.filter { it.members }
+        val pool = if (player.members && memberEligible.isNotEmpty() && random.nextInt(100) < 75) {
+            memberEligible
+        } else {
+            eligible
+        }
+        val loadout = pool.randomOrNull(random) ?: combatLoadouts.first()
+        for (item in loadout.items) add(player, player.inv, item, 1)
+        if (player.members) {
+            memberAccessories.filterNot { it in loadout.items }.randomOrNull(random)?.let {
+                add(player, player.inv, it, 1)
+            }
+        }
+    }
 
     private fun equipRequired(player: Player, task: BotTaskDefinition) {
         val required = requirements(task, levels(player)).keys
