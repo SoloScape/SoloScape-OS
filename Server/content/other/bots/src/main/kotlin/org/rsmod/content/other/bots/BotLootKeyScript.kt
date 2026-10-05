@@ -2,6 +2,7 @@ package org.rsmod.content.other.bots
 
 import jakarta.inject.Inject
 import org.rsmod.api.invtx.invTransaction
+import org.rsmod.api.invtx.select
 import org.rsmod.api.market.MarketPrices
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.script.advanced.onDestroyHeld
@@ -37,7 +38,7 @@ constructor(
     }
 
     private fun ProtectedAccess.checkKey(slot: Int) {
-        val key = inv[slot]
+        val key = inv[slot] ?: return
         if (!BotLootKeys.isKey(key)) return
         val loot = store.get(key.vars)
         if (loot == null) {
@@ -63,7 +64,7 @@ constructor(
     }
 
     private fun ProtectedAccess.redeemKey(slot: Int) {
-        val key = inv[slot]
+        val key = inv[slot] ?: return
         if (!BotLootKeys.isKey(key)) return
         val loot = store.get(key.vars)
         if (loot == null) {
