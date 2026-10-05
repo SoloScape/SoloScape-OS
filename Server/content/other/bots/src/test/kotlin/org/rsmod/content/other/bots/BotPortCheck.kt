@@ -19,15 +19,11 @@ public fun main() {
     check(BotSkills.all.distinct().size == BotSkills.all.size)
     check(BotSkills.all.all { it.startsWith("stat.") })
 
-    check(WildernessPatrols.centers.size >= 10)
-    check(WildernessPatrols.centers.distinct().size == WildernessPatrols.centers.size)
-    check(WildernessPatrols.centers.all { it.level == 0 && it.z >= 3520 })
-    check(
-        (1..WildernessPatrols.centers.size)
-            .map(WildernessPatrols::center)
-            .toSet()
-            .size == WildernessPatrols.centers.size
-    )
+    check(BotPvpHotspots.all.size == 5)
+    check(BotPvpHotspots.all.map { it.id }.distinct().size == BotPvpHotspots.all.size)
+    check(BotPvpHotspots.all.all { it.anchor.level == 0 && it.anchor.z >= 3520 })
+    check(BotPvpHotspots.all.all { it.contains(it.anchor) })
+    check(BotPvpHotspots.all.all { it.targetBots in 1..it.maxBots })
 
     check(BotLootKeys.types == List(BotLootKeys.MAX_KEYS) { "obj.wildy_loot_key$it" })
     check(BotLootKeys.types.distinct().size == BotLootKeys.MAX_KEYS)
@@ -72,6 +68,7 @@ public fun main() {
 
     println(
         "Bot port contracts passed: ${BotMode.entries.size} modes, ${tasks.size} activities, " +
-            "$configuredBots configured world bots, ${BotLootKeys.MAX_KEYS} loot key slots."
+            "$configuredBots configured world bots, ${BotPvpHotspots.all.size} Wilderness hotspots, " +
+            "${BotLootKeys.MAX_KEYS} loot key slots."
     )
 }
