@@ -88,7 +88,8 @@ object BotPvpLoadouts {
         "obj.lawrune" to 300, "obj.deathrune" to 300,
     )
     private val f2pMagicRunes = mapOf(
-        "obj.airrune" to 1000, "obj.deathrune" to 300, "obj.naturerune" to 200,
+        "obj.airrune" to 1000, "obj.waterrune" to 1000, "obj.earthrune" to 1000,
+        "obj.chaosrune" to 300, "obj.deathrune" to 300, "obj.naturerune" to 200,
     )
     private val supplies = mapOf(
         "obj.4dose2attack" to 1, "obj.4dose2strength" to 1,
