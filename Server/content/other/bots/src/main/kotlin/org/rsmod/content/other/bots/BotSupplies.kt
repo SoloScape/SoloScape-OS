@@ -70,13 +70,14 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
     fun seed(player: Player, task: BotTaskDefinition?, progressive: Boolean) {
         if (!seeded.add(player)) return
         val levels = levels(player)
+        val bank = player.invMap.getOrPut("inv.bank")
         if (progressive) {
             for (item in listOf("Bronze axe", "Bronze pickaxe", "Small fishing net", "Shears")) {
-                add(player, player.bank, item, 1)
+                add(player, bank, item, 1)
             }
             add(player, player.inv, "Bronze sword", 1)
             add(player, player.inv, "Wooden shield", 1)
-            add(player, player.bank, "Coins", 1000)
+            add(player, bank, "Coins", 1000)
         } else {
             val stock = linkedMapOf(
                 "Bronze axe" to 1, "Bronze pickaxe" to 1, "Small fishing net" to 1,
@@ -88,10 +89,10 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
                 "Flax" to 5000, "Wool" to 5000, "Cowhide" to 5000,
                 "Leather" to 5000, "Rune essence" to 5000,
             )
-            for ((item, count) in stock) add(player, player.bank, item, count)
+            for ((item, count) in stock) add(player, bank, item, count)
             if (task != null) {
                 for ((item, count) in requirements(task, levels)) {
-                    add(player, player.bank, item, count.coerceAtLeast(1))
+                    add(player, bank, item, count.coerceAtLeast(1))
                 }
             }
             add(player, player.inv, "Steel sword", 1)
@@ -104,14 +105,13 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
         if (task != null) {
             for ((item, requested) in requirements(task, levels)) {
                 val type = resolve(item) ?: continue
-                val slot = player.bank.indices.firstOrNull { player.bank[it]?.id == type.id }
-                    ?: continue
-                val available = player.bank[slot]?.count ?: continue
+                val slot = bank.indices.firstOrNull { bank[it]?.id == type.id } ?: continue
+                val available = bank[slot]?.count ?: continue
                 val free = player.inv.indices.count { player.inv[it] == null }
                 val amount = minOf(requested, available, if (type.stackable) requested else free)
                 if (amount <= 0) continue
                 val transaction = player.invTransfer(
-                    player.bank, slot, amount, player.inv, strict = true, autoCommit = false
+                    bank, slot, amount, player.inv, strict = true, autoCommit = false
                 )
                 if (transaction.success) transaction.commitAll()
             }
@@ -120,11 +120,12 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
     }
 
     fun replenish(player: Player, task: BotTaskDefinition, actions: BotActions): Boolean {
+        val bank = player.invMap.getOrPut("inv.bank")
         var supplied = true
         for ((item, count) in requirements(task, levels(player))) {
             val inInventory = count(player.inv, item) + count(player.worn, item)
             if (inInventory >= count) continue
-            val available = count(player.bank, item)
+            val available = count(bank, item)
             if (available == 0) {
                 supplied = false
                 continue
@@ -138,10 +139,12 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
         return supplied && canSupply(player, task)
     }
 
-    fun canSupply(player: Player, task: BotTaskDefinition): Boolean =
-        requirements(task, levels(player)).keys.all {
-            count(player.inv, it) + count(player.worn, it) + count(player.bank, it) > 0
+    fun canSupply(player: Player, task: BotTaskDefinition): Boolean {
+        val bank = player.invMap.getOrPut("inv.bank")
+        return requirements(task, levels(player)).keys.all {
+            count(player.inv, it) + count(player.worn, it) + count(bank, it) > 0
         }
+    }
 
     fun perform(player: Player, task: BotTaskDefinition, actions: BotActions): Boolean =
         when (task.kind) {
