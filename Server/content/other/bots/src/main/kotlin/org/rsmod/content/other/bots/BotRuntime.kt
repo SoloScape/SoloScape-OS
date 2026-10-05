@@ -105,7 +105,7 @@ class BotPopulation @Inject constructor(
         val config = Path.of(".data", "bots.properties")
         if (!Files.exists(config)) {
             Files.createDirectories(config.parent)
-            val defaults = checkNotNull(javaClass.getResourceAsStream("/bots.properties"))
+            val defaults = checkNotNull(BotPopulation::class.java.getResourceAsStream("/bots.properties"))
             defaults.use { Files.copy(it, config) }
         }
         Files.newInputStream(config).use { load(it) }
