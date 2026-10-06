@@ -57,7 +57,7 @@ object BotPvpRiskLoadouts {
     /**
      * Exact requested loadout intent. Names here are human-facing on purpose; the runtime resolver
      * can map them to verified gamevals and provide explicit fallbacks where the cache has no exact
-     * item (for example blighted ranging/super-combat potions).
+     * item (for example blighted ranging potions).
      */
     val all: List<BotPvpRiskPreset> = listOf(
         p(
@@ -78,7 +78,7 @@ object BotPvpRiskLoadouts {
         p(
             BotPvpRiskTier.Low, BotPvpLoadoutRole.Melee,
             "Helm of Neitiznot, Fighter torso, Rune platelegs, Rune boots, Amulet of glory, Fire cape, Abyssal whip, Armadyl godsword",
-            "Shark, Cooked karambwan, Blighted super combat potion, Prayer potion",
+            "Shark, Cooked karambwan, Super combat potion(4), Prayer potion",
         ),
         p(
             BotPvpRiskTier.Low, BotPvpLoadoutRole.Hybrid,
@@ -89,7 +89,7 @@ object BotPvpRiskLoadouts {
         p(
             BotPvpRiskTier.Average, BotPvpLoadoutRole.Pure,
             "Elder chaos robes, Amulet of fury, Ranger boots, Dragon scimitar, Dragon claws, Granite maul, Magic shortbow (i), Ancient staff",
-            "Dark crab, Shark, Cooked karambwan, Blighted super combat potion, Blighted ranging potion, Super restore",
+            "Dark crab, Shark, Cooked karambwan, Super combat potion(4), Blighted ranging potion, Super restore",
         ),
         p(
             BotPvpRiskTier.Average, BotPvpLoadoutRole.Magic,
@@ -104,12 +104,12 @@ object BotPvpRiskLoadouts {
         p(
             BotPvpRiskTier.Average, BotPvpLoadoutRole.Melee,
             "Helm of Neitiznot, Fighter torso, Torag's platelegs, Dragon boots, Amulet of glory, Abyssal whip, Armadyl godsword, Dragon claws",
-            "Dark crab, Shark, Cooked karambwan, Blighted super combat potion, Super restore",
+            "Dark crab, Shark, Cooked karambwan, Super combat potion(4), Super restore",
         ),
         p(
             BotPvpRiskTier.Average, BotPvpLoadoutRole.Hybrid,
             "Ahrim's switches, Karil's switches, Toxic staff of the dead, Dragon crossbow, Abyssal whip, Armadyl godsword",
-            "Dark crab, Shark, Cooked karambwan, Anglerfish, Saradomin brew, Super restore, Blighted super combat potion, Blighted ranging potion",
+            "Dark crab, Shark, Cooked karambwan, Anglerfish, Saradomin brew, Super restore, Super combat potion(4), Blighted ranging potion",
         ),
 
         p(
@@ -134,7 +134,7 @@ object BotPvpRiskLoadouts {
         ),
         p(
             BotPvpRiskTier.Risker, BotPvpLoadoutRole.Hybrid,
-            "Crystal switches, Ahrim's switches, Toxic staff of the dead / Kodai wand, Crystal crossbow, Voidwaker, Dragon defender",
+            "Crystal switches, Ahrim's switches, Toxic staff of the dead / Kodai wand, Crystal bow, Voidwaker, Dragon defender",
             "Anglerfish, Dark crab, Cooked karambwan, Saradomin brew, Super restore, Super combat potion, Ranging potion",
         ),
 
