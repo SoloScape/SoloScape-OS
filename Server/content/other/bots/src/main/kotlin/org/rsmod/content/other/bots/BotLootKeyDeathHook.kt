@@ -5,6 +5,7 @@ import org.rsmod.api.death.PlayerDeathContext
 import org.rsmod.api.death.PlayerDeathDrops.Companion.DROP_DURATION_PVP
 import org.rsmod.api.death.PlayerDeathHandling
 import org.rsmod.api.death.PlayerDeathHook
+import org.rsmod.api.death.PlayerDeathDrops
 import org.rsmod.api.death.PlayerDeathItemHook
 import org.rsmod.api.death.UntradeableHandling
 import org.rsmod.api.invtx.invAdd
@@ -51,14 +52,17 @@ constructor(private val population: BotPopulation) : PlayerDeathHook {
     override fun handleDeath(context: PlayerDeathContext): PlayerDeathHandling? {
         if (!eligible(context)) return null
         return PlayerDeathHandling(
-            keepCount = 0,
+            keepCount = PlayerDeathDrops.wildernessKeepCount(
+                isSkulled = context.isSkulled,
+                hasProtectItem = context.hasProtectItem,
+            ),
             dropReceiver = null,
             dropDuration = DROP_DURATION_PVP,
             // Keep any fallback ground key private for its entire lifetime.
             revealDelay = DROP_DURATION_PVP + 1,
             supplyPile = false,
             untradeableHandling = UntradeableHandling.DESTROY,
-            destroyAllCarried = true,
+            destroyLostCarried = true,
             spawnRemains = false,
         )
     }
@@ -79,19 +83,21 @@ constructor(
     private val population: BotPopulation,
     private val store: BotLootKeyStore,
     private val objRepo: ObjRepository,
+    private val deathDrops: PlayerDeathDrops,
 ) : PlayerDeathItemHook {
     override fun beforeDrops(context: PlayerDeathContext, handling: PlayerDeathHandling) {
         if (context.wildernessLevel <= 0 || context.inInstance) return
         if (!population.isBot(context.player)) return
 
-        // Bot-vs-bot (or environment) deaths never create economic loot. The bot death handling
-        // destroys the carried inventory after this hook, so only a real player killer can receive
-        // a copy of the loot through a Wilderness loot key.
+        // Bot-vs-bot (or environment) deaths never create economic loot. For a real player kill,
+        // select the same items normal Wilderness death handling says are actually lost. The bot
+        // handling destroys those originals after this hook, leaving only the loot-key copy.
         val killer = context.killer ?: return
         if (population.isBot(killer)) return
 
         val victim = context.player
-        val carried = victim.inv.filterNotNull { true } + victim.worn.filterNotNull { true }
+        val result = deathDrops.selectDrops(victim, context, handling)
+        val carried = result.lostTradeable
         if (carried.isEmpty()) return
 
         val keyType = BotLootKeys.nextType(killer)
