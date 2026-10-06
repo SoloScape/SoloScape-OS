@@ -23,7 +23,11 @@ internal object BotPvpEquipmentBudget {
         val styles = loadout.styles.mapValues { (_, equipment) ->
             equipment.map { symbol -> resolveSymbol(symbol, loadout.levels) ?: symbol }
         }
-        return loadout.copy(styles = styles)
+        val specials = loadout.specialWeapons.filter { symbol ->
+            val type = ServerCacheManager.getItem(symbol.asRSCM(RSCMType.OBJ))
+            type != null && canEquip(type, loadout.levels)
+        }
+        return loadout.copy(styles = styles, specialWeapons = specials)
     }
 
     fun canEquip(type: ItemServerType, levels: Map<String, Int>): Boolean {
