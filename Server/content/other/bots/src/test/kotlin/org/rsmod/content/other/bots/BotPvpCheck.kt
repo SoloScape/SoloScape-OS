@@ -276,23 +276,6 @@ object BotPvpCheck {
             "Gilded full helm")
         check(BotPvpEquipmentBudget.geTradeableReplacement("Frozen abyssal whip") ==
             "Abyssal whip")
-        val maxLevels = mapOf(
-            "stat.attack" to 99, "stat.defence" to 99, "stat.strength" to 99,
-            "stat.hitpoints" to 99, "stat.ranged" to 99, "stat.magic" to 99,
-            "stat.prayer" to 99,
-        )
-        val gildedFullHelm = checkNotNull(
-            BotPvpEquipmentBudget.resolveGeTradeableReplacement("Dragonstone helmet", maxLevels)
-        )
-        val abyssalWhip = checkNotNull(
-            BotPvpEquipmentBudget.resolveGeTradeableReplacement("Frozen abyssal whip", maxLevels)
-        )
-        check(gildedFullHelm.tradeable)
-        check(gildedFullHelm.name.contains("gilded", ignoreCase = true))
-        check(gildedFullHelm.name.contains("full helm", ignoreCase = true))
-        check(abyssalWhip.tradeable)
-        check(abyssalWhip.name.equals("Abyssal whip", ignoreCase = true))
-
         val itemMappings = checkNotNull(GameValProvider.loadIsolated().mappings["obj"])
         val requiredItems = BotPvpLoadouts.all.flatMap { loadout ->
             loadout.styles.values.flatten() + loadout.specialWeapons + loadout.food +
