@@ -49,8 +49,9 @@ internal object BotPvpPolicy {
         retaliating: Set<Int>,
         distance: (Int) -> Int,
         attackers: (Int) -> Int,
+        preferencePenalty: (Int) -> Int = { 0 },
     ): Int? = candidates.minByOrNull {
-        distance(it) + attackers(it) * 12 -
+        distance(it) + attackers(it) * 12 + preferencePenalty(it) -
             (if (it == current) 20 else 0) - (if (it in retaliating) 40 else 0)
     }
 
