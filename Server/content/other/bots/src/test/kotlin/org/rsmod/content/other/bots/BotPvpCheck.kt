@@ -142,8 +142,16 @@ object BotPvpCheck {
         check(BotPvpRiskLoadouts.all.size == 20)
         for (role in BotPvpLoadoutRole.entries) {
             val low = BotPvpRiskLoadouts.get(BotPvpRiskTier.Low, role)
-            check(low.supplies.count { it == "Blighted Super Restore(4)" } == 1)
-            check("Prayer potion" !in low.supplies)
+            if (role == BotPvpLoadoutRole.Hybrid) {
+                check("Prayer potion" in low.supplies)
+                check("Ranging potion" in low.supplies)
+                check("Magic potion" in low.supplies)
+                check("Blighted karambwan" in low.supplies)
+                check("Blighted Super Restore(4)" !in low.supplies)
+            } else {
+                check(low.supplies.count { it == "Blighted Super Restore(4)" } == 1)
+                check("Prayer potion" !in low.supplies)
+            }
             check("Super restore" !in low.supplies)
         }
         check(BotPvpRiskLoadouts.all.map { it.tier to it.role }.distinct().size == 20)
