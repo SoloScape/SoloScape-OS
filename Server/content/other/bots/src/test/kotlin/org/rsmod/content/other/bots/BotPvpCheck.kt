@@ -69,6 +69,11 @@ object BotPvpCheck {
         check(PlayerDeathDrops.wildernessKeepCount(isSkulled = true, hasProtectItem = false) == 0)
         check(PlayerDeathDrops.wildernessKeepCount(isSkulled = false, hasProtectItem = true) == 4)
         check(PlayerDeathDrops.wildernessKeepCount(isSkulled = true, hasProtectItem = true) == 1)
+        check(BotPvpDeathPolicy.isLootKeyDeath(wildernessLevel = 1, inInstance = false))
+        check(BotPvpDeathPolicy.isLootKeyDeath(wildernessLevel = 50, inInstance = false))
+        check(!BotPvpDeathPolicy.isLootKeyDeath(wildernessLevel = -1, inInstance = false))
+        check(!BotPvpDeathPolicy.isLootKeyDeath(wildernessLevel = 0, inInstance = false))
+        check(!BotPvpDeathPolicy.isLootKeyDeath(wildernessLevel = 1, inInstance = true))
 
         check(!BotPvpPolicy.specialConsumed(1000, 1000))
         check(BotPvpPolicy.specialConsumed(1000, 500))
