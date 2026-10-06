@@ -32,4 +32,5 @@ internal class BotPvpState(
     var returning = false
     var lastCoords = CoordGrid(0, 0)
     var stationary = 0
+    var preventSkull = false
 }
