@@ -48,8 +48,21 @@ internal object BotPvpEquipmentBudget {
     fun value(type: ItemServerType): Int =
         maxOf(type.playerCostDerived, type.playerCost, type.cost, 0)
 
+    fun item(symbol: String): ItemServerType? =
+        ServerCacheManager.getItem(symbol.asRSCM(RSCMType.OBJ))
+
+    fun resolvePreferred(name: String, levels: Map<String, Int>): ItemServerType? {
+        val exact = ServerCacheManager.getItemTypes()
+            .asSequence()
+            .filter { it.name.equals(name, ignoreCase = true) }
+            .filter { !it.isCert && !it.isPlaceholder && !it.isTransformation && !it.isDummyItem }
+            .maxWithOrNull(compareBy<ItemServerType>({ value(it) }, { it.id }))
+            ?: return null
+        return if (canEquip(exact, levels)) exact else bestEquivalent(exact, levels)
+    }
+
     private fun resolveSymbol(symbol: String, levels: Map<String, Int>): String? {
-        val preferred = ServerCacheManager.getItem(symbol.asRSCM(RSCMType.OBJ)) ?: return null
+        val preferred = item(symbol) ?: return null
         if (canEquip(preferred, levels)) return symbol
         val equivalent = bestEquivalent(preferred, levels) ?: return null
         return equivalent.internalName
