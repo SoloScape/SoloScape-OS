@@ -173,6 +173,25 @@ object BotPvpCheck {
             }
         }
 
+        val scalablePure = checkNotNull(BotPvpLoadouts.get("low_level_dds_pure"))
+        val pureMinimums = scalablePure.levels.mapValues { (stat, _) ->
+            if (stat == "stat.hitpoints") 10 else 1
+        }
+        val levelTenPure = BotPvpLevelScaling.scaleToCombat(
+            scalablePure.levels,
+            pureMinimums,
+            BotPvpLevelScaling.MIN_COMBAT_LEVEL,
+        )
+        check(BotPvpLevelScaling.combatLevel(levelTenPure) == 10)
+        check(levelTenPure.getValue("stat.defence") == 1)
+        check(levelTenPure.getValue("stat.hitpoints") >= 10)
+        val scaledSamples = (0..256).map { BotPvpLevelScaling.scale(scalablePure, it) }
+        check(scaledSamples.all {
+            val combat = BotPvpLevelScaling.combatLevel(it.levels)
+            combat in BotPvpLevelScaling.MIN_COMBAT_LEVEL..
+                BotPvpLevelScaling.combatLevel(scalablePure.levels)
+        })
+
         check(BotPvpLoadouts.nativeTemplateCount == 18)
         check(BotPvpLoadouts.all.size == 89)
         check(BotPvpLoadouts.all.map { it.id }.distinct().size == BotPvpLoadouts.all.size)
