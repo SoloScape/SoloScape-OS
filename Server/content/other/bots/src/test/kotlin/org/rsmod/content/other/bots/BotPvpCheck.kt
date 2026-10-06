@@ -14,7 +14,17 @@ object BotPvpCheck {
         check(elite.targetStyleReaction.last < novice.targetStyleReaction.last ||
             elite.confidenceTier > novice.confidenceTier)
         check(BotPvpDifficulty.parse("ELITE") == BotPvpDifficulty.Elite)
+        check(BotPvpDifficulty.parse("Easy") == BotPvpDifficulty.Novice)
+        check(BotPvpDifficulty.parse("Medium") == BotPvpDifficulty.Standard)
+        check(BotPvpDifficulty.parse("Very Hard") == BotPvpDifficulty.Veteran)
+        check(BotPvpDifficulty.parse("Extreme") == BotPvpDifficulty.Elite)
         check(BotPvpDifficulty.parse("impossible") == null)
+        val standardHybrid = BotPvpProfiles.get(BotPvpDifficulty.Standard, BotPvpLoadoutRole.Hybrid)
+        check(standardHybrid.switchChance > BotPvpProfiles.get(BotPvpDifficulty.Standard).switchChance)
+        check(standardHybrid.targetStyleReaction.first <=
+            BotPvpProfiles.get(BotPvpDifficulty.Standard).targetStyleReaction.first)
+        check(standardHybrid.confidenceTier ==
+            BotPvpProfiles.get(BotPvpDifficulty.Standard).confidenceTier)
 
         val reaction = BotPvpReaction()
         check(reaction.observe(BotPvpStyle.Melee, 10, 3) == BotPvpStyle.Melee)
@@ -126,6 +136,25 @@ object BotPvpCheck {
         check(BotPvpRiskTier.fromDifficulty(BotPvpDifficulty.Standard) == BotPvpRiskTier.Average)
         check(BotPvpRiskTier.fromDifficulty(BotPvpDifficulty.Veteran) == BotPvpRiskTier.Risker)
         check(BotPvpRiskTier.fromDifficulty(BotPvpDifficulty.Elite) == BotPvpRiskTier.Max)
+        check(BotPvpRiskTier.Low.difficultyName == "Easy")
+        check(BotPvpRiskTier.Average.difficultyName == "Medium")
+        check(BotPvpRiskTier.Risker.difficultyName == "Very Hard")
+        check(BotPvpRiskTier.Max.difficultyName == "Extreme")
+        val pureAssignment = BotPvpRiskLoadouts.assignment(
+            BotPvpDifficulty.Novice,
+            checkNotNull(BotPvpLoadouts.get("low_level_dds_pure")),
+        )
+        check(pureAssignment.role == BotPvpLoadoutRole.Pure)
+        check(pureAssignment.tier == BotPvpRiskTier.Low)
+        check(!pureAssignment.preferUnskulled)
+        val hybridAssignment = BotPvpRiskLoadouts.assignment(
+            BotPvpDifficulty.Elite,
+            checkNotNull(BotPvpLoadouts.get("ancients_hybrid")),
+        )
+        check(hybridAssignment.role == BotPvpLoadoutRole.Hybrid)
+        check(hybridAssignment.tier == BotPvpRiskTier.Max)
+        check(hybridAssignment.preferUnskulled)
+        check(hybridAssignment.hybridHardestInTier)
         for (tier in BotPvpRiskTier.entries) {
             for (role in BotPvpLoadoutRole.entries) {
                 val preset = BotPvpRiskLoadouts.get(tier, role)
