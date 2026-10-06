@@ -55,7 +55,7 @@ internal object BotPvpEquipmentBudget {
         exact(name)?.takeIf { canEquip(it, levels) }
 
     fun resolvePreferred(name: String, levels: Map<String, Int>): ItemServerType? {
-        val exact = geTradeableReplacementId(name)?.let(ServerCacheManager::getItem)
+        val exact = resolveGeTradeableReplacement(name, levels)
             ?: exact(name)
             ?: return null
         return if (canEquip(exact, levels)) exact else bestEquivalent(exact, levels)
@@ -71,10 +71,25 @@ internal object BotPvpEquipmentBudget {
         else -> null
     }
 
-    internal fun geTradeableReplacementId(name: String): Int? = when (name.lowercase()) {
-        "dragonstone helmet", "dragonstone full helm" -> GILDED_FULL_HELM_ID
-        "frozen abyssal whip" -> ABYSSAL_WHIP_ID
-        else -> null
+    internal fun resolveGeTradeableReplacement(
+        name: String,
+        levels: Map<String, Int>,
+    ): ItemServerType? {
+        val replacement = geTradeableReplacement(name) ?: return null
+        return ServerCacheManager.getItemTypes()
+            .asSequence()
+            .filter { it.tradeable && !it.isCert && !it.isPlaceholder }
+            .filter { canEquip(it, levels) }
+            .filter {
+                when (replacement) {
+                    "Gilded full helm" ->
+                        it.name.contains("gilded", ignoreCase = true) &&
+                            it.name.contains("full helm", ignoreCase = true)
+                    "Abyssal whip" -> it.name.equals("Abyssal whip", ignoreCase = true)
+                    else -> it.name.equals(replacement, ignoreCase = true)
+                }
+            }
+            .maxWithOrNull(compareBy<ItemServerType>({ value(it) }, { it.id }))
     }
 
     private fun exact(name: String): ItemServerType? =
@@ -86,13 +101,11 @@ internal object BotPvpEquipmentBudget {
 
     private fun resolveSymbol(symbol: String, levels: Map<String, Int>): String? {
         val preferred = item(symbol) ?: return null
-        val replacementId = geTradeableReplacementId(preferred.name)
-        if (replacementId != null) {
-            val replacement = ServerCacheManager.getItem(replacementId)
-                ?.takeIf { canEquip(it, levels) }
-                ?: return null
+        val replacement = resolveGeTradeableReplacement(preferred.name, levels)
+        if (replacement != null) {
             return replacement.internalName
         }
+        if (geTradeableReplacement(preferred.name) != null) return null
         if (canEquip(preferred, levels)) return symbol
         val equivalent = bestEquivalent(preferred, levels) ?: return null
         return equivalent.internalName
@@ -110,7 +123,7 @@ internal object BotPvpEquipmentBudget {
             .filter { it.id != preferred.id }
             .filter {
                 it.tradeable && !it.isTransformation && !it.isDummyItem &&
-                    geTradeableReplacementId(it.name) == null
+                    geTradeableReplacement(it.name) == null
             }
             .filter { it.wearpos1 == preferred.wearpos1 }
             .filter { !weaponSlot || it.weaponCategory == preferred.weaponCategory }
@@ -118,9 +131,6 @@ internal object BotPvpEquipmentBudget {
             .filter { value(it) in 1..ceiling }
             .maxWithOrNull(compareBy<ItemServerType>({ value(it) }, { it.id }))
     }
-
-    private const val GILDED_FULL_HELM_ID = 3486
-    private const val ABYSSAL_WHIP_ID = 4151
 
     private fun meetsRequirement(
         type: ItemServerType,
