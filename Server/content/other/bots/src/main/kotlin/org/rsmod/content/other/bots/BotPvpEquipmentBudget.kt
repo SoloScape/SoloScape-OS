@@ -67,6 +67,9 @@ internal object BotPvpEquipmentBudget {
      */
     internal fun geTradeableReplacement(name: String): String? = when (name.lowercase()) {
         "dragonstone helmet", "dragonstone full helm" -> "Gilded full helm"
+        "dragonstone platebody" -> "Gilded platebody"
+        "dragonstone platelegs" -> "Gilded platelegs"
+        "dragonstone boots" -> "Gilded boots"
         "frozen abyssal whip" -> "Abyssal whip"
         else -> null
     }
@@ -85,6 +88,15 @@ internal object BotPvpEquipmentBudget {
                     "Gilded full helm" ->
                         it.name.contains("gilded", ignoreCase = true) &&
                             it.name.contains("full helm", ignoreCase = true)
+                    "Gilded platebody" ->
+                        it.name.contains("gilded", ignoreCase = true) &&
+                            it.name.contains("platebody", ignoreCase = true)
+                    "Gilded platelegs" ->
+                        it.name.contains("gilded", ignoreCase = true) &&
+                            it.name.contains("platelegs", ignoreCase = true)
+                    "Gilded boots" ->
+                        it.name.contains("gilded", ignoreCase = true) &&
+                            it.name.contains("boots", ignoreCase = true)
                     "Abyssal whip" -> it.name.equals("Abyssal whip", ignoreCase = true)
                     else -> it.name.equals(replacement, ignoreCase = true)
                 }
