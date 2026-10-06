@@ -14,11 +14,44 @@ import org.rsmod.api.config.refs.BaseParams
  *
  * The same cache stat requirements used by normal HeldEquipOp are checked here before the bot is
  * seeded. If a preferred style item cannot be equipped, we choose the highest-value tradeable
- * item at the same wear position that the bot can equip without exceeding the preferred item's
- * value. Weapons additionally keep the same weapon category. This gives the level scaler a safe,
- * bracket-preserving fallback instead of allowing synthetic players to bypass equip requirements.
+ * item from a curated equipment family at the same wear position that the bot can equip without
+ * exceeding the preferred item's value. Weapons additionally keep the same weapon category.
+ *
+ * Unclassified items deliberately have no automatic fallback. Omitting an unusable item is safer
+ * than allowing an unrelated high-value cache item to leak into an economy-facing PvP loadout.
  */
 internal object BotPvpEquipmentBudget {
+    private val fallbackFamilies: List<Set<String>> = listOf(
+        setOf("Torva full helm", "Dharok's helm", "Helm of neitiznot", "Rune full helm", "Gilded full helm"),
+        setOf("Torva platebody", "Dharok's platebody", "Torag's platebody", "Fighter torso", "Rune platebody", "Gilded platebody"),
+        setOf("Torva platelegs", "Dharok's platelegs", "Torag's platelegs", "Rune platelegs", "Gilded platelegs"),
+        setOf("Ancestral hat", "Ahrim's hood", "Mystic hat", "Elder chaos hood"),
+        setOf("Ancestral robe top", "Ahrim's robetop", "Mystic robe top", "Elder chaos top"),
+        setOf("Ancestral robe bottom", "Ahrim's robeskirt", "Mystic robe bottom", "Elder chaos robe"),
+        setOf("Masori mask", "Crystal helm", "Karil's coif", "Archer helm"),
+        setOf("Masori body", "Crystal body", "Karil's leathertop", "Black d'hide body"),
+        setOf("Masori chaps", "Crystal legs", "Karil's leatherskirt", "Black d'hide chaps"),
+        setOf("Primordial boots", "Dragon boots", "Rune boots", "Gilded boots"),
+        setOf("Pegasian boots", "Ranger boots"),
+        setOf("Eternal boots", "Infinity boots", "Mystic boots"),
+        setOf("Amulet of rancour", "Amulet of torture", "Amulet of fury", "Amulet of glory"),
+        setOf("Necklace of anguish", "Amulet of fury", "Amulet of glory"),
+        setOf("Occult necklace", "Amulet of fury", "Amulet of glory"),
+        setOf("Ferocious gloves", "Barrows gloves", "Combat bracelet"),
+        setOf("Tormented bracelet", "Barrows gloves", "Combat bracelet"),
+        setOf("Infernal cape", "Fire cape", "Obsidian cape"),
+        setOf("Dizana's quiver", "Ava's assembler", "Ava's accumulator"),
+        setOf(
+            "Saradomin cape(i)", "Guthix cape(i)", "Zamorak cape(i)",
+            "Saradomin cape", "Guthix cape", "Zamorak cape",
+        ),
+        setOf("Zaryte crossbow", "Armadyl crossbow", "Dragon crossbow", "Rune crossbow"),
+        setOf("Bow of faerdhinen", "Crystal bow", "Magic shortbow (i)", "Magic shortbow"),
+        setOf("Volatile nightmare staff", "Kodai wand", "Toxic staff of the dead", "Ancient staff"),
+        setOf("Ghrazi rapier", "Ursine chainmace (u)", "Abyssal whip", "Dragon scimitar"),
+        setOf("Avernic defender", "Dragon defender", "Rune defender"),
+    ).map { family -> family.mapTo(hashSetOf()) { it.lowercase() } }
+
     fun sanitize(loadout: BotPvpLoadout): BotPvpLoadout {
         val styles = loadout.styles.mapValues { (_, equipment) ->
             equipment.mapNotNull { symbol -> resolveSymbol(symbol, loadout.levels) }
@@ -55,10 +88,8 @@ internal object BotPvpEquipmentBudget {
         exact(name)?.takeIf { canEquip(it, levels) }
 
     fun resolvePreferred(name: String, levels: Map<String, Int>): ItemServerType? {
-        val exact = resolveGeTradeableReplacement(name, levels)
-            ?: exact(name)
-            ?: return null
-        return if (canEquip(exact, levels)) exact else bestEquivalent(exact, levels)
+        val preferred = geTradeableReplacementType(name) ?: exact(name) ?: return null
+        return if (canEquip(preferred, levels)) preferred else bestEquivalent(preferred, levels)
     }
 
     /**
@@ -79,12 +110,14 @@ internal object BotPvpEquipmentBudget {
     internal fun resolveGeTradeableReplacement(
         name: String,
         levels: Map<String, Int>,
-    ): ItemServerType? {
+    ): ItemServerType? =
+        geTradeableReplacementType(name)?.takeIf { canEquip(it, levels) }
+
+    private fun geTradeableReplacementType(name: String): ItemServerType? {
         val replacement = geTradeableReplacement(name) ?: return null
         return ServerCacheManager.getItemTypes()
             .asSequence()
             .filter { it.tradeable && !it.isCert && !it.isPlaceholder }
-            .filter { canEquip(it, levels) }
             .filter {
                 when (replacement) {
                     "Gilded full helm" ->
@@ -119,16 +152,23 @@ internal object BotPvpEquipmentBudget {
 
     private fun resolveSymbol(symbol: String, levels: Map<String, Int>): String? {
         val preferred = item(symbol) ?: return null
-        val replacement = resolveGeTradeableReplacement(preferred.name, levels)
-        if (replacement != null) {
-            return replacement.internalName
-        }
         if (geTradeableReplacement(preferred.name) != null) {
-            return bestEquivalent(preferred, levels)?.internalName
+            val normalized = geTradeableReplacementType(preferred.name) ?: return null
+            return if (canEquip(normalized, levels)) {
+                normalized.internalName
+            } else {
+                bestEquivalent(normalized, levels)?.internalName
+            }
         }
         if (canEquip(preferred, levels)) return symbol
         val equivalent = bestEquivalent(preferred, levels) ?: return null
         return equivalent.internalName
+    }
+
+    internal fun sameFallbackFamily(preferredName: String, candidateName: String): Boolean {
+        val preferred = preferredName.lowercase()
+        val candidate = candidateName.lowercase()
+        return fallbackFamilies.any { family -> preferred in family && candidate in family }
     }
 
     private fun bestEquivalent(
@@ -145,6 +185,7 @@ internal object BotPvpEquipmentBudget {
                 it.tradeable && !it.isTransformation && !it.isDummyItem &&
                     geTradeableReplacement(it.name) == null
             }
+            .filter { sameFallbackFamily(preferred.name, it.name) }
             .filter { it.wearpos1 == preferred.wearpos1 }
             .filter { !weaponSlot || it.weaponCategory == preferred.weaponCategory }
             .filter { canEquip(it, levels) }
