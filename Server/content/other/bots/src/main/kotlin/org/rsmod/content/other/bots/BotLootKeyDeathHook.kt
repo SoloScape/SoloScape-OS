@@ -1,5 +1,6 @@
 package org.rsmod.content.other.bots
 
+import dev.openrune.ServerCacheManager
 import jakarta.inject.Inject
 import org.rsmod.api.death.PlayerDeathContext
 import org.rsmod.api.death.PlayerDeathDrops.Companion.DROP_DURATION_PVP
@@ -46,6 +47,33 @@ internal object BotLootKeys {
 internal object BotPvpDeathPolicy {
     fun isLootKeyDeath(wildernessLevel: Int, inInstance: Boolean): Boolean =
         wildernessLevel > 0 && !inInstance
+}
+
+internal object BotPvpCrystalDeath {
+    private const val CRYSTAL_ARMOUR_SEED_NAME = "Crystal armour seed"
+
+    fun seedCount(itemName: String): Int = when (itemName.lowercase()) {
+        "crystal helm" -> 1
+        "crystal legs" -> 2
+        "crystal body" -> 3
+        else -> 0
+    }
+
+    fun convertLostArmour(lostUntradeable: List<InvObj>): List<InvObj> {
+        val seedCount = lostUntradeable.sumOf { item ->
+            val type = ServerCacheManager.getItem(item.id) ?: return@sumOf 0
+            seedCount(type.name) * item.count
+        }
+        if (seedCount <= 0) return emptyList()
+
+        val seed = ServerCacheManager.getItemTypes()
+            .asSequence()
+            .filter { it.tradeable && !it.isCert && !it.isPlaceholder }
+            .firstOrNull { it.name.equals(CRYSTAL_ARMOUR_SEED_NAME, ignoreCase = true) }
+            ?: return emptyList()
+
+        return listOf(InvObj(seed.id, seedCount))
+    }
 }
 
 internal class BotLootKeyDeathHook
@@ -110,14 +138,15 @@ constructor(
         if (!population.isPvpBot(context.player)) return
 
         // Bot-vs-bot (or environment) deaths never create economic loot. For a real player kill,
-        // select the same items normal Wilderness death handling says are actually lost. The bot
-        // handling destroys those originals after this hook, leaving only the loot-key copy.
+        // select the same items normal Wilderness death handling says are actually lost. Dangerous
+        // PvP deaths revert lost crystal armour into armour seeds (helm=1, legs=2, body=3), while
+        // the bot handling destroys the original lost objects after this hook.
         val killer = context.killer ?: return
         if (population.isBot(killer)) return
 
         val victim = context.player
         val result = deathDrops.selectDrops(victim, context, handling)
-        val carried = result.lostTradeable
+        val carried = result.lostTradeable + BotPvpCrystalDeath.convertLostArmour(result.lostUntradeable)
         if (carried.isEmpty()) return
 
         val keyType = BotLootKeys.nextType(killer)
