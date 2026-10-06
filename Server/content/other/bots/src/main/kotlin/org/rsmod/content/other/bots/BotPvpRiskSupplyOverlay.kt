@@ -35,7 +35,9 @@ internal object BotPvpRiskSupplyOverlay {
     private val hybridBrew = supply(1, "Saradomin brew(4)")
     private val combat = supply(1, "Super combat potion(4)")
     private val range = supply(1, "Blighted ranging potion(4)", "Ranging potion(4)")
+    private val normalRange = supply(1, "Ranging potion(4)")
     private val magic = supply(1, "Magic potion(4)")
+    private val prayer = supply(1, "Prayer potion(4)")
     private val imbuedHeart = supply(1, "Imbued heart", "Magic potion(4)")
     private val smoulderingHeart = supply(1, "Smouldering heart", "Magic potion(4)")
 
@@ -58,7 +60,7 @@ internal object BotPvpRiskSupplyOverlay {
         ),
         (BotPvpRiskTier.Low to BotPvpLoadoutRole.Hybrid) to Plan(
             food = listOf("Shark"),
-            supplies = listOf(hybridKarambwan, combat, range, magic, hybridBlightedRestore),
+            supplies = listOf(hybridKarambwan, combat, normalRange, magic, prayer),
         ),
 
         (BotPvpRiskTier.Average to BotPvpLoadoutRole.Pure) to Plan(
