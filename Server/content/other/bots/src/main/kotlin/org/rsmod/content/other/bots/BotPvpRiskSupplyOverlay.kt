@@ -23,10 +23,16 @@ internal object BotPvpRiskSupplyOverlay {
 
     private val blightedKarambwan =
         supply(3, "Blighted karambwan", "Cooked karambwan")
+    private val hybridKarambwan =
+        supply(2, "Blighted karambwan", "Cooked karambwan")
     private val blightedRestore =
         supply(2, "Blighted super restore(4)", "Super restore(4)")
+    private val hybridBlightedRestore =
+        supply(1, "Blighted super restore(4)", "Super restore(4)")
     private val restore = supply(2, "Super restore(4)")
+    private val hybridRestore = supply(1, "Super restore(4)")
     private val brew = supply(2, "Saradomin brew(4)")
+    private val hybridBrew = supply(1, "Saradomin brew(4)")
     private val combat = supply(1, "Super combat potion(4)")
     private val range = supply(1, "Blighted ranging potion(4)", "Ranging potion(4)")
     private val magic = supply(1, "Magic potion(4)")
@@ -52,7 +58,7 @@ internal object BotPvpRiskSupplyOverlay {
         ),
         (BotPvpRiskTier.Low to BotPvpLoadoutRole.Hybrid) to Plan(
             food = listOf("Shark"),
-            supplies = listOf(blightedKarambwan, combat, range, magic, blightedRestore),
+            supplies = listOf(hybridKarambwan, combat, range, magic, hybridBlightedRestore),
         ),
 
         (BotPvpRiskTier.Average to BotPvpLoadoutRole.Pure) to Plan(
@@ -73,7 +79,7 @@ internal object BotPvpRiskSupplyOverlay {
         ),
         (BotPvpRiskTier.Average to BotPvpLoadoutRole.Hybrid) to Plan(
             food = listOf("Blighted anglerfish", "Anglerfish"),
-            supplies = listOf(blightedKarambwan, brew, restore, combat, range),
+            supplies = listOf(hybridKarambwan, hybridBrew, hybridRestore, combat, range),
         ),
 
         (BotPvpRiskTier.Risker to BotPvpLoadoutRole.Pure) to Plan(
