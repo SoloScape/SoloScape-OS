@@ -100,7 +100,7 @@ internal object BotPvpRiskSupplyOverlay {
         ),
         (BotPvpRiskTier.Risker to BotPvpLoadoutRole.Hybrid) to Plan(
             food = listOf("Blighted anglerfish", "Anglerfish"),
-            supplies = listOf(blightedKarambwan, brew, restore, combat, range),
+            supplies = listOf(hybridKarambwan, hybridBrew, hybridRestore, combat, range),
         ),
 
         (BotPvpRiskTier.Max to BotPvpLoadoutRole.Pure) to Plan(
@@ -121,7 +121,7 @@ internal object BotPvpRiskSupplyOverlay {
         ),
         (BotPvpRiskTier.Max to BotPvpLoadoutRole.Hybrid) to Plan(
             food = listOf("Blighted anglerfish", "Anglerfish"),
-            supplies = listOf(blightedKarambwan, brew, restore, combat, range),
+            supplies = listOf(hybridKarambwan, hybridBrew, hybridRestore, combat, range),
         ),
     )
 
