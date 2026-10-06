@@ -36,7 +36,11 @@ class BotPvpCombat @Inject constructor(
     ): Boolean {
         val selected = BotPvpLoadouts.choose(identity, player.members, difficulty, hotspotId)
         val risk = BotPvpRiskLoadouts.assignment(difficulty, selected)
-        val scaled = BotPvpLevelScaling.scale(selected, identity)
+        val scaled = BotPvpLevelScaling.scale(
+            selected,
+            identity,
+            minimumPrayer = if (risk.usesProtectItem) 25 else 1,
+        )
         val geared = BotPvpRiskGearOverlay.apply(scaled, risk)
         val supplied = BotPvpRiskSupplyOverlay.apply(geared, risk)
         val loadout = BotPvpEquipmentBudget.sanitize(supplied)
@@ -57,6 +61,7 @@ class BotPvpCombat @Inject constructor(
             "Unable to seed PvP bot loadout ${loadout.id}: $seedFailure"
         }
         VarPlayerIntMapSetter.set(player, "varp.sa_energy", 1000)
+        configureRiskBehavior(player, state)
         states[player] = state
         return true
     }
@@ -89,6 +94,9 @@ class BotPvpCombat @Inject constructor(
             return "dead"
         }
         if (player.isDelayed || player.isAccessProtected) return "busy"
+        if (state.risk.usesProtectItem) {
+            native.protectItem(player, enabled = true)
+        }
         if (state.dead) {
             state.dead = false
             state.returning = true
@@ -101,6 +109,7 @@ class BotPvpCombat @Inject constructor(
                 state.restockAt = -1
             } else {
                 if (!native.seed(player, state.loadout)) return "waiting for supplies"
+                configureRiskBehavior(player, state)
                 state.style = state.loadout.primaryStyle
                 state.reaction.reset()
                 state.restockAt = -1
@@ -400,6 +409,12 @@ class BotPvpCombat @Inject constructor(
                 player.coords.level,
             )
         movement.walk(player, next)
+    }
+
+    private fun configureRiskBehavior(player: Player, state: BotPvpState) {
+        state.preventSkull = BotPvpPolicy.shouldPreventSkull(state.risk, random.nextDouble())
+        native.setSkullPrevention(player, state.preventSkull)
+        native.protectItem(player, enabled = state.risk.usesProtectItem)
     }
 
     private fun next(cycle: Int, range: IntRange): Int =
