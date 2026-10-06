@@ -27,8 +27,6 @@ internal object BotPvpRiskSupplyOverlay {
         supply(2, "Blighted karambwan", "Cooked karambwan")
     private val blightedRestore =
         supply(2, "Blighted super restore(4)", "Super restore(4)")
-    private val hybridBlightedRestore =
-        supply(1, "Blighted super restore(4)", "Super restore(4)")
     private val restore = supply(2, "Super restore(4)")
     private val hybridRestore = supply(1, "Super restore(4)")
     private val brew = supply(2, "Saradomin brew(4)")
