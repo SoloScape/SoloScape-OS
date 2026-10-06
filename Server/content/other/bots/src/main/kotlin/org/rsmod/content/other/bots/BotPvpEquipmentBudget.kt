@@ -88,7 +88,11 @@ internal object BotPvpEquipmentBudget {
         exact(name)?.takeIf { canEquip(it, levels) }
 
     fun resolvePreferred(name: String, levels: Map<String, Int>): ItemServerType? {
-        val preferred = geTradeableReplacementType(name) ?: exact(name) ?: return null
+        val preferred = if (geTradeableReplacement(name) != null) {
+            geTradeableReplacementType(name)
+        } else {
+            exact(name)
+        } ?: return null
         return if (canEquip(preferred, levels)) preferred else bestEquivalent(preferred, levels)
     }
 
@@ -181,6 +185,7 @@ internal object BotPvpEquipmentBudget {
         return ServerCacheManager.getItemTypes()
             .asSequence()
             .filter { it.id != preferred.id }
+            .filter { !it.name.equals(preferred.name, ignoreCase = true) }
             .filter {
                 it.tradeable && !it.isTransformation && !it.isDummyItem &&
                     geTradeableReplacement(it.name) == null
