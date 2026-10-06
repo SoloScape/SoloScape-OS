@@ -62,10 +62,9 @@ internal object BotPvpRiskGearOverlay {
         (BotPvpRiskTier.Low to BotPvpLoadoutRole.Ranged) to Plan(
             shared = listOf(
                 sets(
-                    listOf("Black d'hide body", "Black d'hide chaps"),
+                    listOf("Black d'hide body", "Black d'hide chaps", "Archer helm"),
                     listOf("Void ranger helm", "Void knight top", "Void knight robe", "Void knight gloves"),
                 ),
-                one("Archer helm"),
                 one("Ava's accumulator"),
                 one("Amulet of glory"),
             ),
