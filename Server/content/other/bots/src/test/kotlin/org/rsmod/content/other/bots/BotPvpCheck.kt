@@ -1,6 +1,5 @@
 package org.rsmod.content.other.bots
 
-import dev.openrune.ServerCacheManager
 import dev.openrune.gamevals.GameValProvider
 import kotlin.random.Random
 import org.rsmod.api.combat.commons.magic.Spellbook
@@ -282,12 +281,17 @@ object BotPvpCheck {
             "stat.hitpoints" to 99, "stat.ranged" to 99, "stat.magic" to 99,
             "stat.prayer" to 99,
         )
-        check(BotPvpEquipmentBudget.geTradeableReplacementId("Dragonstone helmet") == 3486)
-        check(BotPvpEquipmentBudget.geTradeableReplacementId("Frozen abyssal whip") == 4151)
-        val gildedFullHelm = checkNotNull(ServerCacheManager.getItem(3486))
-        val abyssalWhip = checkNotNull(ServerCacheManager.getItem(4151))
+        val gildedFullHelm = checkNotNull(
+            BotPvpEquipmentBudget.resolveGeTradeableReplacement("Dragonstone helmet", maxLevels)
+        )
+        val abyssalWhip = checkNotNull(
+            BotPvpEquipmentBudget.resolveGeTradeableReplacement("Frozen abyssal whip", maxLevels)
+        )
         check(gildedFullHelm.tradeable)
+        check(gildedFullHelm.name.contains("gilded", ignoreCase = true))
+        check(gildedFullHelm.name.contains("full helm", ignoreCase = true))
         check(abyssalWhip.tradeable)
+        check(abyssalWhip.name.equals("Abyssal whip", ignoreCase = true))
 
         val itemMappings = checkNotNull(GameValProvider.loadIsolated().mappings["obj"])
         val requiredItems = BotPvpLoadouts.all.flatMap { loadout ->
