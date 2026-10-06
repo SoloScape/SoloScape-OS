@@ -80,6 +80,15 @@ object BotPvpCheck {
         check(BotPvpPolicy.chooseTarget(listOf(1, 2), 1, setOf(2), distance, free) == 2)
         check(BotPvpPolicy.chooseTarget(listOf(1, 2), null, emptySet(), distance,
             { if (it == 1) 2 else 0 }) == 2)
+        check(BotPvpPolicy.chooseTarget(
+            listOf(1, 2), null, emptySet(), { 2 }, { 0 },
+            { if (it == 1) 12 else 0 },
+        ) == 2)
+        // A live target or retaliation is still more important than the MAX unskulled preference.
+        check(BotPvpPolicy.chooseTarget(
+            listOf(1, 2), 1, emptySet(), { 2 }, { 0 },
+            { if (it == 1) 12 else 0 },
+        ) == 1)
 
         val random = Random(42)
         repeat(100) {
