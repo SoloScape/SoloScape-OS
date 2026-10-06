@@ -35,7 +35,8 @@ class BotPvpCombat @Inject constructor(
         difficulty: BotPvpDifficulty,
         hotspotId: String? = null,
     ): Boolean {
-        val loadout = BotPvpLoadouts.choose(identity, player.members, difficulty, hotspotId)
+        val selected = BotPvpLoadouts.choose(identity, player.members, difficulty, hotspotId)
+        val loadout = BotPvpEquipmentBudget.sanitize(selected)
         val role = BotPvpLoadoutRole.from(loadout)
         val state = BotPvpState(BotPvpProfiles.get(difficulty, role), loadout, hotspotId)
         for ((stat, level) in loadout.levels) {
