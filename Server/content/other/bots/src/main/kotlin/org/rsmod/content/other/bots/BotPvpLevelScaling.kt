@@ -12,9 +12,13 @@ import org.rsmod.api.utils.skills.CombatLevel
 internal object BotPvpLevelScaling {
     const val MIN_COMBAT_LEVEL: Int = 10
 
-    fun scale(loadout: BotPvpLoadout, identity: Int): BotPvpLoadout {
+    fun scale(
+        loadout: BotPvpLoadout,
+        identity: Int,
+        minimumPrayer: Int = 1,
+    ): BotPvpLoadout {
         val ceiling = combatLevel(loadout.levels)
-        val minimums = minimumLevels(loadout)
+        val minimums = minimumLevels(loadout, minimumPrayer)
         val floorCombat = maxOf(MIN_COMBAT_LEVEL, combatLevel(minimums))
         if (ceiling <= floorCombat) return loadout
 
@@ -58,9 +62,16 @@ internal object BotPvpLevelScaling {
         return best
     }
 
-    private fun minimumLevels(loadout: BotPvpLoadout): Map<String, Int> {
-        val levels = loadout.levels.mapValues { (stat, _) ->
-            if (stat == "stat.hitpoints") 10 else 1
+    private fun minimumLevels(
+        loadout: BotPvpLoadout,
+        minimumPrayer: Int,
+    ): Map<String, Int> {
+        val levels = loadout.levels.mapValues { (stat, maximum) ->
+            when (stat) {
+                "stat.hitpoints" -> 10
+                "stat.prayer" -> minOf(maximum, minimumPrayer.coerceAtLeast(1))
+                else -> 1
+            }
         }.toMutableMap()
 
         if (loadout.primaryStyle == BotPvpStyle.Magic) {
