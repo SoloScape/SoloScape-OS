@@ -124,7 +124,7 @@ object BotPvpRiskLoadouts {
         ),
         p(
             BotPvpRiskTier.Risker, BotPvpLoadoutRole.Ranged,
-            "Crystal armour, Necklace of anguish, Ava's assembler, Pegasian boots, Crystal bow, Dark bow / Heavy ballista",
+            "Crystal armour, Necklace of anguish, Ava's assembler, Pegasian boots, Bow of Faerdhinen, Dark bow / Heavy ballista",
             "Anglerfish, Dark crab, Cooked karambwan, Saradomin brew, Super restore, Ranging potion",
         ),
         p(
@@ -134,7 +134,7 @@ object BotPvpRiskLoadouts {
         ),
         p(
             BotPvpRiskTier.Risker, BotPvpLoadoutRole.Hybrid,
-            "Crystal switches, Ahrim's switches, Toxic staff of the dead / Kodai wand, Crystal bow, Voidwaker, Dragon defender",
+            "Crystal switches, Ahrim's switches, Toxic staff of the dead / Kodai wand, Bow of Faerdhinen, Voidwaker, Dragon defender",
             "Anglerfish, Dark crab, Cooked karambwan, Saradomin brew, Super restore, Super combat potion, Ranging potion",
         ),
 
