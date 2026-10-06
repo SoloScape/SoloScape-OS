@@ -3,6 +3,7 @@ package org.rsmod.content.other.bots
 import dev.openrune.gamevals.GameValProvider
 import kotlin.random.Random
 import org.rsmod.api.combat.commons.magic.Spellbook
+import org.rsmod.api.death.PlayerDeathDrops
 
 object BotPvpCheck {
     @JvmStatic
@@ -63,6 +64,11 @@ object BotPvpCheck {
         check(!BotPvpPolicy.shouldSpec(20, 99, 35, 1000, 500, novice, 0.9))
         check(!BotPvpPolicy.shouldSpec(0, 99, 35, 1000, 500, elite, 0.1))
         check(!BotPvpPolicy.shouldSpec(20, 99, 35, 1000, Int.MAX_VALUE, elite, 0.1))
+
+        check(PlayerDeathDrops.wildernessKeepCount(isSkulled = false, hasProtectItem = false) == 3)
+        check(PlayerDeathDrops.wildernessKeepCount(isSkulled = true, hasProtectItem = false) == 0)
+        check(PlayerDeathDrops.wildernessKeepCount(isSkulled = false, hasProtectItem = true) == 4)
+        check(PlayerDeathDrops.wildernessKeepCount(isSkulled = true, hasProtectItem = true) == 1)
 
         check(!BotPvpPolicy.specialConsumed(1000, 1000))
         check(BotPvpPolicy.specialConsumed(1000, 500))
@@ -156,6 +162,10 @@ object BotPvpCheck {
         check(pureAssignment.role == BotPvpLoadoutRole.Pure)
         check(pureAssignment.tier == BotPvpRiskTier.Low)
         check(!pureAssignment.preferUnskulled)
+        check(pureAssignment.skullPreventionChance == 0.75)
+        check(!pureAssignment.usesProtectItem)
+        check(BotPvpPolicy.shouldPreventSkull(pureAssignment, 0.74))
+        check(!BotPvpPolicy.shouldPreventSkull(pureAssignment, 0.75))
         val hybridAssignment = BotPvpRiskLoadouts.assignment(
             BotPvpDifficulty.Elite,
             checkNotNull(BotPvpLoadouts.get("ancients_hybrid")),
@@ -164,6 +174,21 @@ object BotPvpCheck {
         check(hybridAssignment.tier == BotPvpRiskTier.Max)
         check(hybridAssignment.preferUnskulled)
         check(hybridAssignment.hybridHardestInTier)
+        check(hybridAssignment.skullPreventionChance == 0.0)
+        check(hybridAssignment.usesProtectItem)
+        check(!BotPvpPolicy.shouldPreventSkull(hybridAssignment, 0.0))
+        val averageAssignment = BotPvpRiskLoadouts.assignment(
+            BotPvpDifficulty.Standard,
+            checkNotNull(BotPvpLoadouts.get("ancients_hybrid")),
+        )
+        val riskerAssignment = BotPvpRiskLoadouts.assignment(
+            BotPvpDifficulty.Veteran,
+            checkNotNull(BotPvpLoadouts.get("ancients_hybrid")),
+        )
+        check(averageAssignment.skullPreventionChance == 0.80)
+        check(riskerAssignment.skullPreventionChance == 0.95)
+        check(!averageAssignment.usesProtectItem)
+        check(!riskerAssignment.usesProtectItem)
         for (tier in BotPvpRiskTier.entries) {
             for (role in BotPvpLoadoutRole.entries) {
                 val preset = BotPvpRiskLoadouts.get(tier, role)
@@ -185,6 +210,15 @@ object BotPvpCheck {
         check(BotPvpLevelScaling.combatLevel(levelTenPure) == 10)
         check(levelTenPure.getValue("stat.defence") == 1)
         check(levelTenPure.getValue("stat.hitpoints") >= 10)
+        val protectItemPure = scalablePure.copy(
+            levels = scalablePure.levels + ("stat.prayer" to 1),
+        )
+        val protectItemScaled = BotPvpLevelScaling.scale(
+            protectItemPure,
+            identity = 7,
+            minimumPrayer = 25,
+        )
+        check(protectItemScaled.levels.getValue("stat.prayer") >= 25)
         val scaledSamples = (0..256).map { BotPvpLevelScaling.scale(scalablePure, it) }
         check(scaledSamples.all {
             val combat = BotPvpLevelScaling.combatLevel(it.levels)
