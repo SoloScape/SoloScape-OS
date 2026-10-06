@@ -55,6 +55,9 @@ internal object BotPvpPolicy {
             (if (it == current) 20 else 0) - (if (it in retaliating) 40 else 0)
     }
 
+    fun shouldPreventSkull(risk: BotPvpRiskAssignment, roll: Double): Boolean =
+        roll < risk.skullPreventionChance
+
     fun specialConsumed(before: Int, current: Int): Boolean = current < before
 
     fun crossesDitch(currentZ: Int, destinationZ: Int): Boolean =
