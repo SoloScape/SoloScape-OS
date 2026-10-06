@@ -63,27 +63,27 @@ object BotPvpRiskLoadouts {
         p(
             BotPvpRiskTier.Low, BotPvpLoadoutRole.Pure,
             "Elder chaos robes, Amulet of fury, Ranger boots, Dragon scimitar, Dragon dagger, Granite maul, Magic shortbow (i)",
-            "Shark, Cooked karambwan, Super combat potion, Blighted ranging potion, Prayer potion",
+            "Shark, Cooked karambwan, Super combat potion, Blighted ranging potion, Blighted Super Restore(4)",
         ),
         p(
             BotPvpRiskTier.Low, BotPvpLoadoutRole.Magic,
             "Mystic robes, Amulet of glory, God cape, Mystic boots, Ancient staff",
-            "Shark, Cooked karambwan, Magic potion, Prayer potion, Super restore",
+            "Shark, Cooked karambwan, Magic potion, Blighted Super Restore(4)",
         ),
         p(
             BotPvpRiskTier.Low, BotPvpLoadoutRole.Ranged,
             "Black dragonhide / Void, Archer helm, Ava's accumulator, Amulet of glory, Rune crossbow, Magic shortbow (i), Dark bow",
-            "Shark, Cooked karambwan, Blighted ranging potion, Prayer potion",
+            "Shark, Cooked karambwan, Blighted ranging potion, Blighted Super Restore(4)",
         ),
         p(
             BotPvpRiskTier.Low, BotPvpLoadoutRole.Melee,
             "Helm of Neitiznot, Fighter torso, Rune platelegs, Rune boots, Amulet of glory, Fire cape, Abyssal whip, Armadyl godsword",
-            "Shark, Cooked karambwan, Super combat potion(4), Prayer potion",
+            "Shark, Cooked karambwan, Super combat potion(4), Blighted Super Restore(4)",
         ),
         p(
             BotPvpRiskTier.Low, BotPvpLoadoutRole.Hybrid,
             "Mystic switches, Black dragonhide switches, Ancient staff, Rune crossbow, Dragon scimitar, Dragon dagger",
-            "Shark, Cooked karambwan, Super combat potion, Blighted ranging potion, Magic potion, Prayer potion",
+            "Shark, Cooked karambwan, Super combat potion, Blighted ranging potion, Magic potion, Blighted Super Restore(4)",
         ),
 
         p(
