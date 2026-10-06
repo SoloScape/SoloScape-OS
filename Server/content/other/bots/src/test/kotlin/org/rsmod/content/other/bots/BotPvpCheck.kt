@@ -299,6 +299,11 @@ object BotPvpCheck {
             "Abyssal whip")
         check(BotPvpEquipmentBudget.geTradeableReplacement("Abyssal tentacle") ==
             "Ursine chainmace (u)")
+        check(BotPvpEquipmentBudget.sameFallbackFamily("Torva platelegs", "Rune platelegs"))
+        check(!BotPvpEquipmentBudget.sameFallbackFamily("Torva platelegs", "Masori chaps"))
+        check(BotPvpEquipmentBudget.sameFallbackFamily("Zaryte crossbow", "Rune crossbow"))
+        check(!BotPvpEquipmentBudget.sameFallbackFamily("Zaryte crossbow", "Ghrazi rapier"))
+        check(!BotPvpEquipmentBudget.sameFallbackFamily("Avernic treads", "Primordial boots"))
         val itemMappings = checkNotNull(GameValProvider.loadIsolated().mappings["obj"])
         val requiredItems = BotPvpLoadouts.all.flatMap { loadout ->
             loadout.styles.values.flatten() + loadout.specialWeapons + loadout.food +
