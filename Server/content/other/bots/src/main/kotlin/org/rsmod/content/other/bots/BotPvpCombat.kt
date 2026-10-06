@@ -35,7 +35,8 @@ class BotPvpCombat @Inject constructor(
         hotspotId: String? = null,
     ): Boolean {
         val loadout = BotPvpLoadouts.choose(identity, player.members, difficulty, hotspotId)
-        val state = BotPvpState(BotPvpProfiles.get(difficulty), loadout, hotspotId)
+        val role = BotPvpLoadoutRole.from(loadout)
+        val state = BotPvpState(BotPvpProfiles.get(difficulty, role), loadout, hotspotId)
         for ((stat, level) in loadout.levels) {
             player.statMap.setFineXP(stat, PlayerSkillXPTable.getFineXPFromLevel(level))
             player.statMap.setBaseLevel(stat, level.toByte())
@@ -56,7 +57,8 @@ class BotPvpCombat @Inject constructor(
     }
 
     fun description(player: Player): String = states[player]?.let {
-        "${it.profile.id}/${it.loadout.id}${it.hotspotId?.let { hotspot -> "@$hotspot" } ?: ""}"
+        "${it.profile.id}/${it.loadout.id}[${it.risk.tier}/${it.risk.role}]" +
+            (it.hotspotId?.let { hotspot -> "@$hotspot" } ?: "")
     } ?: ""
 
     fun canUseHotspot(player: Player, hotspotId: String): Boolean = states[player]?.let { state ->
