@@ -5,6 +5,7 @@ import jakarta.inject.Singleton
 import kotlin.random.Random
 import org.rsmod.api.area.checker.AreaChecker
 import org.rsmod.api.area.checker.wildernessLevel
+import org.rsmod.api.death.hasSkullDeathPenalty
 import org.rsmod.api.player.isInCombat
 import org.rsmod.api.player.protect.clearPendingAction
 import org.rsmod.api.player.stat.PlayerSkillXP
@@ -158,6 +159,11 @@ class BotPvpCombat @Inject constructor(
                 indices, eligible.indexOf(state.target).takeIf { it >= 0 }, retaliation,
                 { player.coords.chebyshevDistance(eligible[it].coords) },
                 { targetIndex -> states.values.count { it.target === eligible[targetIndex] } },
+                { targetIndex ->
+                    if (state.risk.preferUnskulled &&
+                        eligible[targetIndex].hasSkullDeathPenalty()
+                    ) 12 else 0
+                },
             )?.let { eligible[it] }
             if (selected !== state.target) {
                 state.target = selected
