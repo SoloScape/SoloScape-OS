@@ -72,6 +72,7 @@ internal object BotPvpEquipmentBudget {
         "dragonstone boots" -> "Gilded boots"
         "dragonstone gauntlets", "dragonstone gloves" -> "Combat bracelet"
         "frozen abyssal whip" -> "Abyssal whip"
+        "abyssal tentacle" -> "Ursine chainmace (u)"
         else -> null
     }
 
@@ -100,6 +101,9 @@ internal object BotPvpEquipmentBudget {
                             it.name.contains("boots", ignoreCase = true)
                     "Combat bracelet" -> it.name.equals("Combat bracelet", ignoreCase = true)
                     "Abyssal whip" -> it.name.equals("Abyssal whip", ignoreCase = true)
+                    "Ursine chainmace (u)" ->
+                        it.name.contains("Ursine chainmace", ignoreCase = true) &&
+                            it.name.contains("(u)", ignoreCase = true)
                     else -> it.name.equals(replacement, ignoreCase = true)
                 }
             }
@@ -119,7 +123,9 @@ internal object BotPvpEquipmentBudget {
         if (replacement != null) {
             return replacement.internalName
         }
-        if (geTradeableReplacement(preferred.name) != null) return null
+        if (geTradeableReplacement(preferred.name) != null) {
+            return bestEquivalent(preferred, levels)?.internalName
+        }
         if (canEquip(preferred, levels)) return symbol
         val equivalent = bestEquivalent(preferred, levels) ?: return null
         return equivalent.internalName
