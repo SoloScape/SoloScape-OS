@@ -8,6 +8,7 @@ internal class BotPvpState(
     val loadout: BotPvpLoadout,
     val hotspotId: String? = null,
 ) {
+    val risk: BotPvpRiskAssignment = BotPvpRiskLoadouts.assignment(profile.id, loadout)
     val reaction = BotPvpReaction()
     var target: Player? = null
     var style = loadout.primaryStyle
