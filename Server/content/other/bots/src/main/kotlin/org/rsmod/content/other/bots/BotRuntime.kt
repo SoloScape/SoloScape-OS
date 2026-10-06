@@ -92,6 +92,7 @@ class BotPopulation @Inject constructor(
     val count: Int get() = bots.size + minigames.count
     fun players(): List<Player> = bots.keys.toList()
     fun isBot(player: Player): Boolean = player in bots
+    fun isPvpBot(player: Player): Boolean = bots[player]?.mode?.isPvp == true
 
     fun startup() {
         if (!configured.getProperty("enabled", "false").toBoolean()) return
