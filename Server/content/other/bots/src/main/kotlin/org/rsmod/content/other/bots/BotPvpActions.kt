@@ -394,10 +394,18 @@ class BotPvpActions @Inject constructor(
                 ?: return "item $symbol is missing from the installed cache"
             types[symbol] = type
         }
+        val runePackTypes = LinkedHashMap<Int, ItemServerType>(loadout.runePacks.size)
+        for (id in loadout.runePacks.keys) {
+            val type = ServerCacheManager.getItem(id)
+                ?: return "item id $id is missing from the installed cache"
+            runePackTypes[id] = type
+        }
 
         val fixedSlots = extras.size +
             loadout.runes.size + loadout.consumables.entries.sumOf {
                 if (types.getValue(it.key).stackable) 1 else it.value
+            } + loadout.runePacks.entries.sumOf {
+                if (runePackTypes.getValue(it.key).stackable) 1 else it.value
             }
         if (fixedSlots > 24) {
             return "loadout reserves $fixedSlots inventory slots before food (maximum 24)"
@@ -435,6 +443,16 @@ class BotPvpActions @Inject constructor(
                 .sumOf { it.count }
             if (present < count) {
                 return "could not add $count x $symbol to inventory (found $present)"
+            }
+        }
+        for ((id, count) in loadout.runePacks) {
+            val type = runePackTypes.getValue(id)
+            player.invAdd(player.inv, type.id, count)
+            val present = player.inv.objs.filterNotNull()
+                .filter { it.id == type.id }
+                .sumOf { it.count }
+            if (present < count) {
+                return "could not add $count x item id $id to inventory (found $present)"
             }
         }
 

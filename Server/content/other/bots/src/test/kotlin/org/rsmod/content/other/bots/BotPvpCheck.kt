@@ -153,6 +153,22 @@ object BotPvpCheck {
         check(BotPvpLoadouts.get("void_pure_claws")?.spellbook == Spellbook.Lunars)
         check(BotPvpLoadouts.get("budget_anti_pk")?.spellbook == Spellbook.Ancients)
         check(BotPvpLoadouts.get("low_level_nh_pure")?.attackSpell == "Ice blitz")
+        val barrageUnlocked = BotPvpLoadouts.all.filter {
+            it.spellbook == Spellbook.Ancients && it.levels.getValue("stat.magic") >= 94
+        }
+        check(barrageUnlocked.isNotEmpty())
+        check(barrageUnlocked.all {
+            it.runePacks == mapOf(
+                BotPvpLoadouts.BLIGHTED_ANCIENT_ICE_SACK_ID to
+                    BotPvpLoadouts.BLIGHTED_ANCIENT_ICE_SACK_COUNT
+            )
+        })
+        check(barrageUnlocked.all { it.runes.isEmpty() })
+        val preBarrageAncients = BotPvpLoadouts.all.filter {
+            it.spellbook == Spellbook.Ancients && it.levels.getValue("stat.magic") < 94
+        }
+        check(preBarrageAncients.all { it.runePacks.isEmpty() })
+        check(preBarrageAncients.all { it.runes.isNotEmpty() })
         val f2pBindRunes = checkNotNull(BotPvpLoadouts.get("f2p_bind_blast")).runes.keys
         check(setOf("obj.airrune", "obj.waterrune", "obj.earthrune", "obj.deathrune", "obj.naturerune")
             .all { it in f2pBindRunes })
@@ -173,6 +189,12 @@ object BotPvpCheck {
         }.distinct()
         val missingItems = requiredItems.filter { (itemMappings[it] ?: -1) < 0 }
         check(missingItems.isEmpty()) { "PvP loadout mappings missing: $missingItems" }
+        val mappedItemIds = itemMappings.values.toHashSet()
+        val requiredRunePackIds = BotPvpLoadouts.all.flatMap { it.runePacks.keys }.distinct()
+        val missingRunePackIds = requiredRunePackIds.filter { it !in mappedItemIds }
+        check(missingRunePackIds.isEmpty()) {
+            "PvP rune-pack item mappings missing: $missingRunePackIds"
+        }
         println("PvP gameval checks passed: ${requiredItems.size} native item mappings.")
 
         for (loadout in BotPvpLoadouts.all) {
@@ -181,6 +203,7 @@ object BotPvpCheck {
             check(loadout.styles.values.flatten().all { it.startsWith("obj.") })
             check(loadout.specialWeapons.all { it.startsWith("obj.") })
             check(loadout.runes.values.all { it > 0 })
+            check(loadout.runePacks.values.all { it > 0 })
             check(!loadout.vengeance || loadout.spellbook == Spellbook.Lunars)
             val exact = checkNotNull(BotPvpTspsStats.byId[loadout.id])
             check(loadout.levels["stat.attack"] == exact[0])
