@@ -37,9 +37,10 @@ class BotPvpCombat @Inject constructor(
     ): Boolean {
         val selected = BotPvpLoadouts.choose(identity, player.members, difficulty, hotspotId)
         val scaled = BotPvpLevelScaling.scale(selected, identity)
-        val loadout = BotPvpEquipmentBudget.sanitize(scaled)
-        val role = BotPvpLoadoutRole.from(loadout)
-        val state = BotPvpState(BotPvpProfiles.get(difficulty, role), loadout, hotspotId)
+        val risk = BotPvpRiskLoadouts.assignment(difficulty, scaled)
+        val overlaid = BotPvpRiskGearOverlay.apply(scaled, risk)
+        val loadout = BotPvpEquipmentBudget.sanitize(overlaid)
+        val state = BotPvpState(BotPvpProfiles.get(difficulty, risk.role), loadout, hotspotId)
         for ((stat, level) in loadout.levels) {
             player.statMap.setFineXP(stat, PlayerSkillXPTable.getFineXPFromLevel(level))
             player.statMap.setBaseLevel(stat, level.toByte())
