@@ -74,6 +74,14 @@ object BotPvpCheck {
         check(!BotPvpDeathPolicy.isLootKeyDeath(wildernessLevel = -1, inInstance = false))
         check(!BotPvpDeathPolicy.isLootKeyDeath(wildernessLevel = 0, inInstance = false))
         check(!BotPvpDeathPolicy.isLootKeyDeath(wildernessLevel = 1, inInstance = true))
+        check(BotPvpCrystalDeath.seedCount("Crystal helm") == 1)
+        check(BotPvpCrystalDeath.seedCount("Crystal legs") == 2)
+        check(BotPvpCrystalDeath.seedCount("Crystal body") == 3)
+        check(BotPvpCrystalDeath.seedCount("Crystal armour seed") == 0)
+        check(
+            listOf("Crystal helm", "Crystal legs", "Crystal body")
+                .sumOf(BotPvpCrystalDeath::seedCount) == 6
+        )
 
         check(!BotPvpPolicy.specialConsumed(1000, 1000))
         check(BotPvpPolicy.specialConsumed(1000, 500))
