@@ -63,12 +63,13 @@ jobs:
         run: |
           $testDir = Join-Path $env:RUNNER_TEMP "bots-tests"
           New-Item -ItemType Directory -Force $testDir | Out-Null
-          $libraries = @(Get-ChildItem "Server/server/app/build/install/app/lib" -Filter "*.jar" | Where-Object { $_.Name -notlike "bots-*" -and $_.Name -notlike "castle-wars-*" -and $_.Name -notlike "grand-exchange-*" } | ForEach-Object FullName)
+          $libraries = @(Get-ChildItem "Server/server/app/build/install/app/lib" -Filter "*.jar" | Where-Object { $_.Name -notlike "bots-*" -and $_.Name -notlike "castle-wars-*" -and $_.Name -notlike "grand-exchange-*" -and $_.Name -ne "death-0.0.1.jar" } | ForEach-Object FullName)
           $classpath = $libraries -join [IO.Path]::PathSeparator
           $testJar = Join-Path $testDir "tests.jar"
           $sourceDirs = @(
               "Server/content/other/bots/src/main/kotlin",
               "Server/content/other/bots/src/test/kotlin",
+              "Server/api/death/src/main/kotlin",
               "Server/content/other/grand-exchange/src/main/kotlin",
               "Server/content/other/castle-wars/src/main/kotlin"
           )
