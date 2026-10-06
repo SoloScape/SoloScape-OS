@@ -21,7 +21,7 @@ import org.rsmod.api.config.refs.BaseParams
 internal object BotPvpEquipmentBudget {
     fun sanitize(loadout: BotPvpLoadout): BotPvpLoadout {
         val styles = loadout.styles.mapValues { (_, equipment) ->
-            equipment.map { symbol -> resolveSymbol(symbol, loadout.levels) ?: symbol }
+            equipment.mapNotNull { symbol -> resolveSymbol(symbol, loadout.levels) }
         }
         val specials = loadout.specialWeapons.filter { symbol ->
             val type = ServerCacheManager.getItem(symbol.asRSCM(RSCMType.OBJ))
