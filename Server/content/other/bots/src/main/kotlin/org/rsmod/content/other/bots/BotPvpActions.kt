@@ -265,12 +265,14 @@ class BotPvpActions @Inject constructor(
         val slot = player.inv.indices.firstOrNull {
             val type = player.inv[it]?.id?.let(ServerCacheManager::getItem)
                 ?: return@firstOrNull false
-            if (type.interfaceOptions?.none { it.equals("Drink", true) } != false) {
+            val name = type.name
+            val heart = name.equals("Imbued heart", true) || name.equals("Smouldering heart", true)
+            if (!heart && type.interfaceOptions?.none { it.equals("Drink", true) } != false) {
                 return@firstOrNull false
             }
-            val name = type.name
             when {
-                restore && name.startsWith("Super restore", true) -> depletedPrayer || drained
+                restore && (name.startsWith("Super restore", true) ||
+                    name.startsWith("Blighted super restore", true)) -> depletedPrayer || drained
                 restore && name.startsWith("Prayer potion", true) -> depletedPrayer
                 // Restore a brew's stat drains before drinking another dose.
                 restore && name.startsWith("Saradomin brew", true) ->
@@ -282,10 +284,15 @@ class BotPvpActions @Inject constructor(
                     style == BotPvpStyle.Melee && player.stat("stat.attack") <= player.statBase("stat.attack")
                 name.startsWith("Super strength", true) || name.startsWith("Strength potion", true) ->
                     style == BotPvpStyle.Melee && player.stat("stat.strength") <= player.statBase("stat.strength")
-                name.startsWith("Ranging potion", true) ->
-                    style == BotPvpStyle.Ranged && player.stat("stat.ranged") <= player.statBase("stat.ranged")
+                name.startsWith("Ranging potion", true) ||
+                    name.startsWith("Blighted ranging potion", true) ->
+                    style == BotPvpStyle.Ranged &&
+                        player.stat("stat.ranged") <= player.statBase("stat.ranged")
                 name.startsWith("Magic potion", true) ->
-                    style == BotPvpStyle.Magic && player.stat("stat.magic") <= player.statBase("stat.magic")
+                    style == BotPvpStyle.Magic &&
+                        player.stat("stat.magic") <= player.statBase("stat.magic")
+                heart -> style == BotPvpStyle.Magic &&
+                    player.stat("stat.magic") <= player.statBase("stat.magic")
                 else -> false
             }
         } ?: return false
@@ -490,7 +497,7 @@ class BotPvpActions @Inject constructor(
         ServerCacheManager.getItem(id)?.interfaceOptions?.any { it.equals("Eat", true) } == true
 
     private fun isKarambwan(id: Int): Boolean =
-        ServerCacheManager.getItem(id)?.name.equals("Cooked karambwan", true)
+        ServerCacheManager.getItem(id)?.name?.contains("karambwan", ignoreCase = true) == true
 
     private fun protectionVar(style: BotPvpStyle): String = when (style) {
         BotPvpStyle.Melee -> "varbit.prayer_protectfrommelee"
