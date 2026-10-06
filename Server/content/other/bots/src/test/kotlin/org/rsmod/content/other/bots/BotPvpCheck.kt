@@ -115,6 +115,12 @@ object BotPvpCheck {
         check(assignments.values.max() - assignments.values.min() <= 1)
 
         check(BotPvpRiskLoadouts.all.size == 20)
+        for (role in BotPvpLoadoutRole.entries) {
+            val low = BotPvpRiskLoadouts.get(BotPvpRiskTier.Low, role)
+            check(low.supplies.count { it == "Blighted Super Restore(4)" } == 1)
+            check("Prayer potion" !in low.supplies)
+            check("Super restore" !in low.supplies)
+        }
         check(BotPvpRiskLoadouts.all.map { it.tier to it.role }.distinct().size == 20)
         check(BotPvpRiskTier.fromDifficulty(BotPvpDifficulty.Novice) == BotPvpRiskTier.Low)
         check(BotPvpRiskTier.fromDifficulty(BotPvpDifficulty.Standard) == BotPvpRiskTier.Average)
