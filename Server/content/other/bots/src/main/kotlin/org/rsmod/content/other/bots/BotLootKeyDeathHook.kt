@@ -43,6 +43,11 @@ internal object BotLootKeys {
     fun isKey(obj: InvObj?): Boolean = obj != null && types.any { obj.isType(it) }
 }
 
+internal object BotPvpDeathPolicy {
+    fun isLootKeyDeath(wildernessLevel: Int, inInstance: Boolean): Boolean =
+        wildernessLevel > 0 && !inInstance
+}
+
 internal class BotLootKeyDeathHook
 @Inject
 constructor(private val population: BotPopulation) : PlayerDeathHook {
@@ -57,7 +62,7 @@ constructor(private val population: BotPopulation) : PlayerDeathHook {
         // while returning to its hotspot, in an instance, or anywhere else outside valid
         // Wilderness PvP, destroy the synthetic carried loadout instead of falling through to
         // normal player death handling and spilling it onto the ground.
-        if (!isLootKeyDeath(context.wildernessLevel, context.inInstance)) {
+        if (!BotPvpDeathPolicy.isLootKeyDeath(context.wildernessLevel, context.inInstance)) {
             return PlayerDeathHandling(
                 keepCount = 0,
                 dropReceiver = null,
@@ -86,8 +91,6 @@ constructor(private val population: BotPopulation) : PlayerDeathHook {
         )
     }
 
-    internal fun isLootKeyDeath(wildernessLevel: Int, inInstance: Boolean): Boolean =
-        wildernessLevel > 0 && !inInstance
 
     private companion object {
         private const val BOT_DEATH_PRIORITY = 50
@@ -103,11 +106,7 @@ constructor(
     private val deathDrops: PlayerDeathDrops,
 ) : PlayerDeathItemHook {
     override fun beforeDrops(context: PlayerDeathContext, handling: PlayerDeathHandling) {
-        if (!BotLootKeyDeathHook(population).isLootKeyDeath(
-                context.wildernessLevel,
-                context.inInstance,
-            )
-        ) return
+        if (!BotPvpDeathPolicy.isLootKeyDeath(context.wildernessLevel, context.inInstance)) return
         if (!population.isPvpBot(context.player)) return
 
         // Bot-vs-bot (or environment) deaths never create economic loot. For a real player kill,
