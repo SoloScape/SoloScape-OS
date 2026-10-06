@@ -217,6 +217,22 @@ class BotPvpActions @Inject constructor(
         return queuePrayer(player, prayer)
     }
 
+    fun protectItem(player: Player, enabled: Boolean): Boolean {
+        val prayer = prayers.prayerList.firstOrNull {
+            it.enabled == "varbit.prayer_protectitem"
+        } ?: return false
+        val active = player.vars[prayer.enabled] != 0
+        if (active == enabled) return true
+        if (player.queueList.count("queue.prayer_toggle") >= 2) return false
+        if (enabled && (player.prayerLvl <= 0 || !prayer.hasAllRequirements(player))) return false
+        player.strongQueue("queue.prayer_toggle", 1, args = prayer)
+        return true
+    }
+
+    fun setSkullPrevention(player: Player, enabled: Boolean) {
+        VarPlayerIntMapSetter.set(player, "varbit.skull_prevent_enabled", if (enabled) 1 else 0)
+    }
+
     fun special(player: Player): Boolean {
         // Do not toggle an already armed attack off. Granite maul is a native ordinary combat
         // special with two queued blows here, so it also respects the current attack delay.
@@ -330,6 +346,9 @@ class BotPvpActions @Inject constructor(
         ) return false
         val depth = minOf(player.coords.wildernessLevel(areas), target.coords.wildernessLevel(areas))
         if (depth < 1 || abs(player.combatLevel - target.combatLevel) > depth) return false
+        if (player.vars["varbit.skull_prevent_enabled"] != 0 && wouldSkull(player, target)) {
+            return false
+        }
         if (!player.mapMultiway(areas)) {
             val owner = player.vars["varp.pk_predator1"]
             if (player.isInCombat() && owner != -1 && owner != target.uid.packed) return false
@@ -498,6 +517,27 @@ class BotPvpActions @Inject constructor(
 
     private fun isKarambwan(id: Int): Boolean =
         ServerCacheManager.getItem(id)?.name?.contains("karambwan", ignoreCase = true) == true
+
+    /**
+     * Mirrors the Wilderness PvP skull hook so bots with skull prevention enabled do not select a
+     * target that the native attack validator will reject.
+     */
+    private fun wouldSkull(player: Player, target: Player): Boolean {
+        val targetPacked = target.uid.packed
+        val playerPacked = player.uid.packed
+
+        if (player.vars["varp.pk_predator1"] == targetPacked) return false
+        if (player.vars["varp.pk_predator2"] == targetPacked) return false
+        if (player.vars["varp.pk_predator3"] == targetPacked) return false
+
+        if (!player.isInPvpCombat()) return true
+
+        if (player.vars["varp.pk_prey1"] == targetPacked) return false
+        if (player.vars["varp.pk_prey2"] == targetPacked) return false
+        if (target.vars["varp.pk_predator1"] == playerPacked) return false
+        if (target.vars["varp.pk_predator2"] == playerPacked) return false
+        return true
+    }
 
     private fun protectionVar(style: BotPvpStyle): String = when (style) {
         BotPvpStyle.Melee -> "varbit.prayer_protectfrommelee"
