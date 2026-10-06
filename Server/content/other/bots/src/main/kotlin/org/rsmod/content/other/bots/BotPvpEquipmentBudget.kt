@@ -55,8 +55,19 @@ internal object BotPvpEquipmentBudget {
         exact(name)?.takeIf { canEquip(it, levels) }
 
     fun resolvePreferred(name: String, levels: Map<String, Int>): ItemServerType? {
-        val exact = exact(name) ?: return null
+        val canonicalName = geTradeableReplacement(name) ?: name
+        val exact = exact(canonicalName) ?: return null
         return if (canEquip(exact, levels)) exact else bestEquivalent(exact, levels)
+    }
+
+    /**
+     * Custom cosmetic variants are intentionally normalized to standard GE-tradeable equipment
+     * before a Wilderness bot can be seeded.
+     */
+    internal fun geTradeableReplacement(name: String): String? = when (name.lowercase()) {
+        "dragonstone helmet", "dragonstone full helm" -> "Gilded full helm"
+        "frozen abyssal whip" -> "Abyssal whip"
+        else -> null
     }
 
     private fun exact(name: String): ItemServerType? =
@@ -68,6 +79,10 @@ internal object BotPvpEquipmentBudget {
 
     private fun resolveSymbol(symbol: String, levels: Map<String, Int>): String? {
         val preferred = item(symbol) ?: return null
+        val replacement = geTradeableReplacement(preferred.name)
+        if (replacement != null) {
+            return resolveExactUsable(replacement, levels)?.internalName
+        }
         if (canEquip(preferred, levels)) return symbol
         val equivalent = bestEquivalent(preferred, levels) ?: return null
         return equivalent.internalName
@@ -83,7 +98,10 @@ internal object BotPvpEquipmentBudget {
         return ServerCacheManager.getItemTypes()
             .asSequence()
             .filter { it.id != preferred.id }
-            .filter { it.tradeable && !it.isTransformation && !it.isDummyItem }
+            .filter {
+                it.tradeable && !it.isTransformation && !it.isDummyItem &&
+                    geTradeableReplacement(it.name) == null
+            }
             .filter { it.wearpos1 == preferred.wearpos1 }
             .filter { !weaponSlot || it.weaponCategory == preferred.weaponCategory }
             .filter { canEquip(it, levels) }
