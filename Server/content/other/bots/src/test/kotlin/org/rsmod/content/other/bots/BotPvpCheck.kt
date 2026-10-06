@@ -274,6 +274,12 @@ object BotPvpCheck {
             "Gilded full helm")
         check(BotPvpEquipmentBudget.geTradeableReplacement("Dragonstone full helm") ==
             "Gilded full helm")
+        check(BotPvpEquipmentBudget.geTradeableReplacement("Dragonstone platebody") ==
+            "Gilded platebody")
+        check(BotPvpEquipmentBudget.geTradeableReplacement("Dragonstone platelegs") ==
+            "Gilded platelegs")
+        check(BotPvpEquipmentBudget.geTradeableReplacement("Dragonstone boots") ==
+            "Gilded boots")
         check(BotPvpEquipmentBudget.geTradeableReplacement("Frozen abyssal whip") ==
             "Abyssal whip")
         val itemMappings = checkNotNull(GameValProvider.loadIsolated().mappings["obj"])
