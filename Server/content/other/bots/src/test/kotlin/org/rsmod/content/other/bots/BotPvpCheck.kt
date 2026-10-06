@@ -284,6 +284,8 @@ object BotPvpCheck {
             "Combat bracelet")
         check(BotPvpEquipmentBudget.geTradeableReplacement("Frozen abyssal whip") ==
             "Abyssal whip")
+        check(BotPvpEquipmentBudget.geTradeableReplacement("Abyssal tentacle") ==
+            "Ursine chainmace (u)")
         val itemMappings = checkNotNull(GameValProvider.loadIsolated().mappings["obj"])
         val requiredItems = BotPvpLoadouts.all.flatMap { loadout ->
             loadout.styles.values.flatten() + loadout.specialWeapons + loadout.food +
