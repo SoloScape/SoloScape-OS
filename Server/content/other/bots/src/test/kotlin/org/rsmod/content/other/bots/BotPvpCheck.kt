@@ -270,6 +270,24 @@ object BotPvpCheck {
             check(BotPvpTspsCatalog.familyIdsForVariant(chosen.id).any { it in hotspot.families(true) })
         }
 
+        check(BotPvpEquipmentBudget.geTradeableReplacement("Dragonstone helmet") ==
+            "Gilded full helm")
+        check(BotPvpEquipmentBudget.geTradeableReplacement("Dragonstone full helm") ==
+            "Gilded full helm")
+        check(BotPvpEquipmentBudget.geTradeableReplacement("Frozen abyssal whip") ==
+            "Abyssal whip")
+        val maxLevels = mapOf(
+            "stat.attack" to 99, "stat.defence" to 99, "stat.strength" to 99,
+            "stat.hitpoints" to 99, "stat.ranged" to 99, "stat.magic" to 99,
+            "stat.prayer" to 99,
+        )
+        check(checkNotNull(BotPvpEquipmentBudget.resolveExactUsable(
+            "Gilded full helm", maxLevels,
+        )).tradeable)
+        check(checkNotNull(BotPvpEquipmentBudget.resolveExactUsable(
+            "Abyssal whip", maxLevels,
+        )).tradeable)
+
         val itemMappings = checkNotNull(GameValProvider.loadIsolated().mappings["obj"])
         val requiredItems = BotPvpLoadouts.all.flatMap { loadout ->
             loadout.styles.values.flatten() + loadout.specialWeapons + loadout.food +
