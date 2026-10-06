@@ -17,14 +17,19 @@ internal object BotPvpLevelScaling {
         identity: Int,
         minimumPrayer: Int = 1,
     ): BotPvpLoadout {
-        val ceiling = combatLevel(loadout.levels)
         val minimums = minimumLevels(loadout, minimumPrayer)
+        // Runtime-only mechanic requirements may raise a stat above the pinned archetype ceiling.
+        // MAX needs 25 Prayer so Protect Item is always a real, usable prayer.
+        val effectiveCeiling = loadout.levels.mapValues { (stat, maximum) ->
+            maxOf(maximum, minimums.getValue(stat))
+        }
+        val ceiling = combatLevel(effectiveCeiling)
         val floorCombat = maxOf(MIN_COMBAT_LEVEL, combatLevel(minimums))
-        if (ceiling <= floorCombat) return loadout
+        if (ceiling <= floorCombat) return loadout.copy(levels = effectiveCeiling)
 
         val span = ceiling - floorCombat + 1
         val target = floorCombat + Math.floorMod(identity + loadout.id.hashCode(), span)
-        return loadout.copy(levels = scaleToCombat(loadout.levels, minimums, target))
+        return loadout.copy(levels = scaleToCombat(effectiveCeiling, minimums, target))
     }
 
     fun combatLevel(levels: Map<String, Int>): Int =
@@ -69,7 +74,7 @@ internal object BotPvpLevelScaling {
         val levels = loadout.levels.mapValues { (stat, maximum) ->
             when (stat) {
                 "stat.hitpoints" -> 10
-                "stat.prayer" -> minOf(maximum, minimumPrayer.coerceAtLeast(1))
+                "stat.prayer" -> minimumPrayer.coerceAtLeast(1)
                 else -> 1
             }
         }.toMutableMap()
