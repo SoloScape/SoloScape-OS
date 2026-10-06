@@ -3,12 +3,18 @@ package org.rsmod.content.other.bots
 // Adapted from RSPSApp/tsps PvP profiles; see resources/TSPS-LICENSE.txt.
 enum class BotPvpStyle { Melee, Ranged, Magic }
 
-enum class BotPvpDifficulty {
-    Novice, Standard, Veteran, Elite;
+enum class BotPvpDifficulty(val displayName: String) {
+    Novice("Easy"),
+    Standard("Medium"),
+    Veteran("Very Hard"),
+    Elite("Extreme");
 
     companion object {
         fun parse(text: String): BotPvpDifficulty? =
-            entries.firstOrNull { it.name.equals(text, ignoreCase = true) }
+            entries.firstOrNull {
+                it.name.equals(text, ignoreCase = true) ||
+                    it.displayName.equals(text, ignoreCase = true)
+            }
     }
 }
 
@@ -108,6 +114,36 @@ object BotPvpProfiles {
     )
 
     fun get(difficulty: BotPvpDifficulty): BotPvpProfile = all.first { it.id == difficulty }
+
+    /**
+     * Hybrid is deliberately the hardest role inside each bracket without silently promoting the
+     * bot into the next risk tier. It reacts one tick sooner where possible and gets modestly
+     * stronger switching/support probabilities while retaining the bracket's feature ceiling.
+     */
+    fun get(difficulty: BotPvpDifficulty, role: BotPvpLoadoutRole): BotPvpProfile {
+        val base = get(difficulty)
+        if (role != BotPvpLoadoutRole.Hybrid) return base
+
+        fun faster(range: IntRange): IntRange =
+            (range.first - 1).coerceAtLeast(1)..(range.last - 1).coerceAtLeast(1)
+
+        return base.copy(
+            targetReview = faster(base.targetReview),
+            prayerReview = faster(base.prayerReview),
+            targetStyleReaction = faster(base.targetStyleReaction),
+            specReview = faster(base.specReview),
+            combatAction = faster(base.combatAction),
+            comboEatChance = (base.comboEatChance + 0.08).coerceAtMost(1.0),
+            combatMoveChance = (base.combatMoveChance + 0.08).coerceAtMost(1.0),
+            switchChance = (base.switchChance + 0.08).coerceAtMost(1.0),
+            specUseChance = (base.specUseChance + 0.05).coerceAtMost(1.0),
+            specSwitchChance = (base.specSwitchChance + 0.05).coerceAtMost(1.0),
+            freezeFollowUpChance = (base.freezeFollowUpChance + 0.08).coerceAtMost(1.0),
+            freezeUseChance = (base.freezeUseChance + 0.08).coerceAtMost(1.0),
+            smiteUseChance = (base.smiteUseChance + 0.05).coerceAtMost(1.0),
+            riskTolerance = (base.riskTolerance + 0.08).coerceAtMost(1.0),
+        )
+    }
 
     fun parse(text: String): BotPvpProfile? = BotPvpDifficulty.parse(text)?.let(::get)
 }
