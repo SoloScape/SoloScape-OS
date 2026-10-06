@@ -70,6 +70,7 @@ internal object BotPvpEquipmentBudget {
         "dragonstone platebody" -> "Gilded platebody"
         "dragonstone platelegs" -> "Gilded platelegs"
         "dragonstone boots" -> "Gilded boots"
+        "dragonstone gauntlets", "dragonstone gloves" -> "Combat bracelet"
         "frozen abyssal whip" -> "Abyssal whip"
         else -> null
     }
@@ -97,6 +98,7 @@ internal object BotPvpEquipmentBudget {
                     "Gilded boots" ->
                         it.name.contains("gilded", ignoreCase = true) &&
                             it.name.contains("boots", ignoreCase = true)
+                    "Combat bracelet" -> it.name.equals("Combat bracelet", ignoreCase = true)
                     "Abyssal whip" -> it.name.equals("Abyssal whip", ignoreCase = true)
                     else -> it.name.equals(replacement, ignoreCase = true)
                 }
