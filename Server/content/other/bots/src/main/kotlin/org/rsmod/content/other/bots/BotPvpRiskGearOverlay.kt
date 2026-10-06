@@ -174,7 +174,7 @@ internal object BotPvpRiskGearOverlay {
             ),
             melee = listOf(
                 any("Avernic defender", "Dragon defender"),
-                one("Abyssal tentacle"),
+                one("Ursine chainmace (u)"),
             ),
             specials = listOf(any("Voidwaker", "Dragon claws", "Armadyl godsword")),
         ),
@@ -222,7 +222,7 @@ internal object BotPvpRiskGearOverlay {
             ),
             melee = listOf(
                 one("Avernic defender"),
-                any("Abyssal tentacle", "Ghrazi rapier"),
+                any("Ursine chainmace (u)", "Ghrazi rapier"),
             ),
             specials = listOf(any("Voidwaker", "Dragon claws", "Armadyl godsword")),
         ),
