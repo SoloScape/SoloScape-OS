@@ -182,6 +182,13 @@ constructor(
             addToInvDirect(player, item)
         }
 
+        // Some synthetic/economic death handlers materialize the lost items elsewhere (for
+        // example a loot-key bundle). They still need normal kept-item selection, but the original
+        // lost objects must disappear instead of also becoming ground drops.
+        if (handling.destroyLostCarried) {
+            return
+        }
+
         for (item in result.supplyPile) {
             dropItem(player, item, coords, handling, receiver = null)
         }
