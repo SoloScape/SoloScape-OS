@@ -127,7 +127,7 @@ object BotPvpRiskLoadouts {
         p(
             BotPvpRiskTier.Low, BotPvpLoadoutRole.Hybrid,
             "Mystic switches, Black dragonhide switches, Ancient staff, Rune crossbow, Dragon scimitar, Dragon dagger",
-            "Shark, Cooked karambwan, Super combat potion, Blighted ranging potion, Magic potion, Blighted Super Restore(4)",
+            "Shark, Blighted karambwan, Super combat potion, Ranging potion, Magic potion, Prayer potion",
         ),
 
         p(
