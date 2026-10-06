@@ -50,7 +50,26 @@ constructor(private val population: BotPopulation) : PlayerDeathHook {
         get() = BOT_DEATH_PRIORITY
 
     override fun handleDeath(context: PlayerDeathContext): PlayerDeathHandling? {
-        if (!eligible(context)) return null
+        if (!population.isPvpBot(context.player)) return null
+
+        // PvP bots are synthetic economic actors. Their equipment may only enter the economy
+        // through the Wilderness loot-key path below. If one dies after respawning in Lumbridge,
+        // while returning to its hotspot, in an instance, or anywhere else outside valid
+        // Wilderness PvP, destroy the synthetic carried loadout instead of falling through to
+        // normal player death handling and spilling it onto the ground.
+        if (!isLootKeyDeath(context.wildernessLevel, context.inInstance)) {
+            return PlayerDeathHandling(
+                keepCount = 0,
+                dropReceiver = null,
+                dropDuration = DROP_DURATION_PVP,
+                revealDelay = DROP_DURATION_PVP + 1,
+                supplyPile = false,
+                untradeableHandling = UntradeableHandling.DESTROY,
+                destroyAllCarried = true,
+                spawnRemains = false,
+            )
+        }
+
         return PlayerDeathHandling(
             keepCount = PlayerDeathDrops.wildernessKeepCount(
                 isSkulled = context.isSkulled,
@@ -67,10 +86,8 @@ constructor(private val population: BotPopulation) : PlayerDeathHook {
         )
     }
 
-    private fun eligible(context: PlayerDeathContext): Boolean =
-        context.wildernessLevel > 0 &&
-            !context.inInstance &&
-            population.isBot(context.player)
+    internal fun isLootKeyDeath(wildernessLevel: Int, inInstance: Boolean): Boolean =
+        wildernessLevel > 0 && !inInstance
 
     private companion object {
         private const val BOT_DEATH_PRIORITY = 50
@@ -86,8 +103,12 @@ constructor(
     private val deathDrops: PlayerDeathDrops,
 ) : PlayerDeathItemHook {
     override fun beforeDrops(context: PlayerDeathContext, handling: PlayerDeathHandling) {
-        if (context.wildernessLevel <= 0 || context.inInstance) return
-        if (!population.isBot(context.player)) return
+        if (!BotLootKeyDeathHook(population).isLootKeyDeath(
+                context.wildernessLevel,
+                context.inInstance,
+            )
+        ) return
+        if (!population.isPvpBot(context.player)) return
 
         // Bot-vs-bot (or environment) deaths never create economic loot. For a real player kill,
         // select the same items normal Wilderness death handling says are actually lost. The bot
