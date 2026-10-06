@@ -60,19 +60,22 @@ internal object BotPvpCrystalDeath {
     }
 
     fun convertLostArmour(lostUntradeable: List<InvObj>): List<InvObj> {
-        val seedCount = lostUntradeable.sumOf { item ->
+        val seeds = lostUntradeable.sumOf { item ->
             val type = ServerCacheManager.getItem(item.id) ?: return@sumOf 0
             seedCount(type.name) * item.count
         }
-        if (seedCount <= 0) return emptyList()
+        if (seeds <= 0) return emptyList()
 
         val seed = ServerCacheManager.getItemTypes()
             .asSequence()
-            .filter { it.tradeable && !it.isCert && !it.isPlaceholder }
+            .filter {
+                it.tradeable && !it.isCert && !it.isPlaceholder &&
+                    !it.isTransformation && !it.isDummyItem
+            }
             .firstOrNull { it.name.equals(CRYSTAL_ARMOUR_SEED_NAME, ignoreCase = true) }
             ?: return emptyList()
 
-        return listOf(InvObj(seed.id, seedCount))
+        return listOf(InvObj(seed.id, seeds))
     }
 }
 
