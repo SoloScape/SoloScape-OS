@@ -114,6 +114,21 @@ object BotPvpCheck {
         check(assignments.keys == memberRegions.mapTo(hashSetOf()) { it.id })
         check(assignments.values.max() - assignments.values.min() <= 1)
 
+        check(BotPvpRiskLoadouts.all.size == 20)
+        check(BotPvpRiskLoadouts.all.map { it.tier to it.role }.distinct().size == 20)
+        check(BotPvpRiskTier.fromDifficulty(BotPvpDifficulty.Novice) == BotPvpRiskTier.Low)
+        check(BotPvpRiskTier.fromDifficulty(BotPvpDifficulty.Standard) == BotPvpRiskTier.Average)
+        check(BotPvpRiskTier.fromDifficulty(BotPvpDifficulty.Veteran) == BotPvpRiskTier.Risker)
+        check(BotPvpRiskTier.fromDifficulty(BotPvpDifficulty.Elite) == BotPvpRiskTier.Max)
+        for (tier in BotPvpRiskTier.entries) {
+            for (role in BotPvpLoadoutRole.entries) {
+                val preset = BotPvpRiskLoadouts.get(tier, role)
+                check(preset.gear.isNotEmpty())
+                check(preset.supplies.isNotEmpty())
+                check(preset.preferUnskulled == (tier == BotPvpRiskTier.Max))
+            }
+        }
+
         check(BotPvpLoadouts.nativeTemplateCount == 18)
         check(BotPvpLoadouts.all.size == 89)
         check(BotPvpLoadouts.all.map { it.id }.distinct().size == BotPvpLoadouts.all.size)
