@@ -7,11 +7,11 @@ package org.rsmod.content.other.bots
  * variants still decide population, stats, spellbooks and hotspot eligibility; this table is the
  * native SoloScape target gear/supply matrix that can be resolved onto those variants.
  */
-enum class BotPvpRiskTier {
-    Low,
-    Average,
-    Risker,
-    Max;
+enum class BotPvpRiskTier(val difficultyName: String) {
+    Low("Easy"),
+    Average("Medium"),
+    Risker("Very Hard"),
+    Max("Extreme");
 
     companion object {
         fun fromDifficulty(difficulty: BotPvpDifficulty): BotPvpRiskTier = when (difficulty) {
@@ -28,7 +28,25 @@ enum class BotPvpLoadoutRole {
     Magic,
     Ranged,
     Melee,
-    Hybrid,
+    Hybrid;
+
+    companion object {
+        /**
+         * Resolve the risk-matrix role from the pinned TSPS archetype without changing its stats.
+         * Low-defence builds stay Pure even when they carry multiple combat styles; otherwise a
+         * multi-style build is Hybrid and single-style builds follow their primary combat style.
+         */
+        fun from(loadout: BotPvpLoadout): BotPvpLoadoutRole {
+            val defence = loadout.levels["stat.defence"] ?: 99
+            if (defence <= 20) return Pure
+            if (loadout.styles.size > 1) return Hybrid
+            return when (loadout.primaryStyle) {
+                BotPvpStyle.Magic -> Magic
+                BotPvpStyle.Ranged -> Ranged
+                BotPvpStyle.Melee -> Melee
+            }
+        }
+    }
 }
 
 data class BotPvpRiskPreset(
@@ -38,6 +56,16 @@ data class BotPvpRiskPreset(
     val supplies: List<String>,
     val preferUnskulled: Boolean = false,
 )
+
+data class BotPvpRiskAssignment(
+    val difficulty: BotPvpDifficulty,
+    val tier: BotPvpRiskTier,
+    val role: BotPvpLoadoutRole,
+    val preset: BotPvpRiskPreset,
+) {
+    val preferUnskulled: Boolean get() = preset.preferUnskulled
+    val hybridHardestInTier: Boolean get() = role == BotPvpLoadoutRole.Hybrid
+}
 
 object BotPvpRiskLoadouts {
     private fun p(
@@ -177,4 +205,18 @@ object BotPvpRiskLoadouts {
 
     fun get(difficulty: BotPvpDifficulty, role: BotPvpLoadoutRole): BotPvpRiskPreset =
         get(BotPvpRiskTier.fromDifficulty(difficulty), role)
+
+    fun assignment(
+        difficulty: BotPvpDifficulty,
+        loadout: BotPvpLoadout,
+    ): BotPvpRiskAssignment {
+        val role = BotPvpLoadoutRole.from(loadout)
+        val tier = BotPvpRiskTier.fromDifficulty(difficulty)
+        return BotPvpRiskAssignment(
+            difficulty = difficulty,
+            tier = tier,
+            role = role,
+            preset = get(tier, role),
+        )
+    }
 }
