@@ -19,7 +19,11 @@ public fun main() {
     check(BotSkills.all.distinct().size == BotSkills.all.size)
     check(BotSkills.all.all { it.startsWith("stat.") })
 
-    check(BotPvpHotspots.all.size == 5)
+    val originalHotspots = setOf(
+        "edge_ditch", "edge_south", "varrock_ditch", "revs_entrance", "green_drags_gate",
+    )
+    check(BotPvpHotspots.all.size >= originalHotspots.size)
+    check(BotPvpHotspots.all.map { it.id }.containsAll(originalHotspots))
     check(BotPvpHotspots.all.map { it.id }.distinct().size == BotPvpHotspots.all.size)
     check(BotPvpHotspots.all.all { it.anchor.level == 0 && it.anchor.z >= 3520 })
     check(BotPvpHotspots.all.all { it.contains(it.anchor) })
