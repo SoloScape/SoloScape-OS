@@ -414,8 +414,11 @@ class BotPvpCombat @Inject constructor(
     }
 
     private fun configureRiskBehavior(player: Player, state: BotPvpState) {
-        state.preventSkull = BotPvpPolicy.shouldPreventSkull(state.risk, random.nextDouble())
-        native.setSkullPrevention(player, state.preventSkull)
+        // Wilderness population bots are active PKers: they must be able to initiate on legal
+        // targets instead of circling each other while skull prevention rejects every first hit.
+        // Risk tier still controls equipment, supplies and Protect Item behaviour.
+        state.preventSkull = false
+        native.setSkullPrevention(player, enabled = false)
         native.protectItem(player, enabled = state.risk.usesProtectItem)
     }
 
