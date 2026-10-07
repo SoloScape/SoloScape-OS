@@ -147,9 +147,8 @@ The shader keeps a color fallback for a texture that is not resident yet.
 Modern model texture render types 1..3 still fall back to color until their
 extra scale/rotation/translation metadata is retained, and multi-sprite texture
 definitions currently use the first sprite layer (matching the current
-Olden-Shire texture path). Animated texture scrolling, exact underlay HSL
-window-averaging, animated entities, camera/input controls, and occlusion remain
-later fidelity/playability milestones.
+Olden-Shire texture path). Animated texture scrolling, animated entities, tap-to-walk packet/raycast
+wiring, and occlusion remain later fidelity/playability milestones.
 
 ## Browser game runtime
 
@@ -170,9 +169,16 @@ simulation ticks.
 
 `WebGlSceneRenderer.render(scene)` is now an upload/rebuild boundary rather
 than the frame loop: terrain and static loc buffers remain resident until the
-next region rebuild. `renderFrame(alpha)` performs presentation only. The
-`alpha` value is already supplied for the next milestone, where fine-coordinate
-player movement and camera state will interpolate smoothly between 20ms ticks.
+next region rebuild. `renderFrame(alpha)` performs presentation only.
+
+The local player and orbit camera both keep previous/current 20ms simulation
+state and are sampled at requestAnimationFrame time. The camera ports
+Olden-Shire's classic follow behaviour: its orbit centre eases toward the
+player by 1/16 each tick (or snaps beyond +/-500 units), arrow-key velocities
+approach +/-24 yaw and +/-12 pitch with /2 damping, pitch clamps to 128..383,
+and camera distance follows `pitch * 3 + 600 + zoomDelta`. The browser input
+layer adds one-pointer drag rotation, two-pointer pinch zoom, mouse-wheel zoom,
+and arrow keys while keeping all camera simulation on the fixed 20ms tick.
 
 ## Request scheduler
 
@@ -355,8 +361,13 @@ Inspect the requestAnimationFrame-interpolated player state:
 
     window.soloscapeLocalPlayerRenderState
 
+Inspect the mutable/interpolated orbit camera:
+
+    window.soloscapeOrbitCamera?.snapshot()
+    window.soloscapeOrbitCameraState
+
 The exposed render state is presentation-only; sampling alpha at 60/120 Hz
-does not mutate the fixed 20ms movement state.
+does not mutate the fixed 20ms movement/camera simulation state.
 
 Download, validate, decode, and persist an actual group:
 
@@ -510,6 +521,7 @@ Implemented:
 - persistent WebGL2 terrain + loc GPU buffers
 - fixed 20ms browser simulation loop + requestAnimationFrame presentation
 - classic fine-coordinate local-player route movement + render interpolation
+- Olden-Shire-style orbit follow camera with drag/pinch/wheel/arrow controls
 - `window.soloscapeSceneMaps` / `window.soloscapeSceneAssets` / `window.soloscapeSceneMaterials` / `window.soloscapeScene` debug state
 
 Revision 240's rebuild packets do not append XTEA key blocks; the browser follows
@@ -521,7 +533,7 @@ Next:
 
 - retain/render modern model texture transform metadata (types 1..3)
 - add texture animation and the original terrain HSL/light averaging pass
-- port orbit-camera yaw/pitch/zoom input and smoothing
+- raycast viewport taps and send the rev-240 walk packet
 - wire sequence/skeleton animation onto the moving player model
 - decode NPC update streams and continue actor animation/skinning work
 - add occlusion
