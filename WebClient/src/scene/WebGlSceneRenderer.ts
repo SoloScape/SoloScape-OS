@@ -768,7 +768,7 @@ void main() {
     if (texel.a <= 0.0039) {
       discard;
     }
-    material = texel.rgb;
+    material = texel.rgb * vColor;
   }
 
   float fog = smoothstep(9000.0, 28000.0, vDepth);
