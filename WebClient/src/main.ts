@@ -11,6 +11,10 @@ import {
 } from './cache/SceneAssetLoader';
 import { PlayerModelAssetLoader } from './cache/PlayerModelAssetLoader';
 import {
+  SceneMaterialLoader,
+  type SceneMaterialAssets,
+} from './cache/SceneMaterialLoader';
+import {
   loadJs5StartupAssets,
   type Js5StartupAssets,
 } from './cache/Js5StartupAssets';
@@ -97,6 +101,7 @@ const gameTransport = new WebSocketTransport();
 const gameLogin = new GameLoginClient(gameTransport);
 const mapSquareLoader = new MapSquareLoader(js5, appendLog);
 const sceneAssetLoader = new SceneAssetLoader(js5, appendLog);
+const sceneMaterialLoader = new SceneMaterialLoader(js5, appendLog);
 const playerModelLoader = new PlayerModelAssetLoader(js5, appendLog);
 const bootRenderer = new ClientBootRenderer(clientUiCanvas);
 
@@ -124,6 +129,7 @@ let framedGamePackets = 0;
 let playerInfo: Rev240PlayerInfoDecoder | null = null;
 let currentScene: AssembledScene | null = null;
 let currentSceneMaps: readonly LoadedMapSquare[] | null = null;
+let currentSceneMaterials: SceneMaterialAssets | null = null;
 let currentTerrainSampler: SceneTerrainSampler | null = null;
 let currentPlayerMesh: SceneMesh | null = null;
 let requestedAppearanceRevision = -1;
@@ -242,10 +248,12 @@ function resetSceneDebug(): void {
   (window as SoloScapeDebugWindow).soloscapeRegionRebuild = undefined;
   (window as SoloScapeDebugWindow).soloscapeSceneMaps = undefined;
   (window as SoloScapeDebugWindow).soloscapeSceneAssets = undefined;
+  (window as SoloScapeDebugWindow).soloscapeSceneMaterials = undefined;
   (window as SoloScapeDebugWindow).soloscapeScene = undefined;
   (window as SoloScapeDebugWindow).soloscapeLocalPlayer = undefined;
   currentScene = null;
   currentSceneMaps = null;
+  currentSceneMaterials = null;
   currentTerrainSampler = null;
   currentPlayerMesh = null;
   requestedAppearanceRevision = -1;
@@ -304,7 +312,7 @@ function requestLocalPlayerModel(): void {
   const appearance = player.appearance;
 
   void playerModelLoader.load(appearance)
-    .then((mesh) => {
+    .then(async (mesh) => {
       const current = playerInfo?.getLocalPlayer();
       if (
         generation !== playerModelGeneration ||
@@ -312,6 +320,28 @@ function requestLocalPlayerModel(): void {
         current.appearanceRevision !== appearanceRevision
       ) {
         return;
+      }
+
+      if (mesh) {
+        const textureIds = Array.from(
+          new Set(
+            Array.from(mesh.textureIds)
+              .filter((textureId) => textureId >= 0),
+          ),
+        );
+        if (textureIds.length > 0) {
+          const textureLayers =
+            await sceneMaterialLoader.ensureTextureIds(textureIds);
+          const refreshed = playerInfo?.getLocalPlayer();
+          if (
+            generation !== playerModelGeneration ||
+            !refreshed ||
+            refreshed.appearanceRevision !== appearanceRevision
+          ) {
+            return;
+          }
+          sceneRenderer?.setTextureLayers(textureLayers);
+        }
       }
 
       currentPlayerMesh = mesh;
@@ -662,6 +692,7 @@ gameLogin.onGamePacket = (packet) => {
   (window as SoloScapeDebugWindow).soloscapeScene = undefined;
   currentScene = null;
   currentSceneMaps = null;
+  currentSceneMaterials = null;
   currentTerrainSampler = null;
 
   renderGameLoading(100, 'Loading - please wait.');
@@ -708,7 +739,23 @@ gameLogin.onGamePacket = (packet) => {
       );
       renderGameLoading(100, 'Loading - please wait.');
 
-      const scene = assembleScene(rebuild, maps, assets);
+      const materials = await sceneMaterialLoader.loadForScene(
+        maps,
+        assets,
+      );
+      if (loadGeneration !== mapLoadGeneration) {
+        return;
+      }
+
+      currentSceneMaterials = materials;
+      (window as SoloScapeDebugWindow).soloscapeSceneMaterials =
+        materials;
+
+      if (sceneRenderer) {
+        sceneRenderer.setTextureLayers(materials.textureLayers);
+      }
+
+      const scene = assembleScene(rebuild, maps, assets, materials);
       if (loadGeneration !== mapLoadGeneration) {
         return;
       }
@@ -911,6 +958,7 @@ connectButton.addEventListener('click', () => {
     }
     js5.disconnect();
     sceneAssetLoader.reset();
+    sceneMaterialLoader.reset();
     playerModelLoader.reset();
     playerInfo = null;
     (window as SoloScapeDebugWindow).soloscapePlayerInfo = undefined;
@@ -1078,6 +1126,7 @@ type SoloScapeDebugWindow = Window & {
   soloscapeRegionRebuild?: RegionRebuild;
   soloscapeSceneMaps?: LoadedMapSquare[];
   soloscapeSceneAssets?: LoadedSceneAssets;
+  soloscapeSceneMaterials?: SceneMaterialAssets;
   soloscapeScene?: AssembledScene;
 };
 
