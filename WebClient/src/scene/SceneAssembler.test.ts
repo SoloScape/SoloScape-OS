@@ -117,6 +117,43 @@ test('rotates copied instance zones and loc origins into destination space', () 
   );
 });
 
+
+test('emits cache texture ids and type-0 UVs for textured loc faces', () => {
+  const map = buildMap([
+    {
+      id: 1,
+      localX: 1,
+      localZ: 2,
+      level: 0,
+      shape: 10,
+      angle: 0,
+    },
+  ]);
+  const assets = buildAssets();
+  const model = assets.models.get(100)!;
+  model.faceTextures[0] = 7;
+  model.faceTextureCoords[0] = 0;
+  model.textureFaceA = Uint16Array.from([0]);
+  model.textureFaceB = Uint16Array.from([1]);
+  model.textureFaceC = Uint16Array.from([2]);
+  model.textureRenderTypes = Int8Array.from([0]);
+
+  const rebuild: NormalRegionRebuild = {
+    kind: 'normal',
+    zoneX: 6,
+    zoneZ: 6,
+    worldArea: 0,
+    mapSquares: [map.mapSquare],
+  };
+  const scene = assembleScene(rebuild, [map], assets);
+
+  assert.deepEqual(Array.from(scene.locations.textureIds), [7, 7, 7]);
+  assert.deepEqual(
+    Array.from(scene.locations.textureCoords),
+    [0, 0, 1, 0, 0, 1],
+  );
+});
+
 function buildMap(
   locations: LoadedMapSquare['locations'],
 ): LoadedMapSquare {
@@ -191,6 +228,7 @@ function buildAssets(): LoadedSceneAssets {
     faceC: Uint32Array.from([2]),
     faceColors: Uint16Array.from([500]),
     faceTextures: Int32Array.from([-1]),
+    faceTextureCoords: Int32Array.from([-1]),
     faceRenderTypes: Int8Array.from([0]),
     faceTransparencies: Int8Array.from([0]),
     textureFaceA: new Uint16Array(0),
