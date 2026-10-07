@@ -114,5 +114,31 @@ class BuildCacheTests(unittest.TestCase):
         self.assertEqual(manifest.read_bytes(), old_state)
 
 
+class JavaHomeTests(unittest.TestCase):
+    def test_java_home_finds_java_21_on_path(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary) / "jdk-21"
+            java = home / "bin/java.exe"
+            java.parent.mkdir(parents=True)
+            java.write_bytes(b"")
+            (home / "release").write_text('JAVA_VERSION="21.0.8"')
+
+            version = type(
+                "Version",
+                (),
+                {
+                    "returncode": 0,
+                    "stdout": "",
+                    "stderr": 'openjdk version "21.0.8" 2025-07-15',
+                },
+            )()
+            with (
+                patch.dict(build.os.environ, {}, clear=True),
+                patch.object(build.shutil, "which", return_value=str(java)),
+                patch.object(build.subprocess, "run", return_value=version),
+            ):
+                self.assertEqual(build.java_home(), home.resolve())
+
+
 if __name__ == "__main__":
     unittest.main()
