@@ -171,6 +171,22 @@ object BotPvpCheck {
             check(hotspot.contains(hotspot.anchor))
             repeat(20) { check(hotspot.contains(hotspot.roam(random))) }
         }
+        val fixedHotspots = BotPvpHotspots.all.filter { it.fixedHotspot }
+        check(fixedHotspots.size == 5)
+        check(fixedHotspots.all { it.maxBots == 10 })
+        val cappedOccupancy = fixedHotspots.associate { it.id to it.maxBots }
+        val cappedChoice = BotPvpHotspots.choose(
+            identity = 501,
+            members = true,
+            difficulty = BotPvpDifficulty.Standard,
+            occupancy = cappedOccupancy,
+        )
+        check(!cappedChoice.fixedHotspot)
+        val patrolCycle = (0 until 21)
+            .map { BotPvpHotspots.patrolTarget(identity = 17, step = it) }
+            .toSet()
+        check(patrolCycle.size == 21)
+
         val memberRegions = BotPvpHotspots.available(true, BotPvpDifficulty.Standard)
         check(memberRegions.any { it.anchor.z < 3600 })
         check(memberRegions.any { it.anchor.z > 3900 })
