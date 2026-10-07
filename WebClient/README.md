@@ -3,10 +3,10 @@
 This directory contains the browser-native SoloScape client work targeting
 Safari on iPhone/iPad and modern desktop browsers.
 
-The current branch implements browser transport plus the JS5 cache metadata
-bootstrap for OSRS protocol revision 240 / client 240.2.
+The current branch implements browser transport plus a validated, bounded JS5
+cache client for OSRS protocol revision 240 / client 240.2.
 
-## Current JS5 bootstrap
+## Current JS5 flow
 
 A successful Connect now performs:
 
@@ -14,15 +14,48 @@ A successful Connect now performs:
       -> rev-240 JS5 handshake
       -> master index 255:255
       -> parse archive CRC/version metadata
-      -> request every present 255:<archive> reference table
+      -> bounded/retried 255:<archive> reference-table queue
       -> decode type 0/type 2 cache containers
       -> parse reference-table structure
       -> validate reference-table CRC + version
-      -> persist only validated reference tables
+      -> persist validated reference tables
       -> JS5 index ready
+
+After bootstrap, client code can select an archive/group:
+
+    reference tables
+      -> select archive/group
+      -> bounded JS5 request queue
+      -> receive group container
+      -> validate group CRC
+      -> restore + validate group version trailer
+      -> decode container
+      -> persist validated group
 
 The observed SoloScape cache has 25 master-index slots. Slots 16 and 23 are
 empty, leaving 23 present archive reference tables.
+
+## Request scheduler
+
+Js5RequestScheduler owns post-master-index JS5 requests.
+
+Defaults:
+
+    max in flight: 8
+    request timeout: 10 seconds
+    retries: 2
+
+The scheduler:
+
+- bounds simultaneous requests;
+- queues excess work;
+- deduplicates callers requesting the same archive/group;
+- accepts out-of-order responses;
+- retries timed-out requests;
+- cancels queued/in-flight work when the connection closes.
+
+The same scheduler now handles reference-table bootstrap traffic and ordinary
+asset groups.
 
 ## Reference-table CRC/version validation
 
@@ -31,7 +64,7 @@ Each master-index entry contains:
     crc      u32
     version  u32
 
-For each returned 255:<archive> reference table the web client now:
+For each returned 255:<archive> reference table the web client:
 
 1. reconstructs the raw cache container from JS5 framing;
 2. decodes and parses the reference table;
@@ -47,11 +80,24 @@ The CRC covers:
     uncompressed-size field when present
     compressed/stored payload
 
-It does not include JS5's 512-byte transport framing or 0xff continuation bytes,
-because those have already been removed by the stream decoder.
+It does not include JS5's 512-byte transport framing or 0xff continuation bytes.
 
-A CRC or version mismatch is fatal to the current bootstrap and the bad reference
-table is not persisted.
+## Ordinary cache-group validation
+
+Reference-table group entries supply the expected group checksum and version.
+
+SoloScape's server deliberately strips the two-byte cache-sector version trailer
+from ordinary groups before transmitting them over JS5. The browser therefore:
+
+1. validates CRC-32 over the received reconstructed container;
+2. restores the two-byte trailer from the low 16 bits of the reference-table
+   group version;
+3. validates that trailer;
+4. decodes the container;
+5. persists the validated wire container plus the restored on-disk cache form.
+
+This matches the repository's OpenRS2-compatible cache code, which strips the
+version trailer for JS5 delivery and restores it for disk-cache storage.
 
 ## Archive reference-table parser
 
@@ -91,8 +137,9 @@ Stores:
     js5-groups
     js5-metadata
 
-js5-groups contains reconstructed cache containers. Archive reference tables are
-written only after their master-index CRC and version validate.
+js5-groups records now include validation state, CRC, version, the reconstructed
+wire container, and (for ordinary archive groups) cacheFile with the restored
+two-byte version trailer.
 
 js5-metadata contains:
 
@@ -109,26 +156,37 @@ Get a parsed reference table:
 
     window.soloscapeJs5.getArchiveReferenceTable(2)
 
+Inspect scheduler state:
+
+    window.soloscapeJs5.getRequestQueueStatus()
+
+Download, validate, decode, and persist an actual group:
+
+    const group = await window.soloscapeJs5.downloadGroup(2, 9)
+    group.crc
+    group.version
+    group.data
+
+Group/file unpacking is not implemented yet, so group.data is the decoded group
+payload rather than individual files.
+
 ## Expected live log
 
-A valid archive should now produce:
+Reference bootstrap is now bounded:
 
-    Reference table 2 received (...) expected-crc=0x........ version=...
-    Validated reference table 2: crc=0x........ version=...
-    Parsed reference table 2: protocol=7 version=... flags=0x.. groups=... files=...
-    Decoded reference table 2: compression=2 ... -> ... bytes (.../23 validated).
-
-Once all 23 pass:
-
+    Queued JS5 archive reference tables: 23 present groups; skipped 2 empty slots; max-in-flight=8.
+    TX JS5 scheduled request 255:0 attempt=1 priority=urgent in-flight=1/8.
+    ...
     JS5 cache index bootstrap complete: master index + 23 present archive reference tables received, decoded, parsed and validated.
 
-Any mismatch produces a fatal message such as:
+An ordinary group download adds:
 
-    JS5 reference table 2 CRC mismatch: expected 0x........, got 0x.........
+    Queued JS5 cache group 2:9 expected-crc=0x........ version=...
+    TX JS5 scheduled request 2:9 attempt=1 priority=urgent in-flight=1/8.
+    Validated JS5 cache group 2:9: crc=0x........ version=... trailer=...
+    Decoded and cached JS5 group 2:9: compression=2 ... -> ... bytes.
 
-or:
-
-    JS5 reference table 2 version mismatch: expected ..., got ....
+CRC/version failures are rejected and the invalid group is not persisted.
 
 ## Tests
 
@@ -138,13 +196,10 @@ From WebClient:
     npm run test:protocol
     npm run build
 
-Validation tests cover:
-
-- the standard CRC-32 known vector ("123456789" -> 0xcbf43926)
-- matching reference-table CRC/version
-- CRC mismatch rejection
-- version mismatch rejection
-- wrong-archive metadata rejection
+Tests cover stream fragmentation/continuations, master-index parsing,
+container decoding, reference-table parsing, CRC/version validation, version
+trailer handling, scheduler concurrency/deduplication, timeout retries and
+cancellation.
 
 ## M1 status
 
@@ -153,18 +208,19 @@ Complete so far:
 - rev-240 JS5 handshake
 - master-index parsing
 - empty archive-slot handling
-- archive reference-table downloads
+- bounded/retried archive reference-table downloads
 - type 0/type 2 cache-container decoding
 - archive reference-table parsing
 - reference-table CRC/version validation
+- bounded ordinary cache-group download scheduler
+- per-group CRC/version-trailer validation
+- validated group persistence in IndexedDB
 - structured reference-table persistence in IndexedDB
 
 Next:
 
-- actual cache group download scheduler
-- per-group CRC/version validation
 - group/file unpacking
-- startup definitions/assets
+- typed startup definitions/assets
 
 ## Reference format
 

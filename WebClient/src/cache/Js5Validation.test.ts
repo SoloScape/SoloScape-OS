@@ -2,9 +2,15 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { crc32 } from './Js5Crc32';
 import {
+  appendJs5VersionTrailer,
+  validateJs5Group,
+  validateJs5GroupVersionTrailer,
   validateJs5ReferenceTable,
 } from './Js5Validation';
-import type { Js5ReferenceTable } from './Js5ReferenceTable';
+import type {
+  Js5ReferenceGroup,
+  Js5ReferenceTable,
+} from './Js5ReferenceTable';
 
 test('computes the standard IEEE CRC-32 known vector', () => {
   const bytes = new TextEncoder().encode('123456789');
@@ -90,6 +96,75 @@ test('rejects metadata for the wrong archive', () => {
   );
 });
 
+test('validates an ordinary group CRC and restores its version trailer', () => {
+  const container = new Uint8Array([0, 0, 0, 0, 1, 99]);
+  const metadata = createGroup(42, crc32(container), 0x01020304);
+
+  const validation = validateJs5Group(2, 42, container, metadata);
+  const cacheFile = appendJs5VersionTrailer(
+    container,
+    validation.version,
+  );
+  const trailer = validateJs5GroupVersionTrailer(
+    cacheFile,
+    validation.version,
+  );
+
+  assert.deepEqual(validation, {
+    archive: 2,
+    group: 42,
+    crc: metadata.checksum,
+    version: 0x01020304,
+    trailerVersion: 0x0304,
+  });
+  assert.equal(trailer, 0x0304);
+  assert.deepEqual(
+    Array.from(cacheFile.slice(-2)),
+    [0x03, 0x04],
+  );
+});
+
+test('rejects an ordinary group CRC mismatch', () => {
+  const container = new Uint8Array([1, 2, 3]);
+
+  assert.throws(
+    () => validateJs5Group(
+      4,
+      7,
+      container,
+      createGroup(
+        7,
+        (crc32(container) + 1) >>> 0,
+        15,
+      ),
+    ),
+    /CRC mismatch/,
+  );
+});
+
+test('rejects an ordinary group metadata mismatch', () => {
+  const container = new Uint8Array([1]);
+
+  assert.throws(
+    () => validateJs5Group(
+      4,
+      7,
+      container,
+      createGroup(8, crc32(container), 1),
+    ),
+    /metadata mismatch/,
+  );
+});
+
+test('rejects a mismatched persisted version trailer', () => {
+  const cacheFile = new Uint8Array([1, 2, 0, 5]);
+
+  assert.throws(
+    () => validateJs5GroupVersionTrailer(cacheFile, 6),
+    /version trailer mismatch/,
+  );
+});
+
 function createTable(version: number): Js5ReferenceTable {
   return {
     protocol: 7,
@@ -100,5 +175,23 @@ function createTable(version: number): Js5ReferenceTable {
     hasLengths: false,
     hasUncompressedChecksums: false,
     groups: [],
+  };
+}
+
+function createGroup(
+  id: number,
+  checksum: number,
+  version: number,
+): Js5ReferenceGroup {
+  return {
+    id,
+    nameHash: null,
+    checksum,
+    uncompressedChecksum: null,
+    digest: null,
+    length: null,
+    uncompressedLength: null,
+    version,
+    files: [],
   };
 }

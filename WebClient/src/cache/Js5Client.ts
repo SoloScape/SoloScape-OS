@@ -22,11 +22,21 @@ import {
 import {
   cloneJs5ReferenceTable,
   parseJs5ReferenceTable,
+  type Js5ReferenceGroup,
   type Js5ReferenceTable,
 } from './Js5ReferenceTable';
+import {
+  Js5RequestScheduler,
+  type Js5ScheduledRequest,
+} from './Js5RequestScheduler';
 import { Js5StreamDecoder } from './Js5StreamDecoder';
 import { IndexedDbCacheStore } from './IndexedDbCacheStore';
-import { validateJs5ReferenceTable } from './Js5Validation';
+import {
+  appendJs5VersionTrailer,
+  validateJs5Group,
+  validateJs5GroupVersionTrailer,
+  validateJs5ReferenceTable,
+} from './Js5Validation';
 
 export type Js5ClientState =
   | 'idle'
@@ -43,13 +53,41 @@ export interface Js5ConnectOptions {
   key?: Js5HandshakeKey;
 }
 
+export interface Js5ClientOptions {
+  maxInFlightRequests?: number;
+  requestTimeoutMs?: number;
+  maxRequestRetries?: number;
+}
+
 export interface Js5ArchiveIndexProgress {
   received: number;
   total: number;
 }
 
+export interface Js5RequestQueueStatus {
+  pending: number;
+  queued: number;
+  inFlight: number;
+  maxInFlight: number;
+}
+
+export interface Js5DownloadedGroup {
+  archive: number;
+  group: number;
+  crc: number;
+  version: number;
+  trailerVersion: number;
+  compression: number;
+  compressedSize: number;
+  uncompressedSize: number;
+  container: Uint8Array;
+  cacheFile: Uint8Array;
+  data: Uint8Array;
+}
+
 export class Js5Client {
   private readonly decoder = new Js5StreamDecoder();
+  private readonly scheduler: Js5RequestScheduler;
   private masterIndex: Js5MasterIndex | null = null;
   private pendingArchiveIndices = new Set<number>();
   private pendingArchiveDecodes = new Set<number>();
@@ -74,7 +112,17 @@ export class Js5Client {
   constructor(
     private readonly transport: WebSocketTransport,
     private readonly store: IndexedDbCacheStore,
+    options: Js5ClientOptions = {},
   ) {
+    this.scheduler = new Js5RequestScheduler(
+      (request) => this.sendScheduledRequest(request),
+      {
+        maxInFlight: options.maxInFlightRequests ?? 8,
+        requestTimeoutMs: options.requestTimeoutMs ?? 10_000,
+        maxRetries: options.maxRequestRetries ?? 2,
+      },
+    );
+
     this.transport.onData = (buffer) => {
       this.handleBytes(new Uint8Array(buffer));
     };
@@ -91,6 +139,9 @@ export class Js5Client {
         this.state !== 'error'
       ) {
         this.setState('closed');
+        this.scheduler.cancelAll(
+          new Error('JS5 transport closed with requests pending.'),
+        );
       }
     };
   }
@@ -99,13 +150,10 @@ export class Js5Client {
     url: string,
     options: Js5ConnectOptions,
   ): Promise<void> {
-    this.decoder.reset();
-    this.masterIndex = null;
-    this.pendingArchiveIndices.clear();
-    this.pendingArchiveDecodes.clear();
-    this.archiveIndexPayloads.clear();
-    this.archiveReferenceTables.clear();
-    this.archiveIndexTotal = 0;
+    this.scheduler.cancelAll(
+      new Error('JS5 request queue reset for a new connection.'),
+    );
+    this.resetBootstrapState();
     this.setState('connecting');
     this.onLog?.('Connecting JS5 socket to ' + url);
 
@@ -125,6 +173,11 @@ export class Js5Client {
     }
   }
 
+  /**
+   * Low-level immediate request helper retained for protocol/bootstrap work.
+   * Asset callers should use downloadGroup(), which goes through the bounded
+   * scheduler and validates metadata before persistence.
+   */
   requestGroup(
     archive: number,
     group: number,
@@ -135,6 +188,103 @@ export class Js5Client {
       'TX JS5 request ' + archive + ':' + group +
       ' priority=' + (urgent ? 'urgent' : 'normal'),
     );
+  }
+
+  async downloadGroup(
+    archive: number,
+    group: number,
+    urgent = true,
+  ): Promise<Js5DownloadedGroup> {
+    if (this.state !== 'ready') {
+      throw new Error(
+        'JS5 cache groups can only be downloaded after the reference-table bootstrap is ready.',
+      );
+    }
+    if (archive === JS5_MASTER_ARCHIVE) {
+      throw new RangeError(
+        'Archive 255 is reserved for JS5 master/reference metadata.',
+      );
+    }
+
+    const metadata = this.getGroupMetadata(archive, group);
+    if (!metadata) {
+      throw new Error(
+        'JS5 reference metadata is unavailable for group ' +
+        archive + ':' + group + '.',
+      );
+    }
+
+    this.onLog?.(
+      'Queued JS5 cache group ' + archive + ':' + group +
+      ' expected-crc=' + formatCrc(metadata.checksum) +
+      ' version=' + metadata.version + '.',
+    );
+
+    const response = await this.scheduler.schedule(
+      archive,
+      group,
+      urgent,
+    );
+
+    const validation = validateJs5Group(
+      archive,
+      group,
+      response.container,
+      metadata,
+    );
+    const cacheFile = appendJs5VersionTrailer(
+      response.container,
+      validation.version,
+    );
+    const trailerVersion = validateJs5GroupVersionTrailer(
+      cacheFile,
+      validation.version,
+    );
+
+    this.onLog?.(
+      'Validated JS5 cache group ' + archive + ':' + group +
+      ': crc=' + formatCrc(validation.crc) +
+      ' version=' + validation.version +
+      ' trailer=' + trailerVersion + '.',
+    );
+
+    const decoded = await decodeJs5Container(response.container);
+
+    await this.store.putValidated(response, {
+      crc: validation.crc,
+      version: validation.version,
+      cacheFile,
+    });
+
+    this.onLog?.(
+      'Decoded and cached JS5 group ' + archive + ':' + group +
+      ': compression=' + decoded.compression + ' ' +
+      decoded.compressedSize + ' -> ' +
+      decoded.uncompressedSize + ' bytes.',
+    );
+
+    return {
+      archive,
+      group,
+      crc: validation.crc,
+      version: validation.version,
+      trailerVersion,
+      compression: decoded.compression,
+      compressedSize: decoded.compressedSize,
+      uncompressedSize: decoded.uncompressedSize,
+      container: response.container.slice(),
+      cacheFile: cacheFile.slice(),
+      data: decoded.data.slice(),
+    };
+  }
+
+  getRequestQueueStatus(): Js5RequestQueueStatus {
+    return {
+      pending: this.scheduler.pendingCount,
+      queued: this.scheduler.queuedCount,
+      inFlight: this.scheduler.inFlightCount,
+      maxInFlight: this.scheduler.maxInFlight,
+    };
   }
 
   getArchiveIndexPayload(archive: number): Uint8Array | undefined {
@@ -149,15 +299,19 @@ export class Js5Client {
   }
 
   disconnect(): void {
-    this.transport.disconnect();
-    this.decoder.reset();
-    this.masterIndex = null;
-    this.pendingArchiveIndices.clear();
-    this.pendingArchiveDecodes.clear();
-    this.archiveIndexPayloads.clear();
-    this.archiveReferenceTables.clear();
-    this.archiveIndexTotal = 0;
     this.setState('closed');
+    this.scheduler.cancelAll(new Error('JS5 client disconnected.'));
+    this.transport.disconnect();
+    this.resetBootstrapState();
+  }
+
+  private getGroupMetadata(
+    archive: number,
+    group: number,
+  ): Js5ReferenceGroup | undefined {
+    return this.archiveReferenceTables
+      .get(archive)
+      ?.groups.find((entry) => entry.id === group);
   }
 
   private handleBytes(bytes: Uint8Array): void {
@@ -213,15 +367,30 @@ export class Js5Client {
       return;
     }
 
+    const scheduled = this.scheduler.accept(response);
+
     if (
       response.archive === JS5_MASTER_ARCHIVE &&
       this.pendingArchiveIndices.has(response.group)
     ) {
+      if (!scheduled) {
+        throw new Error(
+          'Received unscheduled JS5 reference table 255:' +
+          response.group + '.',
+        );
+      }
       this.handleArchiveIndex(response);
       return;
     }
 
-    this.persist(response);
+    if (scheduled) {
+      return;
+    }
+
+    this.onLog?.(
+      'Ignoring unsolicited/stale JS5 group ' +
+      response.archive + ':' + response.group + '.',
+    );
   }
 
   private async handleMasterIndex(
@@ -270,19 +439,25 @@ export class Js5Client {
     this.setState('archive-indices');
 
     for (const entry of presentEntries) {
-      this.transport.send(
-        encodeJs5GroupRequest(
+      void this.scheduler
+        .schedule(
           JS5_MASTER_ARCHIVE,
           entry.archive,
           true,
-        ),
-      );
+        )
+        .catch((error: unknown) => {
+          if (this.state === 'archive-indices') {
+            this.fail(error);
+          }
+        });
     }
 
     this.onLog?.(
-      'TX JS5 archive reference-table requests: ' +
+      'Queued JS5 archive reference tables: ' +
       presentEntries.length + ' present groups; skipped ' +
-      (index.entries.length - presentEntries.length) + ' empty slots.',
+      (index.entries.length - presentEntries.length) +
+      ' empty slots; max-in-flight=' +
+      this.scheduler.maxInFlight + '.',
     );
   }
 
@@ -376,7 +551,11 @@ export class Js5Client {
       '/' + this.archiveIndexTotal + ' validated).',
     );
 
-    this.persist(response);
+    this.persistValidated(
+      response,
+      validation.crc,
+      validation.version,
+    );
     this.persistReferenceTable(response.group, table);
     this.maybeFinishBootstrap();
   }
@@ -404,6 +583,24 @@ export class Js5Client {
     this.onBootstrapComplete?.(index);
   }
 
+  private sendScheduledRequest(request: Js5ScheduledRequest): void {
+    this.transport.send(
+      encodeJs5GroupRequest(
+        request.archive,
+        request.group,
+        request.urgent,
+      ),
+    );
+    this.onLog?.(
+      'TX JS5 scheduled request ' +
+      request.archive + ':' + request.group +
+      ' attempt=' + request.attempt +
+      ' priority=' + (request.urgent ? 'urgent' : 'normal') +
+      ' in-flight=' + this.scheduler.inFlightCount +
+      '/' + this.scheduler.maxInFlight + '.',
+    );
+  }
+
   private persist(response: Js5GroupResponse): void {
     void this.store
       .put(response)
@@ -417,6 +614,29 @@ export class Js5Client {
         const message = error instanceof Error ? error.message : String(error);
         this.onLog?.(
           'IndexedDB cache write failed for ' +
+          response.archive + ':' + response.group + ': ' + message,
+        );
+      });
+  }
+
+  private persistValidated(
+    response: Js5GroupResponse,
+    crc: number,
+    version: number,
+  ): void {
+    void this.store
+      .putValidated(response, { crc, version })
+      .then(() => {
+        this.onLog?.(
+          'Cached validated JS5 group ' +
+          response.archive + ':' + response.group +
+          ' in IndexedDB.',
+        );
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.onLog?.(
+          'IndexedDB validated-group write failed for ' +
           response.archive + ':' + response.group + ': ' + message,
         );
       });
@@ -457,10 +677,23 @@ export class Js5Client {
       });
   }
 
+  private resetBootstrapState(): void {
+    this.decoder.reset();
+    this.masterIndex = null;
+    this.pendingArchiveIndices.clear();
+    this.pendingArchiveDecodes.clear();
+    this.archiveIndexPayloads.clear();
+    this.archiveReferenceTables.clear();
+    this.archiveIndexTotal = 0;
+  }
+
   private fail(error: unknown): void {
     const message = error instanceof Error ? error.message : String(error);
     this.onLog?.('JS5 protocol error: ' + message);
     this.setState('error');
+    this.scheduler.cancelAll(
+      new Error('JS5 request queue cancelled after protocol error.'),
+    );
     this.transport.disconnect();
   }
 

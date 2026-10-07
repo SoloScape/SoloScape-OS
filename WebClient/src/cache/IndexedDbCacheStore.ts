@@ -12,6 +12,14 @@ export interface CachedJs5Group {
   compression: number;
   size: number;
   container: ArrayBuffer;
+  validated: boolean;
+  crc: number | null;
+  version: number | null;
+  /**
+   * On-disk cache representation for ordinary archive groups.
+   * Includes the restored two-byte version trailer when available.
+   */
+  cacheFile: ArrayBuffer | null;
   updatedAt: number;
 }
 
@@ -28,6 +36,12 @@ interface CachedReferenceTable {
   updatedAt: number;
 }
 
+export interface ValidatedJs5GroupMetadata {
+  crc: number;
+  version: number;
+  cacheFile?: Uint8Array;
+}
+
 const DATABASE_NAME = 'soloscape-web-cache';
 const DATABASE_VERSION = 2;
 const GROUP_STORE = 'js5-groups';
@@ -37,22 +51,26 @@ export class IndexedDbCacheStore {
   private databasePromise: Promise<IDBDatabase> | null = null;
 
   async put(response: Js5GroupResponse): Promise<void> {
-    const database = await this.open();
-    const transaction = database.transaction(GROUP_STORE, 'readwrite');
-    const store = transaction.objectStore(GROUP_STORE);
+    await this.putRecord(response, {
+      validated: false,
+      crc: null,
+      version: null,
+      cacheFile: null,
+    });
+  }
 
-    const record: CachedJs5Group = {
-      key: js5GroupKey(response.archive, response.group),
-      archive: response.archive,
-      group: response.group,
-      compression: response.compression,
-      size: response.size,
-      container: response.container.slice().buffer as ArrayBuffer,
-      updatedAt: Date.now(),
-    };
-
-    store.put(record);
-    await transactionComplete(transaction);
+  async putValidated(
+    response: Js5GroupResponse,
+    metadata: ValidatedJs5GroupMetadata,
+  ): Promise<void> {
+    await this.putRecord(response, {
+      validated: true,
+      crc: metadata.crc,
+      version: metadata.version,
+      cacheFile: metadata.cacheFile
+        ? toArrayBuffer(metadata.cacheFile)
+        : null,
+    });
   }
 
   async get(
@@ -102,6 +120,32 @@ export class IndexedDbCacheStore {
     await transactionComplete(transaction);
   }
 
+  private async putRecord(
+    response: Js5GroupResponse,
+    validation: Pick<
+      CachedJs5Group,
+      'validated' | 'crc' | 'version' | 'cacheFile'
+    >,
+  ): Promise<void> {
+    const database = await this.open();
+    const transaction = database.transaction(GROUP_STORE, 'readwrite');
+    const store = transaction.objectStore(GROUP_STORE);
+
+    const record: CachedJs5Group = {
+      key: js5GroupKey(response.archive, response.group),
+      archive: response.archive,
+      group: response.group,
+      compression: response.compression,
+      size: response.size,
+      container: toArrayBuffer(response.container),
+      ...validation,
+      updatedAt: Date.now(),
+    };
+
+    store.put(record);
+    await transactionComplete(transaction);
+  }
+
   private open(): Promise<IDBDatabase> {
     if (this.databasePromise) {
       return this.databasePromise;
@@ -134,6 +178,10 @@ export class IndexedDbCacheStore {
 
     return this.databasePromise;
   }
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.slice().buffer as ArrayBuffer;
 }
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
