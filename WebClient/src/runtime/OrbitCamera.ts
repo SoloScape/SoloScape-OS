@@ -231,8 +231,10 @@ export class OrbitCamera {
     const eyeX =
       orbitX + Math.sin(yawRadians) * horizontal;
     const eyeY = anchorY + vertical;
+    // Scene Z is the reflection of Jagex/world Z. Apply the same conversion
+    // to cam_follow so Jagex yaw remains authoritative without mirroring view.
     const eyeZ =
-      orbitZ - Math.cos(yawRadians) * horizontal;
+      orbitZ + Math.cos(yawRadians) * horizontal;
 
     return {
       orbitX,
