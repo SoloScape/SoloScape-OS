@@ -2,6 +2,7 @@ package org.rsmod.content.skills.agility
 
 import org.rsmod.api.player.hook.TeleportType
 import org.rsmod.api.player.protect.ProtectedAccess
+import org.rsmod.api.player.stat.agilityLvl
 import org.rsmod.api.script.onOpLoc1
 import org.rsmod.game.loc.BoundLocInfo
 import org.rsmod.map.CoordGrid
@@ -10,12 +11,16 @@ import org.rsmod.plugin.scripts.ScriptContext
 
 class AgilityPyramidEntrance : PluginScript() {
     override fun ScriptContext.startup() {
-        for (loc in ROCKS) {
-            onOpLoc1(loc) { cross(it.loc) }
+        for ((loc, level) in ROCKS) {
+            onOpLoc1(loc) { cross(it.loc, level) }
         }
     }
 
-    private suspend fun ProtectedAccess.cross(loc: BoundLocInfo) {
+    private suspend fun ProtectedAccess.cross(loc: BoundLocInfo, level: Int) {
+        if (player.agilityLvl < level) {
+            mes("You need an Agility level of $level to climb these rocks.")
+            return
+        }
         val dest = destination(loc.coords) ?: return
         faceSquare(loc.coords)
         anim(CLIMB)
@@ -29,9 +34,9 @@ class AgilityPyramidEntrance : PluginScript() {
         const val CROSS_TICKS = 3
 
         val ROCKS =
-            listOf(
-                "loc.ntk_agility_climbing_rocks_1",
-                "loc.ntk_agility_climbing_rocks_2",
+            mapOf(
+                "loc.ntk_agility_climbing_rocks_1" to 1,
+                "loc.ntk_agility_climbing_rocks_2" to 30,
             )
 
         fun destination(loc: CoordGrid): CoordGrid? {
