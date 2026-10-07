@@ -5,7 +5,6 @@ import dev.openrune.rscm.RSCM
 import dev.openrune.rscm.RSCM.asRSCM
 import dev.openrune.rscm.RSCMType
 import dev.openrune.types.ItemServerType
-import dev.openrune.util.Wearpos
 import org.rsmod.api.config.refs.BaseParams
 
 /**
@@ -15,22 +14,41 @@ import org.rsmod.api.config.refs.BaseParams
  * The same cache stat requirements used by normal HeldEquipOp are checked here before the bot is
  * seeded. If a preferred style item cannot be equipped, we choose the highest-value tradeable
  * item from a curated equipment family at the same wear position that the bot can equip without
- * exceeding the preferred item's value. Weapons additionally keep the same weapon category.
+ * exceeding the preferred item's value. Weapon families are curated explicitly so low-stat bots
+ * can step down across weapon classes instead of becoming unarmed.
  *
  * Unclassified items deliberately have no automatic fallback. Omitting an unusable item is safer
  * than allowing an unrelated high-value cache item to leak into an economy-facing PvP loadout.
  */
 internal object BotPvpEquipmentBudget {
     private val fallbackFamilies: List<Set<String>> = listOf(
-        setOf("Torva full helm", "Dharok's helm", "Helm of neitiznot", "Rune full helm", "Gilded full helm"),
-        setOf("Torva platebody", "Dharok's platebody", "Torag's platebody", "Fighter torso", "Rune platebody", "Gilded platebody"),
-        setOf("Torva platelegs", "Dharok's platelegs", "Torag's platelegs", "Rune platelegs", "Gilded platelegs"),
-        setOf("Ancestral hat", "Ahrim's hood", "Mystic hat", "Elder chaos hood"),
-        setOf("Ancestral robe top", "Ahrim's robetop", "Mystic robe top", "Elder chaos top"),
-        setOf("Ancestral robe bottom", "Ahrim's robeskirt", "Mystic robe bottom", "Elder chaos robe"),
-        setOf("Masori mask", "Crystal helm", "Karil's coif", "Archer helm"),
-        setOf("Masori body", "Crystal body", "Karil's leathertop", "Black d'hide body"),
-        setOf("Masori chaps", "Crystal legs", "Karil's leatherskirt", "Black d'hide chaps"),
+        setOf(
+            "Torva full helm", "Dharok's helm", "Helm of neitiznot", "Rune full helm",
+            "Gilded full helm", "Adamant full helm", "Mithril full helm", "Steel full helm",
+            "Iron full helm", "Bronze full helm",
+        ),
+        setOf(
+            "Torva platebody", "Dharok's platebody", "Torag's platebody", "Fighter torso",
+            "Rune platebody", "Gilded platebody", "Adamant platebody", "Mithril platebody",
+            "Steel platebody", "Iron platebody", "Bronze platebody",
+        ),
+        setOf(
+            "Torva platelegs", "Dharok's platelegs", "Torag's platelegs", "Rune platelegs",
+            "Gilded platelegs", "Adamant platelegs", "Mithril platelegs", "Steel platelegs",
+            "Iron platelegs", "Bronze platelegs",
+        ),
+        setOf("Ancestral hat", "Ahrim's hood", "Mystic hat", "Elder chaos hood", "Wizard hat"),
+        setOf("Ancestral robe top", "Ahrim's robetop", "Mystic robe top", "Elder chaos top", "Wizard robe"),
+        setOf("Ancestral robe bottom", "Ahrim's robeskirt", "Mystic robe bottom", "Elder chaos robe", "Blue skirt"),
+        setOf("Masori mask", "Crystal helm", "Karil's coif", "Archer helm", "Coif", "Leather cowl"),
+        setOf(
+            "Masori body", "Crystal body", "Karil's leathertop", "Black d'hide body",
+            "Green d'hide body", "Studded body", "Leather body",
+        ),
+        setOf(
+            "Masori chaps", "Crystal legs", "Karil's leatherskirt", "Black d'hide chaps",
+            "Green d'hide chaps", "Studded chaps", "Leather chaps",
+        ),
         setOf("Primordial boots", "Dragon boots", "Rune boots", "Gilded boots"),
         setOf("Pegasian boots", "Ranger boots"),
         setOf("Eternal boots", "Infinity boots", "Mystic boots"),
@@ -45,10 +63,24 @@ internal object BotPvpEquipmentBudget {
             "Saradomin cape(i)", "Guthix cape(i)", "Zamorak cape(i)",
             "Saradomin cape", "Guthix cape", "Zamorak cape",
         ),
-        setOf("Zaryte crossbow", "Armadyl crossbow", "Dragon crossbow", "Rune crossbow"),
-        setOf("Bow of faerdhinen", "Crystal bow", "Magic shortbow (i)", "Magic shortbow"),
-        setOf("Volatile nightmare staff", "Kodai wand", "Toxic staff of the dead", "Ancient staff"),
-        setOf("Ghrazi rapier", "Ursine chainmace (u)", "Abyssal whip", "Dragon scimitar"),
+        setOf(
+            "Zaryte crossbow", "Armadyl crossbow", "Dragon crossbow", "Rune crossbow",
+            "Adamant crossbow", "Mithril crossbow", "Steel crossbow", "Iron crossbow",
+            "Bronze crossbow", "Crossbow",
+        ),
+        setOf(
+            "Bow of faerdhinen", "Crystal bow", "Magic shortbow (i)", "Magic shortbow",
+            "Maple shortbow", "Willow shortbow", "Oak shortbow", "Shortbow",
+        ),
+        setOf(
+            "Volatile nightmare staff", "Kodai wand", "Toxic staff of the dead", "Ancient staff",
+            "Mystic fire staff", "Magic staff", "Staff of fire", "Staff",
+        ),
+        setOf(
+            "Ghrazi rapier", "Ursine chainmace (u)", "Abyssal whip", "Dragon scimitar",
+            "Rune scimitar", "Adamant scimitar", "Mithril scimitar", "Steel scimitar",
+            "Iron scimitar", "Bronze scimitar",
+        ),
         setOf("Avernic defender", "Dragon defender", "Rune defender"),
     ).map { family -> family.mapTo(hashSetOf()) { it.lowercase() } }
 
@@ -181,7 +213,6 @@ internal object BotPvpEquipmentBudget {
     ): ItemServerType? {
         val ceiling = value(preferred)
         if (ceiling <= 0) return null
-        val weaponSlot = preferred.wearpos1 == Wearpos.RightHand.slot
         return ServerCacheManager.getItemTypes()
             .asSequence()
             .filter { it.id != preferred.id }
@@ -192,7 +223,6 @@ internal object BotPvpEquipmentBudget {
             }
             .filter { sameFallbackFamily(preferred.name, it.name) }
             .filter { it.wearpos1 == preferred.wearpos1 }
-            .filter { !weaponSlot || it.weaponCategory == preferred.weaponCategory }
             .filter { canEquip(it, levels) }
             .filter { value(it) in 1..ceiling }
             .maxWithOrNull(compareBy<ItemServerType>({ value(it) }, { it.id }))
