@@ -2,6 +2,10 @@ import './style.css';
 import { IndexedDbCacheStore } from './cache/IndexedDbCacheStore';
 import { Js5Client } from './cache/Js5Client';
 import {
+  loadJs5StartupAssets,
+  type Js5StartupAssets,
+} from './cache/Js5StartupAssets';
+import {
   presentJs5Archives,
 } from './cache/Js5MasterIndex';
 import { WebSocketTransport } from './net/WebSocketTransport';
@@ -37,7 +41,7 @@ const canvas = requireElement<HTMLCanvasElement>('#game');
 const context = requireCanvasContext(canvas);
 
 const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-const defaultGatewayUrl = scheme + '://' + location.hostname + ':8080';
+const defaultGatewayUrl = scheme + '://' + location.hostname + ':8081';
 urlInput.value =
   localStorage.getItem('soloscape.gatewayUrl') ?? defaultGatewayUrl;
 
@@ -117,8 +121,27 @@ js5.onBootstrapComplete = (index) => {
   drawClientStatus(
     'JS5 cache index ready',
     presentJs5Archives(index).length +
-      ' present archive reference tables received',
+      ' reference tables ready; loading startup definitions',
   );
+
+  void loadJs5StartupAssets(js5, appendLog)
+    .then((assets) => {
+      (window as SoloScapeDebugWindow).soloscapeStartupAssets = assets;
+      drawClientStatus(
+        'Startup definitions ready',
+        assets.npcDefinitionFiles.size + ' NPC files; ' +
+          assets.varbitDefinitions.size + ' varbits',
+      );
+    })
+    .catch((error: unknown) => {
+      const message =
+        error instanceof Error ? error.message : String(error);
+      appendLog('Startup definition load failed: ' + message);
+      drawClientStatus(
+        'Startup definition load failed',
+        'See the transport log for details',
+      );
+    });
 };
 
 js5.onGroup = (response) => {
@@ -127,7 +150,7 @@ js5.onGroup = (response) => {
   }
 
   appendLog(
-    'Cache group available to client code: ' +
+    'Raw JS5 cache group received: ' +
     response.archive + ':' + response.group,
   );
 };
@@ -141,6 +164,7 @@ connectButton.addEventListener('click', async () => {
     js5.state === 'ready'
   ) {
     js5.disconnect();
+    (window as SoloScapeDebugWindow).soloscapeStartupAssets = undefined;
     drawClientStatus(
       'JS5 disconnected',
       'Connect again to restart the cache bootstrap',
@@ -174,6 +198,7 @@ canvas.addEventListener('pointerdown', (event) => {
 
 type SoloScapeDebugWindow = Window & {
   soloscapeJs5?: Js5Client;
+  soloscapeStartupAssets?: Js5StartupAssets;
 };
 
 (window as SoloScapeDebugWindow).soloscapeJs5 = js5;

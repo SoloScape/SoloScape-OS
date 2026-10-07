@@ -25,6 +25,7 @@ import {
   type Js5ReferenceGroup,
   type Js5ReferenceTable,
 } from './Js5ReferenceTable';
+import { unpackJs5Group } from './Js5Group';
 import {
   Js5RequestScheduler,
   type Js5ScheduledRequest,
@@ -83,6 +84,7 @@ export interface Js5DownloadedGroup {
   container: Uint8Array;
   cacheFile: Uint8Array;
   data: Uint8Array;
+  files: ReadonlyMap<number, Uint8Array>;
 }
 
 export class Js5Client {
@@ -249,6 +251,7 @@ export class Js5Client {
     );
 
     const decoded = await decodeJs5Container(response.container);
+    const files = unpackJs5Group(decoded.data, metadata);
 
     await this.store.putValidated(response, {
       crc: validation.crc,
@@ -257,10 +260,10 @@ export class Js5Client {
     });
 
     this.onLog?.(
-      'Decoded and cached JS5 group ' + archive + ':' + group +
+      'Decoded, unpacked and cached JS5 group ' + archive + ':' + group +
       ': compression=' + decoded.compression + ' ' +
       decoded.compressedSize + ' -> ' +
-      decoded.uncompressedSize + ' bytes.',
+      decoded.uncompressedSize + ' bytes; files=' + files.size + '.',
     );
 
     return {
@@ -275,7 +278,36 @@ export class Js5Client {
       container: response.container.slice(),
       cacheFile: cacheFile.slice(),
       data: decoded.data.slice(),
+      files: new Map(
+        Array.from(
+          files,
+          ([fileId, fileData]) => [fileId, fileData.slice()] as const,
+        ),
+      ),
     };
+  }
+
+  async downloadFile(
+    archive: number,
+    group: number,
+    file: number,
+    urgent = true,
+  ): Promise<Uint8Array> {
+    const downloaded = await this.downloadGroup(
+      archive,
+      group,
+      urgent,
+    );
+    const data = downloaded.files.get(file);
+
+    if (!data) {
+      throw new Error(
+        'JS5 group ' + archive + ':' + group +
+        ' does not contain file ' + file + '.',
+      );
+    }
+
+    return data.slice();
   }
 
   getRequestQueueStatus(): Js5RequestQueueStatus {

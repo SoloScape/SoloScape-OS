@@ -29,7 +29,7 @@ function rawDataToBuffer(data: RawData): Buffer {
 }
 
 const wsHost = process.env.WS_HOST ?? '127.0.0.1';
-const wsPort = envPort('WS_PORT', 8080);
+const wsPort = envPort('WS_PORT', 8081);
 const gameHost = process.env.GAME_HOST ?? '127.0.0.1';
 const gamePort = envPort('GAME_PORT', 43594);
 const allowedOrigin = process.env.WS_ALLOWED_ORIGIN;

@@ -30,7 +30,9 @@ After bootstrap, client code can select an archive/group:
       -> validate group CRC
       -> restore + validate group version trailer
       -> decode container
+      -> unpack group into reference-table file ids
       -> persist validated group
+      -> typed startup definition loading
 
 The observed SoloScape cache has 25 master-index slots. Slots 16 and 23 are
 empty, leaving 23 present archive reference tables.
@@ -56,6 +58,18 @@ The scheduler:
 
 The same scheduler now handles reference-table bootstrap traffic and ordinary
 asset groups.
+
+## Development ports
+
+The embedded Central HTTP service uses port 8080. The WebSocket gateway therefore
+defaults to 8081 and forwards to the game/JS5 TCP service on 43594:
+
+    Central HTTP       127.0.0.1:8080
+    WebSocket gateway  127.0.0.1:8081
+    Game/JS5 TCP       127.0.0.1:43594
+
+Override the gateway with WS_HOST / WS_PORT and the upstream with GAME_HOST /
+GAME_PORT when needed.
 
 ## Reference-table CRC/version validation
 
@@ -98,6 +112,42 @@ from ordinary groups before transmitting them over JS5. The browser therefore:
 
 This matches the repository's OpenRS2-compatible cache code, which strips the
 version trailer for JS5 delivery and restores it for disk-cache storage.
+
+## Group/file unpacking
+
+After container validation and decompression, ordinary groups are split using
+the same layout as OpenRS2 Group.unpack():
+
+- single-file groups map the complete decoded payload to the one reference-table
+  file id;
+- multi-file groups read the final stripe-count byte;
+- the preceding signed 32-bit delta table reconstructs each file's length for
+  every stripe;
+- sparse reference-table file ids are preserved.
+
+downloadGroup() now returns a files map keyed by the real file id, and
+downloadFile(archive, group, file) returns an individual file.
+
+## Typed startup definitions/assets
+
+Once the reference-table bootstrap reaches ready, the browser automatically
+loads the same config groups used by Client/cache/OldSchoolCache.kt:
+
+    archive 2 / group 9   NPC definition files
+    archive 2 / group 14  varbit definitions
+
+NPC files are exposed as typed definition assets ready for the future NPC
+decoder. Varbits are fully decoded into id/baseVar/startBit/endBit records using
+the revision-240 opcode format already implemented by the desktop cache client.
+
+The resulting object is exposed as:
+
+    window.soloscapeStartupAssets
+
+with:
+
+    npcDefinitionFiles
+    varbitDefinitions
 
 ## Archive reference-table parser
 
@@ -166,9 +216,16 @@ Download, validate, decode, and persist an actual group:
     group.crc
     group.version
     group.data
+    group.files.get(0)
 
-Group/file unpacking is not implemented yet, so group.data is the decoded group
-payload rather than individual files.
+Fetch one file directly:
+
+    const file = await window.soloscapeJs5.downloadFile(2, 9, 0)
+
+After automatic startup loading:
+
+    window.soloscapeStartupAssets?.npcDefinitionFiles
+    window.soloscapeStartupAssets?.varbitDefinitions
 
 ## Expected live log
 
@@ -184,9 +241,12 @@ An ordinary group download adds:
     Queued JS5 cache group 2:9 expected-crc=0x........ version=...
     TX JS5 scheduled request 2:9 attempt=1 priority=urgent in-flight=1/8.
     Validated JS5 cache group 2:9: crc=0x........ version=... trailer=...
-    Decoded and cached JS5 group 2:9: compression=2 ... -> ... bytes.
+    Decoded, unpacked and cached JS5 group 2:9: compression=2 ... -> ... bytes; files=...
+    Loading typed startup definition groups 2:9 (npc) and 2:14 (varbit).
+    Typed startup definitions ready: ... NPC definition files; ... varbit definitions.
 
-CRC/version failures are rejected and the invalid group is not persisted.
+CRC/version or group-unpack failures are rejected and invalid groups are not
+exposed as startup assets.
 
 ## Tests
 
@@ -198,8 +258,9 @@ From WebClient:
 
 Tests cover stream fragmentation/continuations, master-index parsing,
 container decoding, reference-table parsing, CRC/version validation, version
-trailer handling, scheduler concurrency/deduplication, timeout retries and
-cancellation.
+trailer handling, scheduler concurrency/deduplication, timeout retries,
+cancellation, single/multi-stripe group unpacking, sparse file ids and typed
+startup varbit decoding.
 
 ## M1 status
 
@@ -216,11 +277,13 @@ Complete so far:
 - per-group CRC/version-trailer validation
 - validated group persistence in IndexedDB
 - structured reference-table persistence in IndexedDB
+- group/file unpacking with sparse file-id preservation
+- typed startup definition assets
+- revision-240 varbit definition decoding
 
 Next:
 
-- group/file unpacking
-- typed startup definitions/assets
+- game login / server seed
 
 ## Reference format
 
