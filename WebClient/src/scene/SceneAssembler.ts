@@ -131,7 +131,13 @@ export function assembleScene(
   maps: readonly LoadedMapSquare[],
   assets: LoadedSceneAssets,
   materials: SceneFloorMaterials | null = null,
+  maxVisibleLevel = LEVEL_COUNT - 1,
 ): AssembledScene {
+  const visibleLevel = clamp(
+    Math.trunc(maxVisibleLevel),
+    0,
+    LEVEL_COUNT - 1,
+  );
   const originTileX = (rebuild.zoneX - SCENE_ZONE_RADIUS) * SCENE_ZONE_SIZE;
   const originTileZ = (rebuild.zoneZ - SCENE_ZONE_RADIUS) * SCENE_ZONE_SIZE;
   const mapLookup = createMapLookup(maps);
@@ -152,7 +158,7 @@ export function assembleScene(
     for (const map of maps) {
       const mapBaseX = map.mapSquare.x * MAP_SIZE;
       const mapBaseZ = map.mapSquare.z * MAP_SIZE;
-      for (let level = 0; level < LEVEL_COUNT; level += 1) {
+      for (let level = 0; level <= visibleLevel; level += 1) {
         for (let localX = 0; localX < MAP_SIZE; localX += 1) {
           const worldX = mapBaseX + localX;
           if (worldX < originTileX || worldX >= maxTileX) {
@@ -185,6 +191,9 @@ export function assembleScene(
       }
 
       for (const location of map.locations) {
+        if (location.level > visibleLevel) {
+          continue;
+        }
         const sourceTileX = mapBaseX + location.localX;
         const sourceTileZ = mapBaseZ + location.localZ;
         if (
@@ -223,7 +232,10 @@ export function assembleScene(
     }
   } else {
     for (const placement of rebuild.zones) {
-      if (!placement) {
+      if (
+        !placement ||
+        placement.destinationLevel > visibleLevel
+      ) {
         continue;
       }
 
