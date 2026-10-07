@@ -146,7 +146,7 @@ object BotPvpRiskLoadouts {
         p(
             BotPvpRiskTier.Average, BotPvpLoadoutRole.Hybrid,
             "Ahrim's switches, Karil's switches, Toxic staff of the dead, Dragon crossbow, Abyssal whip, Armadyl godsword",
-            "Dark crab, Shark, Cooked karambwan, Anglerfish, Saradomin brew, Super restore, Super combat potion(4), Blighted ranging potion",
+            "Dark crab, Shark, Cooked karambwan, Anglerfish, Saradomin brew, Super restore, Super combat potion(4), Blighted ranging potion, Magic potion",
         ),
 
         p(
@@ -172,7 +172,7 @@ object BotPvpRiskLoadouts {
         p(
             BotPvpRiskTier.Risker, BotPvpLoadoutRole.Hybrid,
             "Crystal switches, Ahrim's switches, Toxic staff of the dead / Kodai wand, Bow of Faerdhinen, Voidwaker, Dragon defender",
-            "Anglerfish, Dark crab, Cooked karambwan, Saradomin brew, Super restore, Super combat potion, Ranging potion",
+            "Anglerfish, Dark crab, Cooked karambwan, Saradomin brew, Super restore, Super combat potion, Ranging potion, Imbued heart",
         ),
 
         p(
@@ -202,7 +202,7 @@ object BotPvpRiskLoadouts {
         p(
             BotPvpRiskTier.Max, BotPvpLoadoutRole.Hybrid,
             "Ancestral switches, Masori switches, Toxic staff of the dead / Kodai wand, Zaryte crossbow, Voidwaker, Avernic defender",
-            "Anglerfish, Dark crab, Cooked karambwan, Saradomin brew, Super restore, Super combat potion, Ranging potion",
+            "Anglerfish, Dark crab, Cooked karambwan, Saradomin brew, Super restore, Super combat potion, Ranging potion, Smouldering heart",
             preferUnskulled = true,
         ),
     )
