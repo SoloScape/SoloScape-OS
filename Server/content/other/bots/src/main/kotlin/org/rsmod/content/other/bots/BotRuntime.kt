@@ -118,7 +118,7 @@ class BotPopulation @Inject constructor(
             if (registry.count() >= MAX_BOTS) return added
             val identity = freeIdentity()
             val difficulty = if (mode.isPvp) {
-                BotPvpDifficulty.configured(difficultySetting, nextPvpPopulationIndex++)
+                BotPvpDifficulty.configured(difficultySetting, nextPvpPopulationIndex)
                     ?: BotPvpDifficulty.Standard
             } else {
                 BotPvpDifficulty.Standard
@@ -179,6 +179,7 @@ class BotPopulation @Inject constructor(
                 VarPlayerIntMapSetter.set(player, "varp.option_run", 1)
                 player.rebuildAppearance()
                 added++
+                if (mode.isPvp) nextPvpPopulationIndex++
             } catch (error: Exception) {
                 logger.error(error) { "Could not initialize bot $name" }
                 bots.remove(player)
