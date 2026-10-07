@@ -138,7 +138,7 @@ class BotPopulation @Inject constructor(
                 members = membersWorld
                 slotId = slot
                 coords = when (mode) {
-                    BotMode.Wilderness -> checkNotNull(hotspot).spawn(random)
+                    BotMode.Wilderness -> pvpCombat.spawnPoint(checkNotNull(hotspot))
                     BotMode.ClanOne -> CoordGrid(3217, 3682)
                     BotMode.ClanTwo -> CoordGrid(3232, 3682)
                     else -> initial.start
