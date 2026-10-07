@@ -677,11 +677,15 @@ class MeshBuilder {
 }
 
 function modelColor(faceColor: number, texture: number): Rgb {
+  if (texture >= 0) {
+    // For textured faces this attribute is a light multiplier, not a tint.
+    // The fragment shader multiplies it into the sampled cache texel.
+    return { r: 232, g: 232, b: 232 };
+  }
   const hue = ((faceColor >>> 10) & 0x3f) / 64;
   const saturation = ((faceColor >>> 7) & 0x7) / 8;
   const lightness = (faceColor & 0x7f) / 128;
-  const rgb = hslToRgb(hue, saturation, lightness);
-  return texture >= 0 ? scaleRgb(rgb, 0.86) : rgb;
+  return hslToRgb(hue, saturation, lightness);
 }
 
 function shadeByTriangleNormal(
