@@ -20,6 +20,7 @@ export interface TitleScreenAssets {
   readonly logo: CacheSpriteFrame;
   readonly titleBox: CacheSpriteFrame;
   readonly titleButton: CacheSpriteFrame;
+  readonly runes: readonly CacheSpriteFrame[];
   readonly plain12: CacheFontAsset;
   readonly bold12: CacheFontAsset;
   readonly provenance: Readonly<{
@@ -27,6 +28,7 @@ export interface TitleScreenAssets {
     logo: string;
     titleBox: string;
     titleButton: string;
+    runes: string;
     plain12: string;
     bold12: string;
   }>;
@@ -61,6 +63,11 @@ export async function loadTitleScreenAssets(
     TITLE_SPRITE_ARCHIVE,
     ['titlebutton'],
   );
+  const runes = resolveNamedGroup(
+    js5,
+    TITLE_SPRITE_ARCHIVE,
+    ['runes'],
+  );
   const plain12Sprites = resolveNamedGroup(
     js5,
     TITLE_SPRITE_ARCHIVE,
@@ -86,6 +93,7 @@ export async function loadTitleScreenAssets(
   logResolved(log, 'title logo', TITLE_SPRITE_ARCHIVE, logo);
   logResolved(log, 'title box', TITLE_SPRITE_ARCHIVE, titleBox);
   logResolved(log, 'title button', TITLE_SPRITE_ARCHIVE, titleButton);
+  logResolved(log, 'login rune masks', TITLE_SPRITE_ARCHIVE, runes);
   logResolved(log, 'p12 sprite font', TITLE_SPRITE_ARCHIVE, plain12Sprites);
   logResolved(log, 'b12 sprite font', TITLE_SPRITE_ARCHIVE, bold12Sprites);
   logResolved(
@@ -106,6 +114,7 @@ export async function loadTitleScreenAssets(
     logoGroup,
     titleBoxGroup,
     titleButtonGroup,
+    runesGroup,
     plain12SpriteGroup,
     bold12SpriteGroup,
     plain12MetricGroup,
@@ -115,6 +124,7 @@ export async function loadTitleScreenAssets(
     js5.downloadGroup(TITLE_SPRITE_ARCHIVE, logo.group),
     js5.downloadGroup(TITLE_SPRITE_ARCHIVE, titleBox.group),
     js5.downloadGroup(TITLE_SPRITE_ARCHIVE, titleButton.group),
+    js5.downloadGroup(TITLE_SPRITE_ARCHIVE, runes.group),
     js5.downloadGroup(TITLE_SPRITE_ARCHIVE, plain12Sprites.group),
     js5.downloadGroup(TITLE_SPRITE_ARCHIVE, bold12Sprites.group),
     js5.downloadGroup(TITLE_FONT_METRICS_ARCHIVE, plain12Metrics.group),
@@ -134,6 +144,9 @@ export async function loadTitleScreenAssets(
   const titleButtonFrames = decodeCacheSpriteGroup(
     requireGroupFile(titleButtonGroup.files, titleButton.name),
   );
+  const runeFrames = decodeCacheSpriteGroup(
+    requireGroupFile(runesGroup.files, runes.name),
+  );
   const plain12Glyphs = decodeCacheSpriteGroup(
     requireGroupFile(plain12SpriteGroup.files, plain12Sprites.name),
   );
@@ -149,11 +162,14 @@ export async function loadTitleScreenAssets(
     TITLE_SPRITE_ARCHIVE + ':' + titleBox.group + ' (' + titleBox.name + ')';
   const titleButtonLabel =
     TITLE_SPRITE_ARCHIVE + ':' + titleButton.group + ' (' + titleButton.name + ')';
+  const runesLabel =
+    TITLE_SPRITE_ARCHIVE + ':' + runes.group + ' (' + runes.name + ')';
 
   log?.(
     'Cache title screen assets decoded from SERVER cache: ' +
       backgroundLabel + ', ' + logoLabel + ', ' +
-      titleBoxLabel + ', ' + titleButtonLabel + '.',
+      titleBoxLabel + ', ' + titleButtonLabel + ', ' +
+      runesLabel + ' (' + runeFrames.length + ' masks).',
   );
 
   return {
@@ -161,6 +177,7 @@ export async function loadTitleScreenAssets(
     logo: requireFirstSprite(logoFrames, logo.name),
     titleBox: requireFirstSprite(titleBoxFrames, titleBox.name),
     titleButton: requireFirstSprite(titleButtonFrames, titleButton.name),
+    runes: requireSprites(runeFrames, runes.name),
     plain12: {
       name: plain12Sprites.name,
       glyphs: plain12Glyphs,
@@ -182,6 +199,7 @@ export async function loadTitleScreenAssets(
       logo: logoLabel,
       titleBox: titleBoxLabel,
       titleButton: titleButtonLabel,
+      runes: runesLabel,
       plain12:
         TITLE_SPRITE_ARCHIVE + ':' + plain12Sprites.group +
         ' + ' + TITLE_FONT_METRICS_ARCHIVE + ':' +
@@ -250,6 +268,16 @@ function requireGroupFile(
       ' expected file 0 or one unambiguous file; found ' +
       files.size + ' files.',
   );
+}
+
+function requireSprites(
+  sprites: readonly CacheSpriteFrame[],
+  label: string,
+): readonly CacheSpriteFrame[] {
+  if (sprites.length === 0) {
+    throw new Error('Cache sprite group ' + label + ' is empty.');
+  }
+  return sprites;
 }
 
 function requireFirstSprite(
