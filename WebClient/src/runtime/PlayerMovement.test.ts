@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   FinePlayerMovement,
   interpolateFineCoordinate,
+  jagexYawToRadians,
   selectWalkLocomotion,
   tileToFine,
 } from './PlayerMovement';
@@ -40,6 +41,12 @@ test('run waypoints double the movement step', () => {
     (walk.snapshot().fineX - tileToFine(3200)) * 2,
   );
   assert.equal(run.snapshot().locomotion, 'run');
+});
+
+test('converts clockwise Jagex yaw into reflected WebGL scene rotation', () => {
+  assert.equal(jagexYawToRadians(0), 0);
+  assert.equal(jagexYawToRadians(512), -Math.PI / 2);
+  assert.equal(jagexYawToRadians(1024), -Math.PI);
 });
 
 test('selects classic directional walk poses from dstYaw - yaw', () => {
