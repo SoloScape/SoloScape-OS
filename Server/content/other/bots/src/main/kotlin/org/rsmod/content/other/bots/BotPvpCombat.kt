@@ -28,6 +28,14 @@ class BotPvpCombat @Inject constructor(
     private val states = LinkedHashMap<Player, BotPvpState>()
     private val random = Random.Default
 
+    fun spawnPoint(hotspot: BotPvpHotspot): CoordGrid {
+        repeat(24) {
+            val candidate = hotspot.roam(random)
+            if (candidate.wildernessLevel(areas) > 0) return candidate
+        }
+        return hotspot.spawn(random)
+    }
+
     fun register(
         player: Player,
         identity: Int,
@@ -117,7 +125,7 @@ class BotPvpCombat @Inject constructor(
                 state.restockAt = -1
                 state.retreatStartedAt = -1
                 state.returning = if (wilderness) {
-                    val destination = BotPvpHotspots.get(state.hotspotId)?.spawn(random) ?: patrol
+                    val destination = BotPvpHotspots.get(state.hotspotId)?.let(::spawnPoint) ?: patrol
                     !native.relocate(player, destination)
                 } else {
                     true
@@ -364,11 +372,7 @@ class BotPvpCombat @Inject constructor(
             patrol.z + random.nextInt(-7, 8),
             patrol.level,
         )
-        repeat(12) {
-            val candidate = hotspot.roam(random)
-            if (candidate.wildernessLevel(areas) > 0) return candidate
-        }
-        return hotspot.spawn(random)
+        return spawnPoint(hotspot)
     }
 
     private fun retreat(player: Player, state: BotPvpState, cycle: Int): String {
