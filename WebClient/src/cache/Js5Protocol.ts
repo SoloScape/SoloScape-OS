@@ -61,6 +61,22 @@ export function encodeJs5GroupRequest(
   return packet;
 }
 
+/**
+ * Convenience accessor retained for stream-decoder tests and callers that know
+ * they are handling an uncompressed JS5 response.
+ *
+ * General cache-container decoding should use decodeJs5Container().
+ */
+export function getUncompressedJs5Payload(
+  response: Js5GroupResponse,
+): Uint8Array | null {
+  if (response.compression !== 0) {
+    return null;
+  }
+
+  return response.container.subarray(5, 5 + response.size);
+}
+
 export function js5GroupKey(archive: number, group: number): string {
   return archive + ':' + group;
 }
