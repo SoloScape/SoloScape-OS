@@ -4,7 +4,10 @@ import {
   encodeJs5Handshake,
   getUncompressedJs5Payload,
 } from './Js5Protocol';
-import { Js5StreamDecoder } from './Js5StreamDecoder';
+import {
+  Js5StreamDecoder,
+  type Js5DecoderEvent,
+} from './Js5StreamDecoder';
 
 test('encodes the revision 240 JS5 init packet', () => {
   const packet = encodeJs5Handshake(
@@ -58,7 +61,7 @@ test('removes 0xff continuation delimiters across fragmented chunks', () => {
   input[0] = 0;
   input.set(wire, 1);
 
-  const events = [];
+  const events: Js5DecoderEvent[] = [];
   const cuts = [1, 17, 233, 509, input.length];
   let offset = 0;
 
