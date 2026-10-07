@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   decodeInstancedRegionRebuild,
   decodeNormalRegionRebuild,
+  decodePlayerInfoInitBlock,
   tryDecodeRegionRebuildPacket,
 } from './RegionRebuildDecoder';
 
@@ -45,6 +46,61 @@ test('decodes login REBUILD_NORMAL_V2 after the 4608-byte GPI init block', () =>
     rebuild.mapSquares.some(
       (square) => square.x === 49 && square.z === 61,
     ),
+  );
+});
+
+test('decodes the login GPI local player coordinate from the first rebuild', () => {
+  const localPlayerIndex = 7;
+  const localPacked =
+    ((2 << 28) | (3210 << 14) | 3421) >>> 0;
+  const lowResolution = new Map<number, number>([
+    [1, packLowResolutionPosition(1, 25, 26)],
+    [2047, packLowResolutionPosition(3, 200, 199)],
+  ]);
+  const gpiInit = encodePlayerInfoInit(
+    localPlayerIndex,
+    localPacked,
+    lowResolution,
+  );
+  assert.equal(gpiInit.length, 4608);
+
+  const decoded = decodePlayerInfoInitBlock(
+    gpiInit,
+    localPlayerIndex,
+  );
+  assert.deepEqual(decoded.localPlayerCoord, {
+    level: 2,
+    x: 3210,
+    z: 3421,
+  });
+  assert.equal(
+    decoded.lowResolutionPositions[1],
+    packLowResolutionPosition(1, 25, 26),
+  );
+  assert.equal(decoded.lowResolutionPositions[localPlayerIndex], 0);
+  assert.equal(
+    decoded.lowResolutionPositions[2047],
+    packLowResolutionPosition(3, 200, 199),
+  );
+
+  const payload = concat(
+    gpiInit,
+    p2Alt3(500),
+    p2Alt3(7),
+    p2Alt3(400),
+  );
+  const rebuild = decodeNormalRegionRebuild(
+    payload,
+    localPlayerIndex,
+  );
+  assert.deepEqual(rebuild.playerInfoInit?.localPlayerCoord, {
+    level: 2,
+    x: 3210,
+    z: 3421,
+  });
+  assert.equal(
+    rebuild.playerInfoInit?.localPlayerIndex,
+    localPlayerIndex,
   );
 });
 
@@ -119,6 +175,37 @@ test('packet dispatcher ignores unrelated server packets', () => {
     null,
   );
 });
+
+function encodePlayerInfoInit(
+  localPlayerIndex: number,
+  packedLocal: number,
+  lowResolution: ReadonlyMap<number, number>,
+): Uint8Array {
+  const writer = new BitWriter();
+  writer.writeBits(30, packedLocal);
+  for (let index = 1; index < 2048; index += 1) {
+    if (index === localPlayerIndex) {
+      continue;
+    }
+    writer.writeBits(
+      18,
+      lowResolution.get(index) ?? 0,
+    );
+  }
+  return writer.finish();
+}
+
+function packLowResolutionPosition(
+  level: number,
+  x: number,
+  z: number,
+): number {
+  return (
+    ((level & 0x3) << 16) |
+    ((x & 0xff) << 8) |
+    (z & 0xff)
+  ) >>> 0;
+}
 
 function encodeInstancedRebuild(
   zoneX: number,
