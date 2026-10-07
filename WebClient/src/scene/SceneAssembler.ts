@@ -226,6 +226,7 @@ export function assembleScene(
           assets,
           originTileX,
           originTileZ,
+          materials,
         );
         locationPlacements += 1;
         modelInstances += result.modelInstances;
@@ -323,6 +324,7 @@ export function assembleScene(
           assets,
           originTileX,
           originTileZ,
+          materials,
         );
         locationPlacements += 1;
         modelInstances += result.modelInstances;
@@ -836,6 +838,7 @@ function appendLocation(
   assets: LoadedSceneAssets,
   originTileX: number,
   originTileZ: number,
+  materials: SceneFloorMaterials | null,
 ): { modelInstances: number; modelTriangles: number } {
   const definition = resolveRenderableDefinition(
     location.id,
@@ -893,6 +896,7 @@ function appendLocation(
         centerX,
         centerZ,
         sourceHeight,
+        materials,
       );
     }
   }
@@ -908,6 +912,7 @@ function appendModel(
   centerX: number,
   centerZ: number,
   clientGroundHeight: number,
+  materials: SceneFloorMaterials | null,
 ): number {
   let triangles = 0;
   const mirrored =
@@ -954,12 +959,25 @@ function appendModel(
     const textureUvs = texture >= 0
       ? resolveType0FaceTextureUvs(model, face, transformVertex)
       : null;
-    const renderedTexture = textureUvs ? texture : -1;
-    // Unsupported modern texture transforms (render types 1..3) must fall
-    // back to the model's packed-HSL face colour. Passing the original
-    // texture id into modelColor here made those deliberate fallback faces
-    // use the neutral textured-light colour, which rendered them white.
-    const base = modelColor(faceColor, renderedTexture);
+    const textureResident =
+      texture >= 0 &&
+      materials?.residentTextureIds.has(texture) === true;
+    const renderedTexture =
+      textureUvs && textureResident ? texture : -1;
+
+    // If a texture cannot be sampled (unsupported mapping or a sprite that
+    // failed to become resident), mirror Pix3D's missing-texel fallback by
+    // tinting the face from the texture definition's average packed-HSL.
+    // Falling back to model faceColor is often wrong for textured old-format
+    // models because that slot is intentionally replaced with 127.
+    const averageTextureHsl = texture >= 0
+      ? materials?.textureAverageRgb.get(texture)
+      : undefined;
+    const base = renderedTexture >= 0
+      ? modelColor(faceColor, renderedTexture)
+      : averageTextureHsl !== undefined
+        ? packedHslColor(averageTextureHsl)
+        : modelColor(faceColor, -1);
     const shaded = shadeByTriangleNormal(base, a, b, c);
     builder.pushTriangle(
       a,
