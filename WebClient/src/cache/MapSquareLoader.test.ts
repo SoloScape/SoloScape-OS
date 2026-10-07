@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { js5NameHash } from './Js5NameHash';
+import { MapSquareLoader } from './MapSquareLoader';
+import type { Js5Client, Js5DownloadedGroup } from './Js5Client';
 import {
   decodeMapTerrain,
   mapTerrainTileIndex,
@@ -12,6 +14,49 @@ test('hashes live-cache map group names with the JS5 name hash', () => {
   assert.equal(js5NameHash('l50_50'), -1152549421);
   assert.equal(js5NameHash('m0_0'), 3296340);
   assert.equal(js5NameHash('l255_255'), -2055329543);
+});
+
+test('loads rev-240 maps from packed mapsquare group files 0 and 1', async () => {
+  const square = { id: (50 << 8) | 50, x: 50, z: 50 };
+  const terrainBytes = new Uint8Array(4 * 64 * 64 * 2);
+  const locationBytes = Uint8Array.of(0);
+  const calls: Array<[number, number]> = [];
+
+  const downloaded: Js5DownloadedGroup = {
+    archive: 5,
+    group: square.id,
+    crc: 0,
+    version: 0,
+    trailerVersion: 0,
+    compression: 0,
+    compressedSize: terrainBytes.length,
+    uncompressedSize: terrainBytes.length,
+    container: new Uint8Array(),
+    cacheFile: new Uint8Array(),
+    data: new Uint8Array(),
+    files: new Map([
+      [0, terrainBytes],
+      [1, locationBytes],
+    ]),
+  };
+
+  const js5 = {
+    async downloadGroup(archive: number, group: number) {
+      calls.push([archive, group]);
+      return downloaded;
+    },
+  } as unknown as Js5Client;
+
+  const loaded = await new MapSquareLoader(js5).load(square);
+
+  assert.deepEqual(calls, [[5, square.id]]);
+  assert.equal(loaded.terrainGroup, square.id);
+  assert.equal(loaded.locationGroup, square.id);
+  assert.equal(loaded.locations.length, 0);
+  assert.equal(
+    loaded.terrain.explicitHeights[mapTerrainTileIndex(0, 0, 0)],
+    -1,
+  );
 });
 
 test('decodes rev-240 16-bit terrain opcodes', () => {
