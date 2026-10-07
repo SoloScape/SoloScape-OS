@@ -50,6 +50,7 @@ data class BotPvpProfile(
     val eatAtHpRatio: Double,
     val foodCharges: Int,
     val comboEatChance: Double,
+    val tripleEatChance: Double = 0.0,
     val combatMoveChance: Double,
     val switchChance: Double,
     val specUseChance: Double,
@@ -106,6 +107,7 @@ object BotPvpProfiles {
             targetStyleReaction = 4..8, specReview = ticks(600, 1000),
             freezeReview = ticks(5500, 9500), combatAction = ticks(400, 960),
             eatAtHpRatio = 0.47, foodCharges = 20, comboEatChance = 0.26,
+            tripleEatChance = 0.25,
             combatMoveChance = 0.55, switchChance = 0.75, specUseChance = 0.80,
             specSwitchChance = 0.92, specPressureHpRatio = 0.34, retreatHpRatio = 0.21,
             chaseDistanceTiles = 18, freezeFollowUpChance = 0.20, freezeUseChance = 0.32,
@@ -122,6 +124,7 @@ object BotPvpProfiles {
             targetStyleReaction = 3..5, specReview = ticks(400, 700),
             freezeReview = ticks(2400, 4800), combatAction = ticks(208, 496),
             eatAtHpRatio = 0.39, foodCharges = 24, comboEatChance = 0.62,
+            tripleEatChance = 0.60,
             combatMoveChance = 0.75, switchChance = 0.95, specUseChance = 0.98,
             specSwitchChance = 1.0, specPressureHpRatio = 0.50, retreatHpRatio = 0.14,
             chaseDistanceTiles = 24, freezeFollowUpChance = 0.50, freezeUseChance = 0.74,
@@ -155,6 +158,11 @@ object BotPvpProfiles {
             specReview = faster(base.specReview),
             combatAction = faster(base.combatAction),
             comboEatChance = (base.comboEatChance + 0.08).coerceAtMost(1.0),
+            tripleEatChance = if (base.tripleEatChance > 0.0) {
+                (base.tripleEatChance + 0.10).coerceAtMost(1.0)
+            } else {
+                0.0
+            },
             combatMoveChance = (base.combatMoveChance + 0.08).coerceAtMost(1.0),
             switchChance = (base.switchChance + 0.08).coerceAtMost(1.0),
             specUseChance = (base.specUseChance + 0.05).coerceAtMost(1.0),
