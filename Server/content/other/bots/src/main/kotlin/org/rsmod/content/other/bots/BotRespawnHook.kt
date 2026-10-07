@@ -18,7 +18,12 @@ internal object BotRespawns {
  */
 internal class BotRespawnHook
 @Inject
-constructor(private val population: BotPopulation) : PlayerRespawnHook {
+constructor(
+    private val population: BotPopulation,
+    private val pvpCombat: BotPvpCombat,
+) : PlayerRespawnHook {
     override fun respawn(player: Player): CoordGrid? =
-        BotRespawns.EDGEVILLE.takeIf { population.isPvpBot(player) }
+        BotRespawns.EDGEVILLE.takeIf {
+            population.isPvpBot(player) || pvpCombat.isRegistered(player)
+        }
 }
