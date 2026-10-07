@@ -346,10 +346,10 @@ export function assembleScene(
     {
       minX: 0,
       minY: 0,
-      minZ: 0,
+      minZ: -SCENE_DIAMETER_TILES * SCENE_TILE_SIZE,
       maxX: SCENE_DIAMETER_TILES * SCENE_TILE_SIZE,
       maxY: 1,
-      maxZ: SCENE_DIAMETER_TILES * SCENE_TILE_SIZE,
+      maxZ: 0,
     },
   );
 
@@ -843,7 +843,10 @@ function appendInstancedTerrainZone(
             destinationZoneBaseX + rotated.x - originTileX
           ) * SCENE_TILE_SIZE,
           y: -worldHeights[index]!,
-          z: (
+          // Jagex terrain uses +Z north while WebGL scene space is kept
+          // right-handed with +Y up. Reflect Z at the scene boundary to avoid
+          // mirroring the world after the client-height Y inversion.
+          z: -(
             destinationZoneBaseZ + rotated.z - originTileZ
           ) * SCENE_TILE_SIZE,
         };
@@ -909,9 +912,10 @@ function appendLocation(
   const centerX = (
     location.destinationTileX - originTileX
   ) * SCENE_TILE_SIZE + footprint.x * (SCENE_TILE_SIZE / 2);
-  const centerZ = (
-    location.destinationTileZ - originTileZ
-  ) * SCENE_TILE_SIZE + footprint.z * (SCENE_TILE_SIZE / 2);
+  const centerZ = -(
+    (location.destinationTileZ - originTileZ) * SCENE_TILE_SIZE +
+    footprint.z * (SCENE_TILE_SIZE / 2)
+  );
 
   const placements = modelPlacementsForShape(location.shape, location.angle);
   let modelInstances = 0;
@@ -986,7 +990,7 @@ function appendModel(
     sceneVertices[vertex] = {
       x: centerX + local.x,
       y: -(clientGroundHeight + local.y),
-      z: centerZ + local.z,
+      z: centerZ - local.z,
     };
   }
 
@@ -1008,7 +1012,7 @@ function appendModel(
       sceneVertices[vertex] = {
         x: centerX + local.x,
         y: -(clientGroundHeight + local.y),
-        z: centerZ + local.z,
+        z: centerZ - local.z,
       };
     }
   }
@@ -1437,7 +1441,7 @@ function transformModelVertex(
   return {
     x: centerX + local.x,
     y: -(clientGroundHeight + local.y),
-    z: centerZ + local.z,
+    z: centerZ - local.z,
   };
 }
 
@@ -2096,7 +2100,9 @@ function terrainVertex(
   return {
     x: (worldX - originTileX) * SCENE_TILE_SIZE,
     y: -heights.height(level, worldX, worldZ),
-    z: (worldZ - originTileZ) * SCENE_TILE_SIZE,
+    // Converting client negative-up Y to WebGL +Y changes handedness.
+    // Reflect Jagex +Z at the same boundary so the map is not mirrored.
+    z: -(worldZ - originTileZ) * SCENE_TILE_SIZE,
   };
 }
 
