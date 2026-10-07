@@ -89,6 +89,7 @@ class BotPopulation @Inject constructor(
         }
         Files.newInputStream(config).use { load(it) }
     }
+    private val debugMap = BotDebugMap()
     val count: Int get() = bots.size + minigames.count
     fun players(): List<Player> = bots.keys.toList()
     fun isBot(player: Player): Boolean = player in bots
@@ -96,10 +97,15 @@ class BotPopulation @Inject constructor(
 
     fun startup() {
         if (!configured.getProperty("enabled", "false").toBoolean()) return
+        if (configured.getProperty("debug.map.enabled", "true").toBoolean()) {
+            val port = configured.getProperty("debug.map.port", "7071").toIntOrNull() ?: 7071
+            debugMap.start(port.coerceIn(1, 65535))
+        }
         for (mode in BotMode.entries) {
             val count = configured.getProperty(mode.name.lowercase(), "0").toIntOrNull() ?: 0
             spawn(mode, count)
         }
+        updateDebugMap()
     }
 
     private fun spawn(mode: BotMode, requested: Int): Int {
@@ -288,6 +294,7 @@ class BotPopulation @Inject constructor(
             }
             think(bot, cycle)
         }
+        updateDebugMap()
     }
 
     private fun eat(player: Player): Boolean {
@@ -444,6 +451,23 @@ class BotPopulation @Inject constructor(
     fun removeAll() {
         bots.keys.toList().forEach(::remove)
         minigames.removeAll()
+        debugMap.stop()
+    }
+
+    private fun updateDebugMap() {
+        val points = bots.values.asSequence()
+            .filter { it.mode.isPvp }
+            .map { bot ->
+                val coords = bot.player.coords
+                BotDebugPoint(
+                    x = coords.x,
+                    y = coords.z,
+                    plane = coords.level,
+                    tier = pvpCombat.riskTier(bot.player),
+                )
+            }
+            .toList()
+        debugMap.update(points)
     }
 
     private fun remove(player: Player) {
