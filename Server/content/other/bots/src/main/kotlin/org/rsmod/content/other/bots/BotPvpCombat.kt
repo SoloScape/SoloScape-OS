@@ -121,6 +121,8 @@ class BotPvpCombat @Inject constructor(
 
     fun riskTier(player: Player): BotPvpRiskTier? = states[player]?.risk?.tier
 
+    fun isRegistered(player: Player): Boolean = player in states
+
     fun recoverStuck(player: Player, hotspot: BotPvpHotspot): Boolean {
         if (player.isInCombat() || player.isDelayed || player.isAccessProtected) return false
         states[player]?.let { disengage(player, it) }
@@ -150,6 +152,15 @@ class BotPvpCombat @Inject constructor(
             native.protectItem(player, enabled = true)
         }
         if (state.dead) {
+            // PlayerDeath's hook should already place Wilderness bots in Edgeville. Keep this
+            // runtime fallback authoritative as well: if another respawn hook/order or an older
+            // death path leaves the synthetic player at the global Lumbridge spawn, do not let
+            // the bot continue there.
+            if (wilderness && player.coords != BotRespawns.EDGEVILLE) {
+                if (!native.relocate(player, BotRespawns.EDGEVILLE)) {
+                    return "respawning in Edgeville"
+                }
+            }
             state.dead = false
             state.returning = true
             state.restockAt = cycle + 10
