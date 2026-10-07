@@ -212,9 +212,9 @@ export class WebGlSceneRenderer {
   }
 
   renderFrame(interpolationAlpha = 0): void {
-    // Reserved for the next movement/camera milestone. The runtime already
-    // supplies the fraction between fixed 20ms simulation ticks so dynamic
-    // transforms can interpolate without changing the game tick rate.
+    // Player X/Z/yaw are interpolated from previous/current 20ms simulation
+    // states before setLocalPlayerPosition() reaches the renderer. Keep alpha
+    // available here for the upcoming orbit-camera interpolation state.
     void interpolationAlpha;
     this.draw();
   }
