@@ -87,7 +87,8 @@ internal object BotPvpRiskGearOverlay {
         (BotPvpRiskTier.Low to BotPvpLoadoutRole.Hybrid) to Plan(
             magic = listOf(mystic, one("Ancient staff")),
             ranged = listOf(blackDhide, one("Rune crossbow")),
-            melee = listOf(one("Dragon scimitar")),
+            // Melee keeps the ranged defensive switch on instead of becoming naked.
+            melee = listOf(blackDhide, one("Dragon scimitar")),
             specials = listOf(one("Dragon dagger")),
         ),
 
@@ -134,7 +135,7 @@ internal object BotPvpRiskGearOverlay {
         (BotPvpRiskTier.Average to BotPvpLoadoutRole.Hybrid) to Plan(
             magic = listOf(ahrims, one("Toxic staff of the dead")),
             ranged = listOf(karils, one("Dragon crossbow")),
-            melee = listOf(one("Abyssal whip")),
+            melee = listOf(karils, one("Abyssal whip")),
             specials = listOf(one("Armadyl godsword")),
         ),
 
@@ -182,7 +183,7 @@ internal object BotPvpRiskGearOverlay {
         (BotPvpRiskTier.Risker to BotPvpLoadoutRole.Hybrid) to Plan(
             magic = listOf(ahrims, any("Toxic staff of the dead", "Kodai wand")),
             ranged = listOf(crystal, one("Bow of faerdhinen")),
-            melee = listOf(one("Dragon defender")),
+            melee = listOf(crystal, one("Dragon defender"), one("Voidwaker")),
             specials = listOf(one("Voidwaker")),
         ),
 
@@ -230,7 +231,7 @@ internal object BotPvpRiskGearOverlay {
         (BotPvpRiskTier.Max to BotPvpLoadoutRole.Hybrid) to Plan(
             magic = listOf(ancestral, any("Toxic staff of the dead", "Kodai wand")),
             ranged = listOf(masori, one("Zaryte crossbow")),
-            melee = listOf(one("Avernic defender"), one("Voidwaker")),
+            melee = listOf(masori, one("Avernic defender"), one("Voidwaker")),
             specials = listOf(one("Voidwaker")),
         ),
     )
