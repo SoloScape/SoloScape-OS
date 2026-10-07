@@ -2,6 +2,10 @@ import './style.css';
 import { IndexedDbCacheStore } from './cache/IndexedDbCacheStore';
 import { Js5Client } from './cache/Js5Client';
 import {
+  MapSquareLoader,
+  type LoadedMapSquare,
+} from './cache/MapSquareLoader';
+import {
   loadJs5StartupAssets,
   type Js5StartupAssets,
 } from './cache/Js5StartupAssets';
@@ -82,6 +86,8 @@ const cacheStore = new IndexedDbCacheStore();
 const js5 = new Js5Client(js5Transport, cacheStore);
 const gameTransport = new WebSocketTransport();
 const gameLogin = new GameLoginClient(gameTransport);
+const mapSquareLoader = new MapSquareLoader(js5, appendLog);
+let mapLoadGeneration = 0;
 
 function appendLog(message: string): void {
   const stamp = new Date().toLocaleTimeString();
@@ -153,7 +159,9 @@ let framedGamePackets = 0;
 
 gameLogin.onLoginSuccess = (success) => {
   framedGamePackets = 0;
+  mapLoadGeneration += 1;
   (window as SoloScapeDebugWindow).soloscapeRegionRebuild = undefined;
+  (window as SoloScapeDebugWindow).soloscapeSceneMaps = undefined;
   drawClientStatus(
     'Game login successful',
     'Player index ' + success.localPlayerIndex +
@@ -178,6 +186,41 @@ gameLogin.onGamePacket = (packet) => {
   const rebuild = tryDecodeRegionRebuildPacket(packet);
   if (rebuild) {
     (window as SoloScapeDebugWindow).soloscapeRegionRebuild = rebuild;
+    const loadGeneration = ++mapLoadGeneration;
+    (window as SoloScapeDebugWindow).soloscapeSceneMaps = undefined;
+
+    void mapSquareLoader.loadMany(rebuild.mapSquares)
+      .then((maps) => {
+        if (loadGeneration !== mapLoadGeneration) {
+          return;
+        }
+        (window as SoloScapeDebugWindow).soloscapeSceneMaps = maps;
+        const locationCount = maps.reduce(
+          (sum, map) => sum + map.locations.length,
+          0,
+        );
+        appendLog(
+          'Region map assets ready: mapsquares=' + maps.length +
+          '; locations=' + locationCount + '.',
+        );
+        drawClientStatus(
+          'Region map assets decoded',
+          maps.length + ' mapsquares; ' + locationCount +
+            ' static locations ready for scene building',
+        );
+      })
+      .catch((error: unknown) => {
+        if (loadGeneration !== mapLoadGeneration) {
+          return;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        appendLog('Region map load failed: ' + message);
+        drawClientStatus(
+          'Region map load failed',
+          'See the transport log for map-cache details',
+        );
+      });
+
     if (rebuild.kind === 'normal') {
       appendLog(
         'Decoded REBUILD_NORMAL_V2: center-zone=' +
@@ -309,7 +352,9 @@ connectButton.addEventListener('click', async () => {
 loginButton.addEventListener('click', async () => {
   if (gameLoginIsActive()) {
     gameLogin.disconnect();
+    mapLoadGeneration += 1;
     (window as SoloScapeDebugWindow).soloscapeRegionRebuild = undefined;
+    (window as SoloScapeDebugWindow).soloscapeSceneMaps = undefined;
     drawClientStatus(
       'Game disconnected',
       'JS5 cache remains available for another login',
@@ -368,6 +413,7 @@ type SoloScapeDebugWindow = Window & {
   soloscapeStartupAssets?: Js5StartupAssets;
   soloscapeGameLogin?: GameLoginClient;
   soloscapeRegionRebuild?: RegionRebuild;
+  soloscapeSceneMaps?: LoadedMapSquare[];
 };
 
 (window as SoloScapeDebugWindow).soloscapeJs5 = js5;
