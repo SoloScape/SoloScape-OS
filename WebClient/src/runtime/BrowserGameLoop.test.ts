@@ -84,3 +84,36 @@ test('resetTiming prevents background time from becoming simulation debt', () =>
   loop.stepFrame(10_000);
   assert.equal(ticks, 1);
 });
+
+
+test('produces fractional interpolation alpha at 60Hz presentation', () => {
+  const alphas: number[] = [];
+  const loop = new BrowserGameLoop({
+    update: () => {},
+    render: (alpha) => alphas.push(alpha),
+  });
+
+  loop.stepFrame(0);
+  loop.stepFrame(1000 / 60);
+  loop.stepFrame(2000 / 60);
+
+  assert.equal(alphas[0], 0);
+  assert.ok(alphas[1]! > 0.8 && alphas[1]! < 0.85);
+  assert.ok(alphas[2]! > 0.65 && alphas[2]! < 0.7);
+});
+
+test('produces multiple render samples between 20ms ticks at 120Hz', () => {
+  const alphas: number[] = [];
+  const loop = new BrowserGameLoop({
+    update: () => {},
+    render: (alpha) => alphas.push(alpha),
+  });
+
+  loop.stepFrame(0);
+  loop.stepFrame(1000 / 120);
+  loop.stepFrame(2000 / 120);
+
+  assert.equal(alphas[0], 0);
+  assert.ok(alphas[1]! > 0.4 && alphas[1]! < 0.43);
+  assert.ok(alphas[2]! > 0.8 && alphas[2]! < 0.85);
+});
