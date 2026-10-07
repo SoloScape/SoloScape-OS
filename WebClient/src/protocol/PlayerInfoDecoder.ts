@@ -3,6 +3,10 @@ import type {
   PlayerInfoInitBlock,
 } from './RegionRebuildDecoder';
 import type { ServerGamePacket } from './GamePacketFramer';
+import {
+  FinePlayerMovement,
+  type FinePlayerRenderState,
+} from '../runtime/PlayerMovement';
 
 export const PLAYER_INFO_OPCODE = 91;
 const PLAYER_COUNT = 2048;
@@ -99,6 +103,10 @@ export interface ClientPlayer {
   readonly appearanceRevision: number;
 }
 
+export interface ClientPlayerRenderState extends FinePlayerRenderState {
+  readonly level: number;
+}
+
 export interface PlayerInfoUpdate {
   readonly localPlayer: ClientPlayer;
   readonly localPlayerMoved: boolean;
@@ -158,6 +166,10 @@ export class Rev240PlayerInfoDecoder {
       index: this.localPlayerIndex,
       coord: { ...init.localPlayerCoord },
       queuedMove: false,
+      movement: new FinePlayerMovement(
+        init.localPlayerCoord.x,
+        init.localPlayerCoord.z,
+      ),
       appearanceRevision: 0,
     };
     this.players[this.localPlayerIndex] = localPlayer;
@@ -195,6 +207,26 @@ export class Rev240PlayerInfoDecoder {
 
   getPlayer(index: number): ClientPlayer | null {
     return this.players[index] ?? null;
+  }
+
+  tickMovement(): void {
+    for (let i = 0; i < this.highResolutionCount; i += 1) {
+      const player = this.players[this.highResolutionIndices[i]!];
+      player?.movement.tick();
+    }
+  }
+
+  getLocalPlayerRenderState(
+    interpolationAlpha: number,
+  ): ClientPlayerRenderState | null {
+    const player = this.players[this.localPlayerIndex];
+    if (!player) {
+      return null;
+    }
+    return {
+      level: player.coord.level,
+      ...player.movement.renderState(interpolationAlpha),
+    };
   }
 
   decodePacket(packet: ServerGamePacket): PlayerInfoUpdate | null {
@@ -391,7 +423,13 @@ export class Rev240PlayerInfoDecoder {
     if (opcode === 1) {
       this.updateTypes[index] = 'high-movement';
       const movement = bits.readBits(3);
-      player.coord = stepCoord(player.coord, movement, 1);
+      const destination = stepCoord(player.coord, movement, 1);
+      player.coord = destination;
+      player.movement.enqueueTile(
+        destination.x,
+        destination.z,
+        false,
+      );
       player.queuedMove = extendedInfo;
       return;
     }
@@ -399,13 +437,20 @@ export class Rev240PlayerInfoDecoder {
     if (opcode === 2) {
       this.updateTypes[index] = 'high-movement';
       const movement = bits.readBits(4);
-      player.coord = stepCoord(player.coord, movement, 2);
+      const destination = stepCoord(player.coord, movement, 2);
+      player.coord = destination;
+      player.movement.enqueueTile(
+        destination.x,
+        destination.z,
+        true,
+      );
       player.queuedMove = extendedInfo;
       return;
     }
 
     this.updateTypes[index] = 'high-movement';
     const far = bits.readBits(1);
+    let destination: PlayerCoord;
     if (far === 0) {
       const packed = bits.readBits(12);
       const levelDelta = packed >>> 10;
@@ -413,7 +458,7 @@ export class Rev240PlayerInfoDecoder {
       let deltaZ = packed & 0x1f;
       if (deltaX > 15) deltaX -= 32;
       if (deltaZ > 15) deltaZ -= 32;
-      player.coord = {
+      destination = {
         level: (player.coord.level + levelDelta) & 0x3,
         x: player.coord.x + deltaX,
         z: player.coord.z + deltaZ,
@@ -423,12 +468,14 @@ export class Rev240PlayerInfoDecoder {
       const levelDelta = packed >>> 28;
       const deltaX = (packed >>> 14) & 0x3fff;
       const deltaZ = packed & 0x3fff;
-      player.coord = {
+      destination = {
         level: (player.coord.level + levelDelta) & 0x3,
         x: (player.coord.x + deltaX) & 0x3fff,
         z: (player.coord.z + deltaZ) & 0x3fff,
       };
     }
+    player.coord = destination;
+    player.movement.teleportTile(destination.x, destination.z);
     player.queuedMove = extendedInfo;
   }
 
@@ -459,14 +506,16 @@ export class Rev240PlayerInfoDecoder {
       const low = unpackLowResolutionPosition(
         this.lowResolutionPositions[index]!,
       );
+      const coord = {
+        level: low.level,
+        x: (low.x << 13) + x,
+        z: (low.z << 13) + z,
+      };
       this.players[index] = {
         index,
-        coord: {
-          level: low.level,
-          x: (low.x << 13) + x,
-          z: (low.z << 13) + z,
-        },
+        coord,
         queuedMove: false,
+        movement: new FinePlayerMovement(coord.x, coord.z),
         appearanceRevision: 0,
       };
       this.updateTypes[index] = 'low-to-high';
@@ -606,6 +655,7 @@ interface MutablePlayer {
   readonly index: number;
   coord: PlayerCoord;
   queuedMove: boolean;
+  readonly movement: FinePlayerMovement;
   appearance?: PlayerAppearance;
   appearanceRevision: number;
 }
