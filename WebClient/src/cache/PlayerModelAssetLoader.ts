@@ -5,6 +5,7 @@ import {
 } from './ModelGeometryDecoder';
 import type { PlayerAppearance } from '../protocol/PlayerInfoDecoder';
 import type { SceneMesh } from '../scene/SceneAssembler';
+import { resolveType0FaceTextureUvs } from '../scene/ModelTextureMapping';
 
 const CONFIG_ARCHIVE = 2;
 const IDENT_KIT_GROUP = 3;
@@ -575,7 +576,21 @@ function appendModelPart(
       b,
       c,
     );
-    builder.pushTriangle(a, b, c, color);
+    const textureUvs = texture >= 0
+      ? resolveType0FaceTextureUvs(
+          model,
+          face,
+          (index) => vertex(model, index),
+        )
+      : null;
+    builder.pushTriangle(
+      a,
+      b,
+      c,
+      color,
+      textureUvs ? texture : -1,
+      textureUvs,
+    );
     triangles += 1;
   }
 
@@ -608,22 +623,44 @@ interface Rgb {
 class MeshBuilder {
   private readonly positions: number[] = [];
   private readonly colors: number[] = [];
+  private readonly textureCoords: number[] = [];
+  private readonly textureIds: number[] = [];
 
-  pushTriangle(a: Vec3, b: Vec3, c: Vec3, color: Rgb): void {
-    this.pushVertex(a, color);
-    this.pushVertex(b, color);
-    this.pushVertex(c, color);
+  pushTriangle(
+    a: Vec3,
+    b: Vec3,
+    c: Vec3,
+    color: Rgb,
+    textureId = -1,
+    textureUvs:
+      | readonly [
+          { readonly u: number; readonly v: number },
+          { readonly u: number; readonly v: number },
+          { readonly u: number; readonly v: number },
+        ]
+      | null = null,
+  ): void {
+    this.pushVertex(a, color, textureId, textureUvs?.[0]);
+    this.pushVertex(b, color, textureId, textureUvs?.[1]);
+    this.pushVertex(c, color, textureId, textureUvs?.[2]);
   }
 
   finish(): SceneMesh {
     return {
       positions: Float32Array.from(this.positions),
       colors: Uint8Array.from(this.colors),
+      textureCoords: Float32Array.from(this.textureCoords),
+      textureIds: Int32Array.from(this.textureIds),
       vertexCount: this.positions.length / 3,
     };
   }
 
-  private pushVertex(vertexValue: Vec3, color: Rgb): void {
+  private pushVertex(
+    vertexValue: Vec3,
+    color: Rgb,
+    textureId: number,
+    textureUv?: { readonly u: number; readonly v: number },
+  ): void {
     this.positions.push(
       vertexValue.x,
       vertexValue.y,
@@ -634,6 +671,8 @@ class MeshBuilder {
       clamp(Math.round(color.g), 0, 255),
       clamp(Math.round(color.b), 0, 255),
     );
+    this.textureCoords.push(textureUv?.u ?? 0, textureUv?.v ?? 0);
+    this.textureIds.push(textureId);
   }
 }
 
