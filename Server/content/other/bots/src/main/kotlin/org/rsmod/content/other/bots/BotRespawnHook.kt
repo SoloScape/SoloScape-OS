@@ -6,8 +6,8 @@ import org.rsmod.game.entity.Player
 import org.rsmod.map.CoordGrid
 
 internal object BotRespawns {
-    /** Edgeville, just south of the Wilderness ditch and beside the bank. */
-    val EDGEVILLE: CoordGrid = CoordGrid(0, 48, 54, 21, 37)
+    /** Exact Edgeville PvP-bot respawn tile requested for the Wilderness loop. */
+    val EDGEVILLE: CoordGrid = CoordGrid(3094, 3471, 0)
 }
 
 /**
