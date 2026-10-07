@@ -8,7 +8,8 @@
     "dev:web": "vite --host 0.0.0.0",
     "dev:gateway": "tsx gateway/index.ts",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:protocol": "tsx --test src/cache/Js5StreamDecoder.test.ts"
   },
   "dependencies": {
     "ws": "^8.18.0"

@@ -1,6 +1,7 @@
 import './style.css';
+import { IndexedDbCacheStore } from './cache/IndexedDbCacheStore';
+import { Js5Client } from './cache/Js5Client';
 import { WebSocketTransport } from './net/WebSocketTransport';
-import { ByteQueue } from './protocol/ByteQueue';
 import {
   OSRS_CLIENT_TARGET,
   OSRS_PROTOCOL_REVISION,
@@ -18,7 +19,10 @@ if (!urlInput || !connectButton || !status || !revision || !log || !canvas) {
 }
 
 const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
-urlInput.value = scheme + '://' + location.hostname + ':8080';
+const defaultGatewayUrl = scheme + '://' + location.hostname + ':8080';
+urlInput.value =
+  localStorage.getItem('soloscape.gatewayUrl') ?? defaultGatewayUrl;
+
 revision.textContent =
   'protocol ' + OSRS_PROTOCOL_REVISION + ' / client ' + OSRS_CLIENT_TARGET;
 
@@ -27,21 +31,28 @@ if (!context) {
   throw new Error('Canvas 2D is unavailable.');
 }
 
-context.fillStyle = '#000';
-context.fillRect(0, 0, canvas.width, canvas.height);
-context.fillStyle = '#fff';
-context.font = '18px system-ui';
-context.textAlign = 'center';
-context.fillText('Transport scaffold ready', canvas.width / 2, canvas.height / 2 - 12);
-context.font = '14px system-ui';
-context.fillText(
-  'Next: port rev-240 JS5 and login state machines',
-  canvas.width / 2,
-  canvas.height / 2 + 16,
+function drawClientStatus(
+  headline: string,
+  detail: string,
+): void {
+  context.fillStyle = '#000';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = '#fff';
+  context.font = '18px system-ui';
+  context.textAlign = 'center';
+  context.fillText(headline, canvas.width / 2, canvas.height / 2 - 12);
+  context.font = '14px system-ui';
+  context.fillText(detail, canvas.width / 2, canvas.height / 2 + 16);
+}
+
+drawClientStatus(
+  'JS5 bootstrap ready to test',
+  'Connect to fetch the rev-240 master index',
 );
 
-const queue = new ByteQueue();
 const transport = new WebSocketTransport();
+const cacheStore = new IndexedDbCacheStore();
+const js5 = new Js5Client(transport, cacheStore);
 
 function appendLog(message: string): void {
   const stamp = new Date().toLocaleTimeString();
@@ -49,46 +60,76 @@ function appendLog(message: string): void {
   log.scrollTop = log.scrollHeight;
 }
 
-transport.onStateChange = (state) => {
-  status.textContent = state[0].toUpperCase() + state.slice(1);
-  connectButton.textContent = state === 'open' ? 'Disconnect' : 'Connect';
+js5.onLog = appendLog;
+
+js5.onStateChange = (state) => {
+  const labels: Record<typeof state, string> = {
+    idle: 'Disconnected',
+    connecting: 'Connecting',
+    handshake: 'JS5 handshake',
+    'master-index': 'Fetching master index',
+    ready: 'JS5 ready',
+    closed: 'Disconnected',
+    error: 'JS5 error',
+  };
+
+  status.textContent = labels[state];
+  connectButton.textContent =
+    state === 'connecting' ||
+    state === 'handshake' ||
+    state === 'master-index' ||
+    state === 'ready'
+      ? 'Disconnect'
+      : 'Connect';
 };
 
-transport.onError = () => {
-  appendLog('WebSocket error.');
-};
-
-transport.onData = (buffer) => {
-  const bytes = new Uint8Array(buffer);
-  queue.append(bytes);
-
-  const preview = Array.from(bytes.subarray(0, 16))
-    .map((value) => value.toString(16).padStart(2, '0'))
-    .join(' ');
-
-  appendLog(
-    'RX ' + bytes.length + ' bytes; queued=' + queue.available +
-    (preview ? '; ' + preview : ''),
+js5.onMasterIndex = (response) => {
+  drawClientStatus(
+    'JS5 master index received',
+    response.container.length + ' bytes cached in IndexedDB',
   );
+  appendLog(
+    'JS5 bootstrap complete. The socket is ready for additional cache group requests.',
+  );
+};
 
-  // TODO(rev240):
-  // Feed queue into the active JS5/login/game state machine.
-  // Do not assume each WebSocket message contains one OSRS packet.
+js5.onGroup = (response) => {
+  if (response.archive === 0xff && response.group === 0xff) {
+    return;
+  }
+  appendLog(
+    'Cache group available to client code: ' +
+    response.archive + ':' + response.group,
+  );
 };
 
 connectButton.addEventListener('click', async () => {
-  if (transport.state === 'open' || transport.state === 'connecting') {
-    transport.disconnect();
-    queue.clear();
+  if (
+    js5.state === 'connecting' ||
+    js5.state === 'handshake' ||
+    js5.state === 'master-index' ||
+    js5.state === 'ready'
+  ) {
+    js5.disconnect();
+    drawClientStatus(
+      'JS5 disconnected',
+      'Connect again to restart the cache bootstrap',
+    );
     return;
   }
 
+  localStorage.setItem('soloscape.gatewayUrl', urlInput.value);
+
   try {
-    appendLog('Connecting to ' + urlInput.value);
-    await transport.connect(urlInput.value);
-    appendLog('Gateway connected. No OSRS handshake is sent yet.');
+    await js5.connect(urlInput.value, {
+      revision: OSRS_PROTOCOL_REVISION,
+    });
   } catch (error) {
     appendLog(error instanceof Error ? error.message : String(error));
+    drawClientStatus(
+      'JS5 connection failed',
+      'See the transport log for details',
+    );
   }
 });
 
@@ -100,3 +141,9 @@ canvas.addEventListener('pointerdown', (event) => {
   // Long-press should eventually map to the OSRS context-menu gesture.
   canvas.setPointerCapture(event.pointerId);
 });
+
+type SoloScapeDebugWindow = Window & {
+  soloscapeJs5?: Js5Client;
+};
+
+(window as SoloScapeDebugWindow).soloscapeJs5 = js5;
