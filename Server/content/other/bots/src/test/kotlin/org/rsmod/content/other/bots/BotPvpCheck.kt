@@ -20,6 +20,12 @@ object BotPvpCheck {
         check(BotPvpDifficulty.parse("Very Hard") == BotPvpDifficulty.Veteran)
         check(BotPvpDifficulty.parse("Extreme") == BotPvpDifficulty.Elite)
         check(BotPvpDifficulty.parse("impossible") == null)
+        check(BotPvpDifficulty.configured("mixed", 1) == BotPvpDifficulty.Novice)
+        check(BotPvpDifficulty.configured("mixed", 2) == BotPvpDifficulty.Standard)
+        check(BotPvpDifficulty.configured("mixed", 3) == BotPvpDifficulty.Veteran)
+        check(BotPvpDifficulty.configured("mixed", 4) == BotPvpDifficulty.Elite)
+        check(BotPvpDifficulty.configured("mixed", 5) == BotPvpDifficulty.Novice)
+        check(BotPvpDifficulty.configured("elite", 1) == BotPvpDifficulty.Elite)
         val standardHybrid = BotPvpProfiles.get(BotPvpDifficulty.Standard, BotPvpLoadoutRole.Hybrid)
         check(standardHybrid.switchChance > BotPvpProfiles.get(BotPvpDifficulty.Standard).switchChance)
         check(standardHybrid.targetStyleReaction.first <=
@@ -125,11 +131,13 @@ object BotPvpCheck {
         check(BotPvpTspsStats.byId.size == 89)
         check(BotPvpTspsStats.byId.keys == knownVariantIds)
 
-        check(BotPvpHotspots.all.size == 16)
+        check(BotPvpHotspots.all.size == 26)
         check(BotPvpHotspots.all.map { it.id }.toSet() == setOf(
             "edge_ditch", "edge_south", "varrock_ditch", "revs_entrance", "green_drags_gate",
-            "dark_warriors", "crazy_archaeologist", "eastern_unicorns", "black_chins",
-            "eastern_mid", "chaos_fanatic", "demonic_ruins", "mage_arena", "resource_area",
+            "low_west", "low_center", "low_east", "dark_warriors", "graveyard_shadows",
+            "eastern_unicorns", "crazy_archaeologist", "forgotten_cemetery", "boneyard",
+            "black_chins", "eastern_mid", "chaos_fanatic", "lava_maze", "red_dragon_isle",
+            "demonic_ruins", "rune_rocks", "fountain_of_rune", "mage_arena", "resource_area",
             "rogues_castle", "frozen_plateau",
         ))
         for (hotspot in BotPvpHotspots.all) {
@@ -139,6 +147,7 @@ object BotPvpCheck {
             check(hotspot.allowedFamilies.all { it in BotPvpTspsCatalog.families })
             check(hotspot.freeWorldFamilies.all { it in BotPvpTspsCatalog.families })
             check(hotspot.contains(hotspot.anchor))
+            repeat(20) { check(hotspot.contains(hotspot.roam(random))) }
         }
         val memberRegions = BotPvpHotspots.available(true, BotPvpDifficulty.Standard)
         check(memberRegions.any { it.anchor.z < 3600 })
