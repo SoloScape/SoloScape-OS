@@ -6,6 +6,10 @@ import {
   type LoadedMapSquare,
 } from './cache/MapSquareLoader';
 import {
+  SceneAssetLoader,
+  type LoadedSceneAssets,
+} from './cache/SceneAssetLoader';
+import {
   loadJs5StartupAssets,
   type Js5StartupAssets,
 } from './cache/Js5StartupAssets';
@@ -87,6 +91,7 @@ const js5 = new Js5Client(js5Transport, cacheStore);
 const gameTransport = new WebSocketTransport();
 const gameLogin = new GameLoginClient(gameTransport);
 const mapSquareLoader = new MapSquareLoader(js5, appendLog);
+const sceneAssetLoader = new SceneAssetLoader(js5, appendLog);
 let mapLoadGeneration = 0;
 
 function appendLog(message: string): void {
@@ -162,6 +167,7 @@ gameLogin.onLoginSuccess = (success) => {
   mapLoadGeneration += 1;
   (window as SoloScapeDebugWindow).soloscapeRegionRebuild = undefined;
   (window as SoloScapeDebugWindow).soloscapeSceneMaps = undefined;
+  (window as SoloScapeDebugWindow).soloscapeSceneAssets = undefined;
   drawClientStatus(
     'Game login successful',
     'Player index ' + success.localPlayerIndex +
@@ -188,9 +194,10 @@ gameLogin.onGamePacket = (packet) => {
     (window as SoloScapeDebugWindow).soloscapeRegionRebuild = rebuild;
     const loadGeneration = ++mapLoadGeneration;
     (window as SoloScapeDebugWindow).soloscapeSceneMaps = undefined;
+    (window as SoloScapeDebugWindow).soloscapeSceneAssets = undefined;
 
     void mapSquareLoader.loadMany(rebuild.mapSquares)
-      .then((maps) => {
+      .then(async (maps) => {
         if (loadGeneration !== mapLoadGeneration) {
           return;
         }
@@ -205,8 +212,28 @@ gameLogin.onGamePacket = (packet) => {
         );
         drawClientStatus(
           'Region map assets decoded',
-          maps.length + ' mapsquares; ' + locationCount +
-            ' static locations ready for scene building',
+          maps.length + ' mapsquares; resolving loc models',
+        );
+
+        const assets = await sceneAssetLoader.loadForMaps(maps);
+        if (loadGeneration !== mapLoadGeneration) {
+          return;
+        }
+        (window as SoloScapeDebugWindow).soloscapeSceneAssets = assets;
+
+        const vertices = Array.from(
+          assets.models.values(),
+          (model) => model.vertexX.length,
+        ).reduce((sum, count) => sum + count, 0);
+        const faces = Array.from(
+          assets.models.values(),
+          (model) => model.faceA.length,
+        ).reduce((sum, count) => sum + count, 0);
+
+        drawClientStatus(
+          'Static scene assets ready',
+          assets.models.size + ' models; ' + vertices +
+            ' vertices; ' + faces + ' faces ready for rendering',
         );
       })
       .catch((error: unknown) => {
@@ -326,7 +353,12 @@ connectButton.addEventListener('click', async () => {
     js5.state === 'ready'
   ) {
     js5.disconnect();
+    mapLoadGeneration += 1;
+    sceneAssetLoader.reset();
     (window as SoloScapeDebugWindow).soloscapeStartupAssets = undefined;
+    (window as SoloScapeDebugWindow).soloscapeRegionRebuild = undefined;
+    (window as SoloScapeDebugWindow).soloscapeSceneMaps = undefined;
+    (window as SoloScapeDebugWindow).soloscapeSceneAssets = undefined;
     drawClientStatus(
       'JS5 disconnected',
       'Connect again to restart the cache bootstrap',
@@ -355,6 +387,7 @@ loginButton.addEventListener('click', async () => {
     mapLoadGeneration += 1;
     (window as SoloScapeDebugWindow).soloscapeRegionRebuild = undefined;
     (window as SoloScapeDebugWindow).soloscapeSceneMaps = undefined;
+    (window as SoloScapeDebugWindow).soloscapeSceneAssets = undefined;
     drawClientStatus(
       'Game disconnected',
       'JS5 cache remains available for another login',
@@ -414,6 +447,7 @@ type SoloScapeDebugWindow = Window & {
   soloscapeGameLogin?: GameLoginClient;
   soloscapeRegionRebuild?: RegionRebuild;
   soloscapeSceneMaps?: LoadedMapSquare[];
+  soloscapeSceneAssets?: LoadedSceneAssets;
 };
 
 (window as SoloScapeDebugWindow).soloscapeJs5 = js5;
