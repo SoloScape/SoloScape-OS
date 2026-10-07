@@ -1137,13 +1137,8 @@ function shouldRenderTerrainTile(
   );
 }
 
-interface TerrainSurfaceMaterial {
-  readonly color: Rgb;
-  readonly textureId: number;
-  readonly hidden: boolean;
-}
-
 interface TerrainShapeNode {
+  readonly node: number;
   readonly vertex: Vec3;
   readonly uv: { readonly u: number; readonly v: number };
 }
@@ -1155,31 +1150,34 @@ function appendTerrainTileGeometry(
   localX: number,
   localZ: number,
   corners: readonly Vec3[],
-  materials: SceneFloorMaterials | null,
+  terrainColors: TerrainColorBaker,
+  worldX: number,
+  worldZ: number,
 ): void {
   const index = mapTerrainTileIndex(level, localX, localZ);
   const overlayId = map.terrain.overlayIds[index]!;
-  const surfaces = terrainSurfaceMaterials(
+  const surfaces = terrainColors.bake(
     map,
     level,
     localX,
     localZ,
-    materials,
+    worldX,
+    worldZ,
   );
 
   if (overlayId < 0) {
-    const color = shadeByTriangleNormal(
-      surfaces.underlay.color,
-      corners[0]!,
-      corners[1]!,
-      corners[3]!,
-    );
-    builder.pushQuad(
+    if (surfaces.underlay.hidden) {
+      return;
+    }
+    const colors = surfaces.underlay.cornerValues.map(
+      (value) => terrainSurfaceColor(surfaces.underlay, value),
+    ) as unknown as readonly [Rgb, Rgb, Rgb, Rgb];
+    builder.pushQuadColors(
       corners[0]!,
       corners[1]!,
       corners[2]!,
       corners[3]!,
-      color,
+      colors,
     );
     return;
   }
@@ -1217,12 +1215,20 @@ function appendTerrainTileGeometry(
       continue;
     }
 
-    const color = shadeByTriangleNormal(
-      surface.color,
-      na.vertex,
-      nb.vertex,
-      nd.vertex,
-    );
+    const colors = [
+      terrainSurfaceColor(
+        surface,
+        terrainSurfaceValueAtNode(surface, na.node),
+      ),
+      terrainSurfaceColor(
+        surface,
+        terrainSurfaceValueAtNode(surface, nb.node),
+      ),
+      terrainSurfaceColor(
+        surface,
+        terrainSurfaceValueAtNode(surface, nd.node),
+      ),
+    ] as const;
     const textureUvs = surface.textureId >= 0
       ? flat
         ? [na.uv, nb.uv, nd.uv] as const
@@ -1233,98 +1239,68 @@ function appendTerrainTileGeometry(
           ] as const
       : null;
 
-    builder.pushTriangle(
+    builder.pushTriangleColors(
       na.vertex,
       nb.vertex,
       nd.vertex,
-      color,
+      colors,
       surface.textureId,
       textureUvs,
     );
   }
 }
 
-function terrainSurfaceMaterials(
-  map: LoadedMapSquare,
-  level: number,
-  localX: number,
-  localZ: number,
-  materials: SceneFloorMaterials | null,
-): {
-  readonly underlay: TerrainSurfaceMaterial;
-  readonly overlay: TerrainSurfaceMaterial | null;
-} {
-  const index = mapTerrainTileIndex(level, localX, localZ);
-  const overlayId = map.terrain.overlayIds[index]!;
-  const underlayRawId = map.terrain.underlayIds[index]!;
-  const underlayDefinition = underlayRawId > 0
-    ? materials?.underlays.get(underlayRawId - 1)
-    : undefined;
-  const overlayDefinition = overlayId >= 0
-    ? materials?.overlays.get(overlayId)
-    : undefined;
-
-  const underlayBase = underlayDefinition
-    ? rgb24(underlayDefinition.rgb)
-    : fallbackTerrainColor(
-        -1,
-        underlayRawId,
-      );
-  const underlay: TerrainSurfaceMaterial = {
-    color: underlayBase,
-    textureId: -1,
-    hidden: false,
-  };
-
-  if (overlayId < 0) {
-    return { underlay, overlay: null };
+function terrainSurfaceValueAtNode(
+  surface: TerrainTileSurface,
+  node: number,
+): number {
+  const [nw, ne, se, sw] = surface.cornerValues;
+  switch (node) {
+    case 1:
+    case 13:
+      return nw;
+    case 2:
+    case 9:
+      return (nw + ne) >> 1;
+    case 3:
+    case 14:
+      return ne;
+    case 4:
+    case 10:
+      return (ne + se) >> 1;
+    case 5:
+    case 15:
+      return se;
+    case 6:
+    case 11:
+      return (se + sw) >> 1;
+    case 7:
+    case 16:
+      return sw;
+    case 8:
+    case 12:
+      return (nw + sw) >> 1;
+    default:
+      return nw;
   }
-
-  if (!overlayDefinition) {
-    return {
-      underlay,
-      overlay: {
-        color: fallbackTerrainColor(
-          overlayId,
-          underlayRawId,
-        ),
-        textureId: -1,
-        hidden: false,
-      },
-    };
-  }
-
-  const textureId = overlayDefinition.texture;
-  const hidden =
-    textureId < 0 &&
-    overlayDefinition.rgb === 0xff00ff;
-
-  let overlayColor: Rgb | null =
-    overlayDefinition.rgb === 0xff00ff
-      ? null
-      : rgb24(overlayDefinition.rgb);
-
-  if (!overlayColor && textureId >= 0) {
-    const average = materials?.textureAverageRgb.get(textureId);
-    if (average !== undefined) {
-      overlayColor = packedHslColor(average);
-    }
-  }
-
-  return {
-    underlay,
-    overlay: {
-      color: overlayColor ?? underlay.color,
-      textureId,
-      hidden,
-    },
-  };
 }
 
-function fallbackTerrainColor(
+function terrainSurfaceColor(
+  surface: TerrainTileSurface,
+  value: number,
+): Rgb {
+  if (surface.textureId >= 0) {
+    const brightness = clamp(value, 2, 126) / 128;
+    const channel = Math.round(brightness * 255);
+    return { r: channel, g: channel, b: channel };
+  }
+  return packedHslColor(value & 0xffff);
+}
+
+function fallbackTerrainRgb24(
   overlayId: number,
   underlayRawId: number,
-): Rgb {
+): number {
   const seed = overlayId >= 0
     ? overlayId * 67 + 193
     : underlayRawId > 0
@@ -1335,7 +1311,12 @@ function fallbackTerrainColor(
   const lightness = overlayId >= 0
     ? 0.32 + positiveModulo(seed, 9) / 100
     : 0.28 + positiveModulo(seed, 11) / 100;
-  return hslToRgb(hue, saturation, lightness);
+  const rgb = hslToRgb(hue, saturation, lightness);
+  return (
+    (clamp(Math.round(rgb.r), 0, 255) << 16) |
+    (clamp(Math.round(rgb.g), 0, 255) << 8) |
+    clamp(Math.round(rgb.b), 0, 255)
+  ) >>> 0;
 }
 
 function makeTerrainShapeNode(
@@ -1414,6 +1395,7 @@ function makeTerrainShapeNode(
   const bottomZ = corners[3]!.z + (corners[2]!.z - corners[3]!.z) * u;
 
   return {
+    node,
     vertex: {
       x: topX + (bottomX - topX) * v,
       y,
