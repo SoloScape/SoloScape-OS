@@ -614,13 +614,20 @@ function interpolateYaw(
   if (delta > JAGEX_YAW_UNITS / 2) {
     delta -= JAGEX_YAW_UNITS;
   }
-  return wrapYaw(previous + delta * alpha);
+  return wrapYawFloat(previous + delta * alpha);
 }
 
 function wrapYaw(value: number): number {
   return (
-    Math.round(value) + JAGEX_YAW_UNITS
+    Math.trunc(value) + JAGEX_YAW_UNITS
   ) & (JAGEX_YAW_UNITS - 1);
+}
+
+function wrapYawFloat(value: number): number {
+  const wrapped = value % JAGEX_YAW_UNITS;
+  return wrapped < 0
+    ? wrapped + JAGEX_YAW_UNITS
+    : wrapped;
 }
 
 function clamp(
