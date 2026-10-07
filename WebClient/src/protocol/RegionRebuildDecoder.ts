@@ -25,12 +25,30 @@ export interface MapSquare {
   readonly z: number;
 }
 
+export interface PlayerCoord {
+  readonly level: number;
+  readonly x: number;
+  readonly z: number;
+}
+
+export interface PlayerInfoInitBlock {
+  readonly localPlayerIndex: number;
+  readonly localPlayerCoord: PlayerCoord;
+  readonly lowResolutionPositions: Uint32Array;
+}
+
 export interface NormalRegionRebuild {
   readonly kind: 'normal';
   readonly zoneX: number;
   readonly zoneZ: number;
   readonly worldArea: number;
   readonly mapSquares: readonly MapSquare[];
+  /**
+   * Present only on the first REBUILD_NORMAL_V2 after login. Revision 240
+   * prepends the GPI initialization block to that rebuild before the normal
+   * six-byte map header.
+   */
+  readonly playerInfoInit?: PlayerInfoInitBlock;
 }
 
 export interface InstanceZonePlacement {
@@ -69,9 +87,10 @@ export type RegionRebuild = NormalRegionRebuild | InstancedRegionRebuild;
  */
 export function tryDecodeRegionRebuildPacket(
   packet: ServerGamePacket,
+  localPlayerIndex?: number,
 ): RegionRebuild | null {
   if (packet.opcode === REBUILD_NORMAL_V2_OPCODE) {
-    return decodeNormalRegionRebuild(packet.payload);
+    return decodeNormalRegionRebuild(packet.payload, localPlayerIndex);
   }
   if (packet.opcode === REBUILD_REGION_V2_OPCODE) {
     return decodeInstancedRegionRebuild(packet.payload);
@@ -81,6 +100,7 @@ export function tryDecodeRegionRebuildPacket(
 
 export function decodeNormalRegionRebuild(
   payload: Uint8Array,
+  localPlayerIndex?: number,
 ): NormalRegionRebuild {
   const isLoginRebuild = payload.length === LOGIN_NORMAL_REBUILD_BYTES;
   if (
@@ -98,6 +118,13 @@ export function decodeNormalRegionRebuild(
   const headerOffset = isLoginRebuild
     ? LOGIN_PLAYER_INFO_INIT_BYTES
     : 0;
+  const playerInfoInit =
+    isLoginRebuild && localPlayerIndex !== undefined
+      ? decodePlayerInfoInitBlock(
+          payload.subarray(0, LOGIN_PLAYER_INFO_INIT_BYTES),
+          localPlayerIndex,
+        )
+      : undefined;
   const zoneZ = readU16Alt3(payload, headerOffset);
   const worldArea = readU16Alt3(payload, headerOffset + 2);
   const zoneX = readU16Alt3(payload, headerOffset + 4);
@@ -108,6 +135,54 @@ export function decodeNormalRegionRebuild(
     zoneZ,
     worldArea,
     mapSquares: collectStaticMapSquares(zoneX, zoneZ),
+    playerInfoInit,
+  };
+}
+
+
+export function decodePlayerInfoInitBlock(
+  payload: Uint8Array,
+  localPlayerIndex: number,
+): PlayerInfoInitBlock {
+  if (payload.length !== LOGIN_PLAYER_INFO_INIT_BYTES) {
+    throw new RangeError(
+      'Player-info init block must be ' +
+        LOGIN_PLAYER_INFO_INIT_BYTES + ' bytes; received ' +
+        payload.length + '.',
+    );
+  }
+  if (
+    !Number.isInteger(localPlayerIndex) ||
+    localPlayerIndex < 1 ||
+    localPlayerIndex >= 2048
+  ) {
+    throw new RangeError(
+      'rev-240 local player index must be in 1..2047; received ' +
+        localPlayerIndex + '.',
+    );
+  }
+
+  const bits = new BitReader(payload);
+  const packedLocal = bits.readBits(30);
+  const localPlayerCoord: PlayerCoord = {
+    level: (packedLocal >>> 28) & 0x3,
+    x: (packedLocal >>> 14) & 0x3fff,
+    z: packedLocal & 0x3fff,
+  };
+
+  const lowResolutionPositions = new Uint32Array(2048);
+  for (let index = 1; index < 2048; index += 1) {
+    if (index === localPlayerIndex) {
+      continue;
+    }
+    lowResolutionPositions[index] = bits.readBits(18);
+  }
+  bits.requireZeroPaddingAndEnd();
+
+  return {
+    localPlayerIndex,
+    localPlayerCoord,
+    lowResolutionPositions,
   };
 }
 
