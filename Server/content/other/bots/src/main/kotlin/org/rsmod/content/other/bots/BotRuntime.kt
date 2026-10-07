@@ -331,8 +331,32 @@ class BotPopulation @Inject constructor(
                     (bot.mode == BotMode.ClanTwo && it.mode == BotMode.ClanOne)
             }.map { it.player }.filter { it !== player }
         }
-        bot.status = pvpCombat.tick(player, opponents, wilderness,
-            bot.patrol ?: CoordGrid(3224, 3682))
+        val status = pvpCombat.tick(
+            player,
+            opponents,
+            wilderness,
+            bot.patrol ?: CoordGrid(3224, 3682),
+        )
+        bot.status = status
+        if (wilderness) watchPvpStall(bot, status)
+    }
+
+    private fun watchPvpStall(bot: WorldBot, status: String) {
+        val player = bot.player
+        val movingState = status == "seeking opponent" || status == "returning to Wilderness"
+        if (!movingState || player.coords != bot.previousCoords) {
+            bot.stalled = 0
+        } else {
+            bot.stalled++
+        }
+        bot.previousCoords = player.coords
+        if (bot.stalled < 20) return
+
+        val hotspot = bot.hotspot ?: return
+        if (pvpCombat.recoverStuck(player, hotspot)) {
+            bot.stalled = 0
+            bot.status = "recovering from blocked Wilderness tile"
+        }
     }
 
     private fun think(bot: WorldBot, cycle: Int) {
