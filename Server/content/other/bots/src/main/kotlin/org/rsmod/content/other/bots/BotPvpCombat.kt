@@ -433,8 +433,13 @@ class BotPvpCombat @Inject constructor(
             state.patrolStep++
             target = BotPvpHotspots.patrolTarget(state.identity, state.patrolStep)
         }
-        return reachablePatrolStep(player.coords, target)
-            ?: reachableRoamPoint(player.coords, hotspot)
+        val patrolStep = reachablePatrolStep(player.coords, target)
+        if (patrolStep != null) return patrolStep
+
+        // Do not let one obstructed sector pin a bot forever; advance its patrol sequence and
+        // take a safe local step before trying the next cross-Wilderness target.
+        state.patrolStep++
+        return reachableRoamPoint(player.coords, hotspot)
     }
 
     /**
