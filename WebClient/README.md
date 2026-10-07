@@ -132,12 +132,22 @@ geometry applies model-type selection, wall/corner multi-model placement,
 orientation/mirroring, definition scale/translation, and tile-footprint height
 placement before rebasing the final mesh around the scene origin.
 
-The first renderer is intentionally material-light: terrain gets deterministic
-underlay/overlay-derived debug coloring, model faces use decoded packed HSL
-colors, transparent faces are skipped, and both meshes are drawn once through a
-small WebGL2 shader with depth testing and distance fog. Texture/material
-resolution, animated entities, camera/input controls, and occlusion are later
-playability milestones rather than prerequisites for the first static frame.
+The WebGL2 renderer now resolves cache-backed scene materials. Floor underlay
+(group 2:1) and overlay (2:4) definitions replace the earlier generated debug
+colors, archive 9:0 texture definitions resolve their archive-8 indexed sprite
+sources, and those sprites are gamma-corrected/expanded into 128x128 RGBA
+texture-array layers. Model faces preserve their texture-coordinate/axis index
+and type-0 P/M/N anchor triangle so loc/player geometry can emit UVs alongside
+the cache texture id. Terrain uses the classic Jagex shaped-overlay triangle
+tables rather than painting every overlay across the whole tile.
+
+The shader keeps a color fallback for a texture that is not resident yet.
+Modern model texture render types 1..3 still fall back to color until their
+extra scale/rotation/translation metadata is retained, and multi-sprite texture
+definitions currently use the first sprite layer (matching the current
+Olden-Shire texture path). Animated texture scrolling, exact underlay HSL
+window-averaging, animated entities, camera/input controls, and occlusion remain
+later fidelity/playability milestones.
 
 ## Request scheduler
 
@@ -343,7 +353,8 @@ deduplicated source mapsquares required to assemble the instance.
 
 `soloscapeSceneMaps` contains decoded terrain and static loc placements.
 `soloscapeSceneAssets` contains the required loc definitions and decoded
-archive-7 model geometry. `soloscapeScene` contains the assembled terrain/loc
+archive-7 model geometry. `soloscapeSceneMaterials` contains decoded floor
+materials and cache-backed texture-array layers. `soloscapeScene` contains the assembled terrain/loc
 vertex buffers, world-tile origin, scene bounds, and assembly statistics used
 by the WebGL2 renderer.
 
@@ -458,8 +469,10 @@ Implemented:
 - rotated 8x8 instanced-zone terrain/object assembly
 - loc shape/model selection, mirroring, orientation, scaling and translation
 - static terrain/model vertex buffers with scene-local rebasing
+- cache-backed floor underlay/overlay materials and archive-8/9 texture layers
+- classic shaped terrain overlays plus model type-0 texture UV mapping
 - first one-frame WebGL2 terrain + loc render
-- `window.soloscapeSceneMaps` / `window.soloscapeSceneAssets` / `window.soloscapeScene` debug state
+- `window.soloscapeSceneMaps` / `window.soloscapeSceneAssets` / `window.soloscapeSceneMaterials` / `window.soloscapeScene` debug state
 
 Revision 240's rebuild packets do not append XTEA key blocks; the browser follows
 the rsprot rev-240 encoders exactly. The rebuild vectors cover transformed
@@ -468,9 +481,10 @@ mapsquare-count validation.
 
 Next:
 
-- decode player/NPC update streams and place live actors into the rendered scene
-- add camera/input controls and begin replacing debug materials with cache-backed
-  textures/materials
+- retain/render modern model texture transform metadata (types 1..3)
+- add texture animation and the original terrain HSL/light averaging pass
+- decode NPC update streams and continue actor animation/skinning work
+- add camera/input controls and occlusion
 
 ## Reference format
 
