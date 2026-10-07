@@ -64,6 +64,8 @@ pre {
 #game {
   z-index: 1;
   background: #000;
+  /* Camera drag/pinch owns viewport gestures on iPhone/iPad Safari. */
+  touch-action: none;
 }
 
 #client-ui {
