@@ -80,6 +80,7 @@ class BotPopulation @Inject constructor(
     private val profiles = BotProfileStore()
     private val random = Random.Default
     private var nextIdentity = 1
+    private var nextPvpPopulationIndex = 1
     private val configured = Properties().apply {
         val config = Path.of(".data", "bots.properties")
         if (!Files.exists(config)) {
@@ -116,8 +117,12 @@ class BotPopulation @Inject constructor(
             val slot = registry.nextFreeSlot() ?: return added
             if (registry.count() >= MAX_BOTS) return added
             val identity = freeIdentity()
-            val difficulty = BotPvpDifficulty.configured(difficultySetting, identity)
-                ?: BotPvpDifficulty.Standard
+            val difficulty = if (mode.isPvp) {
+                BotPvpDifficulty.configured(difficultySetting, nextPvpPopulationIndex++)
+                    ?: BotPvpDifficulty.Standard
+            } else {
+                BotPvpDifficulty.Standard
+            }
             val name = SourceBotCatalog.names[(identity - 1) % SourceBotCatalog.names.size]
             val initial = initialTask(mode) ?: return added
             val hotspot = if (mode == BotMode.Wilderness) {
