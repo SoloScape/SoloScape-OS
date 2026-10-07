@@ -319,9 +319,11 @@ export function deriveTerrainHeight(
   }
 
   const normalizedHeight = explicitHeight === 1 ? 0 : explicitHeight;
-  return previousLevelHeight === null
-    ? -normalizedHeight * 8
-    : previousLevelHeight - normalizedHeight * 8;
+  const delta = normalizedHeight * 8;
+  if (previousLevelHeight === null) {
+    return delta === 0 ? 0 : -delta;
+  }
+  return previousLevelHeight - delta;
 }
 
 class TerrainHeightField {
