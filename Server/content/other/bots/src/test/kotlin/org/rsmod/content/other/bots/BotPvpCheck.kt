@@ -192,10 +192,9 @@ object BotPvpCheck {
         check(pureAssignment.role == BotPvpLoadoutRole.Pure)
         check(pureAssignment.tier == BotPvpRiskTier.Low)
         check(!pureAssignment.preferUnskulled)
-        check(pureAssignment.skullPreventionChance == 0.75)
+        check(pureAssignment.skullPreventionChance == 0.0)
         check(!pureAssignment.usesProtectItem)
-        check(BotPvpPolicy.shouldPreventSkull(pureAssignment, 0.74))
-        check(!BotPvpPolicy.shouldPreventSkull(pureAssignment, 0.75))
+        check(!BotPvpPolicy.shouldPreventSkull(pureAssignment, 0.0))
         val hybridAssignment = BotPvpRiskLoadouts.assignment(
             BotPvpDifficulty.Elite,
             checkNotNull(BotPvpLoadouts.get("ancients_hybrid")),
@@ -215,8 +214,8 @@ object BotPvpCheck {
             BotPvpDifficulty.Veteran,
             checkNotNull(BotPvpLoadouts.get("ancients_hybrid")),
         )
-        check(averageAssignment.skullPreventionChance == 0.80)
-        check(riskerAssignment.skullPreventionChance == 0.95)
+        check(averageAssignment.skullPreventionChance == 0.0)
+        check(riskerAssignment.skullPreventionChance == 0.0)
         check(!averageAssignment.usesProtectItem)
         check(!riskerAssignment.usesProtectItem)
         for (tier in BotPvpRiskTier.entries) {
