@@ -9,16 +9,21 @@ import { CacheLoginFlameAnimation } from './CacheLoginFlameAnimation';
 const VIEWPORT_WIDTH = 765;
 const VIEWPORT_HEIGHT = 503;
 const LOGIN_CENTER_X = 382;
+const TITLE_BOX_X = 202;
 const TITLE_BOX_Y = 171;
-const USERNAME_BASELINE_Y = 253;
-const PASSWORD_BASELINE_Y = 268;
-const BUTTON_CENTER_Y = 321;
-const BUTTON_CENTER_OFFSET = 80;
+const WELCOME_BUTTON_Y = 291;
+const LOGIN_BUTTON_Y = 321;
+const LEFT_BUTTON_X = 302;
+const RIGHT_BUTTON_X = 462;
 const WHITE = 0xffffff;
 const YELLOW = 0xffff00;
+const PROGRESS_RED = '#8c1111';
 
 export type LoginField = 'username' | 'password';
+
 export type TitleHitTarget =
+  | 'new-user'
+  | 'existing-user'
   | LoginField
   | 'login'
   | 'cancel'
@@ -32,6 +37,12 @@ export interface LoginRenderState {
   readonly showCursor?: boolean;
 }
 
+export interface ConnectingRenderState {
+  readonly username: string;
+  readonly password: string;
+  readonly message?: string;
+}
+
 interface Rect {
   readonly x: number;
   readonly y: number;
@@ -42,19 +53,33 @@ interface Rect {
 type CacheImageSource = ImageBitmap | HTMLImageElement;
 
 type TitleView =
+  | { readonly kind: 'welcome' }
   | {
       readonly kind: 'login';
       readonly state: LoginRenderState;
     }
+  | { readonly kind: 'new-user' }
   | {
-      readonly kind: 'message';
+      readonly kind: 'connecting';
+      readonly state: ConnectingRenderState;
+    }
+  | {
+      readonly kind: 'loading';
+      readonly progress: number;
       readonly message: string;
-      readonly detail?: string;
     };
 
+/**
+ * Cache-backed title renderer matching the original fixed 765x503 title
+ * client flow: state-5 loading, state-10 welcome/login/new-user and the
+ * state-20 connecting form.
+ *
+ * Coordinates, button centres and text baselines intentionally follow the
+ * byte-faithful TitleScreen implementation used by Olden-Shire/OS instead of
+ * inventing responsive web layouts inside the game canvas.
+ */
 export class CacheTitleScreenRenderer {
   private readonly context: CanvasRenderingContext2D;
-  private readonly plain12: CacheBitmapFont;
   private readonly bold12: CacheBitmapFont;
   private readonly logoCanvas: HTMLCanvasElement;
   private readonly titleBoxCanvas: HTMLCanvasElement;
@@ -73,7 +98,6 @@ export class CacheTitleScreenRenderer {
     }
 
     this.context = context;
-    this.plain12 = new CacheBitmapFont(assets.plain12);
     this.bold12 = new CacheBitmapFont(assets.bold12);
     this.logoCanvas = createSpriteCanvas(assets.logo);
     this.titleBoxCanvas = createSpriteCanvas(assets.titleBox);
@@ -87,6 +111,11 @@ export class CacheTitleScreenRenderer {
   ): Promise<CacheTitleScreenRenderer> {
     const background = await decodeCacheJpeg(assets.backgroundJpeg);
     return new CacheTitleScreenRenderer(canvas, background, assets);
+  }
+
+  renderWelcome(): void {
+    this.currentView = { kind: 'welcome' };
+    this.renderFrame(performance.now());
   }
 
   renderLogin(state: LoginRenderState): void {
@@ -103,18 +132,35 @@ export class CacheTitleScreenRenderer {
     this.renderFrame(performance.now());
   }
 
-  renderMessage(message: string, detail?: string): void {
+  renderNewUser(): void {
+    this.currentView = { kind: 'new-user' };
+    this.renderFrame(performance.now());
+  }
+
+  renderConnecting(state: ConnectingRenderState): void {
     this.currentView = {
-      kind: 'message',
+      kind: 'connecting',
+      state: {
+        username: state.username,
+        password: state.password,
+        message: state.message,
+      },
+    };
+    this.renderFrame(performance.now());
+  }
+
+  renderLoading(progress: number, message: string): void {
+    this.currentView = {
+      kind: 'loading',
+      progress: clampProgress(progress),
       message,
-      detail,
     };
     this.renderFrame(performance.now());
   }
 
   /**
-   * Repaints the retained title view so the cache-backed flame animation keeps
-   * running even when no login input or status text changed.
+   * Repaint the retained state so the cache-backed flame animation keeps
+   * running even when title input/status text has not changed.
    */
   renderFrame(timestampMs: number): void {
     const view = this.currentView;
@@ -122,32 +168,85 @@ export class CacheTitleScreenRenderer {
       return;
     }
 
-    if (view.kind === 'login') {
-      this.drawLogin(view.state, timestampMs);
-      return;
+    switch (view.kind) {
+      case 'welcome':
+        this.drawWelcome(timestampMs);
+        return;
+      case 'login':
+        this.drawLogin(view.state, timestampMs);
+        return;
+      case 'new-user':
+        this.drawNewUser(timestampMs);
+        return;
+      case 'connecting':
+        this.drawConnecting(view.state, timestampMs);
+        return;
+      case 'loading':
+        this.drawLoading(view.progress, view.message, timestampMs);
+        return;
     }
-
-    this.drawMessage(
-      view.message,
-      view.detail,
-      timestampMs,
-    );
   }
 
   hitTest(x: number, y: number): TitleHitTarget {
-    if (contains(this.usernameRect(), x, y)) {
-      return 'username';
+    const view = this.currentView;
+    if (!view) {
+      return null;
     }
-    if (contains(this.passwordRect(), x, y)) {
-      return 'password';
+
+    if (view.kind === 'welcome') {
+      if (contains(this.buttonHitRect(LEFT_BUTTON_X, WELCOME_BUTTON_Y), x, y)) {
+        return 'new-user';
+      }
+      if (contains(this.buttonHitRect(RIGHT_BUTTON_X, WELCOME_BUTTON_Y), x, y)) {
+        return 'existing-user';
+      }
+      return null;
     }
-    if (contains(this.buttonRect(-BUTTON_CENTER_OFFSET), x, y)) {
-      return 'login';
+
+    if (view.kind === 'login') {
+      if (contains(this.usernameRect(), x, y)) {
+        return 'username';
+      }
+      if (contains(this.passwordRect(), x, y)) {
+        return 'password';
+      }
+      if (contains(this.buttonHitRect(LEFT_BUTTON_X, LOGIN_BUTTON_Y), x, y)) {
+        return 'login';
+      }
+      if (contains(this.buttonHitRect(RIGHT_BUTTON_X, LOGIN_BUTTON_Y), x, y)) {
+        return 'cancel';
+      }
+      return null;
     }
-    if (contains(this.buttonRect(BUTTON_CENTER_OFFSET), x, y)) {
-      return 'cancel';
+
+    if (view.kind === 'new-user') {
+      return contains(
+        this.buttonHitRect(LOGIN_CENTER_X, LOGIN_BUTTON_Y),
+        x,
+        y,
+      )
+        ? 'cancel'
+        : null;
     }
+
     return null;
+  }
+
+  private drawWelcome(timestampMs: number): void {
+    this.drawBase(timestampMs);
+    this.drawTitleBoxOriginal();
+
+    this.bold12.draw(
+      this.context,
+      'Welcome to RuneScape',
+      LOGIN_CENTER_X,
+      251,
+      YELLOW,
+      'center',
+    );
+
+    this.drawButton(LEFT_BUTTON_X, WELCOME_BUTTON_Y, 'New User');
+    this.drawButton(RIGHT_BUTTON_X, WELCOME_BUTTON_Y, 'Existing User');
   }
 
   private drawLogin(
@@ -155,102 +254,222 @@ export class CacheTitleScreenRenderer {
     timestampMs: number,
   ): void {
     this.drawBase(timestampMs);
-    this.drawSpriteCentered(
-      this.titleBoxCanvas,
-      this.assets.titleBox,
+    this.drawTitleBoxOriginal();
+
+    const message = state.message ?? 'Enter your username/email & password.';
+    this.drawLoginMessages('', message, '');
+
+    const usernameY = 266;
+    const passwordY = 281;
+
+    this.bold12.draw(
+      this.context,
+      'Login: ',
+      272,
+      usernameY,
+      WHITE,
+    );
+
+    const username = this.bold12.fitTail(state.username, 200);
+    this.bold12.draw(
+      this.context,
+      username,
+      312,
+      usernameY,
+      WHITE,
+    );
+
+    if (
+      state.selectedField === 'username' &&
+      state.showCursor !== false
+    ) {
+      this.bold12.draw(
+        this.context,
+        '|',
+        312 + this.bold12.measure(username),
+        usernameY,
+        YELLOW,
+        'left',
+      );
+    }
+
+    const passwordLine =
+      'Password: ' + '*'.repeat(state.password.length);
+    this.bold12.draw(
+      this.context,
+      passwordLine,
+      274,
+      passwordY,
+      WHITE,
+    );
+
+    if (
+      state.selectedField === 'password' &&
+      state.showCursor !== false
+    ) {
+      this.bold12.draw(
+        this.context,
+        '|',
+        274 + this.bold12.measure(passwordLine),
+        passwordY,
+        YELLOW,
+        'left',
+      );
+    }
+
+    this.drawButton(LEFT_BUTTON_X, LOGIN_BUTTON_Y, 'Login');
+    this.drawButton(RIGHT_BUTTON_X, LOGIN_BUTTON_Y, 'Cancel');
+  }
+
+  private drawNewUser(timestampMs: number): void {
+    this.drawBase(timestampMs);
+    this.drawTitleBoxOriginal();
+
+    this.bold12.draw(
+      this.context,
+      'How to Play',
       LOGIN_CENTER_X,
-      TITLE_BOX_Y,
+      211,
+      YELLOW,
+      'center',
+    );
+    this.bold12.draw(
+      this.context,
+      'To play Old School RuneScape, you will',
+      LOGIN_CENTER_X,
+      236,
+      WHITE,
+      'center',
+    );
+    this.bold12.draw(
+      this.context,
+      'need to be a current RuneScape member,',
+      LOGIN_CENTER_X,
+      251,
+      WHITE,
+      'center',
+    );
+    this.bold12.draw(
+      this.context,
+      "and have voted 'Yes' on the poll on the",
+      LOGIN_CENTER_X,
+      266,
+      WHITE,
+      'center',
+    );
+    this.bold12.draw(
+      this.context,
+      'RuneScape home page.',
+      LOGIN_CENTER_X,
+      281,
+      WHITE,
+      'center',
+    );
+
+    this.drawButton(LOGIN_CENTER_X, LOGIN_BUTTON_Y, 'Cancel');
+  }
+
+  private drawConnecting(
+    state: ConnectingRenderState,
+    timestampMs: number,
+  ): void {
+    this.drawBase(timestampMs);
+    this.drawTitleBoxCentered(382, 271);
+    this.drawLoginMessages(
+      '',
+      state.message ?? 'Connecting to server...',
+      '',
     );
 
     this.bold12.draw(
       this.context,
-      state.message ?? 'Enter your username/email & password.',
-      LOGIN_CENTER_X,
-      201,
-      YELLOW,
-      'center',
-    );
-
-    const cursor = state.showCursor === false ? '' : '|';
-    const usernameCursor =
-      state.selectedField === 'username' ? cursor : '';
-    const passwordCursor =
-      state.selectedField === 'password' ? cursor : '';
-
-    const username = this.plain12.fitTail(
-      state.username + usernameCursor,
-      170,
-    );
-    const password = this.plain12.fitTail(
-      '*'.repeat(state.password.length) + passwordCursor,
-      170,
-    );
-
-    this.plain12.draw(
-      this.context,
       'Login: ',
-      LOGIN_CENTER_X - 110,
-      USERNAME_BASELINE_Y,
+      272,
+      266,
       WHITE,
     );
-    this.plain12.draw(
+    this.bold12.draw(
       this.context,
-      username,
-      LOGIN_CENTER_X - 70,
-      USERNAME_BASELINE_Y,
+      this.bold12.fitTail(state.username, 200),
+      312,
+      266,
       WHITE,
     );
-    this.plain12.draw(
+    this.bold12.draw(
       this.context,
-      'Password: ',
-      LOGIN_CENTER_X - 110,
-      PASSWORD_BASELINE_Y,
+      'Password: ' + '*'.repeat(state.password.length),
+      274,
+      281,
       WHITE,
     );
-    this.plain12.draw(
-      this.context,
-      password,
-      LOGIN_CENTER_X - 54,
-      PASSWORD_BASELINE_Y,
-      WHITE,
-    );
-
-    const login = this.buttonRect(-BUTTON_CENTER_OFFSET);
-    const cancel = this.buttonRect(BUTTON_CENTER_OFFSET);
-    this.drawButton(login, 'Login');
-    this.drawButton(cancel, 'Cancel');
   }
 
-  private drawMessage(
+  private drawLoading(
+    progress: number,
     message: string,
-    detail: string | undefined,
     timestampMs: number,
   ): void {
     this.drawBase(timestampMs);
-    this.drawSpriteCentered(
-      this.titleBoxCanvas,
-      this.assets.titleBox,
+
+    this.bold12.draw(
+      this.context,
+      'RuneScape is loading - please wait...',
       LOGIN_CENTER_X,
-      TITLE_BOX_Y,
+      225,
+      WHITE,
+      'center',
+      false,
     );
+
+    drawRect(this.context, 230, 233, 304, 34, PROGRESS_RED);
+    drawRect(this.context, 231, 234, 302, 32, '#000');
+
+    const fillWidth = Math.floor(progress * 3);
+    this.context.fillStyle = PROGRESS_RED;
+    this.context.fillRect(232, 235, fillWidth, 30);
+    this.context.fillStyle = '#000';
+    this.context.fillRect(232 + fillWidth, 235, 300 - fillWidth, 30);
+
     this.bold12.draw(
       this.context,
       message,
       LOGIN_CENTER_X,
-      245,
+      256,
+      WHITE,
+      'center',
+      false,
+    );
+  }
+
+  private drawLoginMessages(
+    line1: string,
+    line2: string,
+    line3: string,
+  ): void {
+    this.bold12.draw(
+      this.context,
+      line1,
+      LOGIN_CENTER_X,
+      211,
       YELLOW,
       'center',
     );
-    if (detail) {
-      this.plain12.draw(
-        this.context,
-        detail,
-        LOGIN_CENTER_X,
-        265,
-        WHITE,
-        'center',
-      );
-    }
+    this.bold12.draw(
+      this.context,
+      line2,
+      LOGIN_CENTER_X,
+      226,
+      YELLOW,
+      'center',
+    );
+    this.bold12.draw(
+      this.context,
+      line3,
+      LOGIN_CENTER_X,
+      241,
+      YELLOW,
+      'center',
+    );
   }
 
   private drawBase(timestampMs: number): void {
@@ -296,18 +515,40 @@ export class CacheTitleScreenRenderer {
     context.restore();
   }
 
-  private drawButton(rect: Rect, label: string): void {
+  private drawTitleBoxOriginal(): void {
+    this.drawSpriteAt(
+      this.titleBoxCanvas,
+      this.assets.titleBox,
+      TITLE_BOX_X,
+      TITLE_BOX_Y,
+    );
+  }
+
+  private drawTitleBoxCentered(centerX: number, centerY: number): void {
+    this.drawSpriteAt(
+      this.titleBoxCanvas,
+      this.assets.titleBox,
+      centerX - Math.floor(this.assets.titleBox.width / 2),
+      centerY - Math.floor(this.assets.titleBox.height / 2),
+    );
+  }
+
+  private drawButton(
+    centerX: number,
+    centerY: number,
+    label: string,
+  ): void {
     this.drawSpriteAt(
       this.titleButtonCanvas,
       this.assets.titleButton,
-      rect.x,
-      rect.y,
+      centerX - 73,
+      centerY - 20,
     );
     this.bold12.draw(
       this.context,
       label,
-      rect.x + Math.floor(rect.width / 2),
-      rect.y + Math.floor(rect.height / 2) + 5,
+      centerX,
+      centerY + 5,
       WHITE,
       'center',
     );
@@ -342,33 +583,28 @@ export class CacheTitleScreenRenderer {
 
   private usernameRect(): Rect {
     return {
-      x: LOGIN_CENTER_X - 120,
-      y: USERNAME_BASELINE_Y - 14,
-      width: 240,
+      x: 272,
+      y: 252,
+      width: 310,
       height: 18,
     };
   }
 
   private passwordRect(): Rect {
     return {
-      x: LOGIN_CENTER_X - 120,
-      y: PASSWORD_BASELINE_Y - 14,
-      width: 240,
+      x: 274,
+      y: 267,
+      width: 308,
       height: 18,
     };
   }
 
-  private buttonRect(offset: number): Rect {
-    const sprite = this.assets.titleButton;
+  private buttonHitRect(centerX: number, centerY: number): Rect {
     return {
-      x:
-        LOGIN_CENTER_X + offset -
-        Math.floor(sprite.width / 2),
-      y:
-        BUTTON_CENTER_Y -
-        Math.floor(sprite.height / 2),
-      width: sprite.width,
-      height: sprite.height,
+      x: centerX - 75,
+      y: centerY - 20,
+      width: 151,
+      height: 41,
     };
   }
 }
@@ -438,4 +674,23 @@ function contains(
     y >= rect.y &&
     x < rect.x + rect.width &&
     y < rect.y + rect.height;
+}
+
+function clampProgress(progress: number): number {
+  return Math.max(0, Math.min(100, Math.floor(progress)));
+}
+
+function drawRect(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  fill: string,
+): void {
+  context.fillStyle = fill;
+  context.fillRect(x, y, width, 1);
+  context.fillRect(x, y + height - 1, width, 1);
+  context.fillRect(x, y, 1, height);
+  context.fillRect(x + width - 1, y, 1, height);
 }
