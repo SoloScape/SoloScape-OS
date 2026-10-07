@@ -113,12 +113,12 @@ export class FinePlayerMovement {
   renderState(interpolationAlpha: number): FinePlayerRenderState {
     const alpha = clamp(interpolationAlpha, 0, 1);
     return {
-      fineX: lerp(
+      fineX: interpolateFineCoordinate(
         this.previousFineXValue,
         this.fineXValue,
         alpha,
       ),
-      fineZ: lerp(
+      fineZ: interpolateFineCoordinate(
         this.previousFineZValue,
         this.fineZValue,
         alpha,
@@ -287,8 +287,19 @@ function interpolateYaw(
   ) % JAGEX_YAW_UNITS;
 }
 
-function lerp(a: number, b: number, alpha: number): number {
-  return a + (b - a) * alpha;
+/**
+ * Render-only interpolation between two fixed 20ms simulation states.
+ *
+ * Simulation never reads this result back: previous/current fine coordinates
+ * remain authoritative and requestAnimationFrame only samples between them.
+ */
+export function interpolateFineCoordinate(
+  previous: number,
+  current: number,
+  interpolationAlpha: number,
+): number {
+  const alpha = clamp(interpolationAlpha, 0, 1);
+  return previous + (current - previous) * alpha;
 }
 
 function clamp(value: number, min: number, max: number): number {
