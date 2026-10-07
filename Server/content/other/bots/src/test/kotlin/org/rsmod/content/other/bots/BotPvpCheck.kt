@@ -312,6 +312,12 @@ object BotPvpCheck {
         check(BotPvpEquipmentBudget.sameFallbackFamily("Zaryte crossbow", "Rune crossbow"))
         check(!BotPvpEquipmentBudget.sameFallbackFamily("Zaryte crossbow", "Ghrazi rapier"))
         check(!BotPvpEquipmentBudget.sameFallbackFamily("Avernic treads", "Primordial boots"))
+        check(BotPvpRiskGearOverlay.keepsLegacyBaseItem("Rune arrow", stackable = true))
+        check(BotPvpRiskGearOverlay.keepsLegacyBaseItem("Unholy blessing", stackable = false))
+        check(!BotPvpRiskGearOverlay.keepsLegacyBaseItem("Rune chainbody", stackable = false))
+        check(!BotPvpRiskGearOverlay.keepsLegacyBaseItem("Amulet of glory", stackable = false))
+        check(!BotPvpRiskGearOverlay.keepsLegacyBaseItem("Climbing boots", stackable = false))
+        check(!BotPvpRiskGearOverlay.keepsLegacyBaseItem("Abyssal whip", stackable = false))
         val itemMappings = checkNotNull(GameValProvider.loadIsolated().mappings["obj"])
         val requiredItems = BotPvpLoadouts.all.flatMap { loadout ->
             loadout.styles.values.flatten() + loadout.specialWeapons + loadout.food +
