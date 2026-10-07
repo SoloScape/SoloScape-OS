@@ -480,6 +480,240 @@ class TerrainHeightField {
   }
 }
 
+interface TerrainTileSurface {
+  readonly cornerValues: readonly [number, number, number, number];
+  readonly textureId: number;
+  readonly hidden: boolean;
+}
+
+interface BakedTerrainTile {
+  readonly underlay: TerrainTileSurface;
+  readonly overlay: TerrainTileSurface | null;
+}
+
+interface UnderlayHsl {
+  readonly hue: number;
+  readonly saturation: number;
+  readonly lightness: number;
+  readonly chroma: number;
+}
+
+/**
+ * Reproduces the classic ClientBuild terrain-colour pass closely enough for
+ * the WebGL mesh path: 11x11 underlay HSL averaging plus the per-corner
+ * height-gradient lightmap. Object-shadow blur is deliberately separate
+ * because the browser scene does not build the classic shadow map yet.
+ */
+class TerrainColorBaker {
+  private readonly underlayHsl = new Map<number, UnderlayHsl>();
+
+  constructor(
+    private readonly maps: ReadonlyMap<number, LoadedMapSquare>,
+    private readonly heights: TerrainHeightField,
+    private readonly materials: SceneFloorMaterials | null,
+  ) {}
+
+  bake(
+    map: LoadedMapSquare,
+    level: number,
+    localX: number,
+    localZ: number,
+    worldX: number,
+    worldZ: number,
+  ): BakedTerrainTile {
+    const index = mapTerrainTileIndex(level, localX, localZ);
+    const underlayRawId = map.terrain.underlayIds[index]!;
+    const overlayId = map.terrain.overlayIds[index]!;
+    const light = [
+      this.lightAt(level, worldX, worldZ),
+      this.lightAt(level, worldX + 1, worldZ),
+      this.lightAt(level, worldX + 1, worldZ + 1),
+      this.lightAt(level, worldX, worldZ + 1),
+    ] as const;
+
+    const underlayIndex = underlayRawId > 0
+      ? this.averageUnderlayIndex(level, worldX, worldZ)
+      : -1;
+    const underlay: TerrainTileSurface = {
+      cornerValues: [
+        getUnderlayColour(underlayIndex, light[0]),
+        getUnderlayColour(underlayIndex, light[1]),
+        getUnderlayColour(underlayIndex, light[2]),
+        getUnderlayColour(underlayIndex, light[3]),
+      ],
+      textureId: -1,
+      hidden: underlayIndex < 0,
+    };
+
+    if (overlayId < 0) {
+      return { underlay, overlay: null };
+    }
+
+    const definition = this.materials?.overlays.get(overlayId);
+    if (!definition) {
+      const fallback = getTableFromRgb(
+        fallbackTerrainRgb24(overlayId, underlayRawId),
+      );
+      return {
+        underlay,
+        overlay: {
+          cornerValues: [
+            getOverlayColour(fallback, light[0]),
+            getOverlayColour(fallback, light[1]),
+            getOverlayColour(fallback, light[2]),
+            getOverlayColour(fallback, light[3]),
+          ],
+          textureId: -1,
+          hidden: false,
+        },
+      };
+    }
+
+    if (
+      definition.texture < 0 &&
+      definition.rgb === 0xff00ff
+    ) {
+      return {
+        underlay,
+        overlay: {
+          cornerValues: [0, 0, 0, 0],
+          textureId: -1,
+          hidden: true,
+        },
+      };
+    }
+
+    if (definition.texture >= 0) {
+      return {
+        underlay,
+        overlay: {
+          cornerValues: [
+            getOverlayColour(-1, light[0]),
+            getOverlayColour(-1, light[1]),
+            getOverlayColour(-1, light[2]),
+            getOverlayColour(-1, light[3]),
+          ],
+          textureId: definition.texture,
+          hidden: false,
+        },
+      };
+    }
+
+    const overlayIndex = getTableFromRgb(definition.rgb);
+    return {
+      underlay,
+      overlay: {
+        cornerValues: [
+          getOverlayColour(overlayIndex, light[0]),
+          getOverlayColour(overlayIndex, light[1]),
+          getOverlayColour(overlayIndex, light[2]),
+          getOverlayColour(overlayIndex, light[3]),
+        ],
+        textureId: -1,
+        hidden: false,
+      },
+    };
+  }
+
+  private averageUnderlayIndex(
+    level: number,
+    worldX: number,
+    worldZ: number,
+  ): number {
+    let hue = 0;
+    let saturation = 0;
+    let lightness = 0;
+    let chroma = 0;
+    let count = 0;
+
+    for (let x = worldX - 5; x <= worldX + 5; x += 1) {
+      for (let z = worldZ - 5; z <= worldZ + 5; z += 1) {
+        const rawId = this.underlayIdAt(level, x, z);
+        if (rawId <= 0) {
+          continue;
+        }
+        const materialId = rawId - 1;
+        const definition = this.materials?.underlays.get(materialId);
+        if (!definition) {
+          continue;
+        }
+        let hsl = this.underlayHsl.get(materialId);
+        if (!hsl) {
+          hsl = underlayHslFromRgb(definition.rgb);
+          this.underlayHsl.set(materialId, hsl);
+        }
+        hue += hsl.hue;
+        saturation += hsl.saturation;
+        lightness += hsl.lightness;
+        chroma += hsl.chroma;
+        count += 1;
+      }
+    }
+
+    if (chroma <= 0 || count <= 0) {
+      const currentRawId = this.underlayIdAt(level, worldX, worldZ);
+      const definition = currentRawId > 0
+        ? this.materials?.underlays.get(currentRawId - 1)
+        : undefined;
+      if (definition) {
+        return getTableFromRgb(definition.rgb);
+      }
+      if (currentRawId > 0) {
+        return getTableFromRgb(
+          fallbackTerrainRgb24(-1, currentRawId),
+        );
+      }
+      return -1;
+    }
+
+    return getTable(
+      Math.trunc(hue * 256 / chroma),
+      Math.trunc(saturation / count),
+      Math.trunc(lightness / count),
+    );
+  }
+
+  private underlayIdAt(
+    level: number,
+    worldX: number,
+    worldZ: number,
+  ): number {
+    const mapSquareX = Math.floor(worldX / MAP_SIZE);
+    const mapSquareZ = Math.floor(worldZ / MAP_SIZE);
+    const mapId = ((mapSquareX & 0xff) << 8) | (mapSquareZ & 0xff);
+    const map = this.maps.get(mapId);
+    if (!map) {
+      return -1;
+    }
+    const localX = positiveModulo(worldX, MAP_SIZE);
+    const localZ = positiveModulo(worldZ, MAP_SIZE);
+    return map.terrain.underlayIds[
+      mapTerrainTileIndex(level, localX, localZ)
+    ]!;
+  }
+
+  private lightAt(
+    level: number,
+    worldX: number,
+    worldZ: number,
+  ): number {
+    const dx =
+      this.heights.height(level, worldX + 1, worldZ) -
+      this.heights.height(level, worldX - 1, worldZ);
+    const dz =
+      this.heights.height(level, worldX, worldZ + 1) -
+      this.heights.height(level, worldX, worldZ - 1);
+    const norm = Math.sqrt(dx * dx + dz * dz + 65536) || 1;
+    const nx = Math.trunc(dx * 256 / norm);
+    const ny = Math.trunc(65536 / norm);
+    const nz = Math.trunc(dz * 256 / norm);
+    const scale = (Math.trunc(Math.sqrt(5100)) * 768) >> 8;
+    return Math.trunc(
+      (nz * -50 + nx * -50 + ny * -10) / scale,
+    ) + 96;
+  }
+}
+
 function appendNormalTerrainTile(
   builder: MeshBuilder,
   map: LoadedMapSquare,
