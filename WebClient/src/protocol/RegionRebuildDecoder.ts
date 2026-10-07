@@ -9,6 +9,16 @@ const LEVEL_COUNT = 4;
 const INSTANCE_ZONE_COUNT =
   LEVEL_COUNT * BUILD_DIAMETER_ZONES * BUILD_DIAMETER_ZONES;
 
+// Login's first REBUILD_NORMAL_V2 prepends the GPI initialization bit block.
+// It contains one 30-bit local-player position plus 18 bits for each of the
+// other 2046 player slots, rounded up to the next whole byte.
+const LOGIN_PLAYER_INFO_INIT_BITS = 30 + 18 * 2046;
+const LOGIN_PLAYER_INFO_INIT_BYTES =
+  (LOGIN_PLAYER_INFO_INIT_BITS + 7) >>> 3;
+const NORMAL_REBUILD_HEADER_BYTES = 6;
+const LOGIN_NORMAL_REBUILD_BYTES =
+  LOGIN_PLAYER_INFO_INIT_BYTES + NORMAL_REBUILD_HEADER_BYTES;
+
 export interface MapSquare {
   readonly id: number;
   readonly x: number;
@@ -50,7 +60,9 @@ export type RegionRebuild = NormalRegionRebuild | InstancedRegionRebuild;
 /**
  * Decodes the two rev-240 region rebuild packets emitted by rsprot.
  *
- * REBUILD_NORMAL_V2 is exactly three transformed unsigned shorts.
+ * Ordinary REBUILD_NORMAL_V2 is three transformed unsigned shorts. The first
+ * login rebuild uses the same opcode but prepends the 4,608-byte GPI player
+ * initialization block before those six map-header bytes.
  * REBUILD_REGION_V2 contains a transformed header, a distinct mapsquare count,
  * then 4 * 13 * 13 zone slots encoded as a bit stream. Populated instance slots
  * carry a 26-bit ReferenceZone. Revision 240 does not append XTEA key blocks.
@@ -70,16 +82,25 @@ export function tryDecodeRegionRebuildPacket(
 export function decodeNormalRegionRebuild(
   payload: Uint8Array,
 ): NormalRegionRebuild {
-  if (payload.length !== 6) {
+  const isLoginRebuild = payload.length === LOGIN_NORMAL_REBUILD_BYTES;
+  if (
+    payload.length !== NORMAL_REBUILD_HEADER_BYTES &&
+    !isLoginRebuild
+  ) {
     throw new RangeError(
-      'REBUILD_NORMAL_V2 payload must be 6 bytes; received ' +
+      'REBUILD_NORMAL_V2 payload must be either ' +
+        NORMAL_REBUILD_HEADER_BYTES + ' bytes (ordinary) or ' +
+        LOGIN_NORMAL_REBUILD_BYTES + ' bytes (login with GPI init); received ' +
         payload.length + '.',
     );
   }
 
-  const zoneZ = readU16Alt3(payload, 0);
-  const worldArea = readU16Alt3(payload, 2);
-  const zoneX = readU16Alt3(payload, 4);
+  const headerOffset = isLoginRebuild
+    ? LOGIN_PLAYER_INFO_INIT_BYTES
+    : 0;
+  const zoneZ = readU16Alt3(payload, headerOffset);
+  const worldArea = readU16Alt3(payload, headerOffset + 2);
+  const zoneX = readU16Alt3(payload, headerOffset + 4);
 
   return {
     kind: 'normal',
