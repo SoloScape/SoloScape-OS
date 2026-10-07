@@ -4,9 +4,9 @@ This directory contains the browser-native SoloScape client work targeting
 Safari on iPhone/iPad and modern desktop browsers.
 
 The current branch implements browser transport, a validated/bounded JS5 cache
-client, the rev-240 game-login handshake, server game-packet framing, and
-normal/instanced region rebuild decoding for OSRS protocol revision 240 /
-client 240.2.
+client, the rev-240 game-login handshake, server game-packet framing,
+normal/instanced region rebuild decoding, and the static terrain/loc/model
+asset pipeline for OSRS protocol revision 240 / client 240.2.
 
 ## Current game-login flow
 
@@ -30,6 +30,11 @@ Game login uses a second WebSocket/TCP connection after JS5 bootstrap:
       -> emit framed server game packets
       -> decode REBUILD_NORMAL_V2 / REBUILD_REGION_V2
       -> expose required mapsquares + instance zone placements
+      -> resolve archive-5 mX_Z / lX_Z groups
+      -> decode terrain + static loc placements
+      -> load loc definitions from 2:6
+      -> resolve/download model groups from archive 7
+      -> decode model vertices + triangles
 
 The gateway reads the public RSA key from:
 
@@ -78,6 +83,42 @@ After bootstrap, client code can select an archive/group:
 
 The observed SoloScape cache has 25 master-index slots. Slots 16 and 23 are
 empty, leaving 23 present archive reference tables.
+
+## Static scene asset pipeline
+
+The browser JS5 connection is backed by SoloScape's `.data/cache/LIVE` cache.
+That is distinct from the server's processed `.data/cache/SERVER` map layout:
+the browser therefore follows the live OSRS cache naming convention rather than
+the server-side repacked mapsquare groups.
+
+For every mapsquare required by a rebuild:
+
+    archive 5 reference table
+      -> hash/resolve m<X>_<Z> terrain group
+      -> hash/resolve l<X>_<Z> location group
+      -> validated JS5 download
+      -> decode 4 x 64 x 64 terrain tiles
+      -> decode delta/smart-compressed loc placements
+      -> collect unique loc ids
+      -> load archive 2 / group 6 loc definitions once
+      -> follow loc transform definitions
+      -> collect unique model ids
+      -> validated archive-7 model downloads
+      -> decode old/type1/type2/type3 model geometry
+
+The rev-240 terrain decoder follows SoloScape's server decoder: tile opcodes are
+16-bit, overlays are signed 16-bit ids, and render flags/underlays use the
+modern opcode ranges. Opcode-0 terrain heights remain marked implicit so the
+renderer/scene builder can derive the procedural absolute height from the
+world tile coordinates.
+
+Location definitions retain model ids/types, dimensions, rotations,
+scale/translation, recolors/retextures and transform chains. Model decoding
+retains vertex coordinates, triangle indices, face colors/textures,
+transparency/render types and type-0 texture triangles.
+
+Raw model group bytes are released after geometry decoding to avoid keeping a
+second copy of the scene's model payloads in memory on mobile.
 
 ## Request scheduler
 
@@ -272,11 +313,17 @@ After automatic startup loading:
 After a region rebuild packet is received:
 
     window.soloscapeRegionRebuild
+    window.soloscapeSceneMaps
+    window.soloscapeSceneAssets
 
 Normal rebuilds expose center zone, world-area id, and the static mapsquares
 covering the 13x13-zone scene window. Instanced rebuilds expose all 676
 destination slots, each populated slot's source plane/zone/rotation, and the
 deduplicated source mapsquares required to assemble the instance.
+
+`soloscapeSceneMaps` contains decoded terrain and static loc placements.
+`soloscapeSceneAssets` contains the required loc definitions and decoded
+archive-7 model geometry.
 
 ## Expected live log
 
@@ -299,7 +346,7 @@ An ordinary group download adds:
 CRC/version or group-unpack failures are rejected and invalid groups are not
 exposed as startup assets.
 
-## Tests
+## Tests / CI
 
 From WebClient:
 
@@ -307,13 +354,19 @@ From WebClient:
     npm run test:protocol
     npm run build
 
+`.github/workflows/webclient.yml` runs dependency installation, strict
+TypeScript checking, the protocol/cache test suite, and the Vite production
+build on WebClient pushes and pull requests.
+
 Tests cover stream fragmentation/continuations, master-index parsing,
 container decoding, reference-table parsing, CRC/version validation, version
 trailer handling, scheduler concurrency/deduplication, timeout retries,
 cancellation, single/multi-stripe group unpacking, sparse file ids, typed
 startup varbit decoding, game-login crypto/framing, byte-at-a-time rev-240
 server packet fragmentation, transformed rebuild headers, 676-slot instance
-bitstreams, and source/destination instance-zone mapping.
+bitstreams, source/destination instance-zone mapping, JS5 map-name hashing,
+rev-240 terrain/location decoding, loc model metadata/transforms, and old/type
+1/type 2/type 3 model geometry.
 
 ## M1 status
 
@@ -354,7 +407,7 @@ Known follow-ups outside the normal password-login path:
 - proof-of-work challenges are detected and reported but not solved yet
 - authenticator-required responses are decoded/reported; OTP entry is not wired yet
 
-## M3 packet-framing / region-rebuild status
+## M3 packet / static-scene asset status
 
 Implemented:
 
@@ -370,6 +423,14 @@ Implemented:
 - destination instance-zone coordinate retention
 - normal/static and instanced/source mapsquare discovery
 - `window.soloscapeRegionRebuild` debug state
+- live archive-5 `mX_Z` / `lX_Z` mapsquare resolution
+- rev-240 16-bit terrain opcode decoding
+- smart/delta static location decoding
+- archive 2 / group 6 loc model-definition decoding
+- loc transform-chain traversal and model-id deduplication
+- validated archive-7 model loading
+- old/type1/type2/type3 model geometry decoding
+- `window.soloscapeSceneMaps` / `window.soloscapeSceneAssets` debug state
 
 Revision 240's rebuild packets do not append XTEA key blocks; the browser follows
 the rsprot rev-240 encoders exactly. The rebuild vectors cover transformed
@@ -378,8 +439,9 @@ mapsquare-count validation.
 
 Next:
 
-- resolve/download map archive groups for the decoded mapsquares, then decode
-  terrain and location/object data
+- assemble terrain/model instances into renderable scene coordinates, derive
+  implicit/procedural terrain heights, and feed the first static scene into the
+  WebGL renderer
 
 ## Reference format
 
