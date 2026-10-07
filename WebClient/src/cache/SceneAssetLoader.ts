@@ -15,7 +15,6 @@ export const MODELS_ARCHIVE = 7;
 
 export interface LoadedSceneAssets {
   readonly locDefinitions: ReadonlyMap<number, LocModelDefinition>;
-  readonly modelData: ReadonlyMap<number, Uint8Array>;
   readonly models: ReadonlyMap<number, DecodedModelGeometry>;
 }
 
@@ -90,17 +89,17 @@ export class SceneAssetLoader {
         if (!data) {
           throw new Error('Model group 7:' + modelId + ' is empty.');
         }
-        return [modelId, data.slice()] as const;
+        return [
+          modelId,
+          decodeModelGeometry(modelId, data),
+        ] as const;
       }),
     );
 
-    const modelData = new Map<number, Uint8Array>(modelEntries);
-    const models = new Map<number, DecodedModelGeometry>();
+    const models = new Map<number, DecodedModelGeometry>(modelEntries);
     let vertices = 0;
     let faces = 0;
-    for (const [modelId, data] of modelData) {
-      const model = decodeModelGeometry(modelId, data);
-      models.set(modelId, model);
+    for (const model of models.values()) {
       vertices += model.vertexX.length;
       faces += model.faceA.length;
     }
@@ -112,7 +111,6 @@ export class SceneAssetLoader {
 
     return {
       locDefinitions: definitions,
-      modelData,
       models,
     };
   }
