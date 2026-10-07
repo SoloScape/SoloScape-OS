@@ -5,9 +5,10 @@ import dev.openrune.types.ItemServerType
 /**
  * Structured runtime form of the player-authored 4x5 Wilderness gear matrix.
  *
- * Matrix gear overrides matching worn slots on the pinned TSPS style. Unspecified slots (notably
- * ammunition and a few utility slots) stay on the proven TSPS loadout. Missing cache names are
- * intentionally ignored so a cache revision/custom-content mismatch cannot make a bot unspawnable.
+ * Matrix gear owns the normal worn slots for the selected risk/role. Only legacy ammunition and
+ * narrow utility items are carried forward from the pinned TSPS style; armour, jewellery, weapons,
+ * shields and boots must come from the matrix. Missing cache names are intentionally ignored so a
+ * cache revision/custom-content mismatch cannot make a bot unspawnable.
  */
 internal object BotPvpRiskGearOverlay {
     private data class Choice(val alternatives: List<List<String>>)
@@ -271,15 +272,18 @@ internal object BotPvpRiskGearOverlay {
         }.maxByOrNull { bundle -> bundle.sumOf(BotPvpEquipmentBudget::value) }.orEmpty()
     }
 
+    internal fun keepsLegacyBaseItem(type: ItemServerType): Boolean =
+        type.stackable || type.name.contains("blessing", ignoreCase = true)
+
     private fun mergeStyle(base: List<String>, preferred: List<ItemServerType>): List<String> {
         val byWearpos = LinkedHashMap<Int, String>()
-        val unresolved = ArrayList<String>()
 
+        // The TSPS archetype is still useful for ammunition and small utility slots, but it must
+        // not silently fill armour/jewellery/weapon slots that the new risk matrix left blank.
+        // That was causing Hybrid (and other sparse plans) to wear the old rune/mystic gear.
         for (symbol in base) {
-            val type = BotPvpEquipmentBudget.item(symbol)
-            if (type == null || type.wearpos1 < 0) {
-                unresolved += symbol
-            } else {
+            val type = BotPvpEquipmentBudget.item(symbol) ?: continue
+            if (type.wearpos1 >= 0 && keepsLegacyBaseItem(type)) {
                 byWearpos[type.wearpos1] = symbol
             }
         }
@@ -288,6 +292,6 @@ internal object BotPvpRiskGearOverlay {
                 byWearpos[type.wearpos1] = type.internalName
             }
         }
-        return byWearpos.values.toList() + unresolved
+        return byWearpos.values.toList()
     }
 }
