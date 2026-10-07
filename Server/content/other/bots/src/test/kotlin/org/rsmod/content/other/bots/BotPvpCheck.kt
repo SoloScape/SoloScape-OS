@@ -237,6 +237,15 @@ object BotPvpCheck {
                 check(preset.preferUnskulled == (tier == BotPvpRiskTier.Max))
             }
         }
+        val averageHybridSupplies =
+            BotPvpRiskLoadouts.get(BotPvpRiskTier.Average, BotPvpLoadoutRole.Hybrid).supplies
+        check("Magic potion" in averageHybridSupplies)
+        val riskerHybridSupplies =
+            BotPvpRiskLoadouts.get(BotPvpRiskTier.Risker, BotPvpLoadoutRole.Hybrid).supplies
+        check("Imbued heart" in riskerHybridSupplies)
+        val maxHybridSupplies =
+            BotPvpRiskLoadouts.get(BotPvpRiskTier.Max, BotPvpLoadoutRole.Hybrid).supplies
+        check("Smouldering heart" in maxHybridSupplies)
 
         val scalablePure = checkNotNull(BotPvpLoadouts.get("low_level_dds_pure"))
         val pureMinimums = scalablePure.levels.mapValues { (stat, _) ->
