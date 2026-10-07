@@ -3,6 +3,7 @@ import type {
   SceneBounds,
   SceneMesh,
 } from './SceneAssembler';
+import type { OrbitCameraRenderState } from '../runtime/OrbitCamera';
 
 interface GpuMesh {
   readonly positionBuffer: WebGLBuffer;
@@ -47,6 +48,7 @@ export class WebGlSceneRenderer {
   private playerMeshSource: SceneMesh | null = null;
   private scene: AssembledScene | null = null;
   private localPlayerPosition: LocalPlayerRenderPosition | null = null;
+  private orbitCamera: OrbitCameraRenderState | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', {
@@ -212,9 +214,8 @@ export class WebGlSceneRenderer {
   }
 
   renderFrame(interpolationAlpha = 0): void {
-    // Player X/Z/yaw are interpolated from previous/current 20ms simulation
-    // states before setLocalPlayerPosition() reaches the renderer. Keep alpha
-    // available here for the upcoming orbit-camera interpolation state.
+    // Player and camera transforms are interpolated before they reach the
+    // renderer. Presentation remains a pure draw over resident GPU buffers.
     void interpolationAlpha;
     this.draw();
   }
@@ -227,6 +228,12 @@ export class WebGlSceneRenderer {
       : null;
   }
 
+  setOrbitCamera(
+    camera: OrbitCameraRenderState | null,
+  ): void {
+    this.orbitCamera = camera ? { ...camera } : null;
+  }
+
   setLocalPlayerMesh(mesh: SceneMesh | null): void {
     this.playerMeshSource = mesh;
     this.deleteGpuMesh(this.playerMesh);
@@ -236,6 +243,7 @@ export class WebGlSceneRenderer {
   clear(): void {
     this.scene = null;
     this.localPlayerPosition = null;
+    this.orbitCamera = null;
     this.playerMeshSource = null;
     this.deleteSceneGpuMeshes();
     this.deleteGpuMesh(this.playerMesh);
@@ -273,16 +281,24 @@ export class WebGlSceneRenderer {
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.textureArray);
     gl.uniform1i(this.textureSamplerLocation, 0);
 
-    const matrices = this.localPlayerPosition
-      ? createPlayerFollowCameraMatrices(
-          this.localPlayerPosition,
+    const aspect =
+      this.canvas.width / Math.max(1, this.canvas.height);
+    const matrices = this.orbitCamera
+      ? createOrbitCameraMatrices(
+          this.orbitCamera,
           this.scene.bounds,
-          this.canvas.width / Math.max(1, this.canvas.height),
+          aspect,
         )
-      : createOverviewCameraMatrices(
-          this.scene.bounds,
-          this.canvas.width / Math.max(1, this.canvas.height),
-        );
+      : this.localPlayerPosition
+        ? createPlayerFollowCameraMatrices(
+            this.localPlayerPosition,
+            this.scene.bounds,
+            aspect,
+          )
+        : createOverviewCameraMatrices(
+            this.scene.bounds,
+            aspect,
+          );
 
     gl.uniformMatrix4fv(
       this.projectionLocation,
@@ -511,6 +527,36 @@ export class WebGlSceneRenderer {
     this.gl.deleteBuffer(mesh.textureCoordBuffer);
     this.gl.deleteBuffer(mesh.textureIdBuffer);
   }
+}
+
+function createOrbitCameraMatrices(
+  camera: OrbitCameraRenderState,
+  bounds: SceneBounds,
+  aspect: number,
+): { projection: Float32Array; view: Float32Array } {
+  const spanX = Math.max(1, bounds.maxX - bounds.minX);
+  const spanZ = Math.max(1, bounds.maxZ - bounds.minZ);
+  const far = Math.max(18000, Math.max(spanX, spanZ) * 2.5);
+
+  return {
+    projection: perspective(
+      48 * Math.PI / 180,
+      Math.max(0.1, aspect),
+      32,
+      far,
+    ),
+    view: lookAt(
+      camera.eyeX,
+      camera.eyeY,
+      camera.eyeZ,
+      camera.targetX,
+      camera.targetY,
+      camera.targetZ,
+      0,
+      1,
+      0,
+    ),
+  };
 }
 
 function createPlayerFollowCameraMatrices(
