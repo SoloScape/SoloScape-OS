@@ -315,8 +315,8 @@ function syncLocalPlayerRender(
     renderState.fineX -
     currentScene.originTileX * SCENE_TILE_SIZE;
   const z =
-    renderState.fineZ -
-    currentScene.originTileZ * SCENE_TILE_SIZE;
+    currentScene.originTileZ * SCENE_TILE_SIZE -
+    renderState.fineZ;
   const y = currentTerrainSampler.groundYFine(
     renderState.level,
     renderState.fineX,
@@ -368,8 +368,8 @@ function syncOrbitCameraRender(
     playerState.fineX -
     currentScene.originTileX * SCENE_TILE_SIZE;
   const targetZ =
-    playerState.fineZ -
-    currentScene.originTileZ * SCENE_TILE_SIZE;
+    currentScene.originTileZ * SCENE_TILE_SIZE -
+    playerState.fineZ;
   const groundY = currentTerrainSampler.groundYFine(
     playerState.level,
     playerState.fineX,
@@ -487,8 +487,8 @@ function tickGameSimulation(): void {
     playerState.fineX -
     currentScene.originTileX * SCENE_TILE_SIZE;
   const targetZ =
-    playerState.fineZ -
-    currentScene.originTileZ * SCENE_TILE_SIZE;
+    currentScene.originTileZ * SCENE_TILE_SIZE -
+    playerState.fineZ;
   if (!orbitCamera.initialized) {
     orbitCamera.reset(targetX, targetZ);
   } else {
