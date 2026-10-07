@@ -35,6 +35,8 @@ export interface SceneFloorMaterials {
   readonly underlays: ReadonlyMap<number, FloorUnderlayDefinition>;
   readonly overlays: ReadonlyMap<number, FloorOverlayDefinition>;
   readonly textureAverageRgb: ReadonlyMap<number, number>;
+  /** Cache texture ids with decoded RGBA layers ready for GPU sampling. */
+  readonly residentTextureIds: ReadonlySet<number>;
 }
 
 export interface SceneMaterialAssets extends SceneFloorMaterials {
@@ -138,6 +140,9 @@ export class SceneMaterialLoader {
       underlays,
       overlays,
       textureAverageRgb: new Map(this.textureAverageRgb),
+      residentTextureIds: new Set(
+        textureLayers.map((layer) => layer.id),
+      ),
       textureLayers,
     };
   }
