@@ -3,8 +3,43 @@
 This directory contains the browser-native SoloScape client work targeting
 Safari on iPhone/iPad and modern desktop browsers.
 
-The current branch implements browser transport plus a validated, bounded JS5
-cache client for OSRS protocol revision 240 / client 240.2.
+The current branch implements browser transport, a validated/bounded JS5 cache
+client, and the rev-240 game-login handshake for OSRS protocol revision 240 /
+client 240.2.
+
+## Current game-login flow
+
+Game login uses a second WebSocket/TCP connection after JS5 bootstrap:
+
+    JS5 ready
+      -> collect the 23 present master-index CRCs
+      -> game init opcode 14
+      -> status 0 + 8-byte server session id
+      -> generate four login/ISAAC seeds
+      -> construct rev-240 RSA authentication block
+      -> RSA encrypt with the SoloScape public key
+      -> construct desktop login metadata + transformed cache CRC block
+      -> XTEA encrypt the metadata block
+      -> game login opcode 16
+      -> initialize client/server ISAAC streams
+      -> decode login response
+      -> preserve trailing bytes as the M3 game stream
+
+The gateway reads the public RSA key from:
+
+    Server/.data/client.key
+
+and sends the exponent/modulus to the browser as a small text control frame.
+JS5 ignores this frame and continues to use binary frames exactly as before.
+Override key discovery with `RSA_PUBLIC_KEY_FILE`, or provide
+`RSA_MODULUS` / `RSA_EXPONENT` directly.
+
+The rev-240 success response advertises a size of 37, while the login metadata
+encoder actually emits 34 bytes. The browser consumes only those 34 metadata
+bytes and leaves subsequent bytes untouched for game-packet framing.
+
+Password values are never stored in localStorage. The username may be retained
+for convenience; the password input is cleared after submission.
 
 ## Current JS5 flow
 
@@ -281,9 +316,29 @@ Complete so far:
 - typed startup definition assets
 - revision-240 varbit definition decoding
 
+## M2 status
+
+Implemented:
+
+- initial game connection / server seed
+- rev-240 login block construction
+- textbook RSA with the server-generated public modulus
+- XTEA encryption of the post-RSA login block
+- ISAAC client/server stream initialization
+- rev-240 desktop cache CRC transform/order
+- login response decoding, including the 37-declared/34-byte success quirk
+- preservation of trailing game-stream bytes for M3
+- browser username/password login controls
+- gateway RSA public-key handoff
+
+Known follow-ups outside the normal password-login path:
+
+- proof-of-work challenges are detected and reported but not solved yet
+- authenticator-required responses are decoded/reported; OTP entry is not wired yet
+
 Next:
 
-- game login / server seed
+- game packet framing / region rebuild
 
 ## Reference format
 
