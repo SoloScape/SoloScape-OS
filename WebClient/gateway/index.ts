@@ -1,9 +1,17 @@
+import { readFileSync } from 'node:fs';
 import { createConnection, type Socket } from 'node:net';
 import { Buffer } from 'node:buffer';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import WebSocket, {
   WebSocketServer,
   type RawData,
 } from 'ws';
+
+interface GatewayRsaConfig {
+  exponent: string;
+  modulus: string;
+}
 
 function envPort(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -28,12 +36,58 @@ function rawDataToBuffer(data: RawData): Buffer {
   return data;
 }
 
+function normalizeHex(value: string | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.trim().replace(/^0x/i, '').replace(/\s+/g, '');
+  return /^[0-9a-f]+$/i.test(normalized) ? normalized : null;
+}
+
+function loadGatewayRsaConfig(): GatewayRsaConfig | null {
+  const inlineModulus = normalizeHex(process.env.RSA_MODULUS);
+  if (inlineModulus) {
+    return {
+      exponent: normalizeHex(process.env.RSA_EXPONENT) ?? '10001',
+      modulus: inlineModulus,
+    };
+  }
+
+  const gatewayDir = dirname(fileURLToPath(import.meta.url));
+  const defaultFile = resolve(gatewayDir, '../../Server/.data/client.key');
+  const file = process.env.RSA_PUBLIC_KEY_FILE ?? defaultFile;
+
+  try {
+    const contents = readFileSync(file, 'utf8');
+    const exponent = normalizeHex(
+      contents.match(/^Exponent:\s*([0-9a-fx]+)/im)?.[1],
+    );
+    const modulus = normalizeHex(
+      contents.match(/^Modulus:\s*([0-9a-fx]+)/im)?.[1],
+    );
+    if (!exponent || !modulus) {
+      throw new Error('missing Exponent/Modulus lines');
+    }
+    return { exponent, modulus };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(
+      'Game-login RSA public key unavailable (' + file + '): ' + message,
+    );
+    console.warn(
+      'JS5 still works. For game login, create Server/.data/client.key or set RSA_MODULUS/RSA_PUBLIC_KEY_FILE.',
+    );
+    return null;
+  }
+}
+
 const wsHost = process.env.WS_HOST ?? '127.0.0.1';
 const wsPort = envPort('WS_PORT', 8081);
 const gameHost = process.env.GAME_HOST ?? '127.0.0.1';
 const gamePort = envPort('GAME_PORT', 43594);
 const allowedOrigin = process.env.WS_ALLOWED_ORIGIN;
 const maxQueuedBytes = 1024 * 1024;
+const gatewayRsaConfig = loadGatewayRsaConfig();
 
 const server = new WebSocketServer({
   host: wsHost,
@@ -48,6 +102,16 @@ server.on('connection', (client, request) => {
   if (allowedOrigin && origin !== allowedOrigin) {
     client.close(1008, 'Origin not allowed');
     return;
+  }
+
+  // The modulus/exponent are public information required to construct the
+  // textbook-RSA OSRS login block. Existing JS5 clients ignore this text frame.
+  if (gatewayRsaConfig) {
+    client.send(JSON.stringify({
+      type: 'soloscape-gateway-config',
+      rsaExponent: gatewayRsaConfig.exponent,
+      rsaModulus: gatewayRsaConfig.modulus,
+    }));
   }
 
   const upstream: Socket = createConnection({
@@ -147,6 +211,11 @@ server.on('listening', () => {
   );
   console.log(
     'Forwarding each WebSocket connection to tcp://' + gameHost + ':' + gamePort,
+  );
+  console.log(
+    gatewayRsaConfig
+      ? 'Game-login RSA public key loaded (' + gatewayRsaConfig.modulus.length + ' hex chars).'
+      : 'Game-login RSA public key not loaded; JS5-only mode until configured.',
   );
 });
 
