@@ -26,6 +26,14 @@ import {
   OSRS_CLIENT_TARGET,
   OSRS_PROTOCOL_REVISION,
 } from './protocol/revision';
+import {
+  assembleScene,
+  type AssembledScene,
+} from './scene/SceneAssembler';
+import { WebGlSceneRenderer } from './scene/WebGlSceneRenderer';
+
+const CLIENT_VIEWPORT_WIDTH = 765;
+const CLIENT_VIEWPORT_HEIGHT = 503;
 
 function requireElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -33,16 +41,6 @@ function requireElement<T extends Element>(selector: string): T {
     throw new Error('Web client shell is missing required element ' + selector + '.');
   }
   return element;
-}
-
-function requireCanvasContext(
-  canvas: HTMLCanvasElement,
-): CanvasRenderingContext2D {
-  const context = canvas.getContext('2d');
-  if (!context) {
-    throw new Error('Canvas 2D is unavailable.');
-  }
-  return context;
 }
 
 const urlInput = requireElement<HTMLInputElement>('#gateway-url');
@@ -55,7 +53,9 @@ const loginStatus = requireElement<HTMLElement>('#login-status');
 const revision = requireElement<HTMLElement>('#revision');
 const log = requireElement<HTMLElement>('#log');
 const canvas = requireElement<HTMLCanvasElement>('#game');
-const context = requireCanvasContext(canvas);
+const sceneStatus = requireElement<HTMLElement>('#scene-status');
+const sceneHeadline = requireElement<HTMLElement>('#scene-headline');
+const sceneDetail = requireElement<HTMLElement>('#scene-detail');
 
 const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
 const defaultGatewayUrl = scheme + '://' + location.hostname + ':8081';
@@ -70,14 +70,9 @@ function drawClientStatus(
   headline: string,
   detail: string,
 ): void {
-  context.fillStyle = '#000';
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.fillStyle = '#fff';
-  context.font = '18px system-ui';
-  context.textAlign = 'center';
-  context.fillText(headline, canvas.width / 2, canvas.height / 2 - 12);
-  context.font = '14px system-ui';
-  context.fillText(detail, canvas.width / 2, canvas.height / 2 + 16);
+  sceneHeadline.textContent = headline;
+  sceneDetail.textContent = detail;
+  sceneStatus.hidden = false;
 }
 
 drawClientStatus(
@@ -93,11 +88,20 @@ const gameLogin = new GameLoginClient(gameTransport);
 const mapSquareLoader = new MapSquareLoader(js5, appendLog);
 const sceneAssetLoader = new SceneAssetLoader(js5, appendLog);
 let mapLoadGeneration = 0;
+let sceneRenderer: WebGlSceneRenderer | null = null;
 
 function appendLog(message: string): void {
   const stamp = new Date().toLocaleTimeString();
   log.textContent += '[' + stamp + '] ' + message + '\n';
   log.scrollTop = log.scrollHeight;
+}
+
+try {
+  sceneRenderer = new WebGlSceneRenderer(canvas);
+  appendLog('WebGL2 static-scene renderer initialized.');
+} catch (error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  appendLog('WebGL2 renderer unavailable: ' + message);
 }
 
 function gameLoginIsActive(): boolean {
@@ -114,6 +118,14 @@ function refreshLoginControls(): void {
   loginButton.textContent = gameLoginIsActive()
     ? 'Disconnect game'
     : 'Game login';
+}
+
+function resetSceneDebug(): void {
+  (window as SoloScapeDebugWindow).soloscapeRegionRebuild = undefined;
+  (window as SoloScapeDebugWindow).soloscapeSceneMaps = undefined;
+  (window as SoloScapeDebugWindow).soloscapeSceneAssets = undefined;
+  (window as SoloScapeDebugWindow).soloscapeScene = undefined;
+  sceneRenderer?.clear();
 }
 
 js5.onLog = appendLog;
@@ -165,9 +177,7 @@ let framedGamePackets = 0;
 gameLogin.onLoginSuccess = (success) => {
   framedGamePackets = 0;
   mapLoadGeneration += 1;
-  (window as SoloScapeDebugWindow).soloscapeRegionRebuild = undefined;
-  (window as SoloScapeDebugWindow).soloscapeSceneMaps = undefined;
-  (window as SoloScapeDebugWindow).soloscapeSceneAssets = undefined;
+  resetSceneDebug();
   drawClientStatus(
     'Game login successful',
     'Player index ' + success.localPlayerIndex +
@@ -195,6 +205,8 @@ gameLogin.onGamePacket = (packet) => {
     const loadGeneration = ++mapLoadGeneration;
     (window as SoloScapeDebugWindow).soloscapeSceneMaps = undefined;
     (window as SoloScapeDebugWindow).soloscapeSceneAssets = undefined;
+    (window as SoloScapeDebugWindow).soloscapeScene = undefined;
+    sceneRenderer?.clear();
 
     void mapSquareLoader.loadMany(rebuild.mapSquares)
       .then(async (maps) => {
@@ -231,20 +243,51 @@ gameLogin.onGamePacket = (packet) => {
         ).reduce((sum, count) => sum + count, 0);
 
         drawClientStatus(
-          'Static scene assets ready',
+          'Assembling static scene',
           assets.models.size + ' models; ' + vertices +
-            ' vertices; ' + faces + ' faces ready for rendering',
+            ' source vertices; ' + faces + ' source faces',
         );
+
+        const scene = assembleScene(rebuild, maps, assets);
+        if (loadGeneration !== mapLoadGeneration) {
+          return;
+        }
+        (window as SoloScapeDebugWindow).soloscapeScene = scene;
+
+        appendLog(
+          'Static scene assembled: terrain-tiles=' +
+            scene.stats.terrainTiles +
+            '; terrain-triangles=' + scene.stats.terrainTriangles +
+            '; loc-placements=' + scene.stats.locationPlacements +
+            '; model-instances=' + scene.stats.modelInstances +
+            '; model-triangles=' + scene.stats.modelTriangles +
+            '; skipped-locs=' + scene.stats.skippedLocations + '.',
+        );
+
+        if (sceneRenderer) {
+          sceneRenderer.render(scene);
+          sceneStatus.hidden = true;
+          appendLog(
+            'First static RuneScape scene rendered with WebGL2: terrain=' +
+              scene.terrain.vertexCount + ' vertices; locs=' +
+              scene.locations.vertexCount + ' vertices.',
+          );
+        } else {
+          drawClientStatus(
+            'Static scene assembled',
+            'WebGL2 is unavailable; inspect window.soloscapeScene for geometry',
+          );
+        }
       })
       .catch((error: unknown) => {
         if (loadGeneration !== mapLoadGeneration) {
           return;
         }
         const message = error instanceof Error ? error.message : String(error);
-        appendLog('Static scene asset load failed: ' + message);
+        appendLog('Static scene build/render failed: ' + message);
         drawClientStatus(
-          'Static scene asset load failed',
-          'See the transport log for cache/model details',
+          'Static scene build/render failed',
+          'See the transport log for cache, assembly, or WebGL details',
         );
       });
 
@@ -356,9 +399,7 @@ connectButton.addEventListener('click', async () => {
     mapLoadGeneration += 1;
     sceneAssetLoader.reset();
     (window as SoloScapeDebugWindow).soloscapeStartupAssets = undefined;
-    (window as SoloScapeDebugWindow).soloscapeRegionRebuild = undefined;
-    (window as SoloScapeDebugWindow).soloscapeSceneMaps = undefined;
-    (window as SoloScapeDebugWindow).soloscapeSceneAssets = undefined;
+    resetSceneDebug();
     drawClientStatus(
       'JS5 disconnected',
       'Connect again to restart the cache bootstrap',
@@ -385,9 +426,7 @@ loginButton.addEventListener('click', async () => {
   if (gameLoginIsActive()) {
     gameLogin.disconnect();
     mapLoadGeneration += 1;
-    (window as SoloScapeDebugWindow).soloscapeRegionRebuild = undefined;
-    (window as SoloScapeDebugWindow).soloscapeSceneMaps = undefined;
-    (window as SoloScapeDebugWindow).soloscapeSceneAssets = undefined;
+    resetSceneDebug();
     drawClientStatus(
       'Game disconnected',
       'JS5 cache remains available for another login',
@@ -416,8 +455,8 @@ loginButton.addEventListener('click', async () => {
       username,
       password,
       crcValues: js5.getLoginCrcs(),
-      width: canvas.width,
-      height: canvas.height,
+      width: CLIENT_VIEWPORT_WIDTH,
+      height: CLIENT_VIEWPORT_HEIGHT,
       resizable: true,
     });
     // Do not persist credentials. Clearing the DOM field also avoids leaving
@@ -448,6 +487,7 @@ type SoloScapeDebugWindow = Window & {
   soloscapeRegionRebuild?: RegionRebuild;
   soloscapeSceneMaps?: LoadedMapSquare[];
   soloscapeSceneAssets?: LoadedSceneAssets;
+  soloscapeScene?: AssembledScene;
 };
 
 (window as SoloScapeDebugWindow).soloscapeJs5 = js5;
