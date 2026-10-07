@@ -3,114 +3,71 @@
 This directory contains the browser-native SoloScape client work targeting
 Safari on iPhone/iPad and modern desktop browsers.
 
-The current branch implements the browser transport, JS5 cache-index bootstrap
-and cache-container decoding for OSRS protocol revision 240 / client 240.2.
-Game login and rendering are not implemented yet.
+The current branch implements browser transport plus the JS5 cache metadata
+bootstrap for OSRS protocol revision 240 / client 240.2.
 
-## Current cache bootstrap
+## Current JS5 bootstrap
 
 A successful Connect now performs:
 
     WebSocket connect
-      -> JS5 opcode 15 + revision 240
-      -> status 0
-      -> request 255:255
-      -> decode master-index container
+      -> rev-240 JS5 handshake
+      -> master index 255:255
       -> parse archive CRC/version metadata
       -> request every present 255:<archive> reference table
-      -> decode all returned cache containers
-      -> persist raw groups + parsed master metadata in IndexedDB
+      -> decode type 0/type 2 cache containers
+      -> parse reference-table structure
+      -> persist raw containers + structured metadata in IndexedDB
       -> JS5 index ready
 
-For the currently observed SoloScape cache, the master index has 25 archive
-slots. Slots 16 and 23 are empty (crc=0/version=0), leaving 23 present archive
-reference tables.
+The observed SoloScape cache has 25 master-index slots. Slots 16 and 23 are
+empty, leaving 23 present archive reference tables.
+
+## Archive reference-table parser
+
+Implemented protocols:
+
+- protocol 5: original format using unsigned 16-bit counts/deltas
+- protocol 6: versioned format using unsigned 16-bit counts/deltas
+- protocol 7: smart format using unsigned 2-or-4-byte counts/deltas
+
+Supported flags:
+
+- 0x01: group/file name hashes
+- 0x02: 64-byte Whirlpool group digests
+- 0x04: compressed and uncompressed group lengths
+- 0x08: uncompressed group checksums
+
+For each archive the parser now exposes:
+
+- reference-table protocol and version
+- group IDs
+- optional group name hashes
+- group CRC/checksum
+- optional uncompressed checksum
+- optional Whirlpool digest
+- optional compressed/uncompressed lengths
+- group version
+- file IDs
+- optional file name hashes
+
+Group and file IDs are delta encoded in the reference table and are expanded to
+their absolute IDs by the parser.
+
+The parser is strict: unsupported protocol/flag bits, truncated fields, invalid
+counts/IDs and trailing bytes fail the bootstrap instead of producing partial
+metadata.
 
 ## Cache container decoder
 
-Implemented container types:
+Implemented:
 
-- compression 0: uncompressed/stored payload
-- compression 2: gzip payload via the browser-native Compression Streams API
+- compression 0: stored/uncompressed
+- compression 2: gzip through DecompressionStream('gzip')
 
-Compression 1 (bzip2) is deliberately rejected until a bzip2 implementation is
-added.
+Compression 1 (bzip2) is still explicitly unsupported.
 
-Container layout:
-
-    compression      u8
-    compressedSize   u32
-    uncompressedSize u32   # compressed containers only
-    payload
-
-The decoder validates:
-
-- minimum header size
-- exact container byte length
-- maximum output size
-- declared gzip uncompressed size against actual decoded output
-
-The default maximum decoded payload is 64 MiB.
-
-The JS5 client now keeps the decoded reference-table payloads in memory for the
-next archive-reference-table parser milestone:
-
-    window.soloscapeJs5.getArchiveIndexPayload(2)
-
-returns a copy of the decoded payload for archive 2 after bootstrap.
-
-## Browser requirement
-
-Gzip decoding uses:
-
-    DecompressionStream('gzip')
-
-Current Safari versions supporting the Compression Streams API can decode these
-containers without shipping a JavaScript gzip library. If the API is missing,
-the client fails with an explicit compatibility error rather than accepting
-corrupt data.
-
-## Run locally
-
-From WebClient:
-
-    npm install
-    npm run typecheck
-    npm run test:protocol
-    npm run build
-
-Start the gateway in PowerShell:
-
-    $env:WS_HOST="0.0.0.0"
-    $env:WS_PORT="8765"
-    npm run dev:gateway
-
-Start Vite in another terminal:
-
-    npm run dev:web
-
-Then open from the iPhone:
-
-    http://YOUR-PC-LAN-IP:5173
-
-and connect to:
-
-    ws://YOUR-PC-LAN-IP:8765
-
-## Expected log
-
-The new decoder milestone should add lines similar to:
-
-    Decoded JS5 master index container: compression=0 200 -> 200 bytes.
-    ...
-    Reference table 7 received (.../23) ...
-    Decoded reference table 7: compression=2 518772 -> <size> bytes (.../23 decoded).
-    ...
-    Decoded reference table 20: compression=0 46364 -> 46364 bytes (.../23 decoded).
-    ...
-    JS5 cache index bootstrap complete: master index + 23 present archive reference tables received and decoded.
-
-The order of gzip completion is not assumed.
+The decoder validates exact container lengths and declared decompressed lengths.
 
 ## IndexedDB
 
@@ -123,55 +80,91 @@ Stores:
     js5-groups
     js5-metadata
 
-Raw reconstructed containers are persisted. Decompressed reference-table payloads
-are currently session-memory data; the next parser milestone will persist useful
-structured group/file metadata instead of duplicating decompressed blobs.
+js5-groups contains reconstructed raw JS5 cache containers.
+
+js5-metadata contains:
+
+    master-index
+    reference-table:<archive>
+
+Reference-table metadata is stored as structured objects including group/file
+metadata and optional digest bytes.
 
 ## Debug API
 
-The active JS5 client is available as:
+The live client remains exposed as:
 
     window.soloscapeJs5
 
-Request a group manually:
-
-    window.soloscapeJs5.requestGroup(2, 10)
-
-Inspect a decoded archive reference-table payload:
+Get the decoded raw reference-table payload:
 
     window.soloscapeJs5.getArchiveIndexPayload(2)
+
+Get a defensive copy of the parsed reference table:
+
+    window.soloscapeJs5.getArchiveReferenceTable(2)
+
+For example, in Safari's remote inspector or a desktop browser console:
+
+    const table = window.soloscapeJs5.getArchiveReferenceTable(2)
+    table.protocol
+    table.groups.length
+    table.groups[0]
+
+## Expected live log
+
+After pulling this milestone, successful archives should add entries such as:
+
+    Parsed reference table 2: protocol=7 version=... flags=0x.. groups=... files=...
+    Decoded reference table 2: compression=2 1765 -> ... bytes (.../23 parsed).
+
+Once all are parsed:
+
+    JS5 cache index bootstrap complete: master index + 23 present archive reference tables received, decoded and parsed.
+
+## Tests
+
+From WebClient:
+
+    npm run typecheck
+    npm run test:protocol
+    npm run build
+
+The reference-table tests cover:
+
+- protocol 5 16-bit delta IDs
+- protocol 7 2-or-4-byte smart IDs
+- IDs above 32767
+- names
+- Whirlpool digests
+- lengths
+- uncompressed checksums
+- file IDs/name hashes
+- unsupported protocols/flags
+- trailing-byte rejection
 
 ## M1 status
 
 Complete so far:
 
-- revision 240 JS5 handshake
+- rev-240 JS5 handshake
 - master-index parsing
 - empty archive-slot handling
 - archive reference-table downloads
-- type 0 cache-container decoding
-- type 2 gzip cache-container decoding
-- strict container length validation
-- gzip output-size validation
-- IndexedDB raw-container persistence
-- protocol/container tests
+- type 0/type 2 cache-container decoding
+- archive reference-table parsing
+- structured reference-table persistence in IndexedDB
 
 Next:
 
-- archive reference-table structure decoding
 - CRC/version validation
-- request scheduler/retries/concurrency limits
-- typed startup definitions
+- actual cache group download scheduler
+- group/file unpacking
+- startup definitions/assets
 
-## Source of truth
+## Reference format
 
-Revision-specific behavior should continue to be derived from this repository,
-especially:
-
-- Client/cache
-- Client/protocol/osrs-240
-- existing desktop/proxy client
-- Server/or-cache
-- Server/game.example.yml
+The parser follows the modern JS5 index field order used by OpenRS2's
+Js5Index reader, including protocols 5/6/7 and all current flag bits.
 
 Do not import packet ids or transforms from unrelated OSRS revisions.

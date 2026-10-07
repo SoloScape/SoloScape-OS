@@ -1,4 +1,5 @@
 import type { Js5MasterIndex } from './Js5MasterIndex';
+import type { Js5ReferenceTable } from './Js5ReferenceTable';
 import {
   js5GroupKey,
   type Js5GroupResponse,
@@ -17,6 +18,13 @@ export interface CachedJs5Group {
 interface CachedMasterIndex {
   key: 'master-index';
   entries: Js5MasterIndex['entries'];
+  updatedAt: number;
+}
+
+interface CachedReferenceTable {
+  key: string;
+  archive: number;
+  table: Js5ReferenceTable;
   updatedAt: number;
 }
 
@@ -68,6 +76,25 @@ export class IndexedDbCacheStore {
     const record: CachedMasterIndex = {
       key: 'master-index',
       entries: index.entries.map((entry) => ({ ...entry })),
+      updatedAt: Date.now(),
+    };
+
+    store.put(record);
+    await transactionComplete(transaction);
+  }
+
+  async putReferenceTable(
+    archive: number,
+    table: Js5ReferenceTable,
+  ): Promise<void> {
+    const database = await this.open();
+    const transaction = database.transaction(METADATA_STORE, 'readwrite');
+    const store = transaction.objectStore(METADATA_STORE);
+
+    const record: CachedReferenceTable = {
+      key: 'reference-table:' + archive,
+      archive,
+      table,
       updatedAt: Date.now(),
     };
 

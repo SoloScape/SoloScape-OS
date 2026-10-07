@@ -19,6 +19,11 @@ import {
   type Js5GroupResponse,
   type Js5HandshakeKey,
 } from './Js5Protocol';
+import {
+  cloneJs5ReferenceTable,
+  parseJs5ReferenceTable,
+  type Js5ReferenceTable,
+} from './Js5ReferenceTable';
 import { Js5StreamDecoder } from './Js5StreamDecoder';
 import { IndexedDbCacheStore } from './IndexedDbCacheStore';
 
@@ -48,6 +53,7 @@ export class Js5Client {
   private pendingArchiveIndices = new Set<number>();
   private pendingArchiveDecodes = new Set<number>();
   private archiveIndexPayloads = new Map<number, Uint8Array>();
+  private archiveReferenceTables = new Map<number, Js5ReferenceTable>();
   private archiveIndexTotal = 0;
 
   state: Js5ClientState = 'idle';
@@ -97,6 +103,7 @@ export class Js5Client {
     this.pendingArchiveIndices.clear();
     this.pendingArchiveDecodes.clear();
     this.archiveIndexPayloads.clear();
+    this.archiveReferenceTables.clear();
     this.archiveIndexTotal = 0;
     this.setState('connecting');
     this.onLog?.('Connecting JS5 socket to ' + url);
@@ -133,6 +140,13 @@ export class Js5Client {
     return this.archiveIndexPayloads.get(archive)?.slice();
   }
 
+  getArchiveReferenceTable(
+    archive: number,
+  ): Js5ReferenceTable | undefined {
+    const table = this.archiveReferenceTables.get(archive);
+    return table ? cloneJs5ReferenceTable(table) : undefined;
+  }
+
   disconnect(): void {
     this.transport.disconnect();
     this.decoder.reset();
@@ -140,6 +154,7 @@ export class Js5Client {
     this.pendingArchiveIndices.clear();
     this.pendingArchiveDecodes.clear();
     this.archiveIndexPayloads.clear();
+    this.archiveReferenceTables.clear();
     this.archiveIndexTotal = 0;
     this.setState('closed');
   }
@@ -305,19 +320,35 @@ export class Js5Client {
     response: Js5GroupResponse,
   ): Promise<void> {
     const decoded = await decodeJs5Container(response.container);
+    const table = parseJs5ReferenceTable(decoded.data);
 
     this.archiveIndexPayloads.set(response.group, decoded.data);
+    this.archiveReferenceTables.set(response.group, table);
     this.pendingArchiveDecodes.delete(response.group);
 
+    const totalFiles = table.groups.reduce(
+      (sum, group) => sum + group.files.length,
+      0,
+    );
+
+    this.onLog?.(
+      'Parsed reference table ' + response.group +
+      ': protocol=' + table.protocol +
+      ' version=' + table.version +
+      ' flags=0x' + table.flags.toString(16).padStart(2, '0') +
+      ' groups=' + table.groups.length +
+      ' files=' + totalFiles + '.',
+    );
     this.onLog?.(
       'Decoded reference table ' + response.group +
       ': compression=' + decoded.compression + ' ' +
       decoded.compressedSize + ' -> ' +
       decoded.uncompressedSize + ' bytes (' +
       (this.archiveIndexTotal - this.pendingArchiveDecodes.size) +
-      '/' + this.archiveIndexTotal + ' decoded).',
+      '/' + this.archiveIndexTotal + ' parsed).',
     );
 
+    this.persistReferenceTable(response.group, table);
     this.maybeFinishBootstrap();
   }
 
@@ -339,7 +370,7 @@ export class Js5Client {
     this.onLog?.(
       'JS5 cache index bootstrap complete: master index + ' +
       this.archiveIndexTotal +
-      ' present archive reference tables received and decoded.',
+      ' present archive reference tables received, decoded and parsed.',
     );
     this.onBootstrapComplete?.(index);
   }
@@ -372,6 +403,27 @@ export class Js5Client {
         const message = error instanceof Error ? error.message : String(error);
         this.onLog?.(
           'IndexedDB master-index metadata write failed: ' + message,
+        );
+      });
+  }
+
+  private persistReferenceTable(
+    archive: number,
+    table: Js5ReferenceTable,
+  ): void {
+    void this.store
+      .putReferenceTable(archive, table)
+      .then(() => {
+        this.onLog?.(
+          'Cached parsed reference table ' + archive +
+          ' in IndexedDB.',
+        );
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.onLog?.(
+          'IndexedDB reference-table metadata write failed for ' +
+          archive + ': ' + message,
         );
       });
   }
