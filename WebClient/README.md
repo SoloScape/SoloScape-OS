@@ -351,6 +351,13 @@ Inspect the live fixed-step runtime:
 
     window.soloscapeGameLoop?.getStats()
 
+Inspect the requestAnimationFrame-interpolated player state:
+
+    window.soloscapeLocalPlayerRenderState
+
+The exposed render state is presentation-only; sampling alpha at 60/120 Hz
+does not mutate the fixed 20ms movement state.
+
 Download, validate, decode, and persist an actual group:
 
     const group = await window.soloscapeJs5.downloadGroup(2, 9)
