@@ -10,6 +10,14 @@ interface GpuMesh {
   readonly vertexCount: number;
 }
 
+export interface LocalPlayerRenderPosition {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  /** Clockwise model rotation in radians around scene-space Y. */
+  readonly yaw?: number;
+}
+
 export class WebGlSceneRenderer {
   private readonly gl: WebGL2RenderingContext;
   private readonly program: WebGLProgram;
@@ -17,9 +25,12 @@ export class WebGlSceneRenderer {
   private readonly colorLocation: number;
   private readonly projectionLocation: WebGLUniformLocation;
   private readonly viewLocation: WebGLUniformLocation;
+  private readonly modelLocation: WebGLUniformLocation;
   private terrainMesh: GpuMesh | null = null;
   private locationMesh: GpuMesh | null = null;
+  private playerMesh: GpuMesh | null = null;
   private scene: AssembledScene | null = null;
+  private localPlayerPosition: LocalPlayerRenderPosition | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', {
@@ -42,11 +53,13 @@ export class WebGlSceneRenderer {
       'uProjection',
     );
     const viewLocation = gl.getUniformLocation(this.program, 'uView');
-    if (!projectionLocation || !viewLocation) {
-      throw new Error('Static-scene shader uniforms are unavailable.');
+    const modelLocation = gl.getUniformLocation(this.program, 'uModel');
+    if (!projectionLocation || !viewLocation || !modelLocation) {
+      throw new Error('Scene shader uniforms are unavailable.');
     }
     this.projectionLocation = projectionLocation;
     this.viewLocation = viewLocation;
+    this.modelLocation = modelLocation;
 
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -59,22 +72,42 @@ export class WebGlSceneRenderer {
 
   render(scene: AssembledScene): void {
     this.scene = scene;
-    this.deleteGpuMeshes();
+    this.deleteSceneGpuMeshes();
     this.terrainMesh = this.uploadMesh(scene.terrain);
     this.locationMesh = this.uploadMesh(scene.locations);
     this.draw();
   }
 
+  setLocalPlayerPosition(
+    position: LocalPlayerRenderPosition | null,
+  ): void {
+    this.localPlayerPosition = position
+      ? { ...position }
+      : null;
+    this.draw();
+  }
+
+  setLocalPlayerMesh(mesh: SceneMesh | null): void {
+    this.deleteGpuMesh(this.playerMesh);
+    this.playerMesh = mesh ? this.uploadMesh(mesh) : null;
+    this.draw();
+  }
+
   clear(): void {
     this.scene = null;
-    this.deleteGpuMeshes();
+    this.localPlayerPosition = null;
+    this.deleteSceneGpuMeshes();
+    this.deleteGpuMesh(this.playerMesh);
+    this.playerMesh = null;
     this.resizeDrawingBuffer();
     this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
   }
 
   destroy(): void {
     window.removeEventListener('resize', this.handleResize);
-    this.deleteGpuMeshes();
+    this.deleteSceneGpuMeshes();
+    this.deleteGpuMesh(this.playerMesh);
+    this.playerMesh = null;
     this.gl.deleteProgram(this.program);
   }
 
@@ -93,10 +126,17 @@ export class WebGlSceneRenderer {
 
     gl.useProgram(this.program);
 
-    const matrices = createCameraMatrices(
-      this.scene.bounds,
-      this.canvas.width / Math.max(1, this.canvas.height),
-    );
+    const matrices = this.localPlayerPosition
+      ? createPlayerFollowCameraMatrices(
+          this.localPlayerPosition,
+          this.scene.bounds,
+          this.canvas.width / Math.max(1, this.canvas.height),
+        )
+      : createOverviewCameraMatrices(
+          this.scene.bounds,
+          this.canvas.width / Math.max(1, this.canvas.height),
+        );
+
     gl.uniformMatrix4fv(
       this.projectionLocation,
       false,
@@ -104,11 +144,24 @@ export class WebGlSceneRenderer {
     );
     gl.uniformMatrix4fv(this.viewLocation, false, matrices.view);
 
+    const identity = identityMatrix();
     if (this.terrainMesh) {
-      this.drawMesh(this.terrainMesh);
+      this.drawMesh(this.terrainMesh, identity);
     }
     if (this.locationMesh) {
-      this.drawMesh(this.locationMesh);
+      this.drawMesh(this.locationMesh, identity);
+    }
+
+    if (this.playerMesh && this.localPlayerPosition) {
+      this.drawMesh(
+        this.playerMesh,
+        translationRotationYMatrix(
+          this.localPlayerPosition.x,
+          this.localPlayerPosition.y,
+          this.localPlayerPosition.z,
+          this.localPlayerPosition.yaw ?? 0,
+        ),
+      );
     }
   }
 
@@ -141,8 +194,12 @@ export class WebGlSceneRenderer {
     };
   }
 
-  private drawMesh(mesh: GpuMesh): void {
+  private drawMesh(
+    mesh: GpuMesh,
+    model: Float32Array,
+  ): void {
     const gl = this.gl;
+    gl.uniformMatrix4fv(this.modelLocation, false, model);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, mesh.positionBuffer);
     gl.enableVertexAttribArray(this.positionLocation);
@@ -180,7 +237,7 @@ export class WebGlSceneRenderer {
     this.gl.viewport(0, 0, width, height);
   }
 
-  private deleteGpuMeshes(): void {
+  private deleteSceneGpuMeshes(): void {
     this.deleteGpuMesh(this.terrainMesh);
     this.deleteGpuMesh(this.locationMesh);
     this.terrainMesh = null;
@@ -196,7 +253,51 @@ export class WebGlSceneRenderer {
   }
 }
 
-function createCameraMatrices(
+function createPlayerFollowCameraMatrices(
+  player: LocalPlayerRenderPosition,
+  bounds: SceneBounds,
+  aspect: number,
+): { projection: Float32Array; view: Float32Array } {
+  // First gameplay camera milestone: anchor the camera to the local player's
+  // coordinate instead of framing the entire 104x104 scene. Camera packets,
+  // pitch/yaw input and the exact client interpolation can layer on this same
+  // persistent target state next.
+  const yaw = 0.78 * Math.PI;
+  const horizontalDistance = 880;
+  const verticalDistance = 640;
+  const targetY = player.y + 85;
+  const eye = {
+    x: player.x + Math.sin(yaw) * horizontalDistance,
+    y: player.y + verticalDistance,
+    z: player.z + Math.cos(yaw) * horizontalDistance,
+  };
+
+  const spanX = Math.max(1, bounds.maxX - bounds.minX);
+  const spanZ = Math.max(1, bounds.maxZ - bounds.minZ);
+  const far = Math.max(18000, Math.max(spanX, spanZ) * 2.5);
+
+  return {
+    projection: perspective(
+      48 * Math.PI / 180,
+      Math.max(0.1, aspect),
+      32,
+      far,
+    ),
+    view: lookAt(
+      eye.x,
+      eye.y,
+      eye.z,
+      player.x,
+      targetY,
+      player.z,
+      0,
+      1,
+      0,
+    ),
+  };
+}
+
+function createOverviewCameraMatrices(
   bounds: SceneBounds,
   aspect: number,
 ): { projection: Float32Array; view: Float32Array } {
@@ -217,24 +318,50 @@ function createCameraMatrices(
     y: centerY * 0.65,
     z: centerZ,
   };
-  const projection = perspective(
-    48 * Math.PI / 180,
-    Math.max(0.1, aspect),
-    Math.max(16, span / 200),
-    span * 4.5 + 4096,
-  );
-  const view = lookAt(
-    eye.x,
-    eye.y,
-    eye.z,
-    target.x,
-    target.y,
-    target.z,
-    0,
-    1,
-    0,
-  );
-  return { projection, view };
+  return {
+    projection: perspective(
+      48 * Math.PI / 180,
+      Math.max(0.1, aspect),
+      Math.max(16, span / 200),
+      span * 4.5 + 4096,
+    ),
+    view: lookAt(
+      eye.x,
+      eye.y,
+      eye.z,
+      target.x,
+      target.y,
+      target.z,
+      0,
+      1,
+      0,
+    ),
+  };
+}
+
+function identityMatrix(): Float32Array {
+  return Float32Array.from([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  ]);
+}
+
+function translationRotationYMatrix(
+  x: number,
+  y: number,
+  z: number,
+  radians: number,
+): Float32Array {
+  const c = Math.cos(radians);
+  const s = Math.sin(radians);
+  return Float32Array.from([
+    c, 0, -s, 0,
+    0, 1, 0, 0,
+    s, 0, c, 0,
+    x, y, z, 1,
+  ]);
 }
 
 function perspective(
@@ -318,7 +445,7 @@ function createProgram(
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
     const message = gl.getProgramInfoLog(program) ?? 'unknown link error';
     gl.deleteProgram(program);
-    throw new Error('Static-scene shader link failed: ' + message);
+    throw new Error('Scene shader link failed: ' + message);
   }
   return program;
 }
@@ -337,7 +464,7 @@ function compileShader(
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
     const message = gl.getShaderInfoLog(shader) ?? 'unknown compile error';
     gl.deleteShader(shader);
-    throw new Error('Static-scene shader compile failed: ' + message);
+    throw new Error('Scene shader compile failed: ' + message);
   }
   return shader;
 }
@@ -350,12 +477,14 @@ in vec3 aColor;
 
 uniform mat4 uProjection;
 uniform mat4 uView;
+uniform mat4 uModel;
 
 out vec3 vColor;
 out float vDepth;
 
 void main() {
-  vec4 viewPosition = uView * vec4(aPosition, 1.0);
+  vec4 worldPosition = uModel * vec4(aPosition, 1.0);
+  vec4 viewPosition = uView * worldPosition;
   gl_Position = uProjection * viewPosition;
   vColor = aColor;
   vDepth = max(0.0, -viewPosition.z);
