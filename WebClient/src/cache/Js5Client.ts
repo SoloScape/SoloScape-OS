@@ -330,6 +330,23 @@ export class Js5Client {
     return table ? cloneJs5ReferenceTable(table) : undefined;
   }
 
+  getLoginCrcs(): number[] {
+    const index = this.masterIndex;
+    if (!index) {
+      throw new Error('JS5 master index is unavailable for game login.');
+    }
+
+    const crcValues = presentJs5Archives(index)
+      .map((entry) => entry.crc >>> 0);
+    if (crcValues.length !== 23) {
+      throw new Error(
+        'rev-240 desktop login expects 23 present cache CRCs; found ' +
+        crcValues.length + '.',
+      );
+    }
+    return crcValues;
+  }
+
   disconnect(): void {
     this.setState('closed');
     this.scheduler.cancelAll(new Error('JS5 client disconnected.'));
