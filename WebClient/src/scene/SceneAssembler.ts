@@ -142,6 +142,11 @@ export function assembleScene(
   const originTileZ = (rebuild.zoneZ - SCENE_ZONE_RADIUS) * SCENE_ZONE_SIZE;
   const mapLookup = createMapLookup(maps);
   const heightField = new TerrainHeightField(mapLookup);
+  const terrainColors = new TerrainColorBaker(
+    mapLookup,
+    heightField,
+    materials,
+  );
   const terrainBuilder = new MeshBuilder();
   const locationBuilder = new MeshBuilder();
 
@@ -183,7 +188,7 @@ export function assembleScene(
               worldZ,
               originTileX,
               originTileZ,
-              materials,
+              terrainColors,
             );
             terrainTiles += 1;
           }
@@ -251,7 +256,7 @@ export function assembleScene(
         heightField,
         originTileX,
         originTileZ,
-        materials,
+        terrainColors,
         () => {
           terrainTiles += 1;
         },
@@ -486,7 +491,7 @@ function appendNormalTerrainTile(
   worldZ: number,
   originTileX: number,
   originTileZ: number,
-  materials: SceneFloorMaterials | null,
+  terrainColors: TerrainColorBaker,
 ): void {
   const corners = [
     terrainVertex(heights, level, worldX, worldZ, originTileX, originTileZ),
@@ -501,7 +506,9 @@ function appendNormalTerrainTile(
     localX,
     localZ,
     corners,
-    materials,
+    terrainColors,
+    worldX,
+    worldZ,
   );
 }
 
@@ -512,7 +519,7 @@ function appendInstancedTerrainZone(
   heights: TerrainHeightField,
   originTileX: number,
   originTileZ: number,
-  materials: SceneFloorMaterials | null,
+  terrainColors: TerrainColorBaker,
   onTile: () => void,
 ): void {
   const sourceZoneBaseX = placement.sourceZoneX * SCENE_ZONE_SIZE;
@@ -579,7 +586,9 @@ function appendInstancedTerrainZone(
         mapLocalX,
         mapLocalZ,
         transformed,
-        materials,
+        terrainColors,
+        sourceTileX,
+        sourceTileZ,
       );
       onTile();
     }
