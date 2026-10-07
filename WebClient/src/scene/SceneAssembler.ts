@@ -20,6 +20,52 @@ const MAP_SIZE = 64;
 const LEVEL_COUNT = 4;
 const IMPLICIT_LEVEL_DROP = 240;
 
+/**
+ * Classic Jagex ground-shape tables. Each P row lists the tile-local nodes used
+ * by a shape; each F row is packed as (overlayFlag, a, b, c) triangles.
+ * Map overlayShapes stores 0..11, while World.setGround receives shape+1.
+ */
+const GROUND_SHAPE_POINTS: readonly (readonly number[])[] = [
+  [1, 3, 5, 7],
+  [1, 3, 5, 7],
+  [1, 3, 5, 7],
+  [1, 3, 5, 7, 6],
+  [1, 3, 5, 7, 6],
+  [1, 3, 5, 7, 6],
+  [1, 3, 5, 7, 6],
+  [1, 3, 5, 7, 2, 6],
+  [1, 3, 5, 7, 2, 8],
+  [1, 3, 5, 7, 2, 8],
+  [1, 3, 5, 7, 11, 12],
+  [1, 3, 5, 7, 11, 12],
+  [1, 3, 5, 7, 13, 14],
+];
+
+const GROUND_SHAPE_FACES: readonly (readonly number[])[] = [
+  [0, 1, 2, 3, 0, 0, 1, 3],
+  [1, 1, 2, 3, 1, 0, 1, 3],
+  [0, 1, 2, 3, 1, 0, 1, 3],
+  [0, 0, 1, 2, 0, 0, 2, 4, 1, 0, 4, 3],
+  [0, 0, 1, 4, 0, 0, 4, 3, 1, 1, 2, 4],
+  [0, 0, 4, 3, 1, 0, 1, 2, 1, 0, 2, 4],
+  [0, 1, 2, 4, 1, 0, 1, 4, 1, 0, 4, 3],
+  [0, 4, 1, 2, 0, 4, 2, 5, 1, 0, 4, 5, 1, 0, 5, 3],
+  [0, 4, 1, 2, 0, 4, 2, 3, 0, 4, 3, 5, 1, 0, 4, 5],
+  [0, 0, 4, 5, 1, 4, 1, 2, 1, 4, 2, 3, 1, 4, 3, 5],
+  [
+    0, 0, 1, 5, 0, 1, 4, 5, 0, 1, 2, 4,
+    1, 0, 5, 3, 1, 5, 4, 3, 1, 4, 2, 3,
+  ],
+  [
+    1, 0, 1, 5, 1, 1, 4, 5, 1, 1, 2, 4,
+    0, 0, 5, 3, 0, 5, 4, 3, 0, 4, 2, 3,
+  ],
+  [
+    1, 0, 5, 4, 1, 0, 1, 5, 0, 0, 4, 3,
+    0, 4, 5, 3, 0, 5, 2, 3, 0, 1, 2, 5,
+  ],
+];
+
 export interface SceneMesh {
   readonly positions: Float32Array;
   readonly colors: Uint8Array;
@@ -436,22 +482,14 @@ function appendNormalTerrainTile(
     terrainVertex(heights, level, worldX + 1, worldZ + 1, originTileX, originTileZ),
     terrainVertex(heights, level, worldX, worldZ + 1, originTileX, originTileZ),
   ] as const;
-  const material = terrainTileMaterial(
+  appendTerrainTileGeometry(
+    builder,
     map,
     level,
     localX,
     localZ,
     corners,
     materials,
-  );
-  builder.pushQuad(
-    corners[0],
-    corners[1],
-    corners[2],
-    corners[3],
-    material.color,
-    material.textureId,
-    rotatedTileUvs(material.rotation),
   );
 }
 
@@ -522,22 +560,14 @@ function appendInstancedTerrainZone(
         };
       });
 
-      const material = terrainTileMaterial(
+      appendTerrainTileGeometry(
+        builder,
         map,
         placement.sourceLevel,
         mapLocalX,
         mapLocalZ,
         transformed,
         materials,
-      );
-      builder.pushQuad(
-        transformed[0]!,
-        transformed[1]!,
-        transformed[2]!,
-        transformed[3]!,
-        material.color,
-        material.textureId,
-        rotatedTileUvs(material.rotation),
       );
       onTile();
     }
@@ -852,78 +882,300 @@ function shouldRenderTerrainTile(
   );
 }
 
-interface TerrainTileMaterial {
+interface TerrainSurfaceMaterial {
   readonly color: Rgb;
   readonly textureId: number;
-  readonly rotation: number;
+  readonly hidden: boolean;
 }
 
-function terrainTileMaterial(
+interface TerrainShapeNode {
+  readonly vertex: Vec3;
+  readonly uv: { readonly u: number; readonly v: number };
+}
+
+function appendTerrainTileGeometry(
+  builder: MeshBuilder,
   map: LoadedMapSquare,
   level: number,
   localX: number,
   localZ: number,
   corners: readonly Vec3[],
   materials: SceneFloorMaterials | null,
-): TerrainTileMaterial {
+): void {
   const index = mapTerrainTileIndex(level, localX, localZ);
   const overlayId = map.terrain.overlayIds[index]!;
-  const underlayRawId = map.terrain.underlayIds[index]!;
-  const overlay = overlayId >= 0
-    ? materials?.overlays.get(overlayId)
-    : undefined;
-  const underlay = underlayRawId > 0
-    ? materials?.underlays.get(underlayRawId - 1)
-    : undefined;
+  const surfaces = terrainSurfaceMaterials(
+    map,
+    level,
+    localX,
+    localZ,
+    corners,
+    materials,
+  );
 
-  let textureId = -1;
-  let base: Rgb | null = null;
-
-  if (overlay) {
-    textureId = overlay.texture;
-    if (overlay.rgb !== 0xff00ff) {
-      base = rgb24(overlay.rgb);
-    }
-    if (
-      textureId >= 0 &&
-      base === null
-    ) {
-      const average = materials?.textureAverageRgb.get(textureId);
-      if (average !== undefined) {
-        base = packedHslColor(average);
-      }
-    }
-  }
-
-  if (!base && textureId < 0 && underlay) {
-    base = rgb24(underlay.rgb);
-  }
-
-  if (!base) {
-    // Keep a deterministic fallback for missing/streaming definitions, but
-    // real cache-backed floor definitions take precedence whenever present.
-    const seed = overlayId >= 0
-      ? overlayId * 67 + 193
-      : underlayRawId > 0
-        ? underlayRawId * 43 + 71
-        : 17;
-    const hue = positiveModulo(seed * 37, 360) / 360;
-    const saturation = overlayId >= 0 ? 0.42 : 0.34;
-    const lightness = overlayId >= 0
-      ? 0.32 + positiveModulo(seed, 9) / 100
-      : 0.28 + positiveModulo(seed, 11) / 100;
-    base = hslToRgb(hue, saturation, lightness);
-  }
-
-  return {
-    color: shadeByTriangleNormal(
-      base,
+  if (overlayId < 0) {
+    const color = shadeByTriangleNormal(
+      surfaces.underlay.color,
       corners[0]!,
       corners[1]!,
       corners[3]!,
-    ),
-    textureId,
-    rotation: map.terrain.overlayRotations[index]! & 3,
+    );
+    builder.pushQuad(
+      corners[0]!,
+      corners[1]!,
+      corners[2]!,
+      corners[3]!,
+      color,
+    );
+    return;
+  }
+
+  const shape = clamp(
+    map.terrain.overlayShapes[index]! + 1,
+    1,
+    GROUND_SHAPE_POINTS.length - 1,
+  );
+  const rotation = map.terrain.overlayRotations[index]! & 3;
+  const pointCodes = GROUND_SHAPE_POINTS[shape]!;
+  const nodes = pointCodes.map(
+    (node) => makeTerrainShapeNode(node, rotation, corners),
+  );
+  const faces = GROUND_SHAPE_FACES[shape]!;
+  const flat =
+    corners[0]!.y === corners[1]!.y &&
+    corners[0]!.y === corners[2]!.y &&
+    corners[0]!.y === corners[3]!.y;
+
+  for (let offset = 0; offset < faces.length; offset += 4) {
+    const overlayFace = faces[offset]! === 1;
+    let a = faces[offset + 1]!;
+    let b = faces[offset + 2]!;
+    let d = faces[offset + 3]!;
+    if (a < 4) a = (a - rotation) & 3;
+    if (b < 4) b = (b - rotation) & 3;
+    if (d < 4) d = (d - rotation) & 3;
+
+    const na = nodes[a]!;
+    const nb = nodes[b]!;
+    const nd = nodes[d]!;
+    const surface = overlayFace ? surfaces.overlay : surfaces.underlay;
+    if (!surface || surface.hidden) {
+      continue;
+    }
+
+    const color = shadeByTriangleNormal(
+      surface.color,
+      na.vertex,
+      nb.vertex,
+      nd.vertex,
+    );
+    const textureUvs = surface.textureId >= 0
+      ? flat
+        ? [na.uv, nb.uv, nd.uv] as const
+        : [
+            { u: 0, v: 0 },
+            { u: 1, v: 0 },
+            { u: 0, v: 1 },
+          ] as const
+      : null;
+
+    builder.pushTriangle(
+      na.vertex,
+      nb.vertex,
+      nd.vertex,
+      color,
+      surface.textureId,
+      textureUvs,
+    );
+  }
+}
+
+function terrainSurfaceMaterials(
+  map: LoadedMapSquare,
+  level: number,
+  localX: number,
+  localZ: number,
+  corners: readonly Vec3[],
+  materials: SceneFloorMaterials | null,
+): {
+  readonly underlay: TerrainSurfaceMaterial;
+  readonly overlay: TerrainSurfaceMaterial | null;
+} {
+  const index = mapTerrainTileIndex(level, localX, localZ);
+  const overlayId = map.terrain.overlayIds[index]!;
+  const underlayRawId = map.terrain.underlayIds[index]!;
+  const underlayDefinition = underlayRawId > 0
+    ? materials?.underlays.get(underlayRawId - 1)
+    : undefined;
+  const overlayDefinition = overlayId >= 0
+    ? materials?.overlays.get(overlayId)
+    : undefined;
+
+  const underlayBase = underlayDefinition
+    ? rgb24(underlayDefinition.rgb)
+    : fallbackTerrainColor(
+        -1,
+        underlayRawId,
+        corners,
+      );
+  const underlay: TerrainSurfaceMaterial = {
+    color: underlayBase,
+    textureId: -1,
+    hidden: false,
+  };
+
+  if (overlayId < 0) {
+    return { underlay, overlay: null };
+  }
+
+  if (!overlayDefinition) {
+    return {
+      underlay,
+      overlay: {
+        color: fallbackTerrainColor(
+          overlayId,
+          underlayRawId,
+          corners,
+        ),
+        textureId: -1,
+        hidden: false,
+      },
+    };
+  }
+
+  const textureId = overlayDefinition.texture;
+  const hidden =
+    textureId < 0 &&
+    overlayDefinition.rgb === 0xff00ff;
+
+  let overlayColor: Rgb | null =
+    overlayDefinition.rgb === 0xff00ff
+      ? null
+      : rgb24(overlayDefinition.rgb);
+
+  if (!overlayColor && textureId >= 0) {
+    const average = materials?.textureAverageRgb.get(textureId);
+    if (average !== undefined) {
+      overlayColor = packedHslColor(average);
+    }
+  }
+
+  return {
+    underlay,
+    overlay: {
+      color: overlayColor ?? underlay.color,
+      textureId,
+      hidden,
+    },
+  };
+}
+
+function fallbackTerrainColor(
+  overlayId: number,
+  underlayRawId: number,
+  corners: readonly Vec3[],
+): Rgb {
+  const seed = overlayId >= 0
+    ? overlayId * 67 + 193
+    : underlayRawId > 0
+      ? underlayRawId * 43 + 71
+      : 17;
+  const hue = positiveModulo(seed * 37, 360) / 360;
+  const saturation = overlayId >= 0 ? 0.42 : 0.34;
+  const lightness = overlayId >= 0
+    ? 0.32 + positiveModulo(seed, 9) / 100
+    : 0.28 + positiveModulo(seed, 11) / 100;
+  const base = hslToRgb(hue, saturation, lightness);
+  return shadeByTriangleNormal(
+    base,
+    corners[0]!,
+    corners[1]!,
+    corners[3]!,
+  );
+}
+
+function makeTerrainShapeNode(
+  rawNode: number,
+  rotation: number,
+  corners: readonly Vec3[],
+): TerrainShapeNode {
+  let node = rawNode;
+  if ((node & 1) === 0 && node <= 8) {
+    node = ((node - rotation - rotation - 1) & 7) + 1;
+  }
+  if (node > 8 && node <= 12) {
+    node = ((node - 9 - rotation) & 3) + 9;
+  }
+  if (node > 12 && node <= 16) {
+    node = ((node - 13 - rotation) & 3) + 13;
+  }
+
+  let u = 0;
+  let v = 0;
+  let y = corners[0]!.y;
+  switch (node) {
+    case 1:
+      u = 0; v = 0; y = corners[0]!.y;
+      break;
+    case 2:
+      u = 0.5; v = 0; y = (corners[0]!.y + corners[1]!.y) / 2;
+      break;
+    case 3:
+      u = 1; v = 0; y = corners[1]!.y;
+      break;
+    case 4:
+      u = 1; v = 0.5; y = (corners[1]!.y + corners[2]!.y) / 2;
+      break;
+    case 5:
+      u = 1; v = 1; y = corners[2]!.y;
+      break;
+    case 6:
+      u = 0.5; v = 1; y = (corners[2]!.y + corners[3]!.y) / 2;
+      break;
+    case 7:
+      u = 0; v = 1; y = corners[3]!.y;
+      break;
+    case 8:
+      u = 0; v = 0.5; y = (corners[0]!.y + corners[3]!.y) / 2;
+      break;
+    case 9:
+      u = 0.5; v = 0.25; y = (corners[0]!.y + corners[1]!.y) / 2;
+      break;
+    case 10:
+      u = 0.75; v = 0.5; y = (corners[1]!.y + corners[2]!.y) / 2;
+      break;
+    case 11:
+      u = 0.5; v = 0.75; y = (corners[2]!.y + corners[3]!.y) / 2;
+      break;
+    case 12:
+      u = 0.25; v = 0.5; y = (corners[0]!.y + corners[3]!.y) / 2;
+      break;
+    case 13:
+      u = 0.25; v = 0.25; y = corners[0]!.y;
+      break;
+    case 14:
+      u = 0.75; v = 0.25; y = corners[1]!.y;
+      break;
+    case 15:
+      u = 0.75; v = 0.75; y = corners[2]!.y;
+      break;
+    default:
+      u = 0.25; v = 0.75; y = corners[3]!.y;
+      break;
+  }
+
+  const topX = corners[0]!.x + (corners[1]!.x - corners[0]!.x) * u;
+  const topZ = corners[0]!.z + (corners[1]!.z - corners[0]!.z) * u;
+  const bottomX = corners[3]!.x + (corners[2]!.x - corners[3]!.x) * u;
+  const bottomZ = corners[3]!.z + (corners[2]!.z - corners[3]!.z) * u;
+
+  return {
+    vertex: {
+      x: topX + (bottomX - topX) * v,
+      y,
+      z: topZ + (bottomZ - topZ) * v,
+    },
+    uv: { u, v },
   };
 }
 
@@ -941,29 +1193,6 @@ function packedHslColor(value: number): Rgb {
     ((value >>> 7) & 0x7) / 8,
     (value & 0x7f) / 128,
   );
-}
-
-function rotatedTileUvs(
-  rotation: number,
-): readonly [
-  { readonly u: number; readonly v: number },
-  { readonly u: number; readonly v: number },
-  { readonly u: number; readonly v: number },
-  { readonly u: number; readonly v: number },
-] {
-  const base = [
-    { u: 0, v: 0 },
-    { u: 1, v: 0 },
-    { u: 1, v: 1 },
-    { u: 0, v: 1 },
-  ] as const;
-  const r = rotation & 3;
-  return [
-    base[(0 + r) & 3]!,
-    base[(1 + r) & 3]!,
-    base[(2 + r) & 3]!,
-    base[(3 + r) & 3]!,
-  ];
 }
 
 function modelColor(faceColor: number, texture: number): Rgb {
