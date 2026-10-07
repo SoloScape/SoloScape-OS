@@ -206,7 +206,7 @@ test('uses texture average HSL when a model texture is not resident', () => {
   );
 });
 
-test('falls back to face colour for unsupported textured loc faces', () => {
+test('uses the face triangle as the UV basis for non-type0 texture axes', () => {
   const map = buildMap([
     {
       id: 1,
@@ -226,12 +226,17 @@ test('falls back to face colour for unsupported textured loc faces', () => {
     textureFaceA: Uint16Array.from([0]),
     textureFaceB: Uint16Array.from([1]),
     textureFaceC: Uint16Array.from([2]),
-    // Render type 1 needs transform metadata we do not retain yet.
     textureRenderTypes: Int8Array.from([1]),
   };
   const assets: LoadedSceneAssets = {
     ...baseAssets,
     models: new Map([[100, model]]),
+  };
+  const materials: SceneFloorMaterials = {
+    underlays: new Map(),
+    overlays: new Map(),
+    textureAverageRgb: new Map([[7, 0x3456]]),
+    residentTextureIds: new Set([7]),
   };
   const rebuild: NormalRegionRebuild = {
     kind: 'normal',
@@ -241,14 +246,12 @@ test('falls back to face colour for unsupported textured loc faces', () => {
     mapSquares: [map.mapSquare],
   };
 
-  const scene = assembleScene(rebuild, [map], assets, null, 0);
+  const scene = assembleScene(rebuild, [map], assets, materials, 0);
 
-  assert.deepEqual(Array.from(scene.locations.textureIds), [-1, -1, -1]);
-  // Regression guard: unsupported textured faces must use their packed-HSL
-  // fallback instead of the near-white neutral texture-light colour.
-  assert.equal(
-    Array.from(scene.locations.colors).every((channel) => channel > 220),
-    false,
+  assert.deepEqual(Array.from(scene.locations.textureIds), [7, 7, 7]);
+  assert.deepEqual(
+    Array.from(scene.locations.textureCoords),
+    [0, 0, 1, 0, 0, 1],
   );
 });
 
