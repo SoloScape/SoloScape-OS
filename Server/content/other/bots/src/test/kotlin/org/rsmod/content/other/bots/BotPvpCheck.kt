@@ -9,8 +9,14 @@ object BotPvpCheck {
     @JvmStatic
     fun main(args: Array<String>) {
         val elite = BotPvpProfiles.get(BotPvpDifficulty.Elite)
+        val veteran = BotPvpProfiles.get(BotPvpDifficulty.Veteran)
+        val standard = BotPvpProfiles.get(BotPvpDifficulty.Standard)
         val novice = BotPvpProfiles.get(BotPvpDifficulty.Novice)
         check(elite.comboEatChance > novice.comboEatChance)
+        check(novice.tripleEatChance == 0.0)
+        check(standard.tripleEatChance == 0.0)
+        check(veteran.tripleEatChance == 0.25)
+        check(elite.tripleEatChance == 0.60)
         check(elite.switchChance > novice.switchChance)
         check(elite.targetStyleReaction.last < novice.targetStyleReaction.last ||
             elite.confidenceTier > novice.confidenceTier)
@@ -43,6 +49,11 @@ object BotPvpCheck {
             BotPvpProfiles.get(BotPvpDifficulty.Standard).targetStyleReaction.first)
         check(standardHybrid.confidenceTier ==
             BotPvpProfiles.get(BotPvpDifficulty.Standard).confidenceTier)
+        check(standardHybrid.tripleEatChance == 0.0)
+        val veteranHybrid = BotPvpProfiles.get(BotPvpDifficulty.Veteran, BotPvpLoadoutRole.Hybrid)
+        val eliteHybrid = BotPvpProfiles.get(BotPvpDifficulty.Elite, BotPvpLoadoutRole.Hybrid)
+        check(veteranHybrid.tripleEatChance == 0.35)
+        check(eliteHybrid.tripleEatChance == 0.70)
 
         val reaction = BotPvpReaction()
         check(reaction.observe(BotPvpStyle.Melee, 10, 3) == BotPvpStyle.Melee)
