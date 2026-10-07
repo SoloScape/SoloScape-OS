@@ -26,6 +26,35 @@ test('decodes REBUILD_NORMAL_V2 transformed shorts and static mapsquares', () =>
   );
 });
 
+test('decodes login REBUILD_NORMAL_V2 after the 4608-byte GPI init block', () => {
+  const gpiInit = new Uint8Array(4608);
+  gpiInit.fill(0xa5);
+  const payload = concat(
+    gpiInit,
+    p2Alt3(500),
+    p2Alt3(7),
+    p2Alt3(400),
+  );
+
+  assert.equal(payload.length, 4614);
+  const rebuild = decodeNormalRegionRebuild(payload);
+  assert.equal(rebuild.zoneX, 400);
+  assert.equal(rebuild.zoneZ, 500);
+  assert.equal(rebuild.worldArea, 7);
+  assert.ok(
+    rebuild.mapSquares.some(
+      (square) => square.x === 49 && square.z === 61,
+    ),
+  );
+});
+
+test('rejects malformed REBUILD_NORMAL_V2 payload lengths', () => {
+  assert.throws(
+    () => decodeNormalRegionRebuild(new Uint8Array(7)),
+    /6 bytes .*4614 bytes/,
+  );
+});
+
 test('decodes all 676 instanced zone slots and distinct source mapsquares', () => {
   const zones = new Map<number, number>();
   zones.set(0, packReferenceZone(320, 400, 1, 2));
