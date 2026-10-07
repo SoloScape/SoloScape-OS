@@ -19,9 +19,15 @@
         </div>
         <div class="connect-row">
           <input id="gateway-url" aria-label="WebSocket gateway URL" />
-          <button id="connect" type="button">Connect</button>
+          <button id="connect" type="button">Connect JS5</button>
         </div>
         <div id="status" role="status">Disconnected</div>
+        <div class="login-row">
+          <input id="login-username" autocomplete="username" placeholder="Username" aria-label="Game username" />
+          <input id="login-password" autocomplete="current-password" type="password" placeholder="Password" aria-label="Game password" />
+          <button id="login" type="button" disabled>Game login</button>
+        </div>
+        <div id="login-status" role="status">Game login waits for JS5 bootstrap</div>
       </section>
 
       <section class="viewport">
