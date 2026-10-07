@@ -1016,7 +1016,6 @@ function terrainSurfaceMaterials(
     : fallbackTerrainColor(
         -1,
         underlayRawId,
-        corners,
       );
   const underlay: TerrainSurfaceMaterial = {
     color: underlayBase,
@@ -1035,7 +1034,6 @@ function terrainSurfaceMaterials(
         color: fallbackTerrainColor(
           overlayId,
           underlayRawId,
-          corners,
         ),
         textureId: -1,
         hidden: false,
@@ -1073,7 +1071,6 @@ function terrainSurfaceMaterials(
 function fallbackTerrainColor(
   overlayId: number,
   underlayRawId: number,
-  corners: readonly Vec3[],
 ): Rgb {
   const seed = overlayId >= 0
     ? overlayId * 67 + 193
@@ -1085,13 +1082,7 @@ function fallbackTerrainColor(
   const lightness = overlayId >= 0
     ? 0.32 + positiveModulo(seed, 9) / 100
     : 0.28 + positiveModulo(seed, 11) / 100;
-  const base = hslToRgb(hue, saturation, lightness);
-  return shadeByTriangleNormal(
-    base,
-    corners[0]!,
-    corners[1]!,
-    corners[3]!,
-  );
+  return hslToRgb(hue, saturation, lightness);
 }
 
 function makeTerrainShapeNode(
