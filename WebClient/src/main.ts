@@ -49,6 +49,10 @@ import {
 } from './scene/SceneAssembler';
 import { WebGlSceneRenderer } from './scene/WebGlSceneRenderer';
 import {
+  BrowserGameLoop,
+  CLIENT_TICK_MS,
+} from './runtime/BrowserGameLoop';
+import {
   CacheTitleScreenRenderer,
   type LoginField,
 } from './ui/CacheTitleScreenRenderer';
@@ -106,6 +110,7 @@ const playerModelLoader = new PlayerModelAssetLoader(js5, appendLog);
 const bootRenderer = new ClientBootRenderer(clientUiCanvas);
 
 let sceneRenderer: WebGlSceneRenderer | null = null;
+let browserGameLoop: BrowserGameLoop | null = null;
 let titleRenderer: CacheTitleScreenRenderer | null = null;
 let titleAssets: TitleScreenAssets | undefined;
 let startupAssets: Js5StartupAssets | undefined;
@@ -244,6 +249,7 @@ function js5IsActive(): boolean {
 }
 
 function resetSceneDebug(): void {
+  browserGameLoop?.stop();
   (window as SoloScapeDebugWindow).soloscapeRegionRebuild = undefined;
   (window as SoloScapeDebugWindow).soloscapeSceneMaps = undefined;
   (window as SoloScapeDebugWindow).soloscapeSceneAssets = undefined;
@@ -290,6 +296,13 @@ function syncLocalPlayerRender(): void {
 
   sceneRenderer.setLocalPlayerPosition({ x, y, z });
   (window as SoloScapeDebugWindow).soloscapeLocalPlayer = player;
+}
+
+function tickGameSimulation(): void {
+  // First fixed-step runtime milestone: consume the latest protocol/player
+  // state on the same 20ms cadence as the original client. Route movement,
+  // entity animation and orbit-camera simulation plug into this function next.
+  syncLocalPlayerRender();
 }
 
 function requestLocalPlayerModel(): void {
@@ -510,12 +523,35 @@ async function connectJs5(): Promise<void> {
 
 try {
   sceneRenderer = new WebGlSceneRenderer(gameCanvas);
-  appendLog('WebGL2 static-scene renderer initialized.');
+  appendLog('WebGL2 scene renderer initialized.');
 } catch (error: unknown) {
   const message =
     error instanceof Error ? error.message : String(error);
   appendLog('WebGL2 renderer unavailable: ' + message);
 }
+
+browserGameLoop = new BrowserGameLoop({
+  update: () => {
+    if (titleMode === 'game') {
+      tickGameSimulation();
+    }
+  },
+  render: (interpolationAlpha) => {
+    if (titleMode === 'game') {
+      sceneRenderer?.renderFrame(interpolationAlpha);
+    }
+  },
+});
+(window as SoloScapeDebugWindow).soloscapeGameLoop = browserGameLoop;
+document.addEventListener('visibilitychange', () => {
+  // requestAnimationFrame pauses in background Safari tabs. Drop elapsed wall
+  // time on resume rather than replaying a large fixed-step backlog.
+  browserGameLoop?.resetTiming();
+});
+appendLog(
+  'Browser game runtime ready: fixed-tick=' +
+    CLIENT_TICK_MS + 'ms; presentation=requestAnimationFrame.',
+);
 
 js5.onLog = appendLog;
 gameLogin.onLog = appendLog;
@@ -644,7 +680,7 @@ gameLogin.onGamePacket = (packet) => {
         );
         requestLocalPlayerModel();
       }
-      syncLocalPlayerRender();
+      // Rendering consumes the decoded position on the next fixed 20ms tick.
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : String(error);
@@ -791,10 +827,11 @@ gameLogin.onGamePacket = (packet) => {
 
       titleMode = 'game';
       clientUiCanvas.hidden = true;
+      browserGameLoop?.start();
 
       const local = playerInfo?.getLocalPlayer();
       appendLog(
-        'RuneScape scene entered with player-follow camera' +
+        'RuneScape scene entered with 20ms simulation + animation-frame rendering' +
           (local
             ? ': local-player=' + local.coord.x + ',' + local.coord.z + '.'
             : ' (local player is still awaiting GPI state).'),
@@ -957,6 +994,7 @@ connectButton.addEventListener('click', () => {
   if (js5IsActive()) {
     bootGeneration += 1;
     mapLoadGeneration += 1;
+    browserGameLoop?.stop();
     if (gameLoginIsActive()) {
       gameLogin.disconnect();
     }
@@ -1125,6 +1163,7 @@ type SoloScapeDebugWindow = Window & {
   soloscapeStartupAssets?: Js5StartupAssets;
   soloscapeTitleAssets?: TitleScreenAssets;
   soloscapeGameLogin?: GameLoginClient;
+  soloscapeGameLoop?: BrowserGameLoop;
   soloscapePlayerInfo?: Rev240PlayerInfoDecoder;
   soloscapeLocalPlayer?: ClientPlayer;
   soloscapeRegionRebuild?: RegionRebuild;
