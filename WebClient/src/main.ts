@@ -751,7 +751,15 @@ gameLogin.onGamePacket = (packet) => {
         sceneRenderer.setTextureLayers(materials.textureLayers);
       }
 
-      const scene = assembleScene(rebuild, maps, assets, materials);
+      const visibleLevel =
+        playerInfo?.getLocalPlayer()?.coord.level ?? 0;
+      const scene = assembleScene(
+        rebuild,
+        maps,
+        assets,
+        materials,
+        visibleLevel,
+      );
       if (loadGeneration !== mapLoadGeneration) {
         return;
       }
