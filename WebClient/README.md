@@ -17,11 +17,41 @@ A successful Connect now performs:
       -> request every present 255:<archive> reference table
       -> decode type 0/type 2 cache containers
       -> parse reference-table structure
-      -> persist raw containers + structured metadata in IndexedDB
+      -> validate reference-table CRC + version
+      -> persist only validated reference tables
       -> JS5 index ready
 
 The observed SoloScape cache has 25 master-index slots. Slots 16 and 23 are
 empty, leaving 23 present archive reference tables.
+
+## Reference-table CRC/version validation
+
+Each master-index entry contains:
+
+    crc      u32
+    version  u32
+
+For each returned 255:<archive> reference table the web client now:
+
+1. reconstructs the raw cache container from JS5 framing;
+2. decodes and parses the reference table;
+3. computes IEEE CRC-32 over the complete reconstructed cache container;
+4. compares the result with the master-index CRC;
+5. compares the parsed reference-table version with the master-index version;
+6. only then stores the raw container and structured metadata in IndexedDB.
+
+The CRC covers:
+
+    compression byte
+    compressed-size field
+    uncompressed-size field when present
+    compressed/stored payload
+
+It does not include JS5's 512-byte transport framing or 0xff continuation bytes,
+because those have already been removed by the stream decoder.
+
+A CRC or version mismatch is fatal to the current bootstrap and the bad reference
+table is not persisted.
 
 ## Archive reference-table parser
 
@@ -38,25 +68,8 @@ Supported flags:
 - 0x04: compressed and uncompressed group lengths
 - 0x08: uncompressed group checksums
 
-For each archive the parser now exposes:
-
-- reference-table protocol and version
-- group IDs
-- optional group name hashes
-- group CRC/checksum
-- optional uncompressed checksum
-- optional Whirlpool digest
-- optional compressed/uncompressed lengths
-- group version
-- file IDs
-- optional file name hashes
-
-Group and file IDs are delta encoded in the reference table and are expanded to
-their absolute IDs by the parser.
-
-The parser is strict: unsupported protocol/flag bits, truncated fields, invalid
-counts/IDs and trailing bytes fail the bootstrap instead of producing partial
-metadata.
+For each archive the parser exposes group IDs, CRCs, versions, file IDs and all
+optional metadata indicated by those flags.
 
 ## Cache container decoder
 
@@ -66,8 +79,6 @@ Implemented:
 - compression 2: gzip through DecompressionStream('gzip')
 
 Compression 1 (bzip2) is still explicitly unsupported.
-
-The decoder validates exact container lengths and declared decompressed lengths.
 
 ## IndexedDB
 
@@ -80,15 +91,13 @@ Stores:
     js5-groups
     js5-metadata
 
-js5-groups contains reconstructed raw JS5 cache containers.
+js5-groups contains reconstructed cache containers. Archive reference tables are
+written only after their master-index CRC and version validate.
 
 js5-metadata contains:
 
     master-index
     reference-table:<archive>
-
-Reference-table metadata is stored as structured objects including group/file
-metadata and optional digest bytes.
 
 ## Debug API
 
@@ -96,31 +105,30 @@ The live client remains exposed as:
 
     window.soloscapeJs5
 
-Get the decoded raw reference-table payload:
-
-    window.soloscapeJs5.getArchiveIndexPayload(2)
-
-Get a defensive copy of the parsed reference table:
+Get a parsed reference table:
 
     window.soloscapeJs5.getArchiveReferenceTable(2)
 
-For example, in Safari's remote inspector or a desktop browser console:
-
-    const table = window.soloscapeJs5.getArchiveReferenceTable(2)
-    table.protocol
-    table.groups.length
-    table.groups[0]
-
 ## Expected live log
 
-After pulling this milestone, successful archives should add entries such as:
+A valid archive should now produce:
 
+    Reference table 2 received (...) expected-crc=0x........ version=...
+    Validated reference table 2: crc=0x........ version=...
     Parsed reference table 2: protocol=7 version=... flags=0x.. groups=... files=...
-    Decoded reference table 2: compression=2 1765 -> ... bytes (.../23 parsed).
+    Decoded reference table 2: compression=2 ... -> ... bytes (.../23 validated).
 
-Once all are parsed:
+Once all 23 pass:
 
-    JS5 cache index bootstrap complete: master index + 23 present archive reference tables received, decoded and parsed.
+    JS5 cache index bootstrap complete: master index + 23 present archive reference tables received, decoded, parsed and validated.
+
+Any mismatch produces a fatal message such as:
+
+    JS5 reference table 2 CRC mismatch: expected 0x........, got 0x.........
+
+or:
+
+    JS5 reference table 2 version mismatch: expected ..., got ....
 
 ## Tests
 
@@ -130,18 +138,13 @@ From WebClient:
     npm run test:protocol
     npm run build
 
-The reference-table tests cover:
+Validation tests cover:
 
-- protocol 5 16-bit delta IDs
-- protocol 7 2-or-4-byte smart IDs
-- IDs above 32767
-- names
-- Whirlpool digests
-- lengths
-- uncompressed checksums
-- file IDs/name hashes
-- unsupported protocols/flags
-- trailing-byte rejection
+- the standard CRC-32 known vector ("123456789" -> 0xcbf43926)
+- matching reference-table CRC/version
+- CRC mismatch rejection
+- version mismatch rejection
+- wrong-archive metadata rejection
 
 ## M1 status
 
@@ -153,18 +156,19 @@ Complete so far:
 - archive reference-table downloads
 - type 0/type 2 cache-container decoding
 - archive reference-table parsing
+- reference-table CRC/version validation
 - structured reference-table persistence in IndexedDB
 
 Next:
 
-- CRC/version validation
 - actual cache group download scheduler
+- per-group CRC/version validation
 - group/file unpacking
 - startup definitions/assets
 
 ## Reference format
 
-The parser follows the modern JS5 index field order used by OpenRS2's
-Js5Index reader, including protocols 5/6/7 and all current flag bits.
+The reference-table parser follows the modern JS5 index field order used by the
+cache implementation in this repository and OpenRS2-compatible tooling.
 
 Do not import packet ids or transforms from unrelated OSRS revisions.

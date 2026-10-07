@@ -26,6 +26,7 @@ import {
 } from './Js5ReferenceTable';
 import { Js5StreamDecoder } from './Js5StreamDecoder';
 import { IndexedDbCacheStore } from './IndexedDbCacheStore';
+import { validateJs5ReferenceTable } from './Js5Validation';
 
 export type Js5ClientState =
   | 'idle'
@@ -200,12 +201,12 @@ export class Js5Client {
     );
 
     this.onGroup?.(response);
-    this.persist(response);
 
     if (
       response.archive === JS5_MASTER_ARCHIVE &&
       response.group === JS5_MASTER_GROUP
     ) {
+      this.persist(response);
       void this.handleMasterIndex(response).catch((error: unknown) => {
         this.fail(error);
       });
@@ -217,7 +218,10 @@ export class Js5Client {
       this.pendingArchiveIndices.has(response.group)
     ) {
       this.handleArchiveIndex(response);
+      return;
     }
+
+    this.persist(response);
   }
 
   private async handleMasterIndex(
@@ -319,8 +323,27 @@ export class Js5Client {
   private async decodeArchiveIndex(
     response: Js5GroupResponse,
   ): Promise<void> {
+    const index = this.masterIndex;
+    if (!index) {
+      throw new Error('Reference table decoded without a master index.');
+    }
+
+    const metadata = index.entries[response.group];
+    if (!metadata || !isJs5ArchivePresent(metadata)) {
+      throw new Error(
+        'Missing master-index metadata for reference table ' +
+        response.group + '.',
+      );
+    }
+
     const decoded = await decodeJs5Container(response.container);
     const table = parseJs5ReferenceTable(decoded.data);
+    const validation = validateJs5ReferenceTable(
+      response.group,
+      response.container,
+      table,
+      metadata,
+    );
 
     this.archiveIndexPayloads.set(response.group, decoded.data);
     this.archiveReferenceTables.set(response.group, table);
@@ -331,6 +354,11 @@ export class Js5Client {
       0,
     );
 
+    this.onLog?.(
+      'Validated reference table ' + response.group +
+      ': crc=' + formatCrc(validation.crc) +
+      ' version=' + validation.version + '.',
+    );
     this.onLog?.(
       'Parsed reference table ' + response.group +
       ': protocol=' + table.protocol +
@@ -345,9 +373,10 @@ export class Js5Client {
       decoded.compressedSize + ' -> ' +
       decoded.uncompressedSize + ' bytes (' +
       (this.archiveIndexTotal - this.pendingArchiveDecodes.size) +
-      '/' + this.archiveIndexTotal + ' parsed).',
+      '/' + this.archiveIndexTotal + ' validated).',
     );
 
+    this.persist(response);
     this.persistReferenceTable(response.group, table);
     this.maybeFinishBootstrap();
   }
@@ -370,7 +399,7 @@ export class Js5Client {
     this.onLog?.(
       'JS5 cache index bootstrap complete: master index + ' +
       this.archiveIndexTotal +
-      ' present archive reference tables received, decoded and parsed.',
+      ' present archive reference tables received, decoded, parsed and validated.',
     );
     this.onBootstrapComplete?.(index);
   }
