@@ -145,11 +145,14 @@ gameLogin.onStateChange = (state) => {
   refreshLoginControls();
 };
 
+let framedGamePackets = 0;
+
 gameLogin.onLoginSuccess = (success) => {
+  framedGamePackets = 0;
   drawClientStatus(
     'Game login successful',
     'Player index ' + success.localPlayerIndex +
-      '; rev-240 game packet framing is next',
+      '; waiting for framed rev-240 game packets',
   );
 };
 
@@ -161,10 +164,18 @@ gameLogin.onLoginFailure = (code, message) => {
 };
 
 gameLogin.onGameData = (data) => {
-  appendLog(
-    'RX raw game stream: ' + data.length +
-    ' bytes (packet framing belongs to M3).',
-  );
+  appendLog('RX raw game stream chunk: ' + data.length + ' bytes.');
+};
+
+gameLogin.onGamePacket = (packet) => {
+  framedGamePackets += 1;
+  if (framedGamePackets === 1) {
+    drawClientStatus(
+      'Game packet framing active',
+      'First packet: ' + packet.name + ' (' + packet.opcode + '), ' +
+        packet.payload.length + ' payload bytes',
+    );
+  }
 };
 
 js5.onMasterIndex = (index) => {
