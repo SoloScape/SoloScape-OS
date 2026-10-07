@@ -141,16 +141,40 @@ def run_compiler(command, logfile, progress, label):
 
 
 def java_home():
-    candidates = [Path(os.environ.get("JAVA_HOME", "__missing__"))]
-    candidates += sorted(Path(os.environ.get("ProgramFiles", "C:/Program Files"))
-                         .glob("Eclipse Adoptium/jdk-21*"), reverse=True)
+    candidates = []
+    configured = os.environ.get("JAVA_HOME")
+    if configured:
+        candidates.append(Path(configured))
+
+    path_java = shutil.which("java")
+    if path_java:
+        candidates.append(Path(path_java).resolve().parent.parent)
+
+    program_files = Path(os.environ.get("ProgramFiles", "C:/Program Files"))
+    for pattern in (
+        "Eclipse Adoptium/jdk-21*",
+        "Java/jdk-21*",
+        "Microsoft/jdk-21*",
+        "Zulu/zulu-21*",
+    ):
+        candidates += sorted(program_files.glob(pattern), reverse=True)
+
+    seen = set()
     for home in candidates:
-        if (home / "bin/java.exe").is_file():
-            version = subprocess.run([str(home / "bin/java.exe"), "-version"],
-                                     capture_output=True, text=True)
-            if 'version "21.' in version.stderr:
-                return home
-    raise RuntimeError("Install Java 21 or set JAVA_HOME to its installation directory.")
+        home = home.resolve()
+        if home in seen:
+            continue
+        seen.add(home)
+        java = home / "bin/java.exe"
+        if not java.is_file() or not (home / "release").is_file():
+            continue
+        version = subprocess.run([str(java), "-version"], capture_output=True, text=True)
+        output = version.stdout + version.stderr
+        if version.returncode == 0 and 'version "21' in output:
+            return home
+    raise RuntimeError(
+        "Install Java 21, put it on PATH, or set JAVA_HOME to its installation directory."
+    )
 
 
 def compiler():
