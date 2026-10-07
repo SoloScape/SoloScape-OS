@@ -195,11 +195,7 @@ class BotPvpCombat @Inject constructor(
         if (target == null) {
             native.clearPrayers(player)
             if (cycle >= state.nextMove && !player.frozen && player.routeRequest == null) {
-                val dest = BotPvpHotspots.get(state.hotspotId)?.roam(random) ?: CoordGrid(
-                    patrol.x + random.nextInt(-7, 8),
-                    patrol.z + random.nextInt(-7, 8),
-                    patrol.level,
-                )
+                val dest = roamDestination(state, patrol)
                 walkTowards(player, dest)
                 state.nextMove = cycle + 5
             }
@@ -360,6 +356,19 @@ class BotPvpCombat @Inject constructor(
             } else null,
         )
         return "fighting ${target.displayName} (${state.style})"
+    }
+
+    private fun roamDestination(state: BotPvpState, patrol: CoordGrid): CoordGrid {
+        val hotspot = BotPvpHotspots.get(state.hotspotId) ?: return CoordGrid(
+            patrol.x + random.nextInt(-7, 8),
+            patrol.z + random.nextInt(-7, 8),
+            patrol.level,
+        )
+        repeat(12) {
+            val candidate = hotspot.roam(random)
+            if (candidate.wildernessLevel(areas) > 0) return candidate
+        }
+        return hotspot.spawn(random)
     }
 
     private fun retreat(player: Player, state: BotPvpState, cycle: Int): String {
