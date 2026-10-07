@@ -390,6 +390,7 @@ function buildAssets(): LoadedSceneAssets {
     vertexX: Int32Array.from([0, 64, 0]),
     vertexY: Int32Array.from([0, 0, -64]),
     vertexZ: Int32Array.from([0, 0, 0]),
+    vertexGroups: Int16Array.from([-1, -1, -1]),
     faceA: Uint32Array.from([0]),
     faceB: Uint32Array.from([1]),
     faceC: Uint32Array.from([2]),

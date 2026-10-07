@@ -228,8 +228,8 @@ export function applyClassicAnimationFrame(
   bindPositions: Float32Array,
   verticesByGroup: readonly (readonly number[])[],
   frame: DecodedAnimationFrame,
-  output = new Float32Array(bindPositions.length),
-  raw = new Float64Array(bindPositions.length),
+  output: Float32Array = new Float32Array(bindPositions.length),
+  raw: Float64Array = new Float64Array(bindPositions.length),
 ): Float32Array {
   if (output.length !== bindPositions.length) {
     throw new RangeError('Animation output position length mismatch.');
