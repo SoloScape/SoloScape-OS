@@ -31,6 +31,7 @@ import {
   PLAYER_INFO_OPCODE,
   Rev240PlayerInfoDecoder,
   type ClientPlayer,
+  type ClientPlayerRenderState,
 } from './protocol/PlayerInfoDecoder';
 import {
   tryDecodeRegionRebuildPacket,
@@ -257,6 +258,7 @@ function resetSceneDebug(): void {
   (window as SoloScapeDebugWindow).soloscapeSceneMaterials = undefined;
   (window as SoloScapeDebugWindow).soloscapeScene = undefined;
   (window as SoloScapeDebugWindow).soloscapeLocalPlayer = undefined;
+  (window as SoloScapeDebugWindow).soloscapeLocalPlayerRenderState = undefined;
   currentScene = null;
   currentSceneMaps = null;
   currentTerrainSampler = null;
@@ -304,6 +306,8 @@ function syncLocalPlayerRender(
     yaw: jagexYawToRadians(renderState.yaw),
   });
   (window as SoloScapeDebugWindow).soloscapeLocalPlayer = player;
+  (window as SoloScapeDebugWindow).soloscapeLocalPlayerRenderState =
+    renderState;
 }
 
 function tickGameSimulation(): void {
@@ -1172,6 +1176,7 @@ type SoloScapeDebugWindow = Window & {
   soloscapeGameLoop?: BrowserGameLoop;
   soloscapePlayerInfo?: Rev240PlayerInfoDecoder;
   soloscapeLocalPlayer?: ClientPlayer;
+  soloscapeLocalPlayerRenderState?: ClientPlayerRenderState;
   soloscapeRegionRebuild?: RegionRebuild;
   soloscapeSceneMaps?: LoadedMapSquare[];
   soloscapeSceneAssets?: LoadedSceneAssets;
