@@ -10,7 +10,7 @@ public class BotModule : PluginModule() {
     override fun bind() {
         addSetBinding<PlayerDeathHook>(BotLootKeyDeathHook::class.java)
         addSetBinding<PlayerDeathItemHook>(BotLootKeyItemHook::class.java)
-        addSetBinding<PlayerRespawnHook>(BotPvpRespawnHook::class.java)
+        addSetBinding<PlayerRespawnHook>(BotRespawnHook::class.java)
         addSetBinding<PlayerObjTakeRedirectHook>(BotLootKeyGroundTakeHook::class.java)
     }
 }
