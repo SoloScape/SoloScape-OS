@@ -4,6 +4,10 @@ import {
   type LocModelDefinition,
 } from './LocModelDefinitionDecoder';
 import type { LoadedMapSquare } from './MapSquareLoader';
+import {
+  decodeModelGeometry,
+  type DecodedModelGeometry,
+} from './ModelGeometryDecoder';
 
 export const CONFIG_ARCHIVE = 2;
 export const LOC_CONFIG_GROUP = 6;
@@ -12,6 +16,7 @@ export const MODELS_ARCHIVE = 7;
 export interface LoadedSceneAssets {
   readonly locDefinitions: ReadonlyMap<number, LocModelDefinition>;
   readonly modelData: ReadonlyMap<number, Uint8Array>;
+  readonly models: ReadonlyMap<number, DecodedModelGeometry>;
 }
 
 export class SceneAssetLoader {
@@ -90,14 +95,25 @@ export class SceneAssetLoader {
     );
 
     const modelData = new Map<number, Uint8Array>(modelEntries);
+    const models = new Map<number, DecodedModelGeometry>();
+    let vertices = 0;
+    let faces = 0;
+    for (const [modelId, data] of modelData) {
+      const model = decodeModelGeometry(modelId, data);
+      models.set(modelId, model);
+      vertices += model.vertexX.length;
+      faces += model.faceA.length;
+    }
+
     this.log?.(
-      'Scene model payloads ready: ' + modelData.size +
-        ' unique model groups downloaded and validated.',
+      'Scene model geometry ready: models=' + models.size +
+        '; vertices=' + vertices + '; faces=' + faces + '.',
     );
 
     return {
       locDefinitions: definitions,
       modelData,
+      models,
     };
   }
 
