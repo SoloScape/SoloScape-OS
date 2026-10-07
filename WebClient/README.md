@@ -3,9 +3,9 @@
 This directory contains the browser-native SoloScape client work targeting
 Safari on iPhone/iPad and modern desktop browsers.
 
-The current branch implements the browser transport and the JS5 cache-index
-bootstrap for OSRS protocol revision 240 / client 240.2. Game login and rendering
-are not implemented yet.
+The current branch implements the browser transport, JS5 cache-index bootstrap
+and cache-container decoding for OSRS protocol revision 240 / client 240.2.
+Game login and rendering are not implemented yet.
 
 ## Current cache bootstrap
 
@@ -15,46 +15,60 @@ A successful Connect now performs:
       -> JS5 opcode 15 + revision 240
       -> status 0
       -> request 255:255
-      -> parse master index
-      -> request 255:0 through 255:N
-      -> reconstruct every archive reference-table container
+      -> decode master-index container
+      -> parse archive CRC/version metadata
+      -> request every present 255:<archive> reference table
+      -> decode all returned cache containers
       -> persist raw groups + parsed master metadata in IndexedDB
       -> JS5 index ready
 
-For the currently observed SoloScape cache, the master-index payload is 200 bytes.
-The master-index format is 8 bytes per archive entry, so this build exposes 25
-archives.
+For the currently observed SoloScape cache, the master index has 25 archive
+slots. Slots 16 and 23 are empty (crc=0/version=0), leaving 23 present archive
+reference tables.
 
-Each record contains:
+## Cache container decoder
 
-    crc:     u32
-    version: u32
+Implemented container types:
 
-The record position is the archive id.
+- compression 0: uncompressed/stored payload
+- compression 2: gzip payload via the browser-native Compression Streams API
 
-CRC values are recorded and displayed for diagnostics, but are not yet enforced
-against the returned reference-table bytes. That validation belongs with the
-cache-container/reference-table decoder so it can checksum the same byte range
-as the original cache implementation.
+Compression 1 (bzip2) is deliberately rejected until a bzip2 implementation is
+added.
 
-## Architecture
+Container layout:
 
-    Safari / desktop browser
-              |
-              | ws:// or wss://
-              v
-    WebClient/gateway
-              |
-              | raw TCP stream
-              v
-    SoloScape server :43594
+    compression      u8
+    compressedSize   u32
+    uncompressedSize u32   # compressed containers only
+    payload
 
-The gateway does not parse OSRS traffic. Every browser WebSocket connection maps
-to its own TCP connection.
+The decoder validates:
 
-WebSocket frames are treated as arbitrary chunks of a continuous byte stream.
-The browser JS5 decoder independently reconstructs 512-byte JS5 blocks and
-removes 0xff continuation delimiters.
+- minimum header size
+- exact container byte length
+- maximum output size
+- declared gzip uncompressed size against actual decoded output
+
+The default maximum decoded payload is 64 MiB.
+
+The JS5 client now keeps the decoded reference-table payloads in memory for the
+next archive-reference-table parser milestone:
+
+    window.soloscapeJs5.getArchiveIndexPayload(2)
+
+returns a copy of the decoded payload for archive 2 after bootstrap.
+
+## Browser requirement
+
+Gzip decoding uses:
+
+    DecompressionStream('gzip')
+
+Current Safari versions supporting the Compression Streams API can decode these
+containers without shipping a JavaScript gzip library. If the API is missing,
+the client fails with an explicit compatibility error rather than accepting
+corrupt data.
 
 ## Run locally
 
@@ -65,9 +79,7 @@ From WebClient:
     npm run test:protocol
     npm run build
 
-Start the gateway:
-
-PowerShell:
+Start the gateway in PowerShell:
 
     $env:WS_HOST="0.0.0.0"
     $env:WS_PORT="8765"
@@ -81,31 +93,24 @@ Then open from the iPhone:
 
     http://YOUR-PC-LAN-IP:5173
 
-and use:
+and connect to:
 
     ws://YOUR-PC-LAN-IP:8765
 
-The browser remembers the last gateway URL in localStorage.
-
 ## Expected log
 
-The new milestone should produce a sequence similar to:
+The new decoder milestone should add lines similar to:
 
-    TX JS5 init: opcode=15 revision=240 key=[0, 0, 0, 0]
-    RX JS5 handshake status=0
-    TX JS5 request 255:255 priority=urgent
-    RX JS5 group 255:255 compression=0 size=200 container=205 bytes
-    Parsed JS5 master index: 25 archives from 200 bytes.
-    Archive 0 crc=0x........ version=...
+    Decoded JS5 master index container: compression=0 200 -> 200 bytes.
     ...
-    Archive 24 crc=0x........ version=...
-    TX JS5 archive reference-table requests: 25 groups (255:0..255:24).
-    Reference table 0 received (1/25) ...
+    Reference table 7 received (.../23) ...
+    Decoded reference table 7: compression=2 518772 -> <size> bytes (.../23 decoded).
     ...
-    Reference table 24 received (25/25) ...
-    JS5 cache index bootstrap complete: master index + 25 archive reference tables received.
+    Decoded reference table 20: compression=0 46364 -> 46364 bytes (.../23 decoded).
+    ...
+    JS5 cache index bootstrap complete: master index + 23 present archive reference tables received and decoded.
 
-The exact response order is not assumed. Completion is tracked by archive id.
+The order of gzip completion is not assumed.
 
 ## IndexedDB
 
@@ -118,87 +123,45 @@ Stores:
     js5-groups
     js5-metadata
 
-js5-groups contains reconstructed raw cache containers keyed by archive:group.
-
-js5-metadata currently contains the parsed master index with CRC/version metadata.
-
-The database schema is version 2. Existing development databases created by the
-previous scaffold upgrade automatically.
+Raw reconstructed containers are persisted. Decompressed reference-table payloads
+are currently session-memory data; the next parser milestone will persist useful
+structured group/file metadata instead of duplicating decompressed blobs.
 
 ## Debug API
 
-The active JS5 client remains available in the browser console:
+The active JS5 client is available as:
 
     window.soloscapeJs5
 
-After bootstrap you can still request a specific cache group manually:
+Request a group manually:
 
     window.soloscapeJs5.requestGroup(2, 10)
 
-## Implementation milestones
+Inspect a decoded archive reference-table payload:
 
-### M0 - transport
+    window.soloscapeJs5.getArchiveIndexPayload(2)
 
-Complete:
-
-- Vite + TypeScript browser shell
-- mobile/Safari viewport
-- binary WebSocket transport
-- raw WebSocket-to-TCP gateway
-
-### M1 - JS5/cache bootstrap
+## M1 status
 
 Complete so far:
 
-- revision 240 JS5 init
-- master-index request
-- master-index CRC/version parser
-- automatic archive reference-table requests
-- incremental JS5 response framing
-- IndexedDB persistence
-- fragmented-stream protocol tests
+- revision 240 JS5 handshake
+- master-index parsing
+- empty archive-slot handling
+- archive reference-table downloads
+- type 0 cache-container decoding
+- type 2 gzip cache-container decoding
+- strict container length validation
+- gzip output-size validation
+- IndexedDB raw-container persistence
+- protocol/container tests
 
-Next M1 work:
+Next:
 
-- cache-container decompression
-- archive reference-table decoding
+- archive reference-table structure decoding
 - CRC/version validation
 - request scheduler/retries/concurrency limits
 - typed startup definitions
-
-### M2 - game login
-
-Still to implement:
-
-- initial game connection / server seed
-- login block
-- RSA
-- ISAAC
-- login response handling
-
-### M3 - game stream
-
-Still to implement:
-
-- revision 240 packet table
-- fixed/variable packet framing
-- ISAAC opcode decoding
-- gameplay packet state machine
-
-### M4+ - playable client
-
-Still to implement:
-
-- regions/terrain/objects
-- models/animations
-- player/NPC updates
-- interfaces/inventory/chat
-- walking/interactions
-- touch controls
-- WebGL renderer
-- optional WASM hot paths
-- HTTPS/WSS production deployment
-- iOS lifecycle/memory hardening
 
 ## Source of truth
 

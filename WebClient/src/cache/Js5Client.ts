@@ -1,5 +1,8 @@
 import { WebSocketTransport } from '../net/WebSocketTransport';
 import {
+  decodeJs5Container,
+} from './Js5Container';
+import {
   formatCrc,
   isJs5ArchivePresent,
   parseJs5MasterIndex,
@@ -13,7 +16,6 @@ import {
   ZERO_JS5_HANDSHAKE_KEY,
   encodeJs5GroupRequest,
   encodeJs5Handshake,
-  getUncompressedJs5Payload,
   type Js5GroupResponse,
   type Js5HandshakeKey,
 } from './Js5Protocol';
@@ -44,6 +46,8 @@ export class Js5Client {
   private readonly decoder = new Js5StreamDecoder();
   private masterIndex: Js5MasterIndex | null = null;
   private pendingArchiveIndices = new Set<number>();
+  private pendingArchiveDecodes = new Set<number>();
+  private archiveIndexPayloads = new Map<number, Uint8Array>();
   private archiveIndexTotal = 0;
 
   state: Js5ClientState = 'idle';
@@ -91,6 +95,8 @@ export class Js5Client {
     this.decoder.reset();
     this.masterIndex = null;
     this.pendingArchiveIndices.clear();
+    this.pendingArchiveDecodes.clear();
+    this.archiveIndexPayloads.clear();
     this.archiveIndexTotal = 0;
     this.setState('connecting');
     this.onLog?.('Connecting JS5 socket to ' + url);
@@ -106,7 +112,7 @@ export class Js5Client {
         ' key=[' + key.join(', ') + ']',
       );
     } catch (error) {
-      this.setState('error');
+      this.fail(error);
       throw error;
     }
   }
@@ -123,11 +129,17 @@ export class Js5Client {
     );
   }
 
+  getArchiveIndexPayload(archive: number): Uint8Array | undefined {
+    return this.archiveIndexPayloads.get(archive)?.slice();
+  }
+
   disconnect(): void {
     this.transport.disconnect();
     this.decoder.reset();
     this.masterIndex = null;
     this.pendingArchiveIndices.clear();
+    this.pendingArchiveDecodes.clear();
+    this.archiveIndexPayloads.clear();
     this.archiveIndexTotal = 0;
     this.setState('closed');
   }
@@ -145,10 +157,7 @@ export class Js5Client {
         this.handleGroup(event.response);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.onLog?.('JS5 protocol error: ' + message);
-      this.setState('error');
-      this.transport.disconnect();
+      this.fail(error);
     }
   }
 
@@ -182,7 +191,9 @@ export class Js5Client {
       response.archive === JS5_MASTER_ARCHIVE &&
       response.group === JS5_MASTER_GROUP
     ) {
-      this.handleMasterIndex(response);
+      void this.handleMasterIndex(response).catch((error: unknown) => {
+        this.fail(error);
+      });
       return;
     }
 
@@ -194,23 +205,26 @@ export class Js5Client {
     }
   }
 
-  private handleMasterIndex(response: Js5GroupResponse): void {
-    const payload = getUncompressedJs5Payload(response);
-    if (!payload) {
-      throw new Error(
-        'Compressed JS5 master index is not supported yet; compression=' +
-        response.compression + '.',
-      );
-    }
-
+  private async handleMasterIndex(
+    response: Js5GroupResponse,
+  ): Promise<void> {
+    const decoded = await decodeJs5Container(response.container);
+    const payload = decoded.data;
     const index = parseJs5MasterIndex(payload);
     const presentEntries = presentJs5Archives(index);
 
     this.masterIndex = index;
     this.pendingArchiveIndices =
       new Set(presentEntries.map((entry) => entry.archive));
+    this.pendingArchiveDecodes =
+      new Set(presentEntries.map((entry) => entry.archive));
     this.archiveIndexTotal = presentEntries.length;
 
+    this.onLog?.(
+      'Decoded JS5 master index container: compression=' +
+      decoded.compression + ' ' + decoded.compressedSize + ' -> ' +
+      decoded.uncompressedSize + ' bytes.',
+    );
     this.onLog?.(
       'Parsed JS5 master index: ' + index.entries.length +
       ' archive slots, ' + presentEntries.length +
@@ -282,16 +296,50 @@ export class Js5Client {
       progress,
     );
 
-    if (this.pendingArchiveIndices.size === 0) {
-      this.finishBootstrap(index);
+    void this.decodeArchiveIndex(response).catch((error: unknown) => {
+      this.fail(error);
+    });
+  }
+
+  private async decodeArchiveIndex(
+    response: Js5GroupResponse,
+  ): Promise<void> {
+    const decoded = await decodeJs5Container(response.container);
+
+    this.archiveIndexPayloads.set(response.group, decoded.data);
+    this.pendingArchiveDecodes.delete(response.group);
+
+    this.onLog?.(
+      'Decoded reference table ' + response.group +
+      ': compression=' + decoded.compression + ' ' +
+      decoded.compressedSize + ' -> ' +
+      decoded.uncompressedSize + ' bytes (' +
+      (this.archiveIndexTotal - this.pendingArchiveDecodes.size) +
+      '/' + this.archiveIndexTotal + ' decoded).',
+    );
+
+    this.maybeFinishBootstrap();
+  }
+
+  private maybeFinishBootstrap(): void {
+    const index = this.masterIndex;
+    if (
+      !index ||
+      this.pendingArchiveIndices.size !== 0 ||
+      this.pendingArchiveDecodes.size !== 0
+    ) {
+      return;
     }
+
+    this.finishBootstrap(index);
   }
 
   private finishBootstrap(index: Js5MasterIndex): void {
     this.setState('ready');
     this.onLog?.(
       'JS5 cache index bootstrap complete: master index + ' +
-      this.archiveIndexTotal + ' present archive reference tables received.',
+      this.archiveIndexTotal +
+      ' present archive reference tables received and decoded.',
     );
     this.onBootstrapComplete?.(index);
   }
@@ -326,6 +374,13 @@ export class Js5Client {
           'IndexedDB master-index metadata write failed: ' + message,
         );
       });
+  }
+
+  private fail(error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    this.onLog?.('JS5 protocol error: ' + message);
+    this.setState('error');
+    this.transport.disconnect();
   }
 
   private setState(state: Js5ClientState): void {
