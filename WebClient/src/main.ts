@@ -39,6 +39,7 @@ import {
   CacheTitleScreenRenderer,
   type LoginField,
 } from './ui/CacheTitleScreenRenderer';
+import { ClientBootRenderer } from './ui/ClientBootRenderer';
 import { applyLoginKey } from './ui/LoginInput';
 
 const CLIENT_VIEWPORT_WIDTH = 765;
@@ -65,9 +66,6 @@ const loginStatus = requireElement<HTMLElement>('#login-status');
 const revision = requireElement<HTMLElement>('#revision');
 const log = requireElement<HTMLElement>('#log');
 const debugPanel = requireElement<HTMLDetailsElement>('#debug-panel');
-const sceneStatus = requireElement<HTMLElement>('#scene-status');
-const sceneHeadline = requireElement<HTMLElement>('#scene-headline');
-const sceneDetail = requireElement<HTMLElement>('#scene-detail');
 
 const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
 const defaultGatewayUrl = scheme + '://' + location.hostname + ':8081';
@@ -90,6 +88,7 @@ const gameTransport = new WebSocketTransport();
 const gameLogin = new GameLoginClient(gameTransport);
 const mapSquareLoader = new MapSquareLoader(js5, appendLog);
 const sceneAssetLoader = new SceneAssetLoader(js5, appendLog);
+const bootRenderer = new ClientBootRenderer(clientUiCanvas);
 
 let sceneRenderer: WebGlSceneRenderer | null = null;
 let titleRenderer: CacheTitleScreenRenderer | null = null;
@@ -99,8 +98,14 @@ let selectedLoginField: LoginField =
   loginUsername.value ? 'password' : 'username';
 let loginMessage: string | undefined;
 let cursorVisible = true;
-let titleMode: 'bootstrap' | 'login' | 'message' | 'game' =
-  'bootstrap';
+let titleMode:
+  | 'bootstrap'
+  | 'welcome'
+  | 'login'
+  | 'new-user'
+  | 'connecting'
+  | 'loading'
+  | 'game' = 'bootstrap';
 let bootGeneration = 0;
 let mapLoadGeneration = 0;
 let framedGamePackets = 0;
@@ -111,14 +116,38 @@ function appendLog(message: string): void {
   log.scrollTop = log.scrollHeight;
 }
 
-function drawBootstrapStatus(
-  headline: string,
-  detail: string,
+function renderBootScreen(
+  progress: number,
+  message: string,
 ): void {
-  sceneHeadline.textContent = headline;
-  sceneDetail.textContent = detail;
-  sceneStatus.hidden = false;
+  titleMode = 'bootstrap';
   clientUiCanvas.hidden = false;
+  bootRenderer.render(progress, message);
+}
+
+function renderWelcomeScreen(): void {
+  if (!titleRenderer) {
+    return;
+  }
+
+  titleMode = 'welcome';
+  loginMessage = undefined;
+  clientUiCanvas.hidden = false;
+  loginUsername.blur();
+  loginPassword.blur();
+  titleRenderer.renderWelcome();
+}
+
+function renderNewUserScreen(): void {
+  if (!titleRenderer) {
+    return;
+  }
+
+  titleMode = 'new-user';
+  clientUiCanvas.hidden = false;
+  loginUsername.blur();
+  loginPassword.blur();
+  titleRenderer.renderNewUser();
 }
 
 function renderLoginScreen(message = loginMessage): void {
@@ -129,7 +158,6 @@ function renderLoginScreen(message = loginMessage): void {
   titleMode = 'login';
   loginMessage = message;
   clientUiCanvas.hidden = false;
-  sceneStatus.hidden = true;
   titleRenderer.renderLogin({
     username: loginUsername.value,
     password: loginPassword.value,
@@ -139,19 +167,37 @@ function renderLoginScreen(message = loginMessage): void {
   });
 }
 
-function showTitleMessage(
-  message: string,
-  detail?: string,
+function renderConnectingScreen(
+  message = 'Connecting to server...',
 ): void {
   if (!titleRenderer) {
-    drawBootstrapStatus(message, detail ?? '');
+    renderBootScreen(100, message);
     return;
   }
 
-  titleMode = 'message';
+  titleMode = 'connecting';
   clientUiCanvas.hidden = false;
-  sceneStatus.hidden = true;
-  titleRenderer.renderMessage(message, detail);
+  loginUsername.blur();
+  loginPassword.blur();
+  titleRenderer.renderConnecting({
+    username: loginUsername.value,
+    password: loginPassword.value,
+    message,
+  });
+}
+
+function renderGameLoading(
+  progress: number,
+  message: string,
+): void {
+  if (!titleRenderer) {
+    renderBootScreen(progress, message);
+    return;
+  }
+
+  titleMode = 'loading';
+  clientUiCanvas.hidden = false;
+  titleRenderer.renderLoading(progress, message);
 }
 
 function gameLoginIsActive(): boolean {
@@ -264,7 +310,7 @@ async function beginGameLogin(): Promise<void> {
   localStorage.setItem('soloscape.gatewayUrl', urlInput.value);
   localStorage.setItem('soloscape.username', username);
   loginStatus.textContent = 'Opening game socket';
-  showTitleMessage('Connecting to server...');
+  renderConnectingScreen('Connecting to server...');
 
   try {
     await gameLogin.connect(urlInput.value, {
@@ -305,9 +351,9 @@ async function connectJs5(): Promise<void> {
   (window as SoloScapeDebugWindow).soloscapeStartupAssets = undefined;
 
   localStorage.setItem('soloscape.gatewayUrl', urlInput.value);
-  drawBootstrapStatus(
-    'Connecting to SoloScape',
-    'Opening the rev-' + OSRS_PROTOCOL_REVISION + ' cache stream',
+  renderBootScreen(
+    0,
+    'Connecting to update server',
   );
 
   try {
@@ -324,9 +370,9 @@ async function connectJs5(): Promise<void> {
     const message =
       error instanceof Error ? error.message : String(error);
     appendLog(message);
-    drawBootstrapStatus(
-      'Unable to connect to SoloScape',
-      'Start run-gateway.bat and refresh the page',
+    renderBootScreen(
+      0,
+      'Error connecting to update server',
     );
   }
 }
@@ -364,9 +410,11 @@ js5.onStateChange = (state) => {
     titleMode === 'bootstrap' &&
     (state === 'closed' || state === 'error')
   ) {
-    drawBootstrapStatus(
-      state === 'error' ? 'Cache connection failed' : 'Cache disconnected',
-      'Open ?debug=1 for transport details',
+    renderBootScreen(
+      0,
+      state === 'error'
+        ? 'Error connecting to update server'
+        : 'Connection lost',
     );
   }
 };
@@ -390,16 +438,16 @@ gameLogin.onStateChange = (state) => {
     return;
   }
 
-  if (state === 'connecting' || state === 'handshake') {
-    showTitleMessage('Connecting to server...');
-  } else if (
+  if (
+    state === 'connecting' ||
+    state === 'handshake' ||
     state === 'server-seed' ||
     state === 'login-block' ||
     state === 'login-response'
   ) {
-    showTitleMessage('Performing login...');
+    renderConnectingScreen('Connecting to server...');
   } else if (state === 'game') {
-    showTitleMessage('Loading - please wait.');
+    renderGameLoading(100, 'Loading - please wait.');
   } else if (state === 'closed' && js5.state === 'ready') {
     selectedLoginField = 'password';
     renderLoginScreen();
@@ -415,10 +463,7 @@ gameLogin.onLoginSuccess = (success) => {
       success.localPlayerIndex +
       ' member=' + success.member + '.',
   );
-  showTitleMessage(
-    'Loading - please wait.',
-    'Waiting for the region rebuild',
-  );
+  renderGameLoading(100, 'Loading - please wait.');
 };
 
 gameLogin.onLoginFailure = (code, message) => {
@@ -450,10 +495,7 @@ gameLogin.onGamePacket = (packet) => {
   (window as SoloScapeDebugWindow).soloscapeScene = undefined;
   sceneRenderer?.clear();
 
-  showTitleMessage(
-    'Loading - please wait.',
-    'Loading region map data',
-  );
+  renderGameLoading(100, 'Loading - please wait.');
 
   void mapSquareLoader.loadMany(rebuild.mapSquares)
     .then(async (maps) => {
@@ -471,10 +513,7 @@ gameLogin.onGamePacket = (packet) => {
         'Region map assets ready: mapsquares=' + maps.length +
           '; locations=' + locationCount + '.',
       );
-      showTitleMessage(
-        'Loading - please wait.',
-        'Resolving scene models',
-      );
+      renderGameLoading(100, 'Loading - please wait.');
 
       const assets = await sceneAssetLoader.loadForMaps(maps);
       if (loadGeneration !== mapLoadGeneration) {
@@ -492,11 +531,7 @@ gameLogin.onGamePacket = (packet) => {
         (model) => model.faceA.length,
       ).reduce((sum, count) => sum + count, 0);
 
-      showTitleMessage(
-        'Loading - please wait.',
-        assets.models.size + ' models; ' +
-          vertices + ' vertices; ' + faces + ' faces',
-      );
+      renderGameLoading(100, 'Loading - please wait.');
 
       const scene = assembleScene(rebuild, maps, assets);
       if (loadGeneration !== mapLoadGeneration) {
@@ -516,17 +551,13 @@ gameLogin.onGamePacket = (packet) => {
       );
 
       if (!sceneRenderer) {
-        showTitleMessage(
-          'WebGL2 is unavailable.',
-          'Open ?debug=1 for details',
-        );
+        renderGameLoading(100, 'WebGL2 is unavailable.');
         return;
       }
 
       sceneRenderer.render(scene);
       titleMode = 'game';
       clientUiCanvas.hidden = true;
-      sceneStatus.hidden = true;
 
       appendLog(
         'First static RuneScape scene rendered with WebGL2: terrain=' +
@@ -542,10 +573,7 @@ gameLogin.onGamePacket = (packet) => {
       const message =
         error instanceof Error ? error.message : String(error);
       appendLog('Static scene build/render failed: ' + message);
-      showTitleMessage(
-        'Loading failed.',
-        'Open ?debug=1 for cache or scene details',
-      );
+      renderGameLoading(100, 'Loading failed.');
     });
 
   if (rebuild.kind === 'normal') {
@@ -573,20 +601,25 @@ gameLogin.onGamePacket = (packet) => {
 js5.onMasterIndex = (index) => {
   const present = presentJs5Archives(index);
   if (titleMode === 'bootstrap') {
-    drawBootstrapStatus(
-      'Loading SoloScape',
-      'Master index ready; ' + present.length +
-        ' cache archives available',
+    renderBootScreen(
+      10,
+      'Checking for updates - 0%',
+    );
+    appendLog(
+      'Master index ready: ' + present.length + ' cache archives available.',
     );
   }
 };
 
 js5.onArchiveIndex = (_archive, _response, progress) => {
   if (titleMode === 'bootstrap') {
-    drawBootstrapStatus(
-      'Loading SoloScape',
-      'Cache indices ' + progress.received +
-        ' / ' + progress.total,
+    const ratio = progress.total === 0
+      ? 1
+      : progress.received / progress.total;
+    const updatePercent = Math.floor(ratio * 100);
+    renderBootScreen(
+      10 + Math.floor(ratio * 50),
+      'Checking for updates - ' + updatePercent + '%',
     );
   }
 };
@@ -595,17 +628,15 @@ js5.onBootstrapComplete = (index) => {
   const generation = bootGeneration;
   const archiveCount = presentJs5Archives(index).length;
 
-  drawBootstrapStatus(
-    'Loading SoloScape',
-    archiveCount +
-      ' cache indices ready; loading title assets and fonts',
+  renderBootScreen(
+    65,
+    'Loading title screen - 0%',
   );
 
-  void Promise.all([
-    loadTitleScreenAssets(js5, appendLog),
-    loadJs5StartupAssets(js5, appendLog),
-  ])
-    .then(async ([loadedTitleAssets, loadedStartupAssets]) => {
+  const startupPromise = loadJs5StartupAssets(js5, appendLog);
+
+  void loadTitleScreenAssets(js5, appendLog)
+    .then(async (loadedTitleAssets) => {
       if (generation !== bootGeneration) {
         return;
       }
@@ -619,13 +650,9 @@ js5.onBootstrapComplete = (index) => {
       }
 
       titleAssets = loadedTitleAssets;
-      startupAssets = loadedStartupAssets;
       titleRenderer = renderer;
-
       (window as SoloScapeDebugWindow).soloscapeTitleAssets =
         loadedTitleAssets;
-      (window as SoloScapeDebugWindow).soloscapeStartupAssets =
-        loadedStartupAssets;
 
       appendLog(
         'Cache-backed title screen ready: background=' +
@@ -636,9 +663,33 @@ js5.onBootstrapComplete = (index) => {
           '; runes=' + loadedTitleAssets.provenance.runes + '.',
       );
 
-      loginStatus.textContent = 'Cache title screen ready';
+      renderer.renderLoading(
+        80,
+        'Loading config - 0%',
+      );
+      titleMode = 'loading';
+
+      const loadedStartupAssets = await startupPromise;
+      if (generation !== bootGeneration) {
+        return;
+      }
+
+      startupAssets = loadedStartupAssets;
+      (window as SoloScapeDebugWindow).soloscapeStartupAssets =
+        loadedStartupAssets;
+
+      renderer.renderLoading(
+        100,
+        'Loaded config',
+      );
+      appendLog(
+        'Original-style title bootstrap complete: ' +
+          archiveCount + ' cache indices ready.',
+      );
+
+      loginStatus.textContent = 'Title screen ready';
       loginMessage = undefined;
-      setLoginField(selectedLoginField);
+      renderWelcomeScreen();
     })
     .catch((error: unknown) => {
       if (generation !== bootGeneration) {
@@ -648,9 +699,9 @@ js5.onBootstrapComplete = (index) => {
       const message =
         error instanceof Error ? error.message : String(error);
       appendLog('Cache title screen bootstrap failed: ' + message);
-      drawBootstrapStatus(
-        'Cache title screen failed',
-        'No fallback artwork is used. Open ?debug=1 for details.',
+      renderBootScreen(
+        0,
+        'Error loading title screen',
       );
     });
 };
@@ -679,9 +730,9 @@ connectButton.addEventListener('click', () => {
     titleAssets = undefined;
     startupAssets = undefined;
     titleMode = 'bootstrap';
-    drawBootstrapStatus(
-      'Cache disconnected',
-      'Use the debug control to reconnect',
+    renderBootScreen(
+      0,
+      'Connection lost',
     );
     return;
   }
@@ -750,16 +801,32 @@ document.addEventListener(
 );
 
 clientUiCanvas.addEventListener('pointerdown', (event) => {
-  if (!titleRenderer || titleMode !== 'login') {
+  if (
+    !titleRenderer ||
+    titleMode === 'bootstrap' ||
+    titleMode === 'connecting' ||
+    titleMode === 'loading' ||
+    titleMode === 'game'
+  ) {
     return;
   }
 
-  // Keep the pointer's default focus action from stealing focus back from the
-  // hidden native field after setLoginField() opens the keyboard/input bridge.
   event.preventDefault();
 
   const point = logicalPointerPosition(event);
   const target = titleRenderer.hitTest(point.x, point.y);
+
+  if (target === 'new-user') {
+    renderNewUserScreen();
+    return;
+  }
+
+  if (target === 'existing-user') {
+    loginMessage = undefined;
+    selectedLoginField = loginUsername.value ? 'password' : 'username';
+    setLoginField(selectedLoginField);
+    return;
+  }
 
   if (target === 'username' || target === 'password') {
     setLoginField(target);
@@ -772,9 +839,11 @@ clientUiCanvas.addEventListener('pointerdown', (event) => {
   }
 
   if (target === 'cancel') {
+    loginUsername.value = '';
     loginPassword.value = '';
     loginMessage = undefined;
-    setLoginField('username');
+    selectedLoginField = 'username';
+    renderWelcomeScreen();
   }
 });
 
@@ -824,8 +893,8 @@ type SoloScapeDebugWindow = Window & {
 (window as SoloScapeDebugWindow).soloscapeJs5 = js5;
 (window as SoloScapeDebugWindow).soloscapeGameLogin = gameLogin;
 
-drawBootstrapStatus(
-  'Starting SoloScape',
-  'Connecting to the local cache gateway',
+renderBootScreen(
+  0,
+  'Starting game engine...',
 );
 void connectJs5();
