@@ -605,7 +605,9 @@ function vertex(
   return {
     x: model.vertexX[index]!,
     y: -model.vertexY[index]!,
-    z: model.vertexZ[index]!,
+    // The model decoder exposes Jagex coordinates. Y is already reflected
+    // for WebGL +Y-up; reflect Z too so the conversion preserves handedness.
+    z: -model.vertexZ[index]!,
     group: model.vertexGroups[index]!,
   };
 }
