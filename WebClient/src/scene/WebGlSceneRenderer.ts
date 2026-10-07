@@ -40,7 +40,7 @@ export class WebGlSceneRenderer {
   private readonly modelLocation: WebGLUniformLocation;
   private readonly textureSamplerLocation: WebGLUniformLocation;
   private readonly textureArray: WebGLTexture;
-  private readonly loadedTextureIds = new Set<number>();
+  private readonly textureLayerById = new Map<number, number>();
   private terrainMesh: GpuMesh | null = null;
   private locationMesh: GpuMesh | null = null;
   private playerMesh: GpuMesh | null = null;
@@ -108,14 +108,14 @@ export class WebGlSceneRenderer {
   /**
    * Uploads real cache-backed RGBA textures into a WebGL2 2D texture array.
    *
-   * Layer numbers intentionally match cache texture ids. Scene meshes keep
-   * those ids, so no per-scene atlas rewrite is required. Meshes are
-   * re-uploaded after this call so faces whose textures just became resident
-   * switch from the colour fallback to texture sampling.
+   * Scene meshes keep cache texture ids while this renderer compacts the
+   * resident set into array layers. Meshes are re-uploaded after this call so
+   * faces whose textures just became resident switch from the colour fallback
+   * to texture sampling without requiring sparse texture-array allocation.
    */
   setTextureLayers(layers: readonly SceneTextureLayer[]): void {
     const gl = this.gl;
-    this.loadedTextureIds.clear();
+    this.textureLayerById.clear();
 
     if (layers.length === 0) {
       this.resetTextureArray();
@@ -129,7 +129,6 @@ export class WebGlSceneRenderer {
       throw new RangeError('Scene textures must have positive dimensions.');
     }
 
-    let maxId = -1;
     const seen = new Set<number>();
     for (const layer of layers) {
       if (!Number.isInteger(layer.id) || layer.id < 0) {
@@ -150,17 +149,16 @@ export class WebGlSceneRenderer {
         );
       }
       seen.add(layer.id);
-      maxId = Math.max(maxId, layer.id);
     }
 
-    const layerCount = maxId + 1;
+    const layerCount = layers.length;
     const maxLayers = gl.getParameter(
       gl.MAX_ARRAY_TEXTURE_LAYERS,
     ) as number;
     if (layerCount > maxLayers) {
       throw new RangeError(
-        'Texture id ' + maxId + ' exceeds this device\'s ' +
-          maxLayers + '-layer WebGL2 texture-array limit.',
+        'Scene needs ' + layerCount + ' resident textures but this device ' +
+          'supports ' + maxLayers + ' WebGL2 texture-array layers.',
       );
     }
 
@@ -181,13 +179,14 @@ export class WebGlSceneRenderer {
       null,
     );
 
-    for (const layer of layers) {
+    for (let arrayLayer = 0; arrayLayer < layers.length; arrayLayer += 1) {
+      const layer = layers[arrayLayer]!;
       gl.texSubImage3D(
         gl.TEXTURE_2D_ARRAY,
         0,
         0,
         0,
-        layer.id,
+        arrayLayer,
         width,
         height,
         1,
@@ -195,7 +194,7 @@ export class WebGlSceneRenderer {
         gl.UNSIGNED_BYTE,
         layer.rgba,
       );
-      this.loadedTextureIds.add(layer.id);
+      this.textureLayerById.set(layer.id, arrayLayer);
     }
 
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
@@ -346,9 +345,8 @@ export class WebGlSceneRenderer {
     const residentTextureIds = new Int32Array(mesh.textureIds.length);
     for (let i = 0; i < mesh.textureIds.length; i += 1) {
       const textureId = mesh.textureIds[i]!;
-      residentTextureIds[i] = this.loadedTextureIds.has(textureId)
-        ? textureId
-        : -1;
+      residentTextureIds[i] =
+        this.textureLayerById.get(textureId) ?? -1;
     }
     gl.bindBuffer(gl.ARRAY_BUFFER, textureIdBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, residentTextureIds, gl.STATIC_DRAW);
