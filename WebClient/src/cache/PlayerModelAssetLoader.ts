@@ -570,12 +570,6 @@ function appendModelPart(
       }
     }
 
-    const color = shadeByTriangleNormal(
-      modelColor(faceColor, texture),
-      a,
-      b,
-      c,
-    );
     const textureUvs = texture >= 0
       ? resolveType0FaceTextureUvs(
           model,
@@ -583,12 +577,19 @@ function appendModelPart(
           (index) => vertex(model, index),
         )
       : null;
+    const renderedTexture = textureUvs ? texture : -1;
+    const color = shadeByTriangleNormal(
+      modelColor(faceColor, renderedTexture),
+      a,
+      b,
+      c,
+    );
     builder.pushTriangle(
       a,
       b,
       c,
       color,
-      textureUvs ? texture : -1,
+      renderedTexture,
       textureUvs,
     );
     triangles += 1;
