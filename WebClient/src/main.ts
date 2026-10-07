@@ -9,6 +9,7 @@ import {
   SceneAssetLoader,
   type LoadedSceneAssets,
 } from './cache/SceneAssetLoader';
+import { PlayerModelAssetLoader } from './cache/PlayerModelAssetLoader';
 import {
   loadJs5StartupAssets,
   type Js5StartupAssets,
@@ -23,6 +24,11 @@ import {
 import { WebSocketTransport } from './net/WebSocketTransport';
 import { GameLoginClient } from './protocol/GameLoginClient';
 import {
+  PLAYER_INFO_OPCODE,
+  Rev240PlayerInfoDecoder,
+  type ClientPlayer,
+} from './protocol/PlayerInfoDecoder';
+import {
   tryDecodeRegionRebuildPacket,
   type RegionRebuild,
 } from './protocol/RegionRebuildDecoder';
@@ -31,8 +37,11 @@ import {
   OSRS_PROTOCOL_REVISION,
 } from './protocol/revision';
 import {
+  SCENE_TILE_SIZE,
+  SceneTerrainSampler,
   assembleScene,
   type AssembledScene,
+  type SceneMesh,
 } from './scene/SceneAssembler';
 import { WebGlSceneRenderer } from './scene/WebGlSceneRenderer';
 import {
@@ -88,6 +97,7 @@ const gameTransport = new WebSocketTransport();
 const gameLogin = new GameLoginClient(gameTransport);
 const mapSquareLoader = new MapSquareLoader(js5, appendLog);
 const sceneAssetLoader = new SceneAssetLoader(js5, appendLog);
+const playerModelLoader = new PlayerModelAssetLoader(js5, appendLog);
 const bootRenderer = new ClientBootRenderer(clientUiCanvas);
 
 let sceneRenderer: WebGlSceneRenderer | null = null;
@@ -108,7 +118,14 @@ let titleMode:
   | 'game' = 'bootstrap';
 let bootGeneration = 0;
 let mapLoadGeneration = 0;
+let playerModelGeneration = 0;
 let framedGamePackets = 0;
+let playerInfo: Rev240PlayerInfoDecoder | null = null;
+let currentScene: AssembledScene | null = null;
+let currentSceneMaps: readonly LoadedMapSquare[] | null = null;
+let currentTerrainSampler: SceneTerrainSampler | null = null;
+let currentPlayerMesh: SceneMesh | null = null;
+let requestedAppearanceRevision = -1;
 
 function appendLog(message: string): void {
   const stamp = new Date().toLocaleTimeString();
@@ -222,7 +239,89 @@ function resetSceneDebug(): void {
   (window as SoloScapeDebugWindow).soloscapeSceneMaps = undefined;
   (window as SoloScapeDebugWindow).soloscapeSceneAssets = undefined;
   (window as SoloScapeDebugWindow).soloscapeScene = undefined;
+  (window as SoloScapeDebugWindow).soloscapeLocalPlayer = undefined;
+  currentScene = null;
+  currentSceneMaps = null;
+  currentTerrainSampler = null;
+  currentPlayerMesh = null;
+  requestedAppearanceRevision = -1;
+  playerModelGeneration += 1;
   sceneRenderer?.clear();
+}
+
+function syncLocalPlayerRender(): void {
+  if (
+    !sceneRenderer ||
+    !currentScene ||
+    !currentTerrainSampler ||
+    !playerInfo
+  ) {
+    return;
+  }
+
+  const player = playerInfo.getLocalPlayer();
+  if (!player) {
+    return;
+  }
+
+  const x =
+    (player.coord.x - currentScene.originTileX) *
+      SCENE_TILE_SIZE +
+    SCENE_TILE_SIZE / 2;
+  const z =
+    (player.coord.z - currentScene.originTileZ) *
+      SCENE_TILE_SIZE +
+    SCENE_TILE_SIZE / 2;
+  const y = currentTerrainSampler.groundY(
+    player.coord.level,
+    player.coord.x,
+    player.coord.z,
+  );
+
+  sceneRenderer.setLocalPlayerPosition({ x, y, z });
+  (window as SoloScapeDebugWindow).soloscapeLocalPlayer = player;
+}
+
+function requestLocalPlayerModel(): void {
+  if (!playerInfo) {
+    return;
+  }
+  const player = playerInfo.getLocalPlayer();
+  if (
+    !player?.appearance ||
+    player.appearanceRevision === requestedAppearanceRevision
+  ) {
+    return;
+  }
+
+  requestedAppearanceRevision = player.appearanceRevision;
+  const generation = ++playerModelGeneration;
+  const appearanceRevision = player.appearanceRevision;
+  const appearance = player.appearance;
+
+  void playerModelLoader.load(appearance)
+    .then((mesh) => {
+      const current = playerInfo?.getLocalPlayer();
+      if (
+        generation !== playerModelGeneration ||
+        !current ||
+        current.appearanceRevision !== appearanceRevision
+      ) {
+        return;
+      }
+
+      currentPlayerMesh = mesh;
+      sceneRenderer?.setLocalPlayerMesh(mesh);
+      syncLocalPlayerRender();
+    })
+    .catch((error: unknown) => {
+      if (generation !== playerModelGeneration) {
+        return;
+      }
+      const message =
+        error instanceof Error ? error.message : String(error);
+      appendLog('Local player model load failed: ' + message);
+    });
 }
 
 function setLoginField(field: LoginField): void {
@@ -458,6 +557,10 @@ gameLogin.onLoginSuccess = (success) => {
   framedGamePackets = 0;
   mapLoadGeneration += 1;
   resetSceneDebug();
+  playerInfo = new Rev240PlayerInfoDecoder(
+    success.localPlayerIndex,
+  );
+  (window as SoloScapeDebugWindow).soloscapePlayerInfo = playerInfo;
   appendLog(
     'Game login successful: local-player-index=' +
       success.localPlayerIndex +
@@ -482,9 +585,69 @@ gameLogin.onGameData = (data) => {
 gameLogin.onGamePacket = (packet) => {
   framedGamePackets += 1;
 
-  const rebuild = tryDecodeRegionRebuildPacket(packet);
+  if (packet.opcode === PLAYER_INFO_OPCODE) {
+    if (!playerInfo) {
+      appendLog(
+        'Ignoring PLAYER_INFO before login established the local player index.',
+      );
+      return;
+    }
+
+    try {
+      const update = playerInfo.decode(packet.payload);
+      const local = update.localPlayer;
+      (window as SoloScapeDebugWindow).soloscapeLocalPlayer = local;
+
+      if (update.localPlayerMoved) {
+        appendLog(
+          'Local player moved: level=' + local.coord.level +
+            ' tile=' + local.coord.x + ',' + local.coord.z + '.',
+        );
+      }
+      if (update.localPlayerAppearanceChanged) {
+        appendLog(
+          'Local player appearance received: name=' +
+            (local.appearance?.name ?? '(unknown)') +
+            '; revision=' + local.appearanceRevision + '.',
+        );
+        requestLocalPlayerModel();
+      }
+      syncLocalPlayerRender();
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : String(error);
+      appendLog('PLAYER_INFO decode failed: ' + message);
+      throw error;
+    }
+    return;
+  }
+
+  const rebuild = tryDecodeRegionRebuildPacket(
+    packet,
+    playerInfo?.localPlayerIndex ??
+      gameLogin.loginSuccess?.localPlayerIndex,
+  );
   if (!rebuild) {
     return;
+  }
+
+  if (rebuild.kind === 'normal' && rebuild.playerInfoInit) {
+    if (!playerInfo) {
+      playerInfo = new Rev240PlayerInfoDecoder(
+        rebuild.playerInfoInit.localPlayerIndex,
+      );
+      (window as SoloScapeDebugWindow).soloscapePlayerInfo = playerInfo;
+    }
+    playerInfo.initialize(rebuild.playerInfoInit);
+    const local = playerInfo.getLocalPlayer();
+    if (local) {
+      (window as SoloScapeDebugWindow).soloscapeLocalPlayer = local;
+      appendLog(
+        'GPI initialized local player: index=' + local.index +
+          ' level=' + local.coord.level +
+          ' tile=' + local.coord.x + ',' + local.coord.z + '.',
+      );
+    }
   }
 
   (window as SoloScapeDebugWindow).soloscapeRegionRebuild = rebuild;
@@ -493,6 +656,9 @@ gameLogin.onGamePacket = (packet) => {
   (window as SoloScapeDebugWindow).soloscapeSceneMaps = undefined;
   (window as SoloScapeDebugWindow).soloscapeSceneAssets = undefined;
   (window as SoloScapeDebugWindow).soloscapeScene = undefined;
+  currentScene = null;
+  currentSceneMaps = null;
+  currentTerrainSampler = null;
   sceneRenderer?.clear();
 
   renderGameLoading(100, 'Loading - please wait.');
@@ -503,6 +669,8 @@ gameLogin.onGamePacket = (packet) => {
         return;
       }
 
+      currentSceneMaps = maps;
+      currentTerrainSampler = new SceneTerrainSampler(maps);
       (window as SoloScapeDebugWindow).soloscapeSceneMaps = maps;
       const locationCount = maps.reduce(
         (sum, map) => sum + map.locations.length,
@@ -531,6 +699,10 @@ gameLogin.onGamePacket = (packet) => {
         (model) => model.faceA.length,
       ).reduce((sum, count) => sum + count, 0);
 
+      appendLog(
+        'Resolved scene models: models=' + assets.models.size +
+          '; vertices=' + vertices + '; faces=' + faces + '.',
+      );
       renderGameLoading(100, 'Loading - please wait.');
 
       const scene = assembleScene(rebuild, maps, assets);
@@ -538,6 +710,7 @@ gameLogin.onGamePacket = (packet) => {
         return;
       }
 
+      currentScene = scene;
       (window as SoloScapeDebugWindow).soloscapeScene = scene;
 
       appendLog(
@@ -556,13 +729,21 @@ gameLogin.onGamePacket = (packet) => {
       }
 
       sceneRenderer.render(scene);
+      if (currentPlayerMesh) {
+        sceneRenderer.setLocalPlayerMesh(currentPlayerMesh);
+      }
+      syncLocalPlayerRender();
+      requestLocalPlayerModel();
+
       titleMode = 'game';
       clientUiCanvas.hidden = true;
 
+      const local = playerInfo?.getLocalPlayer();
       appendLog(
-        'First static RuneScape scene rendered with WebGL2: terrain=' +
-          scene.terrain.vertexCount + ' vertices; locs=' +
-          scene.locations.vertexCount + ' vertices.',
+        'RuneScape scene entered with player-follow camera' +
+          (local
+            ? ': local-player=' + local.coord.x + ',' + local.coord.z + '.'
+            : ' (local player is still awaiting GPI state).'),
       );
     })
     .catch((error: unknown) => {
@@ -581,7 +762,8 @@ gameLogin.onGamePacket = (packet) => {
       'Decoded REBUILD_NORMAL_V2: center-zone=' +
         rebuild.zoneX + ',' + rebuild.zoneZ +
         ' world-area=' + rebuild.worldArea +
-        ' mapsquares=' + rebuild.mapSquares.length + '.',
+        ' mapsquares=' + rebuild.mapSquares.length +
+        (rebuild.playerInfoInit ? ' GPI=login-init.' : '.'),
     );
   } else {
     const populatedZones = rebuild.zones.reduce(
@@ -726,6 +908,9 @@ connectButton.addEventListener('click', () => {
     }
     js5.disconnect();
     sceneAssetLoader.reset();
+    playerModelLoader.reset();
+    playerInfo = null;
+    (window as SoloScapeDebugWindow).soloscapePlayerInfo = undefined;
     titleRenderer = null;
     titleAssets = undefined;
     startupAssets = undefined;
@@ -884,6 +1069,8 @@ type SoloScapeDebugWindow = Window & {
   soloscapeStartupAssets?: Js5StartupAssets;
   soloscapeTitleAssets?: TitleScreenAssets;
   soloscapeGameLogin?: GameLoginClient;
+  soloscapePlayerInfo?: Rev240PlayerInfoDecoder;
+  soloscapeLocalPlayer?: ClientPlayer;
   soloscapeRegionRebuild?: RegionRebuild;
   soloscapeSceneMaps?: LoadedMapSquare[];
   soloscapeSceneAssets?: LoadedSceneAssets;
