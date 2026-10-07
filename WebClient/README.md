@@ -347,6 +347,10 @@ Inspect scheduler state:
 
     window.soloscapeJs5.getRequestQueueStatus()
 
+Inspect the live fixed-step runtime:
+
+    window.soloscapeGameLoop?.getStats()
+
 Download, validate, decode, and persist an actual group:
 
     const group = await window.soloscapeJs5.downloadGroup(2, 9)
@@ -498,6 +502,7 @@ Implemented:
 - classic shaped terrain overlays plus model type-0 texture UV mapping
 - persistent WebGL2 terrain + loc GPU buffers
 - fixed 20ms browser simulation loop + requestAnimationFrame presentation
+- classic fine-coordinate local-player route movement + render interpolation
 - `window.soloscapeSceneMaps` / `window.soloscapeSceneAssets` / `window.soloscapeSceneMaterials` / `window.soloscapeScene` debug state
 
 Revision 240's rebuild packets do not append XTEA key blocks; the browser follows
@@ -509,8 +514,8 @@ Next:
 
 - retain/render modern model texture transform metadata (types 1..3)
 - add texture animation and the original terrain HSL/light averaging pass
-- add fine-coordinate route movement + render interpolation for the local player
 - port orbit-camera yaw/pitch/zoom input and smoothing
+- wire sequence/skeleton animation onto the moving player model
 - decode NPC update streams and continue actor animation/skinning work
 - add occlusion
 
