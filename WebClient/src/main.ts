@@ -55,6 +55,11 @@ import {
 } from './runtime/BrowserGameLoop';
 import { jagexYawToRadians } from './runtime/PlayerMovement';
 import {
+  OrbitCamera,
+  OrbitCameraInputController,
+  type OrbitCameraRenderState,
+} from './runtime/OrbitCamera';
+import {
   CacheTitleScreenRenderer,
   type LoginField,
 } from './ui/CacheTitleScreenRenderer';
@@ -113,6 +118,8 @@ const bootRenderer = new ClientBootRenderer(clientUiCanvas);
 
 let sceneRenderer: WebGlSceneRenderer | null = null;
 let browserGameLoop: BrowserGameLoop | null = null;
+const orbitCamera = new OrbitCamera();
+let orbitCameraInput: OrbitCameraInputController | null = null;
 let titleRenderer: CacheTitleScreenRenderer | null = null;
 let titleAssets: TitleScreenAssets | undefined;
 let startupAssets: Js5StartupAssets | undefined;
@@ -259,12 +266,14 @@ function resetSceneDebug(): void {
   (window as SoloScapeDebugWindow).soloscapeScene = undefined;
   (window as SoloScapeDebugWindow).soloscapeLocalPlayer = undefined;
   (window as SoloScapeDebugWindow).soloscapeLocalPlayerRenderState = undefined;
+  (window as SoloScapeDebugWindow).soloscapeOrbitCameraState = undefined;
   currentScene = null;
   currentSceneMaps = null;
   currentTerrainSampler = null;
   currentPlayerMesh = null;
   requestedAppearanceRevision = -1;
   playerModelGeneration += 1;
+  orbitCamera.clear();
   sceneRenderer?.clear();
 }
 
@@ -310,8 +319,72 @@ function syncLocalPlayerRender(
     renderState;
 }
 
+function syncOrbitCameraRender(
+  interpolationAlpha = 1,
+): void {
+  if (
+    !sceneRenderer ||
+    !currentScene ||
+    !currentTerrainSampler ||
+    !playerInfo
+  ) {
+    return;
+  }
+
+  const playerState =
+    playerInfo.getLocalPlayerRenderState(interpolationAlpha);
+  if (!playerState) {
+    return;
+  }
+
+  const targetX =
+    playerState.fineX -
+    currentScene.originTileX * SCENE_TILE_SIZE;
+  const targetZ =
+    playerState.fineZ -
+    currentScene.originTileZ * SCENE_TILE_SIZE;
+  const groundY = currentTerrainSampler.groundYFine(
+    playerState.level,
+    playerState.fineX,
+    playerState.fineZ,
+  );
+
+  if (!orbitCamera.initialized) {
+    orbitCamera.reset(targetX, targetZ);
+  }
+
+  const cameraState = orbitCamera.renderState(
+    interpolationAlpha,
+    groundY + 50,
+  );
+  sceneRenderer.setOrbitCamera(cameraState);
+  (window as SoloScapeDebugWindow).soloscapeOrbitCameraState =
+    cameraState;
+}
+
 function tickGameSimulation(): void {
   playerInfo?.tickMovement();
+
+  if (!currentScene || !playerInfo) {
+    return;
+  }
+  const playerState =
+    playerInfo.getLocalPlayerRenderState(1);
+  if (!playerState) {
+    return;
+  }
+
+  const targetX =
+    playerState.fineX -
+    currentScene.originTileX * SCENE_TILE_SIZE;
+  const targetZ =
+    playerState.fineZ -
+    currentScene.originTileZ * SCENE_TILE_SIZE;
+  if (!orbitCamera.initialized) {
+    orbitCamera.reset(targetX, targetZ);
+  } else {
+    orbitCamera.tick(targetX, targetZ);
+  }
 }
 
 function requestLocalPlayerModel(): void {
@@ -539,6 +612,23 @@ try {
   appendLog('WebGL2 renderer unavailable: ' + message);
 }
 
+orbitCameraInput = new OrbitCameraInputController(
+  gameCanvas,
+  orbitCamera,
+  {
+    isEnabled: () => titleMode === 'game',
+    onTap: (canvasX, canvasY) => {
+      // Tap detection is wired now so the upcoming rev-240 walk-packet
+      // raycast can attach here without changing camera gesture handling.
+      (window as SoloScapeDebugWindow).soloscapeLastViewportTap = {
+        x: canvasX,
+        y: canvasY,
+      };
+    },
+  },
+);
+(window as SoloScapeDebugWindow).soloscapeOrbitCamera = orbitCamera;
+
 browserGameLoop = new BrowserGameLoop({
   update: () => {
     if (titleMode === 'game') {
@@ -548,6 +638,7 @@ browserGameLoop = new BrowserGameLoop({
   render: (interpolationAlpha) => {
     if (titleMode === 'game') {
       syncLocalPlayerRender(interpolationAlpha);
+      syncOrbitCameraRender(interpolationAlpha);
       sceneRenderer?.renderFrame(interpolationAlpha);
     }
   },
@@ -833,6 +924,7 @@ gameLogin.onGamePacket = (packet) => {
         sceneRenderer.setLocalPlayerMesh(currentPlayerMesh);
       }
       syncLocalPlayerRender();
+      syncOrbitCameraRender();
       requestLocalPlayerModel();
 
       titleMode = 'game';
@@ -1145,10 +1237,6 @@ gameCanvas.addEventListener(
   (event) => event.preventDefault(),
 );
 
-gameCanvas.addEventListener('pointerdown', (event) => {
-  gameCanvas.setPointerCapture(event.pointerId);
-});
-
 window.setInterval(() => {
   cursorVisible = !cursorVisible;
   if (titleMode === 'login') {
@@ -1174,6 +1262,9 @@ type SoloScapeDebugWindow = Window & {
   soloscapeTitleAssets?: TitleScreenAssets;
   soloscapeGameLogin?: GameLoginClient;
   soloscapeGameLoop?: BrowserGameLoop;
+  soloscapeOrbitCamera?: OrbitCamera;
+  soloscapeOrbitCameraState?: OrbitCameraRenderState;
+  soloscapeLastViewportTap?: { x: number; y: number };
   soloscapePlayerInfo?: Rev240PlayerInfoDecoder;
   soloscapeLocalPlayer?: ClientPlayer;
   soloscapeLocalPlayerRenderState?: ClientPlayerRenderState;
