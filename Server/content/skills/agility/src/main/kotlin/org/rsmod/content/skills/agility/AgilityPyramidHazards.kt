@@ -2,6 +2,7 @@ package org.rsmod.content.skills.agility
 
 import dev.openrune.rscm.RSCM.asRSCM
 import dev.openrune.rscm.RSCMType
+import dev.openrune.types.MoveRestrict
 import jakarta.inject.Inject
 import java.util.IdentityHashMap
 import kotlin.math.abs
@@ -160,6 +161,10 @@ constructor(
         onEvent<NpcStateEvents.Create> {
             val spec = blocksById[npc.id] ?: return@onEvent
             npc.mode = null
+            // The block must be able to extend into an occupied tile so it can shove the player.
+            // PassThru affects the block's route validation, while its own 2x2 block-walk collision
+            // remains active for players trying to path through it.
+            npc.moveRestrict = MoveRestrict.PassThru
             npc.timer(BLOCK_TIMER, 1)
             blockStates[npc] = MovingBlockState(spec)
         }
@@ -247,10 +252,11 @@ constructor(
 
     private fun tickBlock(npc: Npc, blocksById: Map<Int, PyramidBlockSpec>) {
         val state =
-            blockStates.getOrPut(npc) {
-                val spec = blocksById[npc.id] ?: return
-                MovingBlockState(spec)
-            }
+            blockStates[npc]
+                ?: run {
+                    val spec = blocksById[npc.id] ?: return
+                    MovingBlockState(spec).also { blockStates[npc] = it }
+                }
 
         when (state.phase) {
             BLOCK_EXTEND_PHASE -> {
@@ -311,7 +317,6 @@ constructor(
         const val BLOCK_PUSH_QUEUE = "queue.agility_pyramid_block_push"
         const val BLOCK_TIMER = "timer.agility_pyramid_block"
 
-        const val REQUIRED_LEVEL = 30
         const val NO_FAIL_LEVEL = 75
         const val STAT_AGILITY = "stat.agility"
         const val CLIENT_CYCLES_PER_TICK = 30
