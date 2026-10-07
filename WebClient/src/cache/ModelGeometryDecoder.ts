@@ -196,7 +196,7 @@ function decodeType3(id: number, data: Uint8Array): DecodedModelGeometry {
   // Type-3 may append a particle/extension block and optional face-Z offsets.
   // Static geometry is complete before these fields, but validate the computed
   // section cursor is not outside the payload.
-  if (complexTextureDirectionOffset > data.length - 26) {
+  if (offset > data.length - 26) {
     throw new RangeError('Model ' + id + ' type3 section offsets exceed payload.');
   }
   void hasAnimaya;
