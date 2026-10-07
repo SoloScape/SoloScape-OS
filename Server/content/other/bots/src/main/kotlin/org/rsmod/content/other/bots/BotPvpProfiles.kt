@@ -17,14 +17,22 @@ enum class BotPvpDifficulty(val displayName: String) {
             }
 
         /**
-         * "mixed" deliberately rotates evenly through all four brackets so a large synthetic
-         * Wilderness population contains every risk tier instead of inheriting one global tier.
+         * "mixed" uses the intended live-Wilderness population weighting:
+         * 42% Low, 37% Average, 20% Risker and 1% Max.
+         *
+         * The caller passes a PvP-only population index so every block of 100 PvP bots contains
+         * exactly 42/37/20/1 rather than being skewed by non-PvP bot identities.
          */
-        fun configured(text: String, identity: Int): BotPvpDifficulty? {
+        fun configured(text: String, populationIndex: Int): BotPvpDifficulty? {
             if (text.equals("mixed", ignoreCase = true) ||
                 text.equals("all", ignoreCase = true)
             ) {
-                return entries[Math.floorMod(identity - 1, entries.size)]
+                return when (Math.floorMod(populationIndex - 1, 100)) {
+                    in 0..41 -> Novice
+                    in 42..78 -> Standard
+                    in 79..98 -> Veteran
+                    else -> Elite
+                }
             }
             return parse(text)
         }
