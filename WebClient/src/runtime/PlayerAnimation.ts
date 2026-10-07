@@ -241,7 +241,9 @@ export function applyClassicAnimationFrame(
   for (let i = 0; i < bindPositions.length; i += 3) {
     raw[i] = bindPositions[i]!;
     raw[i + 1] = -bindPositions[i + 1]!;
-    raw[i + 2] = bindPositions[i + 2]!;
+    // Bind positions are in reflected WebGL scene space. Restore Jagex Z
+    // while applying classic frame transforms, then reflect it again below.
+    raw[i + 2] = -bindPositions[i + 2]!;
   }
 
   let pivotX = 0;
@@ -351,7 +353,7 @@ export function applyClassicAnimationFrame(
   for (let i = 0; i < raw.length; i += 3) {
     output[i] = raw[i]!;
     output[i + 1] = -raw[i + 1]!;
-    output[i + 2] = raw[i + 2]!;
+    output[i + 2] = -raw[i + 2]!;
   }
   return output;
 }
