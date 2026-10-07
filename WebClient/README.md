@@ -180,6 +180,14 @@ and camera distance follows `pitch * 3 + 600 + zoomDelta`. The browser input
 layer adds one-pointer drag rotation, two-pointer pinch zoom, mouse-wheel zoom,
 and arrow keys while keeping all camera simulation on the fixed 20ms tick.
 
+Viewport taps now use the same 48-degree WebGL camera basis to cast a ray into
+the decoded terrain height field. The hit is converted back to an absolute
+world tile and sent as revision-240 `MOVE_GAMECLICK` through the live client
+ISAAC stream. The packet definition is taken from rsprot revision 240:
+opcode 102, VAR_BYTE payload, with `z:p2Alt3`, `keyCombination:p1Alt2`,
+then `x:p2Alt3`. The server remains authoritative for collision/pathfinding;
+the browser does not locally teleport or invent a route after a click.
+
 ## Request scheduler
 
 Js5RequestScheduler owns post-master-index JS5 requests.
@@ -366,6 +374,11 @@ Inspect the mutable/interpolated orbit camera:
     window.soloscapeOrbitCamera?.snapshot()
     window.soloscapeOrbitCameraState
 
+Inspect the last terrain hit selected by a viewport walk tap:
+
+    window.soloscapeLastViewportTap
+    window.soloscapeLastWalkDestination
+
 The exposed render state is presentation-only; sampling alpha at 60/120 Hz
 does not mutate the fixed 20ms movement/camera simulation state.
 
@@ -522,6 +535,7 @@ Implemented:
 - fixed 20ms browser simulation loop + requestAnimationFrame presentation
 - classic fine-coordinate local-player route movement + render interpolation
 - Olden-Shire-style orbit follow camera with drag/pinch/wheel/arrow controls
+- viewport terrain raycast + ISAAC-encrypted rev-240 MOVE_GAMECLICK walking
 - `window.soloscapeSceneMaps` / `window.soloscapeSceneAssets` / `window.soloscapeSceneMaterials` / `window.soloscapeScene` debug state
 
 Revision 240's rebuild packets do not append XTEA key blocks; the browser follows
@@ -533,7 +547,7 @@ Next:
 
 - retain/render modern model texture transform metadata (types 1..3)
 - add texture animation and the original terrain HSL/light averaging pass
-- raycast viewport taps and send the rev-240 walk packet
+- add map-click feedback / destination flag and minimap walking
 - wire sequence/skeleton animation onto the moving player model
 - decode NPC update streams and continue actor animation/skinning work
 - add occlusion
