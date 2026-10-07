@@ -63,7 +63,7 @@ test('decodes rev-240 16-bit terrain opcodes', () => {
   const chunks: number[] = [];
 
   // tile 0,0,0: overlay id=7, shape=2, rotation=1; flags=3;
-  // underlay=4; explicit height=12.
+  // underlay id=4; explicit height=12.
   pushU16(chunks, 11);
   pushI16(chunks, 8);
   pushU16(chunks, 52);
@@ -76,13 +76,17 @@ test('decodes rev-240 16-bit terrain opcodes', () => {
     pushU16(chunks, 0);
   }
 
+  // Live rev-240 map file 0 may carry bytes after the fixed tile grid. The
+  // server decoder ignores them rather than requiring exact EOF.
+  chunks.push(0xa5);
+
   const terrain = decodeMapTerrain(Uint8Array.from(chunks));
   const index = mapTerrainTileIndex(0, 0, 0);
   assert.equal(terrain.overlayIds[index], 7);
   assert.equal(terrain.overlayShapes[index], 2);
   assert.equal(terrain.overlayRotations[index], 1);
   assert.equal(terrain.renderFlags[index], 3);
-  assert.equal(terrain.underlayIds[index], 3);
+  assert.equal(terrain.underlayIds[index], 4);
   assert.equal(terrain.explicitHeights[index], 12);
   assert.equal(
     terrain.explicitHeights[mapTerrainTileIndex(3, 63, 63)],
