@@ -5,6 +5,7 @@ import type { LoadedMapSquare } from '../cache/MapSquareLoader';
 import type { MapTerrain } from '../cache/MapTerrainDecoder';
 import type { DecodedModelGeometry } from '../cache/ModelGeometryDecoder';
 import type { LoadedSceneAssets } from '../cache/SceneAssetLoader';
+import type { SceneFloorMaterials } from '../cache/SceneMaterialLoader';
 import type {
   InstancedRegionRebuild,
   NormalRegionRebuild,
@@ -157,6 +158,52 @@ test('culls terrain/loc geometry above the requested visible plane', () => {
   assert.equal(scene.stats.locationPlacements, 1);
   assert.equal(scene.stats.modelInstances, 1);
   assert.equal(scene.locations.vertexCount, 3);
+});
+
+test('uses texture average HSL when a model texture is not resident', () => {
+  const map = buildMap([
+    {
+      id: 1,
+      localX: 1,
+      localZ: 2,
+      level: 0,
+      shape: 10,
+      angle: 0,
+    },
+  ]);
+  const baseAssets = buildAssets();
+  const baseModel = baseAssets.models.get(100)!;
+  const model: DecodedModelGeometry = {
+    ...baseModel,
+    faceColors: Uint16Array.from([127]),
+    faceTextures: Int32Array.from([7]),
+    faceTextureCoords: Int32Array.from([-1]),
+  };
+  const assets: LoadedSceneAssets = {
+    ...baseAssets,
+    models: new Map([[100, model]]),
+  };
+  const materials: SceneFloorMaterials = {
+    underlays: new Map(),
+    overlays: new Map(),
+    textureAverageRgb: new Map([[7, 0x3456]]),
+    residentTextureIds: new Set(),
+  };
+  const rebuild: NormalRegionRebuild = {
+    kind: 'normal',
+    zoneX: 6,
+    zoneZ: 6,
+    worldArea: 0,
+    mapSquares: [map.mapSquare],
+  };
+
+  const scene = assembleScene(rebuild, [map], assets, materials, 0);
+
+  assert.deepEqual(Array.from(scene.locations.textureIds), [-1, -1, -1]);
+  assert.equal(
+    Array.from(scene.locations.colors).every((channel) => channel > 220),
+    false,
+  );
 });
 
 test('falls back to face colour for unsupported textured loc faces', () => {
