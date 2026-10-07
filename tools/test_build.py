@@ -132,12 +132,10 @@ class JavaHomeTests(unittest.TestCase):
                     "stderr": 'openjdk version "21.0.8" 2025-07-15',
                 },
             )()
-            with (
-                patch.dict(build.os.environ, {}, clear=True),
-                patch.object(build.shutil, "which", return_value=str(java)),
-                patch.object(build.subprocess, "run", return_value=version),
-            ):
-                self.assertEqual(build.java_home(), home.resolve())
+            with patch.dict(build.os.environ, {}, clear=True):
+                with patch.object(build.shutil, "which", return_value=str(java)), \
+                        patch.object(build.subprocess, "run", return_value=version):
+                    self.assertEqual(build.java_home(), home.resolve())
 
 
 if __name__ == "__main__":
