@@ -50,6 +50,10 @@ import {
 } from './scene/SceneAssembler';
 import { WebGlSceneRenderer } from './scene/WebGlSceneRenderer';
 import {
+  pickWalkDestination,
+  type WalkDestination,
+} from './scene/ViewportWalkPicker';
+import {
   BrowserGameLoop,
   CLIENT_TICK_MS,
 } from './runtime/BrowserGameLoop';
@@ -145,6 +149,7 @@ let currentScene: AssembledScene | null = null;
 let currentSceneMaps: readonly LoadedMapSquare[] | null = null;
 let currentTerrainSampler: SceneTerrainSampler | null = null;
 let currentPlayerMesh: SceneMesh | null = null;
+let currentOrbitCameraRenderState: OrbitCameraRenderState | null = null;
 let requestedAppearanceRevision = -1;
 
 function appendLog(message: string): void {
@@ -267,6 +272,8 @@ function resetSceneDebug(): void {
   (window as SoloScapeDebugWindow).soloscapeLocalPlayer = undefined;
   (window as SoloScapeDebugWindow).soloscapeLocalPlayerRenderState = undefined;
   (window as SoloScapeDebugWindow).soloscapeOrbitCameraState = undefined;
+  (window as SoloScapeDebugWindow).soloscapeLastWalkDestination = undefined;
+  currentOrbitCameraRenderState = null;
   currentScene = null;
   currentSceneMaps = null;
   currentTerrainSampler = null;
@@ -357,9 +364,76 @@ function syncOrbitCameraRender(
     interpolationAlpha,
     groundY + 50,
   );
+  currentOrbitCameraRenderState = cameraState;
   sceneRenderer.setOrbitCamera(cameraState);
   (window as SoloScapeDebugWindow).soloscapeOrbitCameraState =
     cameraState;
+}
+
+function handleViewportWalkTap(
+  canvasX: number,
+  canvasY: number,
+  keyCombination: number,
+): void {
+  if (
+    titleMode !== 'game' ||
+    gameLogin.state !== 'game' ||
+    !currentScene ||
+    !currentTerrainSampler ||
+    !currentOrbitCameraRenderState ||
+    !playerInfo
+  ) {
+    return;
+  }
+
+  const local = playerInfo.getLocalPlayer();
+  if (!local) {
+    return;
+  }
+
+  const destination = pickWalkDestination({
+    canvasX,
+    canvasY,
+    canvasWidth: gameCanvas.width,
+    canvasHeight: gameCanvas.height,
+    camera: currentOrbitCameraRenderState,
+    bounds: currentScene.bounds,
+    originTileX: currentScene.originTileX,
+    originTileZ: currentScene.originTileZ,
+    level: local.coord.level,
+    groundYFine: (level, fineX, fineZ) =>
+      currentTerrainSampler!.groundYFine(
+        level,
+        fineX,
+        fineZ,
+      ),
+  });
+
+  (window as SoloScapeDebugWindow).soloscapeLastViewportTap = {
+    x: canvasX,
+    y: canvasY,
+  };
+  (window as SoloScapeDebugWindow).soloscapeLastWalkDestination =
+    destination ?? undefined;
+
+  if (!destination) {
+    appendLog(
+      'Viewport walk tap did not intersect loaded terrain.',
+    );
+    return;
+  }
+
+  try {
+    gameLogin.sendMoveGameClick(
+      destination.tileX,
+      destination.tileZ,
+      keyCombination,
+    );
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : String(error);
+    appendLog('MOVE_GAMECLICK send failed: ' + message);
+  }
 }
 
 function tickGameSimulation(): void {
@@ -617,13 +691,12 @@ orbitCameraInput = new OrbitCameraInputController(
   orbitCamera,
   {
     isEnabled: () => titleMode === 'game',
-    onTap: (canvasX, canvasY) => {
-      // Tap detection is wired now so the upcoming rev-240 walk-packet
-      // raycast can attach here without changing camera gesture handling.
-      (window as SoloScapeDebugWindow).soloscapeLastViewportTap = {
-        x: canvasX,
-        y: canvasY,
-      };
+    onTap: (canvasX, canvasY, keyCombination) => {
+      handleViewportWalkTap(
+        canvasX,
+        canvasY,
+        keyCombination,
+      );
     },
   },
 );
@@ -1265,6 +1338,7 @@ type SoloScapeDebugWindow = Window & {
   soloscapeOrbitCamera?: OrbitCamera;
   soloscapeOrbitCameraState?: OrbitCameraRenderState;
   soloscapeLastViewportTap?: { x: number; y: number };
+  soloscapeLastWalkDestination?: WalkDestination;
   soloscapePlayerInfo?: Rev240PlayerInfoDecoder;
   soloscapeLocalPlayer?: ClientPlayer;
   soloscapeLocalPlayerRenderState?: ClientPlayerRenderState;
