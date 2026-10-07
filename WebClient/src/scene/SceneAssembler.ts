@@ -421,6 +421,38 @@ export class SceneTerrainSampler {
       absoluteTileZ,
     );
   }
+
+  groundYFine(
+    level: number,
+    absoluteFineX: number,
+    absoluteFineZ: number,
+  ): number {
+    const tileX = Math.floor(absoluteFineX / SCENE_TILE_SIZE);
+    const tileZ = Math.floor(absoluteFineZ / SCENE_TILE_SIZE);
+    const subX = positiveModulo(
+      absoluteFineX,
+      SCENE_TILE_SIZE,
+    );
+    const subZ = positiveModulo(
+      absoluteFineZ,
+      SCENE_TILE_SIZE,
+    );
+
+    const nw = this.heights.height(level, tileX, tileZ);
+    const ne = this.heights.height(level, tileX + 1, tileZ);
+    const sw = this.heights.height(level, tileX, tileZ + 1);
+    const se = this.heights.height(level, tileX + 1, tileZ + 1);
+
+    const top = (
+      (SCENE_TILE_SIZE - subX) * nw + subX * ne
+    ) / SCENE_TILE_SIZE;
+    const bottom = (
+      (SCENE_TILE_SIZE - subX) * sw + subX * se
+    ) / SCENE_TILE_SIZE;
+    return -(
+      (SCENE_TILE_SIZE - subZ) * top + subZ * bottom
+    ) / SCENE_TILE_SIZE;
+  }
 }
 
 class TerrainHeightField {
