@@ -75,7 +75,7 @@ internal object BotPvpCrystalDeath {
             .firstOrNull { it.name.equals(CRYSTAL_ARMOUR_SEED_NAME, ignoreCase = true) }
             ?: return emptyList()
 
-        return listOf(InvObj(seed.id, seeds))
+        return listOf(InvObj(seed, seeds))
     }
 }
 
