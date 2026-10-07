@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#111111" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="SoloScape" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>SoloScape Web Client</title>
+  </head>
+  <body>
+    <main class="app">
+      <section class="toolbar">
+        <div>
+          <strong>SoloScape Web Client</strong>
+          <span id="revision"></span>
+        </div>
+        <div class="connect-row">
+          <input id="gateway-url" aria-label="WebSocket gateway URL" />
+          <button id="connect" type="button">Connect</button>
+        </div>
+        <div id="status" role="status">Disconnected</div>
+      </section>
+
+      <section class="viewport">
+        <canvas id="game" width="765" height="503"></canvas>
+      </section>
+
+      <details class="debug">
+        <summary>Transport log</summary>
+        <pre id="log"></pre>
+      </details>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
