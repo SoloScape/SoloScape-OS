@@ -9,7 +9,7 @@
     "dev:gateway": "tsx gateway/index.ts",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "test:protocol": "tsx --test src/cache/Js5StreamDecoder.test.ts src/cache/Js5MasterIndex.test.ts src/cache/Js5Container.test.ts src/cache/Js5ReferenceTable.test.ts src/cache/Js5Validation.test.ts src/cache/Js5RequestScheduler.test.ts src/cache/Js5Group.test.ts src/cache/Js5StartupAssets.test.ts src/protocol/GameLoginProtocol.test.ts"
+    "test:protocol": "tsx --test src/cache/Js5StreamDecoder.test.ts src/cache/Js5MasterIndex.test.ts src/cache/Js5Container.test.ts src/cache/Js5ReferenceTable.test.ts src/cache/Js5Validation.test.ts src/cache/Js5RequestScheduler.test.ts src/cache/Js5Group.test.ts src/cache/Js5StartupAssets.test.ts src/protocol/GameLoginProtocol.test.ts src/protocol/GamePacketFramer.test.ts"
   },
   "dependencies": {
     "ws": "^8.18.0"
