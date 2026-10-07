@@ -7,16 +7,31 @@ import {
   OSRS_PROTOCOL_REVISION,
 } from './protocol/revision';
 
-const urlInput = document.querySelector<HTMLInputElement>('#gateway-url');
-const connectButton = document.querySelector<HTMLButtonElement>('#connect');
-const status = document.querySelector<HTMLElement>('#status');
-const revision = document.querySelector<HTMLElement>('#revision');
-const log = document.querySelector<HTMLElement>('#log');
-const canvas = document.querySelector<HTMLCanvasElement>('#game');
-
-if (!urlInput || !connectButton || !status || !revision || !log || !canvas) {
-  throw new Error('Web client shell is missing required DOM elements.');
+function requireElement<T extends Element>(selector: string): T {
+  const element = document.querySelector<T>(selector);
+  if (!element) {
+    throw new Error('Web client shell is missing required element ' + selector + '.');
+  }
+  return element;
 }
+
+function requireCanvasContext(
+  canvas: HTMLCanvasElement,
+): CanvasRenderingContext2D {
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Canvas 2D is unavailable.');
+  }
+  return context;
+}
+
+const urlInput = requireElement<HTMLInputElement>('#gateway-url');
+const connectButton = requireElement<HTMLButtonElement>('#connect');
+const status = requireElement<HTMLElement>('#status');
+const revision = requireElement<HTMLElement>('#revision');
+const log = requireElement<HTMLElement>('#log');
+const canvas = requireElement<HTMLCanvasElement>('#game');
+const context = requireCanvasContext(canvas);
 
 const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
 const defaultGatewayUrl = scheme + '://' + location.hostname + ':8080';
@@ -25,11 +40,6 @@ urlInput.value =
 
 revision.textContent =
   'protocol ' + OSRS_PROTOCOL_REVISION + ' / client ' + OSRS_CLIENT_TARGET;
-
-const context = canvas.getContext('2d');
-if (!context) {
-  throw new Error('Canvas 2D is unavailable.');
-}
 
 function drawClientStatus(
   headline: string,
