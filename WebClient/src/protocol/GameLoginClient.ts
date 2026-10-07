@@ -12,6 +12,12 @@ import {
 } from './GameLoginProtocol';
 import { IsaacRandom } from './IsaacRandom';
 import {
+  decodeProofOfWorkChallenge,
+  encodeProofOfWorkReply,
+  solveProofOfWork,
+  type ProofOfWorkChallenge,
+} from './ProofOfWork';
+import {
   GamePacketFramer,
   type ServerGamePacket,
 } from './GamePacketFramer';
@@ -41,6 +47,7 @@ type LoginPhase =
   | 'disallowed-payload'
   | 'pow-length'
   | 'pow-payload'
+  | 'pow-solving'
   | 'dob-byte'
   | 'game';
 
@@ -125,6 +132,7 @@ export class GameLoginClient {
   private clientIsaac: IsaacRandom | null = null;
   private gameFramer: GamePacketFramer | null = null;
   private pendingLength = 0;
+  private proofOfWorkAbortController: AbortController | null = null;
   private rsaConfigWaiters: Array<(config: GatewayConfigMessage) => void> = [];
 
   state: GameLoginState = 'idle';
@@ -154,6 +162,8 @@ export class GameLoginClient {
         this.state !== 'closed' &&
         this.state !== 'error'
       ) {
+        this.cancelProofOfWork();
+        this.phase = 'idle';
         this.setState('closed');
       }
     };
@@ -191,6 +201,7 @@ export class GameLoginClient {
   }
 
   disconnect(): void {
+    this.cancelProofOfWork();
     this.phase = 'idle';
     this.setState('closed');
     this.transport.disconnect();
@@ -397,13 +408,19 @@ export class GameLoginClient {
         }
         case 'pow-payload': {
           if (this.queue.available < this.pendingLength) return;
-          this.queue.readBytes(this.pendingLength);
-          this.rejectLogin(
-            69,
-            'Server requested proof of work; browser proof-of-work reply is not implemented yet.',
+          const payload = this.queue.readBytes(this.pendingLength);
+          const challenge = decodeProofOfWorkChallenge(payload);
+          this.onLog?.(
+            'RX proof-of-work challenge: SHA-256 version=' +
+            challenge.version + ' difficulty=' + challenge.difficulty +
+            ' salt=' + challenge.salt.length + ' chars.',
           );
+          this.phase = 'pow-solving';
+          void this.answerProofOfWork(challenge);
           return;
         }
+        case 'pow-solving':
+          return;
         case 'dob-byte': {
           if (this.queue.available < 1) return;
           const value = this.queue.readU8();
@@ -413,6 +430,48 @@ export class GameLoginClient {
         case 'idle':
         case 'game':
           return;
+      }
+    }
+  }
+
+  private async answerProofOfWork(
+    challenge: ProofOfWorkChallenge,
+  ): Promise<void> {
+    this.cancelProofOfWork();
+    const controller = new AbortController();
+    this.proofOfWorkAbortController = controller;
+    const startedAt = Date.now();
+
+    try {
+      const result = await solveProofOfWork(challenge, {
+        signal: controller.signal,
+      });
+      if (
+        this.phase !== 'pow-solving' ||
+        this.proofOfWorkAbortController !== controller
+      ) {
+        return;
+      }
+
+      this.proofOfWorkAbortController = null;
+      const packet = encodeProofOfWorkReply(result);
+      this.transport.send(packet);
+      this.onLog?.(
+        'TX proof-of-work reply: opcode=19 result=0x' +
+        result.toString(16) + ' solved in ' +
+        ((Date.now() - startedAt) / 1000).toFixed(2) + 's.',
+      );
+      this.phase = 'response-code';
+      this.drain();
+    } catch (error) {
+      if (controller.signal.aborted) {
+        return;
+      }
+      if (this.proofOfWorkAbortController === controller) {
+        this.proofOfWorkAbortController = null;
+      }
+      if (this.phase === 'pow-solving') {
+        this.fail(error);
       }
     }
   }
@@ -508,6 +567,7 @@ export class GameLoginClient {
   }
 
   private rejectLogin(code: number, detail?: string): void {
+    this.cancelProofOfWork();
     const base = LOGIN_RESPONSE_NAMES[code] ?? 'unknown login response';
     const message = detail ? base + ': ' + detail : base;
     this.onLog?.('Game login failed: ' + message + ' (code ' + code + ').');
@@ -518,6 +578,7 @@ export class GameLoginClient {
   }
 
   private fail(error: unknown): void {
+    this.cancelProofOfWork();
     const message = error instanceof Error ? error.message : String(error);
     this.onLog?.('Game login protocol error: ' + message);
     this.phase = 'idle';
@@ -526,6 +587,7 @@ export class GameLoginClient {
   }
 
   private reset(): void {
+    this.cancelProofOfWork();
     this.queue.clear();
     this.phase = 'idle';
     this.sessionId = null;
@@ -537,6 +599,11 @@ export class GameLoginClient {
     this.gatewayConfig = null;
     this.options = null;
     this.rsaConfigWaiters.length = 0;
+  }
+
+  private cancelProofOfWork(): void {
+    this.proofOfWorkAbortController?.abort();
+    this.proofOfWorkAbortController = null;
   }
 
   private setState(state: GameLoginState): void {
