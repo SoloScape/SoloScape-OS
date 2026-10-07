@@ -866,6 +866,12 @@ function appendLocation(
     sourceFootprint.x,
     sourceFootprint.z,
   );
+  const sourceCenterX =
+    location.sourceTileX * SCENE_TILE_SIZE +
+    sourceFootprint.x * (SCENE_TILE_SIZE / 2);
+  const sourceCenterZ =
+    location.sourceTileZ * SCENE_TILE_SIZE +
+    sourceFootprint.z * (SCENE_TILE_SIZE / 2);
   const centerX = (
     location.destinationTileX - originTileX
   ) * SCENE_TILE_SIZE + footprint.x * (SCENE_TILE_SIZE / 2);
@@ -897,6 +903,11 @@ function appendLocation(
         centerZ,
         sourceHeight,
         materials,
+        heights,
+        location.sourceLevel,
+        sourceCenterX,
+        sourceCenterZ,
+        location.chunkRotation,
       );
     }
   }
@@ -913,6 +924,11 @@ function appendModel(
   centerZ: number,
   clientGroundHeight: number,
   materials: SceneFloorMaterials | null,
+  heights: TerrainHeightField,
+  sourceLevel: number,
+  sourceCenterX: number,
+  sourceCenterZ: number,
+  chunkRotation: number,
 ): number {
   let triangles = 0;
 
@@ -941,6 +957,28 @@ function appendModel(
   }
 
   const lighting = calculateModelLighting(model, localVertices, definition);
+
+  if (definition.contouredGround >= 0) {
+    applyObjectGroundContour(
+      localVertices,
+      definition.contouredGround,
+      heights,
+      sourceLevel,
+      sourceCenterX,
+      sourceCenterZ,
+      clientGroundHeight,
+      chunkRotation,
+    );
+    for (let vertex = 0; vertex < localVertices.length; vertex += 1) {
+      const local = localVertices[vertex]!;
+      sceneVertices[vertex] = {
+        x: centerX + local.x,
+        y: -(clientGroundHeight + local.y),
+        z: centerZ + local.z,
+      };
+    }
+  }
+
   const vertexAt = (vertex: number): Vec3 => sceneVertices[vertex]!;
 
   for (let face = 0; face < model.faceA.length; face += 1) {
@@ -1092,6 +1130,102 @@ function calculateModelLighting(
     ambient: definition.ambient + 64,
     scale: Math.max(1, Math.trunc(contrast * distance / 256)),
   };
+}
+
+function applyObjectGroundContour(
+  vertices: Vec3[],
+  blend: number,
+  heights: TerrainHeightField,
+  level: number,
+  sourceCenterX: number,
+  sourceCenterZ: number,
+  baseHeight: number,
+  chunkRotation: number,
+): void {
+  let modelHeight = 0;
+  for (const vertex of vertices) {
+    modelHeight = Math.max(modelHeight, -vertex.y);
+  }
+
+  for (let index = 0; index < vertices.length; index += 1) {
+    const vertex = vertices[index]!;
+    const sourceOffset = inverseRotateQuarter(
+      vertex.x,
+      vertex.z,
+      chunkRotation,
+    );
+    const ground = sampleTerrainHeightUnits(
+      heights,
+      level,
+      sourceCenterX + sourceOffset.x,
+      sourceCenterZ + sourceOffset.z,
+    );
+    const delta = ground - baseHeight;
+
+    let adjustment = delta;
+    if (blend > 0 && modelHeight > 0) {
+      const ratio = Math.trunc(-vertex.y * 65536 / modelHeight);
+      if (ratio >= blend) {
+        adjustment = 0;
+      } else {
+        adjustment = Math.trunc(
+          delta * (blend - ratio) / blend,
+        );
+      }
+    }
+
+    vertices[index] = {
+      x: vertex.x,
+      y: vertex.y + adjustment,
+      z: vertex.z,
+    };
+  }
+}
+
+function sampleTerrainHeightUnits(
+  heights: TerrainHeightField,
+  level: number,
+  worldX: number,
+  worldZ: number,
+): number {
+  const tileX = Math.floor(worldX / SCENE_TILE_SIZE);
+  const tileZ = Math.floor(worldZ / SCENE_TILE_SIZE);
+  const subX = positiveModulo(worldX, SCENE_TILE_SIZE);
+  const subZ = positiveModulo(worldZ, SCENE_TILE_SIZE);
+
+  const nw = heights.height(level, tileX, tileZ);
+  const ne = heights.height(level, tileX + 1, tileZ);
+  const sw = heights.height(level, tileX, tileZ + 1);
+  const se = heights.height(level, tileX + 1, tileZ + 1);
+
+  const top = (
+    (SCENE_TILE_SIZE - subX) * nw + subX * ne
+  ) / SCENE_TILE_SIZE;
+  const bottom = (
+    (SCENE_TILE_SIZE - subX) * sw + subX * se
+  ) / SCENE_TILE_SIZE;
+  return Math.trunc(
+    ((SCENE_TILE_SIZE - subZ) * top + subZ * bottom) /
+      SCENE_TILE_SIZE,
+  );
+}
+
+function inverseRotateQuarter(
+  x: number,
+  z: number,
+  rotation: number,
+): { x: number; z: number } {
+  const quarter = rotation & 3;
+  if (quarter === 0) {
+    return { x, z };
+  }
+  if (quarter === 1) {
+    return { x: -z, z: x };
+  }
+  if (quarter === 2) {
+    return { x: -x, z: -z };
+  }
+  return { x: z, z: -x };
 }
 
 function effectiveModelFaceRenderType(
