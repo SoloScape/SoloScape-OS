@@ -351,7 +351,11 @@ export class OrbitCamera {
 
 export interface OrbitCameraInputOptions {
   readonly isEnabled?: () => boolean;
-  readonly onTap?: (canvasX: number, canvasY: number) => void;
+  readonly onTap?: (
+    canvasX: number,
+    canvasY: number,
+    keyCombination: number,
+  ) => void;
 }
 
 interface PointerState {
@@ -504,9 +508,15 @@ export class OrbitCameraInputController {
       const bounds = this.canvas.getBoundingClientRect();
       const scaleX = this.canvas.width / Math.max(1, bounds.width);
       const scaleY = this.canvas.height / Math.max(1, bounds.height);
+      const keyCombination = event.ctrlKey
+        ? event.shiftKey
+          ? 2
+          : 1
+        : 0;
       this.options.onTap(
         (event.clientX - bounds.left) * scaleX,
         (event.clientY - bounds.top) * scaleY,
+        keyCombination,
       );
     }
   };
