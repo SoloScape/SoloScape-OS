@@ -19,16 +19,13 @@ function envPort(name: string, fallback: number): number {
 }
 
 function rawDataToBuffer(data: RawData): Buffer {
-  if (Buffer.isBuffer(data)) {
-    return data;
+  if (Array.isArray(data)) {
+    return Buffer.concat(data);
   }
   if (data instanceof ArrayBuffer) {
     return Buffer.from(data);
   }
-  if (Array.isArray(data)) {
-    return Buffer.concat(data);
-  }
-  return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  return data;
 }
 
 const wsHost = process.env.WS_HOST ?? '127.0.0.1';
@@ -57,6 +54,7 @@ server.on('connection', (client, request) => {
     host: gameHost,
     port: gamePort,
   });
+  upstream.setNoDelay(true);
 
   let upstreamReady = false;
   let closed = false;
