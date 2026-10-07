@@ -35,6 +35,11 @@ Game login uses a second WebSocket/TCP connection after JS5 bootstrap:
       -> load loc definitions from 2:6
       -> resolve/download model groups from archive 7
       -> decode model vertices + triangles
+      -> derive opcode-0 procedural terrain heights from absolute tiles
+      -> assemble the 13x13-zone scene (including rotated instance chunks)
+      -> transform loc models by shape/orientation/scale/offset
+      -> upload terrain + loc triangle buffers
+      -> draw the first static scene with WebGL2
 
 The gateway reads the public RSA key from:
 
@@ -108,9 +113,10 @@ For every mapsquare required by a rebuild:
 
 The rev-240 terrain decoder follows SoloScape's server decoder: tile opcodes are
 16-bit, overlays are signed 16-bit ids, and render flags/underlays use the
-modern opcode ranges. Opcode-0 terrain heights remain marked implicit so the
-renderer/scene builder can derive the procedural absolute height from the
-world tile coordinates.
+modern opcode ranges. Opcode-0 heights are resolved during scene assembly with
+RuneScape's canonical multi-octave procedural noise seeded by absolute world
+tile coordinates. Higher implicit planes inherit the previous plane minus 240
+client-height units; explicit height byte 1 is normalized to zero.
 
 Location definitions retain model ids/types, dimensions, rotations,
 scale/translation, recolors/retextures and transform chains. Model decoding
@@ -119,6 +125,19 @@ transparency/render types and type-0 texture triangles.
 
 Raw model group bytes are released after geometry decoding to avoid keeping a
 second copy of the scene's model payloads in memory on mobile.
+
+Scene assembly clips normal rebuilds to the 13x13-zone scene window and copies
+8x8 source chunks for instanced rebuilds with destination rotation. Static loc
+geometry applies model-type selection, wall/corner multi-model placement,
+orientation/mirroring, definition scale/translation, and tile-footprint height
+placement before rebasing the final mesh around the scene origin.
+
+The first renderer is intentionally material-light: terrain gets deterministic
+underlay/overlay-derived debug coloring, model faces use decoded packed HSL
+colors, transparent faces are skipped, and both meshes are drawn once through a
+small WebGL2 shader with depth testing and distance fog. Texture/material
+resolution, animated entities, camera/input controls, and occlusion are later
+playability milestones rather than prerequisites for the first static frame.
 
 ## Request scheduler
 
@@ -315,6 +334,7 @@ After a region rebuild packet is received:
     window.soloscapeRegionRebuild
     window.soloscapeSceneMaps
     window.soloscapeSceneAssets
+    window.soloscapeScene
 
 Normal rebuilds expose center zone, world-area id, and the static mapsquares
 covering the 13x13-zone scene window. Instanced rebuilds expose all 676
@@ -323,7 +343,9 @@ deduplicated source mapsquares required to assemble the instance.
 
 `soloscapeSceneMaps` contains decoded terrain and static loc placements.
 `soloscapeSceneAssets` contains the required loc definitions and decoded
-archive-7 model geometry.
+archive-7 model geometry. `soloscapeScene` contains the assembled terrain/loc
+vertex buffers, world-tile origin, scene bounds, and assembly statistics used
+by the WebGL2 renderer.
 
 ## Expected live log
 
@@ -365,8 +387,9 @@ cancellation, single/multi-stripe group unpacking, sparse file ids, typed
 startup varbit decoding, game-login crypto/framing, byte-at-a-time rev-240
 server packet fragmentation, transformed rebuild headers, 676-slot instance
 bitstreams, source/destination instance-zone mapping, JS5 map-name hashing,
-rev-240 terrain/location decoding, loc model metadata/transforms, and old/type
-1/type 2/type 3 model geometry.
+rev-240 terrain/location decoding, loc model metadata/transforms, old/type
+1/type 2/type 3 model geometry, canonical implicit-height vectors, normal scene
+assembly, and rotated instanced-zone placement.
 
 ## M1 status
 
@@ -430,7 +453,13 @@ Implemented:
 - loc transform-chain traversal and model-id deduplication
 - validated archive-7 model loading
 - old/type1/type2/type3 model geometry decoding
-- `window.soloscapeSceneMaps` / `window.soloscapeSceneAssets` debug state
+- canonical opcode-0 procedural terrain height derivation
+- normal 13x13-zone scene clipping + terrain mesh assembly
+- rotated 8x8 instanced-zone terrain/object assembly
+- loc shape/model selection, mirroring, orientation, scaling and translation
+- static terrain/model vertex buffers with scene-local rebasing
+- first one-frame WebGL2 terrain + loc render
+- `window.soloscapeSceneMaps` / `window.soloscapeSceneAssets` / `window.soloscapeScene` debug state
 
 Revision 240's rebuild packets do not append XTEA key blocks; the browser follows
 the rsprot rev-240 encoders exactly. The rebuild vectors cover transformed
@@ -439,9 +468,9 @@ mapsquare-count validation.
 
 Next:
 
-- assemble terrain/model instances into renderable scene coordinates, derive
-  implicit/procedural terrain heights, and feed the first static scene into the
-  WebGL renderer
+- decode player/NPC update streams and place live actors into the rendered scene
+- add camera/input controls and begin replacing debug materials with cache-backed
+  textures/materials
 
 ## Reference format
 
