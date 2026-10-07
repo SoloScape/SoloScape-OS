@@ -25,6 +25,7 @@ data class BotPvpHotspot(
     val freeWorldFamilies: Set<String> = emptySet(),
     val styleWeights: Map<BotPvpStyle, Double>,
     val activityWeights: Map<String, Double>,
+    val fixedHotspot: Boolean = false,
 ) {
     fun families(members: Boolean): Set<String> = if (members) {
         allowedFamilies.filterTo(linkedSetOf()) { !it.startsWith("f2p_") }
@@ -110,7 +111,7 @@ object BotPvpHotspots {
         BotPvpHotspot(
             id = "edge_ditch", anchor = CoordGrid(3085, 3528),
             minX = 3078, maxX = 3091, minZ = 3525, maxZ = 3535,
-            targetBots = 13, maxBots = 18, roamRadius = 6, lingerCycles = 15,
+            targetBots = 10, maxBots = 10, roamRadius = 6, lingerCycles = 15,
             maxSimultaneousFights = 5,
             allowedProfiles = setOf(
                 BotPvpDifficulty.Standard,
@@ -135,11 +136,12 @@ object BotPvpHotspots {
                 "fight" to 0.05,
                 "escape" to 0.08,
             ),
+            fixedHotspot = true,
         ),
         BotPvpHotspot(
             id = "edge_south", anchor = CoordGrid(3099, 3529),
             minX = 3092, maxX = 3106, minZ = 3525, maxZ = 3536,
-            targetBots = 9, maxBots = 14, roamRadius = 7, lingerCycles = 19,
+            targetBots = 9, maxBots = 10, roamRadius = 7, lingerCycles = 19,
             maxSimultaneousFights = 4,
             allowedProfiles = BotPvpDifficulty.entries.toSet(),
             allowedFamilies = setOf(
@@ -160,11 +162,12 @@ object BotPvpHotspots {
                 "fight" to 0.20,
                 "escape" to 0.18,
             ),
+            fixedHotspot = true,
         ),
         BotPvpHotspot(
             id = "varrock_ditch", anchor = CoordGrid(3243, 3526),
             minX = 3228, maxX = 3262, minZ = 3525, maxZ = 3542,
-            targetBots = 80, maxBots = 112, roamRadius = 3, lingerCycles = 17,
+            targetBots = 10, maxBots = 10, roamRadius = 3, lingerCycles = 17,
             maxSimultaneousFights = 8,
             allowedProfiles = BotPvpDifficulty.entries.toSet(),
             allowedFamilies = f2p,
@@ -179,11 +182,12 @@ object BotPvpHotspots {
                 "fight" to 0.22,
                 "escape" to 0.12,
             ),
+            fixedHotspot = true,
         ),
         BotPvpHotspot(
             id = "revs_entrance", anchor = CoordGrid(3134, 3838),
             minX = 3129, maxX = 3139, minZ = 3833, maxZ = 3843,
-            targetBots = 6, maxBots = 12, roamRadius = 4, lingerCycles = 16,
+            targetBots = 6, maxBots = 10, roamRadius = 4, lingerCycles = 16,
             maxSimultaneousFights = null,
             allowedProfiles = setOf(
                 BotPvpDifficulty.Standard,
@@ -206,11 +210,12 @@ object BotPvpHotspots {
                 "fight" to 0.10,
                 "escape" to 0.30,
             ),
+            fixedHotspot = true,
         ),
         BotPvpHotspot(
             id = "green_drags_gate", anchor = CoordGrid(2988, 3610),
             minX = 2974, maxX = 3002, minZ = 3598, maxZ = 3622,
-            targetBots = 6, maxBots = 12, roamRadius = 8, lingerCycles = 16,
+            targetBots = 6, maxBots = 10, roamRadius = 8, lingerCycles = 16,
             maxSimultaneousFights = null,
             allowedProfiles = setOf(
                 BotPvpDifficulty.Novice,
@@ -234,6 +239,7 @@ object BotPvpHotspots {
                 "fight" to 0.08,
                 "escape" to 0.22,
             ),
+            fixedHotspot = true,
         ),
 
         // Broad native coverage regions. Candidate tiles now cover much larger Wilderness bands;
@@ -278,12 +284,34 @@ object BotPvpHotspots {
         }
 
     /**
-     * Spread consecutive world-bot identities evenly across every compatible region. TSPS
-     * targetBots/maxBots remain available as source metadata, but no single imported hotspot is
-     * allowed to dominate a large SoloScape population.
+     * Fixed activity hotspots are capped by [BotPvpHotspot.maxBots]. After those fill, additional
+     * PKers are balanced across the broad roaming regions instead of piling onto landmark tiles.
      */
-    fun choose(identity: Int, members: Boolean, difficulty: BotPvpDifficulty): BotPvpHotspot {
+    fun choose(
+        identity: Int,
+        members: Boolean,
+        difficulty: BotPvpDifficulty,
+        occupancy: Map<String, Int> = emptyMap(),
+    ): BotPvpHotspot {
         val choices = available(members, difficulty).ifEmpty { all }
-        return choices[Math.floorMod(identity - 1, choices.size)]
+        val uncapped = choices.filter {
+            !it.fixedHotspot || occupancy.getOrDefault(it.id, 0) < it.maxBots
+        }.ifEmpty { choices.filterNot(BotPvpHotspot::fixedHotspot).ifEmpty { choices } }
+        val minimum = uncapped.minOfOrNull { occupancy.getOrDefault(it.id, 0) } ?: 0
+        val leastOccupied = uncapped.filter { occupancy.getOrDefault(it.id, 0) == minimum }
+        return leastOccupied[Math.floorMod(identity - 1, leastOccupied.size)]
+    }
+
+    private val wildernessPatrolAnchors: List<CoordGrid>
+        get() = all.filterNot(BotPvpHotspot::fixedHotspot).map(BotPvpHotspot::anchor)
+
+    /**
+     * Deterministic, de-synchronised patrol targets make roaming bots cross between Wilderness
+     * regions over time instead of orbiting one spawn rectangle forever.
+     */
+    fun patrolTarget(identity: Int, step: Int): CoordGrid {
+        val anchors = wildernessPatrolAnchors
+        val index = Math.floorMod(identity * 11 + step * 7, anchors.size)
+        return anchors[index]
     }
 }
