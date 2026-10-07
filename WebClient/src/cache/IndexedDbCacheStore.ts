@@ -1,3 +1,4 @@
+import type { Js5MasterIndex } from './Js5MasterIndex';
 import {
   js5GroupKey,
   type Js5GroupResponse,
@@ -13,9 +14,16 @@ export interface CachedJs5Group {
   updatedAt: number;
 }
 
+interface CachedMasterIndex {
+  key: 'master-index';
+  entries: Js5MasterIndex['entries'];
+  updatedAt: number;
+}
+
 const DATABASE_NAME = 'soloscape-web-cache';
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const GROUP_STORE = 'js5-groups';
+const METADATA_STORE = 'js5-metadata';
 
 export class IndexedDbCacheStore {
   private databasePromise: Promise<IDBDatabase> | null = null;
@@ -52,6 +60,21 @@ export class IndexedDbCacheStore {
     return requestResult<CachedJs5Group | undefined>(request);
   }
 
+  async putMasterIndex(index: Js5MasterIndex): Promise<void> {
+    const database = await this.open();
+    const transaction = database.transaction(METADATA_STORE, 'readwrite');
+    const store = transaction.objectStore(METADATA_STORE);
+
+    const record: CachedMasterIndex = {
+      key: 'master-index',
+      entries: index.entries.map((entry) => ({ ...entry })),
+      updatedAt: Date.now(),
+    };
+
+    store.put(record);
+    await transactionComplete(transaction);
+  }
+
   private open(): Promise<IDBDatabase> {
     if (this.databasePromise) {
       return this.databasePromise;
@@ -62,8 +85,12 @@ export class IndexedDbCacheStore {
 
       request.addEventListener('upgradeneeded', () => {
         const database = request.result;
+
         if (!database.objectStoreNames.contains(GROUP_STORE)) {
           database.createObjectStore(GROUP_STORE, { keyPath: 'key' });
+        }
+        if (!database.objectStoreNames.contains(METADATA_STORE)) {
+          database.createObjectStore(METADATA_STORE, { keyPath: 'key' });
         }
       });
 
@@ -73,6 +100,7 @@ export class IndexedDbCacheStore {
         reject(request.error ?? new Error('Unable to open IndexedDB cache.'));
       });
       request.addEventListener('blocked', () => {
+        this.databasePromise = null;
         reject(new Error('IndexedDB cache upgrade is blocked by another tab.'));
       });
     });

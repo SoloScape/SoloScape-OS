@@ -56,8 +56,8 @@ function drawClientStatus(
 }
 
 drawClientStatus(
-  'JS5 bootstrap ready to test',
-  'Connect to fetch the rev-240 master index',
+  'JS5 cache bootstrap ready',
+  'Connect to fetch the rev-240 cache index',
 );
 
 const transport = new WebSocketTransport();
@@ -78,7 +78,8 @@ js5.onStateChange = (state) => {
     connecting: 'Connecting',
     handshake: 'JS5 handshake',
     'master-index': 'Fetching master index',
-    ready: 'JS5 ready',
+    'archive-indices': 'Fetching archive indices',
+    ready: 'JS5 index ready',
     closed: 'Disconnected',
     error: 'JS5 error',
   };
@@ -88,25 +89,38 @@ js5.onStateChange = (state) => {
     state === 'connecting' ||
     state === 'handshake' ||
     state === 'master-index' ||
+    state === 'archive-indices' ||
     state === 'ready'
       ? 'Disconnect'
       : 'Connect';
 };
 
-js5.onMasterIndex = (response) => {
+js5.onMasterIndex = (index) => {
   drawClientStatus(
-    'JS5 master index received',
-    response.container.length + ' bytes cached in IndexedDB',
+    'JS5 master index parsed',
+    index.entries.length + ' archives; fetching reference tables',
   );
-  appendLog(
-    'JS5 bootstrap complete. The socket is ready for additional cache group requests.',
+};
+
+js5.onArchiveIndex = (_archive, _response, progress) => {
+  drawClientStatus(
+    'Fetching JS5 archive indices',
+    progress.received + ' / ' + progress.total + ' received',
+  );
+};
+
+js5.onBootstrapComplete = (index) => {
+  drawClientStatus(
+    'JS5 cache index ready',
+    index.entries.length + ' archive reference tables received',
   );
 };
 
 js5.onGroup = (response) => {
-  if (response.archive === 0xff && response.group === 0xff) {
+  if (response.archive === 0xff) {
     return;
   }
+
   appendLog(
     'Cache group available to client code: ' +
     response.archive + ':' + response.group,
@@ -118,6 +132,7 @@ connectButton.addEventListener('click', async () => {
     js5.state === 'connecting' ||
     js5.state === 'handshake' ||
     js5.state === 'master-index' ||
+    js5.state === 'archive-indices' ||
     js5.state === 'ready'
   ) {
     js5.disconnect();
