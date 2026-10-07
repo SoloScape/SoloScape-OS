@@ -11,6 +11,7 @@ export interface DecodedModelGeometry {
   readonly faceC: Uint32Array;
   readonly faceColors: Uint16Array;
   readonly faceTextures: Int32Array;
+  readonly faceTextureCoords: Int32Array;
   readonly faceRenderTypes: Int8Array;
   readonly faceTransparencies: Int8Array;
   readonly textureFaceA: Uint16Array;
@@ -68,6 +69,7 @@ function createGeometry(
     faceC: new Uint32Array(faceCount),
     faceColors: new Uint16Array(faceCount),
     faceTextures: filledInt32(faceCount, -1),
+    faceTextureCoords: filledInt32(faceCount, -1),
     faceRenderTypes: new Int8Array(faceCount),
     faceTransparencies: new Int8Array(faceCount),
     textureFaceA: new Uint16Array(textureCount),
@@ -88,6 +90,7 @@ type MutableGeometry = {
   faceC: Uint32Array;
   faceColors: Uint16Array;
   faceTextures: Int32Array;
+  faceTextureCoords: Int32Array;
   faceRenderTypes: Int8Array;
   faceTransparencies: Int8Array;
   textureFaceA: Uint16Array;
@@ -520,7 +523,7 @@ function decodeSeparateFaces(
       const texture = textures.u16() - 1;
       model.faceTextures[index] = texture;
       if (textureCoords && texture !== -1) {
-        textureCoords.u8();
+        model.faceTextureCoords[index] = textureCoords.u8() - 1;
       }
     }
   }
@@ -553,6 +556,7 @@ function decodeCombinedFaces(
       const flags = combined.u8();
       model.faceRenderTypes[index] = (flags & 1) !== 0 ? 1 : 0;
       if ((flags & 2) !== 0) {
+        model.faceTextureCoords[index] = flags >> 2;
         model.faceTextures[index] = signed16(model.faceColors[index]!);
         model.faceColors[index] = 127;
       }
