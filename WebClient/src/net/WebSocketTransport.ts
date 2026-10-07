@@ -5,6 +5,7 @@ export class WebSocketTransport {
 
   state: TransportState = 'idle';
   onData: ((data: ArrayBuffer) => void) | null = null;
+  onText: ((text: string) => void) | null = null;
   onStateChange: ((state: TransportState) => void) | null = null;
   onError: ((error: Event) => void) | null = null;
 
@@ -34,6 +35,11 @@ export class WebSocketTransport {
       socket.addEventListener('error', failBeforeOpen, { once: true });
 
       socket.addEventListener('message', (event) => {
+        if (typeof event.data === 'string') {
+          this.onText?.(event.data);
+          return;
+        }
+
         if (event.data instanceof ArrayBuffer) {
           this.onData?.(event.data);
           return;
