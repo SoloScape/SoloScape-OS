@@ -7,6 +7,7 @@ import type {
   RegionRebuild,
 } from '../protocol/RegionRebuildDecoder';
 import type { LoadedSceneAssets } from '../cache/SceneAssetLoader';
+import type { SceneFloorMaterials } from '../cache/SceneMaterialLoader';
 import { resolveType0FaceTextureUvs } from './ModelTextureMapping';
 
 export const SCENE_TILE_SIZE = 128;
@@ -83,6 +84,7 @@ export function assembleScene(
   rebuild: RegionRebuild,
   maps: readonly LoadedMapSquare[],
   assets: LoadedSceneAssets,
+  materials: SceneFloorMaterials | null = null,
 ): AssembledScene {
   const originTileX = (rebuild.zoneX - SCENE_ZONE_RADIUS) * SCENE_ZONE_SIZE;
   const originTileZ = (rebuild.zoneZ - SCENE_ZONE_RADIUS) * SCENE_ZONE_SIZE;
@@ -129,6 +131,7 @@ export function assembleScene(
               worldZ,
               originTileX,
               originTileZ,
+              materials,
             );
             terrainTiles += 1;
           }
@@ -190,6 +193,7 @@ export function assembleScene(
         heightField,
         originTileX,
         originTileZ,
+        materials,
         () => {
           terrainTiles += 1;
         },
@@ -424,6 +428,7 @@ function appendNormalTerrainTile(
   worldZ: number,
   originTileX: number,
   originTileZ: number,
+  materials: SceneFloorMaterials | null,
 ): void {
   const corners = [
     terrainVertex(heights, level, worldX, worldZ, originTileX, originTileZ),
@@ -431,8 +436,23 @@ function appendNormalTerrainTile(
     terrainVertex(heights, level, worldX + 1, worldZ + 1, originTileX, originTileZ),
     terrainVertex(heights, level, worldX, worldZ + 1, originTileX, originTileZ),
   ] as const;
-  const color = terrainTileColor(map, level, localX, localZ, corners);
-  builder.pushQuad(corners[0], corners[1], corners[2], corners[3], color);
+  const material = terrainTileMaterial(
+    map,
+    level,
+    localX,
+    localZ,
+    corners,
+    materials,
+  );
+  builder.pushQuad(
+    corners[0],
+    corners[1],
+    corners[2],
+    corners[3],
+    material.color,
+    material.textureId,
+    rotatedTileUvs(material.rotation),
+  );
 }
 
 function appendInstancedTerrainZone(
@@ -442,6 +462,7 @@ function appendInstancedTerrainZone(
   heights: TerrainHeightField,
   originTileX: number,
   originTileZ: number,
+  materials: SceneFloorMaterials | null,
   onTile: () => void,
 ): void {
   const sourceZoneBaseX = placement.sourceZoneX * SCENE_ZONE_SIZE;
@@ -501,19 +522,23 @@ function appendInstancedTerrainZone(
         };
       });
 
-      const color = terrainTileColor(
+      const material = terrainTileMaterial(
         map,
         placement.sourceLevel,
         mapLocalX,
         mapLocalZ,
         transformed,
+        materials,
+        placement.rotation,
       );
       builder.pushQuad(
         transformed[0]!,
         transformed[1]!,
         transformed[2]!,
         transformed[3]!,
-        color,
+        material.color,
+        material.textureId,
+        rotatedTileUvs(material.rotation),
       );
       onTile();
     }
@@ -828,33 +853,120 @@ function shouldRenderTerrainTile(
   );
 }
 
-function terrainTileColor(
+interface TerrainTileMaterial {
+  readonly color: Rgb;
+  readonly textureId: number;
+  readonly rotation: number;
+}
+
+function terrainTileMaterial(
   map: LoadedMapSquare,
   level: number,
   localX: number,
   localZ: number,
   corners: readonly Vec3[],
-): Rgb {
+  materials: SceneFloorMaterials | null,
+  extraRotation = 0,
+): TerrainTileMaterial {
   const index = mapTerrainTileIndex(level, localX, localZ);
-  const overlay = map.terrain.overlayIds[index]!;
-  const underlay = map.terrain.underlayIds[index]!;
-  const seed = overlay >= 0
-    ? overlay * 67 + 193
-    : underlay >= 0
-      ? underlay * 43 + 71
-      : 17;
-  const hue = positiveModulo(seed * 37, 360) / 360;
-  const saturation = overlay >= 0 ? 0.42 : 0.34;
-  const lightness = overlay >= 0
-    ? 0.32 + positiveModulo(seed, 9) / 100
-    : 0.28 + positiveModulo(seed, 11) / 100;
-  const base = hslToRgb(hue, saturation, lightness);
-  return shadeByTriangleNormal(
-    base,
-    corners[0]!,
-    corners[1]!,
-    corners[3]!,
+  const overlayId = map.terrain.overlayIds[index]!;
+  const underlayRawId = map.terrain.underlayIds[index]!;
+  const overlay = overlayId >= 0
+    ? materials?.overlays.get(overlayId)
+    : undefined;
+  const underlay = underlayRawId > 0
+    ? materials?.underlays.get(underlayRawId - 1)
+    : undefined;
+
+  let textureId = -1;
+  let base: Rgb | null = null;
+
+  if (overlay) {
+    textureId = overlay.texture;
+    if (overlay.rgb !== 0xff00ff) {
+      base = rgb24(overlay.rgb);
+    }
+    if (
+      textureId >= 0 &&
+      base === null
+    ) {
+      const average = materials?.textureAverageRgb.get(textureId);
+      if (average !== undefined) {
+        base = packedHslColor(average);
+      }
+    }
+  }
+
+  if (!base && textureId < 0 && underlay) {
+    base = rgb24(underlay.rgb);
+  }
+
+  if (!base) {
+    // Keep a deterministic fallback for missing/streaming definitions, but
+    // real cache-backed floor definitions take precedence whenever present.
+    const seed = overlayId >= 0
+      ? overlayId * 67 + 193
+      : underlayRawId > 0
+        ? underlayRawId * 43 + 71
+        : 17;
+    const hue = positiveModulo(seed * 37, 360) / 360;
+    const saturation = overlayId >= 0 ? 0.42 : 0.34;
+    const lightness = overlayId >= 0
+      ? 0.32 + positiveModulo(seed, 9) / 100
+      : 0.28 + positiveModulo(seed, 11) / 100;
+    base = hslToRgb(hue, saturation, lightness);
+  }
+
+  return {
+    color: shadeByTriangleNormal(
+      base,
+      corners[0]!,
+      corners[1]!,
+      corners[3]!,
+    ),
+    textureId,
+    rotation:
+      (map.terrain.overlayRotations[index]! + extraRotation) & 3,
+  };
+}
+
+function rgb24(rgb: number): Rgb {
+  return {
+    r: (rgb >>> 16) & 0xff,
+    g: (rgb >>> 8) & 0xff,
+    b: rgb & 0xff,
+  };
+}
+
+function packedHslColor(value: number): Rgb {
+  return hslToRgb(
+    ((value >>> 10) & 0x3f) / 64,
+    ((value >>> 7) & 0x7) / 8,
+    (value & 0x7f) / 128,
   );
+}
+
+function rotatedTileUvs(
+  rotation: number,
+): readonly [
+  { readonly u: number; readonly v: number },
+  { readonly u: number; readonly v: number },
+  { readonly u: number; readonly v: number },
+  { readonly u: number; readonly v: number },
+] {
+  const base = [
+    { u: 0, v: 0 },
+    { u: 1, v: 0 },
+    { u: 1, v: 1 },
+    { u: 0, v: 1 },
+  ] as const;
+  const r = rotation & 3;
+  return [
+    base[(0 + r) & 3]!,
+    base[(1 + r) & 3]!,
+    base[(2 + r) & 3]!,
+    base[(3 + r) & 3]!,
+  ];
 }
 
 function modelColor(faceColor: number, texture: number): Rgb {
@@ -1082,9 +1194,36 @@ class MeshBuilder {
     c: Vec3,
     d: Vec3,
     color: Rgb,
+    textureId = -1,
+    textureUvs:
+      | readonly [
+          { readonly u: number; readonly v: number },
+          { readonly u: number; readonly v: number },
+          { readonly u: number; readonly v: number },
+          { readonly u: number; readonly v: number },
+        ]
+      | null = null,
   ): void {
-    this.pushTriangle(a, b, c, color);
-    this.pushTriangle(a, c, d, color);
+    this.pushTriangle(
+      a,
+      b,
+      c,
+      color,
+      textureId,
+      textureUvs
+        ? [textureUvs[0], textureUvs[1], textureUvs[2]]
+        : null,
+    );
+    this.pushTriangle(
+      a,
+      c,
+      d,
+      color,
+      textureId,
+      textureUvs
+        ? [textureUvs[0], textureUvs[2], textureUvs[3]]
+        : null,
+    );
   }
 
   pushTriangle(
