@@ -59,15 +59,15 @@ test('assembles normal terrain and transformed loc model geometry', () => {
   const positions = Array.from(scene.locations.positions);
   assert.deepEqual(
     positions.slice(0, 3),
-    [202, -20, 290],
+    [202, -20, -290],
   );
   assert.deepEqual(
     positions.slice(3, 6),
-    [202, -20, 162],
+    [202, -20, -162],
   );
   assert.deepEqual(
     positions.slice(6, 9),
-    [202, 12, 290],
+    [202, 12, -290],
   );
 });
 
@@ -114,7 +114,7 @@ test('rotates copied instance zones and loc origins into destination space', () 
   const positions = Array.from(scene.locations.positions);
   assert.deepEqual(
     positions.slice(0, 3),
-    [1354, -20, 1826],
+    [1354, -20, -1826],
   );
 });
 
