@@ -1126,14 +1126,13 @@ function shouldRenderTerrainTile(
   localX: number,
   localZ: number,
 ): boolean {
-  if (level === 0) {
-    return true;
-  }
   const index = mapTerrainTileIndex(level, localX, localZ);
+  // ClientBuild skips tiles that have neither an underlay nor an overlay.
+  // Render flags affect bridge/roof behaviour but do not create floor
+  // geometry by themselves.
   return (
     map.terrain.overlayIds[index]! >= 0 ||
-    map.terrain.underlayIds[index]! >= 0 ||
-    map.terrain.renderFlags[index]! !== 0
+    map.terrain.underlayIds[index]! > 0
   );
 }
 
