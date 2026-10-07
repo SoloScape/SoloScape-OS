@@ -39,6 +39,7 @@ import {
   CacheTitleScreenRenderer,
   type LoginField,
 } from './ui/CacheTitleScreenRenderer';
+import { applyLoginKey } from './ui/LoginInput';
 
 const CLIENT_VIEWPORT_WIDTH = 765;
 const CLIENT_VIEWPORT_HEIGHT = 503;
@@ -186,6 +187,33 @@ function setLoginField(field: LoginField): void {
     loginPassword.focus({ preventScroll: true });
   }
   renderLoginScreen();
+}
+
+function applyClientLoginKey(key: string): boolean {
+  const result = applyLoginKey(
+    {
+      username: loginUsername.value,
+      password: loginPassword.value,
+      selectedField: selectedLoginField,
+    },
+    key,
+  );
+
+  if (!result.handled) {
+    return false;
+  }
+
+  loginUsername.value = result.username;
+  loginPassword.value = result.password;
+  selectedLoginField = result.selectedField;
+  loginMessage = undefined;
+  renderLoginScreen();
+
+  if (result.submit) {
+    void beginGameLogin();
+  }
+
+  return true;
 }
 
 function logicalPointerPosition(
@@ -672,17 +700,19 @@ loginPassword.addEventListener('input', () => {
   }
 });
 
-loginUsername.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter') {
-    event.preventDefault();
-    setLoginField('password');
+window.addEventListener('keydown', (event) => {
+  if (
+    titleMode !== 'login' ||
+    event.isComposing ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.altKey
+  ) {
+    return;
   }
-});
 
-loginPassword.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter') {
+  if (applyClientLoginKey(event.key)) {
     event.preventDefault();
-    void beginGameLogin();
   }
 });
 
