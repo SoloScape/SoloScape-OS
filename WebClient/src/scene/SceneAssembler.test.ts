@@ -118,6 +118,47 @@ test('rotates copied instance zones and loc origins into destination space', () 
 });
 
 
+
+test('culls terrain/loc geometry above the requested visible plane', () => {
+  const map = buildMap([
+    {
+      id: 1,
+      localX: 1,
+      localZ: 2,
+      level: 0,
+      shape: 10,
+      angle: 0,
+    },
+    {
+      id: 1,
+      localX: 2,
+      localZ: 2,
+      level: 1,
+      shape: 10,
+      angle: 0,
+    },
+  ]);
+  const rebuild: NormalRegionRebuild = {
+    kind: 'normal',
+    zoneX: 6,
+    zoneZ: 6,
+    worldArea: 0,
+    mapSquares: [map.mapSquare],
+  };
+
+  const scene = assembleScene(
+    rebuild,
+    [map],
+    buildAssets(),
+    null,
+    0,
+  );
+
+  assert.equal(scene.stats.locationPlacements, 1);
+  assert.equal(scene.stats.modelInstances, 1);
+  assert.equal(scene.locations.vertexCount, 3);
+});
+
 test('emits cache texture ids and type-0 UVs for textured loc faces', () => {
   const map = buildMap([
     {
