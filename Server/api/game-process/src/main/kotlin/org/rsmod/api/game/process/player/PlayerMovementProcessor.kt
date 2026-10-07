@@ -140,6 +140,9 @@ constructor(
         updateMovementClock(current, start)
         pendingStepCount = stepCount
         coords = current
+        if (current != start) {
+            eventBus.publish(PlayerMovementEvent.CoordsMovedEvent(this, start))
+        }
     }
 
     private fun Player.validatedStep(current: CoordGrid, target: CoordGrid): CoordGrid {
