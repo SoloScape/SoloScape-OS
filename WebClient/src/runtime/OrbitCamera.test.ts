@@ -85,6 +85,16 @@ test('render camera interpolates orbit state and cam-follow distance', () => {
   );
 });
 
+test('render yaw keeps fractional interpolation between camera ticks', () => {
+  const camera = new OrbitCamera();
+  camera.reset(0, 0, 0);
+  camera.setArrowHeld('right', true);
+  camera.tick(0, 0);
+
+  const render = camera.renderState(0.5, 0);
+  assert.equal(render.yaw, 3);
+});
+
 test('pitch and zoom stay inside camera bounds', () => {
   const camera = new OrbitCamera();
   camera.reset(0, 0);
