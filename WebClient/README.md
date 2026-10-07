@@ -4,8 +4,9 @@ This directory contains the browser-native SoloScape client work targeting
 Safari on iPhone/iPad and modern desktop browsers.
 
 The current branch implements browser transport, a validated/bounded JS5 cache
-client, the rev-240 game-login handshake, and rev-240 server game-packet framing
-for OSRS protocol revision 240 / client 240.2.
+client, the rev-240 game-login handshake, server game-packet framing, and
+normal/instanced region rebuild decoding for OSRS protocol revision 240 /
+client 240.2.
 
 ## Current game-login flow
 
@@ -27,6 +28,8 @@ Game login uses a second WebSocket/TCP connection after JS5 bootstrap:
       -> decode ISAAC-encrypted smart 1-or-2-byte server opcodes
       -> read fixed / VAR_BYTE / VAR_SHORT packet lengths
       -> emit framed server game packets
+      -> decode REBUILD_NORMAL_V2 / REBUILD_REGION_V2
+      -> expose required mapsquares + instance zone placements
 
 The gateway reads the public RSA key from:
 
@@ -266,6 +269,15 @@ After automatic startup loading:
     window.soloscapeStartupAssets?.npcDefinitionFiles
     window.soloscapeStartupAssets?.varbitDefinitions
 
+After a region rebuild packet is received:
+
+    window.soloscapeRegionRebuild
+
+Normal rebuilds expose center zone, world-area id, and the static mapsquares
+covering the 13x13-zone scene window. Instanced rebuilds expose all 676
+destination slots, each populated slot's source plane/zone/rotation, and the
+deduplicated source mapsquares required to assemble the instance.
+
 ## Expected live log
 
 Reference bootstrap is now bounded:
@@ -299,8 +311,9 @@ Tests cover stream fragmentation/continuations, master-index parsing,
 container decoding, reference-table parsing, CRC/version validation, version
 trailer handling, scheduler concurrency/deduplication, timeout retries,
 cancellation, single/multi-stripe group unpacking, sparse file ids, typed
-startup varbit decoding, game-login crypto/framing, and byte-at-a-time
-rev-240 server packet fragmentation.
+startup varbit decoding, game-login crypto/framing, byte-at-a-time rev-240
+server packet fragmentation, transformed rebuild headers, 676-slot instance
+bitstreams, and source/destination instance-zone mapping.
 
 ## M1 status
 
@@ -341,7 +354,7 @@ Known follow-ups outside the normal password-login path:
 - proof-of-work challenges are detected and reported but not solved yet
 - authenticator-required responses are decoded/reported; OTP entry is not wired yet
 
-## M3 packet-framing status
+## M3 packet-framing / region-rebuild status
 
 Implemented:
 
@@ -351,13 +364,22 @@ Implemented:
 - arbitrary WebSocket/byte-stream fragmentation handling
 - direct framing of bytes buffered behind the login-success metadata
 - framed packet logging/debug callback for the browser client
+- REBUILD_NORMAL_V2 transformed-short decoding
+- REBUILD_REGION_V2 transformed header + 676-slot bitstream decoding
+- ReferenceZone source plane/zone/rotation unpacking
+- destination instance-zone coordinate retention
+- normal/static and instanced/source mapsquare discovery
+- `window.soloscapeRegionRebuild` debug state
 
-The packet-framing vectors cover fixed, VAR_BYTE, VAR_SHORT, two-byte smart
-opcodes, and one-byte-at-a-time input while preserving ISAAC continuity.
+Revision 240's rebuild packets do not append XTEA key blocks; the browser follows
+the rsprot rev-240 encoders exactly. The rebuild vectors cover transformed
+headers, complete 676-slot instance streams, duplicate mapsquares, and header
+mapsquare-count validation.
 
 Next:
 
-- decode REBUILD_NORMAL_V2 / REBUILD_REGION_V2 and begin region loading
+- resolve/download map archive groups for the decoded mapsquares, then decode
+  terrain and location/object data
 
 ## Reference format
 
