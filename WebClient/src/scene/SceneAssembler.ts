@@ -7,6 +7,7 @@ import type {
   RegionRebuild,
 } from '../protocol/RegionRebuildDecoder';
 import type { LoadedSceneAssets } from '../cache/SceneAssetLoader';
+import { resolveType0FaceTextureUvs } from './ModelTextureMapping';
 
 export const SCENE_TILE_SIZE = 128;
 export const SCENE_ZONE_SIZE = 8;
@@ -21,6 +22,8 @@ const IMPLICIT_LEVEL_DROP = 240;
 export interface SceneMesh {
   readonly positions: Float32Array;
   readonly colors: Uint8Array;
+  readonly textureCoords: Float32Array;
+  readonly textureIds: Int32Array;
   readonly vertexCount: number;
 }
 
@@ -601,6 +604,17 @@ function appendModel(
   const mirrored =
     definition.rotated !==
     (placement.modelType === 2 && placement.orientation > 3);
+  const transformVertex = (vertex: number): Vec3 =>
+    transformModelVertex(
+      model,
+      vertex,
+      definition,
+      placement,
+      mirrored,
+      centerX,
+      centerZ,
+      clientGroundHeight,
+    );
 
   for (let face = 0; face < model.faceA.length; face += 1) {
     const alpha = model.faceTransparencies[face]! & 0xff;
@@ -608,43 +622,39 @@ function appendModel(
       continue;
     }
 
-    const a = transformModelVertex(
-      model,
-      model.faceA[face]!,
-      definition,
-      placement,
-      mirrored,
-      centerX,
-      centerZ,
-      clientGroundHeight,
-    );
-    const b = transformModelVertex(
-      model,
-      model.faceB[face]!,
-      definition,
-      placement,
-      mirrored,
-      centerX,
-      centerZ,
-      clientGroundHeight,
-    );
-    const c = transformModelVertex(
-      model,
-      model.faceC[face]!,
-      definition,
-      placement,
-      mirrored,
-      centerX,
-      centerZ,
-      clientGroundHeight,
-    );
+    const a = transformVertex(model.faceA[face]!);
+    const b = transformVertex(model.faceB[face]!);
+    const c = transformVertex(model.faceC[face]!);
 
-    const base = modelColor(
-      model.faceColors[face]!,
-      model.faceTextures[face]!,
-    );
+    let faceColor = model.faceColors[face]!;
+    for (let i = 0; i < definition.recolorFrom.length; i += 1) {
+      if (faceColor === definition.recolorFrom[i]) {
+        faceColor = definition.recolorTo[i] ?? faceColor;
+        break;
+      }
+    }
+
+    let texture = model.faceTextures[face]!;
+    for (let i = 0; i < definition.retextureFrom.length; i += 1) {
+      if (texture === definition.retextureFrom[i]) {
+        texture = definition.retextureTo[i] ?? texture;
+        break;
+      }
+    }
+
+    const base = modelColor(faceColor, texture);
     const shaded = shadeByTriangleNormal(base, a, b, c);
-    builder.pushTriangle(a, b, c, shaded);
+    const textureUvs = texture >= 0
+      ? resolveType0FaceTextureUvs(model, face, transformVertex)
+      : null;
+    builder.pushTriangle(
+      a,
+      b,
+      c,
+      shaded,
+      textureUvs ? texture : -1,
+      textureUvs,
+    );
     triangles += 1;
   }
 
@@ -1058,6 +1068,8 @@ interface Vec3 {
 class MeshBuilder {
   private readonly positions: number[] = [];
   private readonly colors: number[] = [];
+  private readonly textureCoords: number[] = [];
+  private readonly textureIds: number[] = [];
   private mutableBounds: MutableBounds | null = null;
 
   get bounds(): SceneBounds | null {
@@ -1080,27 +1092,44 @@ class MeshBuilder {
     b: Vec3,
     c: Vec3,
     color: Rgb,
+    textureId = -1,
+    textureUvs:
+      | readonly [
+          { readonly u: number; readonly v: number },
+          { readonly u: number; readonly v: number },
+          { readonly u: number; readonly v: number },
+        ]
+      | null = null,
   ): void {
-    this.pushVertex(a, color);
-    this.pushVertex(b, color);
-    this.pushVertex(c, color);
+    this.pushVertex(a, color, textureId, textureUvs?.[0]);
+    this.pushVertex(b, color, textureId, textureUvs?.[1]);
+    this.pushVertex(c, color, textureId, textureUvs?.[2]);
   }
 
   finish(): SceneMesh {
     return {
       positions: Float32Array.from(this.positions),
       colors: Uint8Array.from(this.colors),
+      textureCoords: Float32Array.from(this.textureCoords),
+      textureIds: Int32Array.from(this.textureIds),
       vertexCount: this.positions.length / 3,
     };
   }
 
-  private pushVertex(vertex: Vec3, color: Rgb): void {
+  private pushVertex(
+    vertex: Vec3,
+    color: Rgb,
+    textureId: number,
+    textureUv?: { readonly u: number; readonly v: number },
+  ): void {
     this.positions.push(vertex.x, vertex.y, vertex.z);
     this.colors.push(
       clamp(Math.round(color.r), 0, 255),
       clamp(Math.round(color.g), 0, 255),
       clamp(Math.round(color.b), 0, 255),
     );
+    this.textureCoords.push(textureUv?.u ?? 0, textureUv?.v ?? 0);
+    this.textureIds.push(textureId);
 
     if (!this.mutableBounds) {
       this.mutableBounds = {
