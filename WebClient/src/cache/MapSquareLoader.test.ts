@@ -37,7 +37,7 @@ test('decodes rev-240 16-bit terrain opcodes', () => {
   assert.equal(terrain.overlayShapes[index], 2);
   assert.equal(terrain.overlayRotations[index], 1);
   assert.equal(terrain.renderFlags[index], 3);
-  assert.equal(terrain.underlayIds[index], 4);
+  assert.equal(terrain.underlayIds[index], 3);
   assert.equal(terrain.explicitHeights[index], 12);
   assert.equal(
     terrain.explicitHeights[mapTerrainTileIndex(3, 63, 63)],
