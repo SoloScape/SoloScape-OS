@@ -129,14 +129,21 @@ test('emits cache texture ids and type-0 UVs for textured loc faces', () => {
       angle: 0,
     },
   ]);
-  const assets = buildAssets();
-  const model = assets.models.get(100)!;
-  model.faceTextures[0] = 7;
-  model.faceTextureCoords[0] = 0;
-  model.textureFaceA = Uint16Array.from([0]);
-  model.textureFaceB = Uint16Array.from([1]);
-  model.textureFaceC = Uint16Array.from([2]);
-  model.textureRenderTypes = Int8Array.from([0]);
+  const baseAssets = buildAssets();
+  const baseModel = baseAssets.models.get(100)!;
+  const model: DecodedModelGeometry = {
+    ...baseModel,
+    faceTextures: Int32Array.from([7]),
+    faceTextureCoords: Int32Array.from([0]),
+    textureFaceA: Uint16Array.from([0]),
+    textureFaceB: Uint16Array.from([1]),
+    textureFaceC: Uint16Array.from([2]),
+    textureRenderTypes: Int8Array.from([0]),
+  };
+  const assets: LoadedSceneAssets = {
+    ...baseAssets,
+    models: new Map([[100, model]]),
+  };
 
   const rebuild: NormalRegionRebuild = {
     kind: 'normal',
