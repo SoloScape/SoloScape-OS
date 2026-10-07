@@ -249,7 +249,10 @@ export function tileToFine(tile: number): number {
 }
 
 export function jagexYawToRadians(yaw: number): number {
-  return (
+  // Jagex yaw is clockwise in game X/Z space. Scene Z is reflected to keep
+  // WebGL's +Y-up world right-handed, so the equivalent WebGL rotation uses
+  // the opposite signed angle.
+  return -(
     (yaw & (JAGEX_YAW_UNITS - 1)) *
     (Math.PI * 2 / JAGEX_YAW_UNITS)
   );
