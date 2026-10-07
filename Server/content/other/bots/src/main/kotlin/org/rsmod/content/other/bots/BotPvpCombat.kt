@@ -16,6 +16,8 @@ import org.rsmod.game.entity.Player
 import org.rsmod.game.interact.InteractionPlayerOp
 import org.rsmod.game.stat.PlayerSkillXPTable
 import org.rsmod.map.CoordGrid
+import org.rsmod.routefinder.RouteFinding
+import org.rsmod.routefinder.collision.CollisionFlagMap
 
 @Singleton
 class BotPvpCombat @Inject constructor(
@@ -24,16 +26,48 @@ class BotPvpCombat @Inject constructor(
     private val teams: BotMinigames,
     private val areas: AreaChecker,
     private val events: EventBus,
+    collision: CollisionFlagMap,
 ) {
     private val states = LinkedHashMap<Player, BotPvpState>()
     private val random = Random.Default
+    private val routeFinding = RouteFinding(collision)
 
-    fun spawnPoint(hotspot: BotPvpHotspot): CoordGrid {
-        repeat(24) {
+    /**
+     * Pick a tile that is both inside the Wilderness and genuinely pathable from the hotspot's
+     * known-good anchor. This prevents synthetic players from being created on islands, inside
+     * scenery, or behind collision that they can never escape.
+     */
+    fun spawnPoint(hotspot: BotPvpHotspot): CoordGrid =
+        reachablePoint(hotspot.anchor, hotspot, maxDistance = 58, attempts = 96)
+            ?: hotspot.anchor
+
+    private fun reachableRoamPoint(source: CoordGrid, hotspot: BotPvpHotspot): CoordGrid =
+        reachablePoint(source, hotspot, maxDistance = 54, attempts = 64)
+            ?: hotspot.anchor
+
+    private fun reachablePoint(
+        source: CoordGrid,
+        hotspot: BotPvpHotspot,
+        maxDistance: Int,
+        attempts: Int,
+    ): CoordGrid? {
+        repeat(attempts) {
             val candidate = hotspot.roam(random)
-            if (candidate.wildernessLevel(areas) > 0) return candidate
+            if (candidate.wildernessLevel(areas) <= 0) return@repeat
+            if (source.level != candidate.level ||
+                source.chebyshevDistance(candidate) > maxDistance
+            ) return@repeat
+            val route = routeFinding.findRoute(
+                level = source.level,
+                srcX = source.x,
+                srcZ = source.z,
+                destX = candidate.x,
+                destZ = candidate.z,
+                moveNear = false,
+            )
+            if (route.success) return candidate
         }
-        return hotspot.spawn(random)
+        return null
     }
 
     fun register(
@@ -84,6 +118,12 @@ class BotPvpCombat @Inject constructor(
     } ?: ""
 
     fun riskTier(player: Player): BotPvpRiskTier? = states[player]?.risk?.tier
+
+    fun recoverStuck(player: Player, hotspot: BotPvpHotspot): Boolean {
+        if (player.isInCombat() || player.isDelayed || player.isAccessProtected) return false
+        states[player]?.let { disengage(player, it) }
+        return native.relocate(player, spawnPoint(hotspot))
+    }
 
     fun canUseHotspot(player: Player, hotspotId: String): Boolean = states[player]?.let { state ->
         BotPvpHotspots.get(hotspotId)?.allowedProfiles?.contains(state.profile.id) == true &&
@@ -203,7 +243,7 @@ class BotPvpCombat @Inject constructor(
         if (target == null) {
             native.clearPrayers(player)
             if (cycle >= state.nextMove && !player.frozen && player.routeRequest == null) {
-                val dest = roamDestination(state, patrol)
+                val dest = roamDestination(player, state, patrol)
                 walkTowards(player, dest)
                 state.nextMove = cycle + 5
             }
@@ -366,13 +406,17 @@ class BotPvpCombat @Inject constructor(
         return "fighting ${target.displayName} (${state.style})"
     }
 
-    private fun roamDestination(state: BotPvpState, patrol: CoordGrid): CoordGrid {
+    private fun roamDestination(
+        player: Player,
+        state: BotPvpState,
+        patrol: CoordGrid,
+    ): CoordGrid {
         val hotspot = BotPvpHotspots.get(state.hotspotId) ?: return CoordGrid(
             patrol.x + random.nextInt(-7, 8),
             patrol.z + random.nextInt(-7, 8),
             patrol.level,
         )
-        return spawnPoint(hotspot)
+        return reachableRoamPoint(player.coords, hotspot)
     }
 
     private fun retreat(player: Player, state: BotPvpState, cycle: Int): String {
