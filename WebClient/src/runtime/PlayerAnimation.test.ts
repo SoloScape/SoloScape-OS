@@ -66,6 +66,7 @@ test('applies classic group translation in raw model coordinates', () => {
 
   assert.deepEqual(Array.from(output), [
     1, -2, 3,
-    14, -25, 36,
+    // Classic frame +Z is Jagex/world +Z, which maps to scene -Z.
+    14, -25, -24,
   ]);
 });
