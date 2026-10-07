@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Rev240PlayerInfoDecoder } from './PlayerInfoDecoder';
 import type { PlayerInfoInitBlock } from './RegionRebuildDecoder';
+import { tileToFine } from '../runtime/PlayerMovement';
 
 test('PLAYER_INFO moves the initialized local player by one tile', () => {
   const decoder = new Rev240PlayerInfoDecoder(1);
@@ -25,6 +26,76 @@ test('PLAYER_INFO moves the initialized local player by one tile', () => {
     z: 3200,
   });
   assert.equal(update.localPlayerAppearanceChanged, false);
+
+  // PLAYER_INFO advances the authoritative tile immediately, but rendering
+  // remains at the old fine-coordinate position until the 20ms client tick.
+  assert.deepEqual(
+    decoder.getLocalPlayerRenderState(1),
+    {
+      level: 0,
+      fineX: tileToFine(3200),
+      fineZ: tileToFine(3200),
+      yaw: 0,
+    },
+  );
+
+  decoder.tickMovement();
+  const moved = decoder.getLocalPlayerRenderState(1);
+  assert.equal(moved?.fineX, tileToFine(3200) + 2);
+  assert.equal(moved?.fineZ, tileToFine(3200));
+  assert.equal(moved?.yaw, 2016);
+});
+
+test('PLAYER_INFO two-tile movement enqueues a run waypoint', () => {
+  const decoder = new Rev240PlayerInfoDecoder(1);
+  decoder.initialize(initBlock(1, 0, 3200, 3200));
+
+  const highPass = new BitWriter();
+  highPass.writeBits(1, 1); // active
+  highPass.writeBits(1, 0); // no extended info
+  highPass.writeBits(2, 2); // two-tile movement / run
+  highPass.writeBits(4, 8); // east by two tiles
+
+  const update = decoder.decode(
+    concat(highPass.finish(), allLowResolutionPlayersIdle()),
+  );
+  assert.deepEqual(update.localPlayer.coord, {
+    level: 0,
+    x: 3202,
+    z: 3200,
+  });
+
+  decoder.tickMovement();
+  const moved = decoder.getLocalPlayerRenderState(1);
+  // Turning walk step 2, doubled for a run waypoint.
+  assert.equal(moved?.fineX, tileToFine(3200) + 4);
+  assert.equal(moved?.fineZ, tileToFine(3200));
+});
+
+test('PLAYER_INFO teleport movement snaps fine coordinates', () => {
+  const decoder = new Rev240PlayerInfoDecoder(1);
+  decoder.initialize(initBlock(1, 0, 3200, 3200));
+
+  const highPass = new BitWriter();
+  highPass.writeBits(1, 1); // active
+  highPass.writeBits(1, 0); // no extended info
+  highPass.writeBits(2, 3); // teleport
+  highPass.writeBits(1, 0); // 12-bit relative teleport
+  highPass.writeBits(12, 4 << 5); // +4 x, +0 z
+
+  decoder.decode(
+    concat(highPass.finish(), allLowResolutionPlayersIdle()),
+  );
+
+  assert.deepEqual(
+    decoder.getLocalPlayerRenderState(1),
+    {
+      level: 0,
+      fineX: tileToFine(3204),
+      fineZ: tileToFine(3200),
+      yaw: 0,
+    },
+  );
 });
 
 test('PLAYER_INFO decodes the local appearance block', () => {
