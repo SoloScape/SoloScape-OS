@@ -1532,9 +1532,9 @@ function packedHslColor(value: number): Rgb {
       ? (saturation + 1) * lightness
       : saturation + lightness - saturation * lightness;
     const p = lightness * 2 - q;
-    r = hueToRgb(p, q, hue + 1 / 3);
-    g = hueToRgb(p, q, hue);
-    b = hueToRgb(p, q, hue - 1 / 3);
+    r = paletteHueToRgb(p, q, hue + 1 / 3);
+    g = paletteHueToRgb(p, q, hue);
+    b = paletteHueToRgb(p, q, hue - 1 / 3);
   }
 
   return {
@@ -1544,7 +1544,7 @@ function packedHslColor(value: number): Rgb {
   };
 }
 
-function hueToRgb(p: number, q: number, source: number): number {
+function paletteHueToRgb(p: number, q: number, source: number): number {
   let t = source;
   if (t < 0) t += 1;
   if (t > 1) t -= 1;
