@@ -202,10 +202,20 @@ export class WebGlSceneRenderer {
   }
 
   render(scene: AssembledScene): void {
+    // Scene uploads are intentionally decoupled from presentation. Terrain and
+    // static loc buffers stay resident until the next rebuild; requestAnimationFrame
+    // calls renderFrame() without rebuilding or re-uploading them.
     this.scene = scene;
     this.deleteSceneGpuMeshes();
     this.terrainMesh = this.uploadMesh(scene.terrain);
     this.locationMesh = this.uploadMesh(scene.locations);
+  }
+
+  renderFrame(interpolationAlpha = 0): void {
+    // Reserved for the next movement/camera milestone. The runtime already
+    // supplies the fraction between fixed 20ms simulation ticks so dynamic
+    // transforms can interpolate without changing the game tick rate.
+    void interpolationAlpha;
     this.draw();
   }
 
@@ -215,14 +225,12 @@ export class WebGlSceneRenderer {
     this.localPlayerPosition = position
       ? { ...position }
       : null;
-    this.draw();
   }
 
   setLocalPlayerMesh(mesh: SceneMesh | null): void {
     this.playerMeshSource = mesh;
     this.deleteGpuMesh(this.playerMesh);
     this.playerMesh = mesh ? this.uploadMesh(mesh) : null;
-    this.draw();
   }
 
   clear(): void {
@@ -246,7 +254,9 @@ export class WebGlSceneRenderer {
   }
 
   private readonly handleResize = (): void => {
-    this.draw();
+    // A live game is redrawn by requestAnimationFrame. Keep this immediate
+    // resize draw for the brief hand-off before the runtime enters game mode.
+    this.renderFrame();
   };
 
   private draw(): void {
@@ -472,7 +482,6 @@ export class WebGlSceneRenderer {
     this.playerMesh = this.playerMeshSource
       ? this.uploadMesh(this.playerMeshSource)
       : null;
-    this.draw();
   }
 
   private resizeDrawingBuffer(): void {
