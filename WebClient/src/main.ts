@@ -241,10 +241,10 @@ gameLogin.onGamePacket = (packet) => {
           return;
         }
         const message = error instanceof Error ? error.message : String(error);
-        appendLog('Region map load failed: ' + message);
+        appendLog('Static scene asset load failed: ' + message);
         drawClientStatus(
-          'Region map load failed',
-          'See the transport log for map-cache details',
+          'Static scene asset load failed',
+          'See the transport log for cache/model details',
         );
       });
 
