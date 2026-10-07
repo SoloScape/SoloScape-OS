@@ -4,8 +4,8 @@ This directory contains the browser-native SoloScape client work targeting
 Safari on iPhone/iPad and modern desktop browsers.
 
 The current branch implements browser transport, a validated/bounded JS5 cache
-client, and the rev-240 game-login handshake for OSRS protocol revision 240 /
-client 240.2.
+client, the rev-240 game-login handshake, and rev-240 server game-packet framing
+for OSRS protocol revision 240 / client 240.2.
 
 ## Current game-login flow
 
@@ -23,7 +23,10 @@ Game login uses a second WebSocket/TCP connection after JS5 bootstrap:
       -> game login opcode 16
       -> initialize client/server ISAAC streams
       -> decode login response
-      -> preserve trailing bytes as the M3 game stream
+      -> retain the server ISAAC state
+      -> decode ISAAC-encrypted smart 1-or-2-byte server opcodes
+      -> read fixed / VAR_BYTE / VAR_SHORT packet lengths
+      -> emit framed server game packets
 
 The gateway reads the public RSA key from:
 
@@ -36,7 +39,8 @@ Override key discovery with `RSA_PUBLIC_KEY_FILE`, or provide
 
 The rev-240 success response advertises a size of 37, while the login metadata
 encoder actually emits 34 bytes. The browser consumes only those 34 metadata
-bytes and leaves subsequent bytes untouched for game-packet framing.
+bytes and passes any subsequent bytes directly into the game-packet framer using
+the already-advanced server ISAAC stream; the cipher is never reseeded.
 
 Password values are never stored in localStorage. The username may be retained
 for convenience; the password input is cleared after submission.
@@ -294,8 +298,9 @@ From WebClient:
 Tests cover stream fragmentation/continuations, master-index parsing,
 container decoding, reference-table parsing, CRC/version validation, version
 trailer handling, scheduler concurrency/deduplication, timeout retries,
-cancellation, single/multi-stripe group unpacking, sparse file ids and typed
-startup varbit decoding.
+cancellation, single/multi-stripe group unpacking, sparse file ids, typed
+startup varbit decoding, game-login crypto/framing, and byte-at-a-time
+rev-240 server packet fragmentation.
 
 ## M1 status
 
@@ -327,7 +332,7 @@ Implemented:
 - ISAAC client/server stream initialization
 - rev-240 desktop cache CRC transform/order
 - login response decoding, including the 37-declared/34-byte success quirk
-- preservation of trailing game-stream bytes for M3
+- preservation and direct handoff of trailing game-stream bytes to M3 framing
 - browser username/password login controls
 - gateway RSA public-key handoff
 
@@ -336,9 +341,23 @@ Known follow-ups outside the normal password-login path:
 - proof-of-work challenges are detected and reported but not solved yet
 - authenticator-required responses are decoded/reported; OTP entry is not wired yet
 
+## M3 packet-framing status
+
+Implemented:
+
+- rev-240 desktop server packet registry from rsprot packet ids/sizes
+- ISAAC-encrypted smart 1-or-2-byte server opcode decoding
+- fixed-size, VAR_BYTE, and VAR_SHORT packet framing
+- arbitrary WebSocket/byte-stream fragmentation handling
+- direct framing of bytes buffered behind the login-success metadata
+- framed packet logging/debug callback for the browser client
+
+The packet-framing vectors cover fixed, VAR_BYTE, VAR_SHORT, two-byte smart
+opcodes, and one-byte-at-a-time input while preserving ISAAC continuity.
+
 Next:
 
-- game packet framing / region rebuild
+- decode REBUILD_NORMAL_V2 / REBUILD_REGION_V2 and begin region loading
 
 ## Reference format
 
