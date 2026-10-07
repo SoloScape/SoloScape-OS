@@ -10,6 +10,10 @@ class AgilityPyramidHazardDataTest {
     fun `all five rolling stone footprints are present`() {
         assertEquals(5, AgilityPyramidHazardData.stoneTraps.size)
         assertTrue(AgilityPyramidHazardData.stoneTraps.all { it.tiles.size == 4 })
+        assertEquals(
+            (1..5).map { "varbit.agility_pyramid_tilt_$it" },
+            AgilityPyramidHazardData.stoneTraps.map { it.tiltVarbit },
+        )
         assertTrue(
             AgilityPyramidHazardData.stoneTrapAt(CoordGrid(3368, 2850, 2)) != null,
         )

@@ -5,12 +5,14 @@ import dev.openrune.rscm.RSCMType
 import dev.openrune.types.MoveRestrict
 import jakarta.inject.Inject
 import java.util.IdentityHashMap
+import java.util.WeakHashMap
 import kotlin.math.abs
 import kotlin.math.sign
 import org.rsmod.api.config.Constants
 import org.rsmod.api.player.hook.TeleportType
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.stat.agilityLvl
+import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.script.onEvent
 import org.rsmod.api.script.onNpcTimer
 import org.rsmod.api.script.onPlayerCoordsChanged
@@ -26,7 +28,10 @@ import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 import skillSuccess
 
-internal data class PyramidStoneTrap(val tiles: Set<CoordGrid>)
+internal data class PyramidStoneTrap(
+    val tiltVarbit: String,
+    val tiles: Set<CoordGrid>,
+)
 
 internal enum class PyramidBlockAxis {
     East,
@@ -66,30 +71,35 @@ internal object AgilityPyramidHazardData {
     val stoneTraps =
         listOf(
             trap(
+                "varbit.agility_pyramid_tilt_1",
                 point(3354, 2841, 1),
                 point(3355, 2841, 1),
                 point(3354, 2842, 1),
                 point(3355, 2842, 1),
             ),
             trap(
+                "varbit.agility_pyramid_tilt_2",
                 point(3374, 2835, 1),
                 point(3375, 2835, 1),
                 point(3374, 2836, 1),
                 point(3375, 2836, 1),
             ),
             trap(
+                "varbit.agility_pyramid_tilt_3",
                 point(3368, 2849, 2),
                 point(3369, 2849, 2),
                 point(3368, 2850, 2),
                 point(3369, 2850, 2),
             ),
             trap(
+                "varbit.agility_pyramid_tilt_4",
                 point(3048, 4699, 2),
                 point(3049, 4699, 2),
                 point(3048, 4700, 2),
                 point(3049, 4700, 2),
             ),
             trap(
+                "varbit.agility_pyramid_tilt_5",
                 point(3044, 4699, 3),
                 point(3045, 4699, 3),
                 point(3044, 4700, 3),
@@ -114,7 +124,8 @@ internal object AgilityPyramidHazardData {
     fun stoneTrapAt(coords: CoordGrid): PyramidStoneTrap? =
         stoneTraps.firstOrNull { coords in it.tiles }
 
-    private fun trap(vararg tiles: CoordGrid) = PyramidStoneTrap(tiles.toSet())
+    private fun trap(tiltVarbit: String, vararg tiles: CoordGrid) =
+        PyramidStoneTrap(tiltVarbit, tiles.toSet())
 
     private fun point(x: Int, z: Int, level: Int) = CoordGrid(x, z, level)
 }
@@ -138,7 +149,7 @@ constructor(
     private val xpMods: XpModifiers,
 ) : PluginScript() {
     private val blockStates = IdentityHashMap<Npc, MovingBlockState>()
-    private val pushCooldowns = IdentityHashMap<Player, Int>()
+    private val pushCooldowns = WeakHashMap<Player, Int>()
 
     override fun ScriptContext.startup() {
         val blocksById =
@@ -208,6 +219,7 @@ constructor(
             return
         }
 
+        val trap = AgilityPyramidHazardData.stoneTrapAt(args.trigger) ?: return
         val exit =
             CoordGrid(
                 args.trigger.x + dx * STONE_ROLL_DISTANCE,
@@ -219,6 +231,7 @@ constructor(
             telejump(args.trigger, TeleportType.Exempt)
         }
         faceSquare(exit)
+        VarPlayerIntMapSetter.set(player, trap.tiltVarbit, 1)
 
         val failed =
             player.agilityLvl < NO_FAIL_LEVEL &&
@@ -226,6 +239,7 @@ constructor(
         if (failed) {
             anim(STONE_FAIL_SEQ)
             delay(1)
+            VarPlayerIntMapSetter.set(player, trap.tiltVarbit, 0)
             telejump(AgilityPyramidObstacleData.dropOneLayer(args.trigger), TeleportType.Exempt)
             resetAnim()
             queueHit(delay = 0, type = HitType.Typeless, damage = STONE_FAIL_DAMAGE)
@@ -243,6 +257,7 @@ constructor(
             TeleportType.Exempt,
         )
         delay(STONE_ROLL_TICKS)
+        VarPlayerIntMapSetter.set(player, trap.tiltVarbit, 0)
         if (coords != exit) {
             teleport(exit, TeleportType.Exempt)
         }
