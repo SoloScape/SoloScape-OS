@@ -38,8 +38,10 @@ Game login uses a second WebSocket/TCP connection after JS5 bootstrap:
       -> derive opcode-0 procedural terrain heights from absolute tiles
       -> assemble the 13x13-zone scene (including rotated instance chunks)
       -> transform loc models by shape/orientation/scale/offset
-      -> upload terrain + loc triangle buffers
-      -> draw the first static scene with WebGL2
+      -> upload terrain + loc triangle buffers once per rebuild
+      -> enter the browser runtime
+      -> advance client state on fixed 20ms simulation ticks
+      -> draw resident GPU meshes with requestAnimationFrame
 
 The gateway reads the public RSA key from:
 
@@ -148,6 +150,29 @@ definitions currently use the first sprite layer (matching the current
 Olden-Shire texture path). Animated texture scrolling, exact underlay HSL
 window-averaging, animated entities, camera/input controls, and occlusion remain
 later fidelity/playability milestones.
+
+## Browser game runtime
+
+Gameplay presentation is no longer event-triggered/static. The browser now
+splits simulation from rendering in the same shape as the original client:
+
+    server/game state
+      -> fixed 20ms client tick (50 Hz)
+      -> update dynamic player/camera state
+      -> requestAnimationFrame (display refresh rate)
+      -> recompute camera + entity model matrices
+      -> draw already-resident terrain / loc / player GPU buffers
+
+`BrowserGameLoop` owns a fixed-step accumulator and bounds catch-up work after
+an unusually slow frame. Safari/iOS visibility changes reset wall-clock
+accumulation so returning from a suspended tab does not replay seconds of stale
+simulation ticks.
+
+`WebGlSceneRenderer.render(scene)` is now an upload/rebuild boundary rather
+than the frame loop: terrain and static loc buffers remain resident until the
+next region rebuild. `renderFrame(alpha)` performs presentation only. The
+`alpha` value is already supplied for the next milestone, where fine-coordinate
+player movement and camera state will interpolate smoothly between 20ms ticks.
 
 ## Request scheduler
 
@@ -471,7 +496,8 @@ Implemented:
 - static terrain/model vertex buffers with scene-local rebasing
 - cache-backed floor underlay/overlay materials and archive-8/9 texture layers
 - classic shaped terrain overlays plus model type-0 texture UV mapping
-- first one-frame WebGL2 terrain + loc render
+- persistent WebGL2 terrain + loc GPU buffers
+- fixed 20ms browser simulation loop + requestAnimationFrame presentation
 - `window.soloscapeSceneMaps` / `window.soloscapeSceneAssets` / `window.soloscapeSceneMaterials` / `window.soloscapeScene` debug state
 
 Revision 240's rebuild packets do not append XTEA key blocks; the browser follows
@@ -483,8 +509,10 @@ Next:
 
 - retain/render modern model texture transform metadata (types 1..3)
 - add texture animation and the original terrain HSL/light averaging pass
+- add fine-coordinate route movement + render interpolation for the local player
+- port orbit-camera yaw/pitch/zoom input and smoothing
 - decode NPC update streams and continue actor animation/skinning work
-- add camera/input controls and occlusion
+- add occlusion
 
 ## Reference format
 
