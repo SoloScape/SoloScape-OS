@@ -11,6 +11,10 @@ import {
   type LoginSuccess,
 } from './GameLoginProtocol';
 import { IsaacRandom } from './IsaacRandom';
+import {
+  GamePacketFramer,
+  type ServerGamePacket,
+} from './GamePacketFramer';
 
 export type GameLoginState =
   | 'idle'
@@ -119,6 +123,7 @@ export class GameLoginClient {
   private gatewayConfig: GatewayConfigMessage | null = null;
   private serverIsaac: IsaacRandom | null = null;
   private clientIsaac: IsaacRandom | null = null;
+  private gameFramer: GamePacketFramer | null = null;
   private pendingLength = 0;
   private rsaConfigWaiters: Array<(config: GatewayConfigMessage) => void> = [];
 
@@ -130,6 +135,7 @@ export class GameLoginClient {
   onLoginSuccess: ((success: LoginSuccess) => void) | null = null;
   onLoginFailure: ((code: number, message: string) => void) | null = null;
   onGameData: ((data: Uint8Array) => void) | null = null;
+  onGamePacket: ((packet: ServerGamePacket) => void) | null = null;
 
   constructor(private readonly transport: WebSocketTransport) {
     this.transport.onData = (buffer) => {
@@ -239,8 +245,10 @@ export class GameLoginClient {
 
   private handleBytes(bytes: Uint8Array): void {
     if (this.phase === 'game') {
-      if (bytes.length !== 0) {
-        this.onGameData?.(bytes.slice());
+      try {
+        this.forwardGameData(bytes);
+      } catch (error) {
+        this.fail(error);
       }
       return;
     }
@@ -336,6 +344,7 @@ export class GameLoginClient {
           const payload = this.queue.readBytes(this.pendingLength);
           const success = decodeLoginSuccess(payload, this.serverIsaac);
           this.loginSuccess = success;
+          this.gameFramer = new GamePacketFramer(this.serverIsaac);
           this.phase = 'game';
           this.setState('game');
           this.onLog?.(
@@ -344,7 +353,7 @@ export class GameLoginClient {
           );
           this.onLoginSuccess?.(success);
           if (this.queue.available !== 0) {
-            this.onGameData?.(this.queue.readBytes(this.queue.available));
+            this.forwardGameData(this.queue.readBytes(this.queue.available));
           }
           return;
         }
@@ -479,6 +488,25 @@ export class GameLoginClient {
     });
   }
 
+  private forwardGameData(bytes: Uint8Array): void {
+    if (bytes.length === 0) {
+      return;
+    }
+    if (!this.gameFramer) {
+      throw new Error('Game packet framer is unavailable after login success.');
+    }
+
+    const packets = this.gameFramer.append(bytes);
+    this.onGameData?.(bytes.slice());
+    for (const packet of packets) {
+      this.onLog?.(
+        'RX game packet ' + packet.opcode + ' ' + packet.name +
+        ' payload=' + packet.payload.length + ' bytes.',
+      );
+      this.onGamePacket?.(packet);
+    }
+  }
+
   private rejectLogin(code: number, detail?: string): void {
     const base = LOGIN_RESPONSE_NAMES[code] ?? 'unknown login response';
     const message = detail ? base + ': ' + detail : base;
@@ -504,6 +532,7 @@ export class GameLoginClient {
     this.loginSuccess = null;
     this.clientIsaac = null;
     this.serverIsaac = null;
+    this.gameFramer = null;
     this.pendingLength = 0;
     this.gatewayConfig = null;
     this.options = null;
