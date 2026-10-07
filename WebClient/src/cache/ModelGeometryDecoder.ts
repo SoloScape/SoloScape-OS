@@ -553,7 +553,7 @@ function decodeCombinedFaces(
       const flags = combined.u8();
       model.faceRenderTypes[index] = (flags & 1) !== 0 ? 1 : 0;
       if ((flags & 2) !== 0) {
-        model.faceTextures[index] = model.faceColors[index]!;
+        model.faceTextures[index] = signed16(model.faceColors[index]!);
         model.faceColors[index] = 127;
       }
     }
@@ -656,6 +656,10 @@ function decodeAllType0TextureTriangles(
     model.textureFaceB[index] = reader.u16();
     model.textureFaceC[index] = reader.u16();
   }
+}
+
+function signed16(value: number): number {
+  return value > 0x7fff ? value - 0x10000 : value;
 }
 
 function filledInt32(length: number, value: number): Int32Array {
