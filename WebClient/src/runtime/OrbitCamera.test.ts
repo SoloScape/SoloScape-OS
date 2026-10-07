@@ -85,6 +85,17 @@ test('render camera interpolates orbit state and cam-follow distance', () => {
   );
 });
 
+test('camera yaw keeps Jagex north/south orientation after scene Z reflection', () => {
+  const camera = new OrbitCamera();
+  camera.reset(0, 0, 0);
+  let render = camera.renderState(1, 0);
+  assert.ok(render.eyeZ > render.targetZ);
+
+  camera.reset(0, 0, 1024);
+  render = camera.renderState(1, 0);
+  assert.ok(render.eyeZ < render.targetZ);
+});
+
 test('render yaw keeps fractional interpolation between camera ticks', () => {
   const camera = new OrbitCamera();
   camera.reset(0, 0, 0);
