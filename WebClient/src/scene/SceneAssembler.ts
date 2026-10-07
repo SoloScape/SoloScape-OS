@@ -1797,21 +1797,48 @@ class MeshBuilder {
         ]
       | null = null,
   ): void {
-    this.pushTriangle(
+    this.pushQuadColors(
       a,
       b,
       c,
-      color,
+      d,
+      [color, color, color, color],
+      textureId,
+      textureUvs,
+    );
+  }
+
+  pushQuadColors(
+    a: Vec3,
+    b: Vec3,
+    c: Vec3,
+    d: Vec3,
+    colors: readonly [Rgb, Rgb, Rgb, Rgb],
+    textureId = -1,
+    textureUvs:
+      | readonly [
+          { readonly u: number; readonly v: number },
+          { readonly u: number; readonly v: number },
+          { readonly u: number; readonly v: number },
+          { readonly u: number; readonly v: number },
+        ]
+      | null = null,
+  ): void {
+    this.pushTriangleColors(
+      a,
+      b,
+      c,
+      [colors[0], colors[1], colors[2]],
       textureId,
       textureUvs
         ? [textureUvs[0], textureUvs[1], textureUvs[2]]
         : null,
     );
-    this.pushTriangle(
+    this.pushTriangleColors(
       a,
       c,
       d,
-      color,
+      [colors[0], colors[2], colors[3]],
       textureId,
       textureUvs
         ? [textureUvs[0], textureUvs[2], textureUvs[3]]
@@ -1833,9 +1860,33 @@ class MeshBuilder {
         ]
       | null = null,
   ): void {
-    this.pushVertex(a, color, textureId, textureUvs?.[0]);
-    this.pushVertex(b, color, textureId, textureUvs?.[1]);
-    this.pushVertex(c, color, textureId, textureUvs?.[2]);
+    this.pushTriangleColors(
+      a,
+      b,
+      c,
+      [color, color, color],
+      textureId,
+      textureUvs,
+    );
+  }
+
+  pushTriangleColors(
+    a: Vec3,
+    b: Vec3,
+    c: Vec3,
+    colors: readonly [Rgb, Rgb, Rgb],
+    textureId = -1,
+    textureUvs:
+      | readonly [
+          { readonly u: number; readonly v: number },
+          { readonly u: number; readonly v: number },
+          { readonly u: number; readonly v: number },
+        ]
+      | null = null,
+  ): void {
+    this.pushVertex(a, colors[0], textureId, textureUvs?.[0]);
+    this.pushVertex(b, colors[1], textureId, textureUvs?.[1]);
+    this.pushVertex(c, colors[2], textureId, textureUvs?.[2]);
   }
 
   finish(): SceneMesh {
