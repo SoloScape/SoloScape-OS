@@ -308,8 +308,13 @@ object BotPvpCheck {
         check(BotPvpEquipmentBudget.geTradeableReplacement("Abyssal tentacle") ==
             "Ursine chainmace (u)")
         check(BotPvpEquipmentBudget.sameFallbackFamily("Torva platelegs", "Rune platelegs"))
+        check(BotPvpEquipmentBudget.sameFallbackFamily("Torva platelegs", "Bronze platelegs"))
         check(!BotPvpEquipmentBudget.sameFallbackFamily("Torva platelegs", "Masori chaps"))
         check(BotPvpEquipmentBudget.sameFallbackFamily("Zaryte crossbow", "Rune crossbow"))
+        check(BotPvpEquipmentBudget.sameFallbackFamily("Zaryte crossbow", "Crossbow"))
+        check(BotPvpEquipmentBudget.sameFallbackFamily("Abyssal whip", "Bronze scimitar"))
+        check(BotPvpEquipmentBudget.sameFallbackFamily("Ancient staff", "Staff of fire"))
+        check(BotPvpEquipmentBudget.sameFallbackFamily("Black d'hide body", "Leather body"))
         check(!BotPvpEquipmentBudget.sameFallbackFamily("Zaryte crossbow", "Ghrazi rapier"))
         check(!BotPvpEquipmentBudget.sameFallbackFamily("Avernic treads", "Primordial boots"))
         check(BotPvpRiskGearOverlay.keepsLegacyBaseItem("Rune arrow", stackable = true))
