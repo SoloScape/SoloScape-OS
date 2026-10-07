@@ -236,30 +236,30 @@ object BotPvpHotspots {
             ),
         ),
 
-        // Broad native coverage regions. Bots spawn close to these known-good anchors, then their
-        // seek destinations range across the much larger rectangles so a large population fills
-        // the Wilderness instead of forming obvious piles around a dozen points.
-        roaming("low_west", CoordGrid(2998, 3562), radiusX = 28, radiusZ = 24),
-        roaming("low_center", CoordGrid(3125, 3565), radiusX = 34, radiusZ = 24),
-        roaming("low_east", CoordGrid(3260, 3562), radiusX = 34, radiusZ = 24),
-        roaming("dark_warriors", CoordGrid(3029, 3638), radiusX = 30, radiusZ = 28),
-        roaming("graveyard_shadows", CoordGrid(3165, 3672), radiusX = 30, radiusZ = 28),
-        roaming("eastern_unicorns", CoordGrid(3218, 3678), radiusX = 30, radiusZ = 28),
-        roaming("crazy_archaeologist", CoordGrid(2977, 3702), radiusX = 28, radiusZ = 28),
-        roaming("forgotten_cemetery", CoordGrid(2978, 3760), radiusX = 28, radiusZ = 28),
-        roaming("boneyard", CoordGrid(3255, 3748), radiusX = 30, radiusZ = 28),
-        roaming("black_chins", CoordGrid(3148, 3770), radiusX = 30, radiusZ = 30),
-        roaming("eastern_mid", CoordGrid(3309, 3765), radiusX = 30, radiusZ = 30),
-        roaming("chaos_fanatic", CoordGrid(2979, 3846), radiusX = 28, radiusZ = 26, deep = true),
-        roaming("lava_maze", CoordGrid(3075, 3855), radiusX = 28, radiusZ = 26, deep = true),
-        roaming("red_dragon_isle", CoordGrid(3194, 3858), radiusX = 26, radiusZ = 26, deep = true),
-        roaming("demonic_ruins", CoordGrid(3287, 3883), radiusX = 28, radiusZ = 28, deep = true),
-        roaming("rune_rocks", CoordGrid(3060, 3885), radiusX = 24, radiusZ = 24, deep = true),
-        roaming("fountain_of_rune", CoordGrid(3370, 3890), radiusX = 22, radiusZ = 24, deep = true),
-        roaming("mage_arena", CoordGrid(3102, 3938), radiusX = 26, radiusZ = 24, deep = true),
-        roaming("resource_area", CoordGrid(3185, 3933), radiusX = 26, radiusZ = 24, deep = true),
-        roaming("rogues_castle", CoordGrid(3284, 3946), radiusX = 26, radiusZ = 24, deep = true),
-        roaming("frozen_plateau", CoordGrid(2964, 3944), radiusX = 28, radiusZ = 24, deep = true),
+        // Broad native coverage regions. Candidate tiles now cover much larger Wilderness bands;
+        // BotPvpCombat collision-validates them against a known-good anchor before spawning or
+        // routing a bot there, so wider distribution does not trade off against reachability.
+        roaming("low_west", CoordGrid(2998, 3562), radiusX = 46, radiusZ = 36),
+        roaming("low_center", CoordGrid(3125, 3565), radiusX = 50, radiusZ = 37),
+        roaming("low_east", CoordGrid(3260, 3562), radiusX = 52, radiusZ = 36),
+        roaming("dark_warriors", CoordGrid(3029, 3638), radiusX = 48, radiusZ = 40),
+        roaming("graveyard_shadows", CoordGrid(3165, 3672), radiusX = 50, radiusZ = 42),
+        roaming("eastern_unicorns", CoordGrid(3218, 3678), radiusX = 50, radiusZ = 42),
+        roaming("crazy_archaeologist", CoordGrid(2977, 3702), radiusX = 46, radiusZ = 42),
+        roaming("forgotten_cemetery", CoordGrid(2978, 3760), radiusX = 46, radiusZ = 42),
+        roaming("boneyard", CoordGrid(3255, 3748), radiusX = 50, radiusZ = 42),
+        roaming("black_chins", CoordGrid(3148, 3770), radiusX = 50, radiusZ = 44),
+        roaming("eastern_mid", CoordGrid(3309, 3765), radiusX = 48, radiusZ = 44),
+        roaming("chaos_fanatic", CoordGrid(2979, 3846), radiusX = 46, radiusZ = 40, deep = true),
+        roaming("lava_maze", CoordGrid(3075, 3855), radiusX = 48, radiusZ = 40, deep = true),
+        roaming("red_dragon_isle", CoordGrid(3194, 3858), radiusX = 46, radiusZ = 40, deep = true),
+        roaming("demonic_ruins", CoordGrid(3287, 3883), radiusX = 48, radiusZ = 42, deep = true),
+        roaming("rune_rocks", CoordGrid(3060, 3885), radiusX = 44, radiusZ = 38, deep = true),
+        roaming("fountain_of_rune", CoordGrid(3370, 3890), radiusX = 40, radiusZ = 38, deep = true),
+        roaming("mage_arena", CoordGrid(3102, 3938), radiusX = 46, radiusZ = 36, deep = true),
+        roaming("resource_area", CoordGrid(3185, 3933), radiusX = 46, radiusZ = 36, deep = true),
+        roaming("rogues_castle", CoordGrid(3284, 3946), radiusX = 46, radiusZ = 36, deep = true),
+        roaming("frozen_plateau", CoordGrid(2964, 3944), radiusX = 46, radiusZ = 36, deep = true),
     )
 
     private val byId = all.associateBy { it.id }
