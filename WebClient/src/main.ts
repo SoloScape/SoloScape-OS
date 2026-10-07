@@ -632,12 +632,13 @@ js5.onBootstrapComplete = (index) => {
           loadedTitleAssets.provenance.background +
           '; logo=' + loadedTitleAssets.provenance.logo +
           '; titlebox=' + loadedTitleAssets.provenance.titleBox +
-          '; titlebutton=' + loadedTitleAssets.provenance.titleButton + '.',
+          '; titlebutton=' + loadedTitleAssets.provenance.titleButton +
+          '; runes=' + loadedTitleAssets.provenance.runes + '.',
       );
 
       loginStatus.textContent = 'Cache title screen ready';
       loginMessage = undefined;
-      renderLoginScreen();
+      setLoginField(selectedLoginField);
     })
     .catch((error: unknown) => {
       if (generation !== bootGeneration) {
@@ -688,38 +689,74 @@ connectButton.addEventListener('click', () => {
   void connectJs5();
 });
 
-loginUsername.addEventListener('input', () => {
-  if (titleMode === 'login') {
-    renderLoginScreen();
+loginUsername.addEventListener('focus', () => {
+  if (titleMode !== 'login') {
+    return;
   }
+  selectedLoginField = 'username';
+  renderLoginScreen();
+});
+
+loginPassword.addEventListener('focus', () => {
+  if (titleMode !== 'login') {
+    return;
+  }
+  selectedLoginField = 'password';
+  renderLoginScreen();
+});
+
+loginUsername.addEventListener('input', () => {
+  if (titleMode !== 'login') {
+    return;
+  }
+  selectedLoginField = 'username';
+  loginMessage = undefined;
+  renderLoginScreen();
 });
 
 loginPassword.addEventListener('input', () => {
-  if (titleMode === 'login') {
-    renderLoginScreen();
-  }
-});
-
-window.addEventListener('keydown', (event) => {
-  if (
-    titleMode !== 'login' ||
-    event.isComposing ||
-    event.ctrlKey ||
-    event.metaKey ||
-    event.altKey
-  ) {
+  if (titleMode !== 'login') {
     return;
   }
-
-  if (applyClientLoginKey(event.key)) {
-    event.preventDefault();
-  }
+  selectedLoginField = 'password';
+  loginMessage = undefined;
+  renderLoginScreen();
 });
+
+/*
+ * The desktop client consumes key events globally and routes them through
+ * currentLoginField. Capture-phase handling mirrors that behaviour while the
+ * hidden native inputs remain available for mobile keyboards, IME and paste.
+ */
+document.addEventListener(
+  'keydown',
+  (event) => {
+    if (
+      titleMode !== 'login' ||
+      event.isComposing ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey
+    ) {
+      return;
+    }
+
+    if (applyClientLoginKey(event.key)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  },
+  { capture: true },
+);
 
 clientUiCanvas.addEventListener('pointerdown', (event) => {
   if (!titleRenderer || titleMode !== 'login') {
     return;
   }
+
+  // Keep the pointer's default focus action from stealing focus back from the
+  // hidden native field after setLoginField() opens the keyboard/input bridge.
+  event.preventDefault();
 
   const point = logicalPointerPosition(event);
   const target = titleRenderer.hitTest(point.x, point.y);
@@ -760,6 +797,18 @@ window.setInterval(() => {
     renderLoginScreen();
   }
 }, 500);
+
+function animateTitleFrame(timestampMs: number): void {
+  if (
+    titleRenderer &&
+    titleMode !== 'game' &&
+    !clientUiCanvas.hidden
+  ) {
+    titleRenderer.renderFrame(timestampMs);
+  }
+  window.requestAnimationFrame(animateTitleFrame);
+}
+window.requestAnimationFrame(animateTitleFrame);
 
 type SoloScapeDebugWindow = Window & {
   soloscapeJs5?: Js5Client;
