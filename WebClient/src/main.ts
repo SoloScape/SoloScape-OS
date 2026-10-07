@@ -1,6 +1,9 @@
 import './style.css';
 import { IndexedDbCacheStore } from './cache/IndexedDbCacheStore';
 import { Js5Client } from './cache/Js5Client';
+import {
+  presentJs5Archives,
+} from './cache/Js5MasterIndex';
 import { WebSocketTransport } from './net/WebSocketTransport';
 import {
   OSRS_CLIENT_TARGET,
@@ -96,9 +99,10 @@ js5.onStateChange = (state) => {
 };
 
 js5.onMasterIndex = (index) => {
+  const present = presentJs5Archives(index);
   drawClientStatus(
     'JS5 master index parsed',
-    index.entries.length + ' archives; fetching reference tables',
+    present.length + ' present archives; fetching reference tables',
   );
 };
 
@@ -112,7 +116,8 @@ js5.onArchiveIndex = (_archive, _response, progress) => {
 js5.onBootstrapComplete = (index) => {
   drawClientStatus(
     'JS5 cache index ready',
-    index.entries.length + ' archive reference tables received',
+    presentJs5Archives(index).length +
+      ' present archive reference tables received',
   );
 };
 

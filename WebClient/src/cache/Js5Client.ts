@@ -1,7 +1,9 @@
 import { WebSocketTransport } from '../net/WebSocketTransport';
 import {
   formatCrc,
+  isJs5ArchivePresent,
   parseJs5MasterIndex,
+  presentJs5Archives,
   type Js5MasterIndex,
 } from './Js5MasterIndex';
 import {
@@ -42,6 +44,7 @@ export class Js5Client {
   private readonly decoder = new Js5StreamDecoder();
   private masterIndex: Js5MasterIndex | null = null;
   private pendingArchiveIndices = new Set<number>();
+  private archiveIndexTotal = 0;
 
   state: Js5ClientState = 'idle';
   onStateChange: ((state: Js5ClientState) => void) | null = null;
@@ -88,6 +91,7 @@ export class Js5Client {
     this.decoder.reset();
     this.masterIndex = null;
     this.pendingArchiveIndices.clear();
+    this.archiveIndexTotal = 0;
     this.setState('connecting');
     this.onLog?.('Connecting JS5 socket to ' + url);
 
@@ -124,6 +128,7 @@ export class Js5Client {
     this.decoder.reset();
     this.masterIndex = null;
     this.pendingArchiveIndices.clear();
+    this.archiveIndexTotal = 0;
     this.setState('closed');
   }
 
@@ -199,34 +204,39 @@ export class Js5Client {
     }
 
     const index = parseJs5MasterIndex(payload);
+    const presentEntries = presentJs5Archives(index);
+
     this.masterIndex = index;
     this.pendingArchiveIndices =
-      new Set(index.entries.map((entry) => entry.archive));
+      new Set(presentEntries.map((entry) => entry.archive));
+    this.archiveIndexTotal = presentEntries.length;
 
     this.onLog?.(
       'Parsed JS5 master index: ' + index.entries.length +
-      ' archives from ' + payload.length + ' bytes.',
+      ' archive slots, ' + presentEntries.length +
+      ' present, from ' + payload.length + ' bytes.',
     );
 
     for (const entry of index.entries) {
       this.onLog?.(
         'Archive ' + entry.archive +
         ' crc=' + formatCrc(entry.crc) +
-        ' version=' + entry.version,
+        ' version=' + entry.version +
+        (isJs5ArchivePresent(entry) ? '' : ' (empty slot; skipped)'),
       );
     }
 
     this.persistMasterIndex(index);
     this.onMasterIndex?.(index, response);
 
-    if (index.entries.length === 0) {
+    if (presentEntries.length === 0) {
       this.finishBootstrap(index);
       return;
     }
 
     this.setState('archive-indices');
 
-    for (const entry of index.entries) {
+    for (const entry of presentEntries) {
       this.transport.send(
         encodeJs5GroupRequest(
           JS5_MASTER_ARCHIVE,
@@ -238,8 +248,8 @@ export class Js5Client {
 
     this.onLog?.(
       'TX JS5 archive reference-table requests: ' +
-      index.entries.length + ' groups (255:0..255:' +
-      index.entries[index.entries.length - 1]!.archive + ').',
+      presentEntries.length + ' present groups; skipped ' +
+      (index.entries.length - presentEntries.length) + ' empty slots.',
     );
   }
 
@@ -252,8 +262,8 @@ export class Js5Client {
     this.pendingArchiveIndices.delete(response.group);
 
     const progress: Js5ArchiveIndexProgress = {
-      received: index.entries.length - this.pendingArchiveIndices.size,
-      total: index.entries.length,
+      received: this.archiveIndexTotal - this.pendingArchiveIndices.size,
+      total: this.archiveIndexTotal,
     };
 
     const metadata = index.entries[response.group];
@@ -281,7 +291,7 @@ export class Js5Client {
     this.setState('ready');
     this.onLog?.(
       'JS5 cache index bootstrap complete: master index + ' +
-      index.entries.length + ' archive reference tables received.',
+      this.archiveIndexTotal + ' present archive reference tables received.',
     );
     this.onBootstrapComplete?.(index);
   }
