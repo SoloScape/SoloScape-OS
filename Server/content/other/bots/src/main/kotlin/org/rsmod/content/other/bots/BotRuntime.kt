@@ -109,15 +109,15 @@ class BotPopulation @Inject constructor(
     }
 
     private fun spawn(mode: BotMode, requested: Int): Int {
-        val difficulty = BotPvpDifficulty.parse(
-            configured.getProperty("pvp.difficulty", "standard")
-        ) ?: BotPvpDifficulty.Standard
+        val difficultySetting = configured.getProperty("pvp.difficulty", "mixed")
         val membersWorld = configured.getProperty("members", "true").toBoolean()
         var added = 0
         repeat(requested.coerceIn(0, MAX_BOTS - bots.size)) {
             val slot = registry.nextFreeSlot() ?: return added
             if (registry.count() >= MAX_BOTS) return added
             val identity = freeIdentity()
+            val difficulty = BotPvpDifficulty.configured(difficultySetting, identity)
+                ?: BotPvpDifficulty.Standard
             val name = SourceBotCatalog.names[(identity - 1) % SourceBotCatalog.names.size]
             val initial = initialTask(mode) ?: return added
             val hotspot = if (mode == BotMode.Wilderness) {
