@@ -50,11 +50,10 @@ export interface SceneMaterialAssets extends SceneFloorMaterials {
  *   archive 9:0      -> texture definitions
  *   archive 8:<id>   -> indexed sprite backing each texture
  *
- * Texture images are expanded to 128x128 RGBA layers using the same first
- * sprite + gamma-0.8 path as Olden-Shire's current texture manager. Multi-
- * sprite composition metadata is retained by the definition decoder but is
- * deliberately not approximated here; the first layer is the faithful path
- * Olden-Shire currently uses too.
+ * Rev-240 texture definitions are the compact rev-233+ format: one archive-8
+ * sprite id plus packed-HSL fallback colour, opacity and animation metadata.
+ * The sprite is normalized, gamma-corrected at 0.8 and expanded to a 128x128
+ * RGBA layer for WebGL2 sampling.
  */
 export class SceneMaterialLoader {
   private underlayFilesPromise:
@@ -251,15 +250,6 @@ export class SceneMaterialLoader {
     const sprite = frames[0];
     if (!sprite) {
       throw new Error('sprite group 8:' + spriteId + ' contains no frames');
-    }
-
-    if (definition.fileIds.length > 1) {
-      this.log?.(
-        'Texture ' + textureId + ' references ' +
-          definition.fileIds.length +
-          ' sprites; using the first layer to match the current ' +
-          'Olden-Shire texture path.',
-      );
     }
 
     const layer: SceneTextureLayer = {
