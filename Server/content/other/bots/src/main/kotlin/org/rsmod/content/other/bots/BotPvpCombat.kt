@@ -75,6 +75,8 @@ class BotPvpCombat @Inject constructor(
             (it.hotspotId?.let { hotspot -> "@$hotspot" } ?: "")
     } ?: ""
 
+    fun riskTier(player: Player): BotPvpRiskTier? = states[player]?.risk?.tier
+
     fun canUseHotspot(player: Player, hotspotId: String): Boolean = states[player]?.let { state ->
         BotPvpHotspots.get(hotspotId)?.allowedProfiles?.contains(state.profile.id) == true &&
             BotPvpLoadouts.allowedAt(state.loadout.id, hotspotId)
