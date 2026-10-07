@@ -11,6 +11,10 @@ test('decodes loc model ids, model types and geometry transforms', () => {
     15, 4,
     40, 1, 0, 5, 0, 7,
     41, 1, 0, 8, 0, 9,
+    21,
+    22,
+    29, 0xf6,
+    39, 0x02,
     62,
     65, 0, 144,
     66, 0, 160,
@@ -34,6 +38,10 @@ test('decodes loc model ids, model types and geometry transforms', () => {
   assert.equal(def.sizeX, 3);
   assert.equal(def.sizeZ, 4);
   assert.equal(def.rotated, true);
+  assert.equal(def.contouredGround, 0);
+  assert.equal(def.mergeNormals, true);
+  assert.equal(def.ambient, -10);
+  assert.equal(def.contrast, 50);
   assert.equal(def.modelScaleX, 144);
   assert.equal(def.modelScaleY, 160);
   assert.equal(def.modelScaleZ, 176);
@@ -65,4 +73,13 @@ test('consumes rev-240 sound, conditional-op and param payloads', () => {
 
   const def = decodeLocModelDefinition(1, Uint8Array.from(bytes));
   assert.deepEqual(def.modelIds, []);
+});
+
+
+test('decodes opcode 81 contour blend', () => {
+  const def = decodeLocModelDefinition(
+    99,
+    Uint8Array.from([81, 7, 0]),
+  );
+  assert.equal(def.contouredGround, 7 * 256);
 });
