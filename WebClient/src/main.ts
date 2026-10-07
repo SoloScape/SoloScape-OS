@@ -11,6 +11,10 @@ import {
 import { WebSocketTransport } from './net/WebSocketTransport';
 import { GameLoginClient } from './protocol/GameLoginClient';
 import {
+  tryDecodeRegionRebuildPacket,
+  type RegionRebuild,
+} from './protocol/RegionRebuildDecoder';
+import {
   OSRS_CLIENT_TARGET,
   OSRS_PROTOCOL_REVISION,
 } from './protocol/revision';
@@ -149,6 +153,7 @@ let framedGamePackets = 0;
 
 gameLogin.onLoginSuccess = (success) => {
   framedGamePackets = 0;
+  (window as SoloScapeDebugWindow).soloscapeRegionRebuild = undefined;
   drawClientStatus(
     'Game login successful',
     'Player index ' + success.localPlayerIndex +
@@ -169,6 +174,43 @@ gameLogin.onGameData = (data) => {
 
 gameLogin.onGamePacket = (packet) => {
   framedGamePackets += 1;
+
+  const rebuild = tryDecodeRegionRebuildPacket(packet);
+  if (rebuild) {
+    (window as SoloScapeDebugWindow).soloscapeRegionRebuild = rebuild;
+    if (rebuild.kind === 'normal') {
+      appendLog(
+        'Decoded REBUILD_NORMAL_V2: center-zone=' +
+        rebuild.zoneX + ',' + rebuild.zoneZ +
+        ' world-area=' + rebuild.worldArea +
+        ' mapsquares=' + rebuild.mapSquares.length + '.',
+      );
+      drawClientStatus(
+        'Region rebuild decoded',
+        'Normal map at zone ' + rebuild.zoneX + ',' + rebuild.zoneZ +
+          '; ' + rebuild.mapSquares.length + ' mapsquares required',
+      );
+    } else {
+      const populatedZones = rebuild.zones.reduce(
+        (count, zone) => count + (zone ? 1 : 0),
+        0,
+      );
+      appendLog(
+        'Decoded REBUILD_REGION_V2: center-zone=' +
+        rebuild.zoneX + ',' + rebuild.zoneZ +
+        ' reload=' + rebuild.reload +
+        ' populated-zones=' + populatedZones +
+        ' mapsquares=' + rebuild.mapSquareCount + '.',
+      );
+      drawClientStatus(
+        'Instanced region rebuild decoded',
+        populatedZones + ' copied zones from ' +
+          rebuild.mapSquareCount + ' source mapsquares',
+      );
+    }
+    return;
+  }
+
   if (framedGamePackets === 1) {
     drawClientStatus(
       'Game packet framing active',
@@ -267,6 +309,7 @@ connectButton.addEventListener('click', async () => {
 loginButton.addEventListener('click', async () => {
   if (gameLoginIsActive()) {
     gameLogin.disconnect();
+    (window as SoloScapeDebugWindow).soloscapeRegionRebuild = undefined;
     drawClientStatus(
       'Game disconnected',
       'JS5 cache remains available for another login',
@@ -324,6 +367,7 @@ type SoloScapeDebugWindow = Window & {
   soloscapeJs5?: Js5Client;
   soloscapeStartupAssets?: Js5StartupAssets;
   soloscapeGameLogin?: GameLoginClient;
+  soloscapeRegionRebuild?: RegionRebuild;
 };
 
 (window as SoloScapeDebugWindow).soloscapeJs5 = js5;
