@@ -286,7 +286,18 @@ test('emits cache texture ids and type-0 UVs for textured loc faces', () => {
     worldArea: 0,
     mapSquares: [map.mapSquare],
   };
-  const scene = assembleScene(rebuild, [map], assets);
+  const materials: SceneFloorMaterials = {
+    underlays: new Map(),
+    overlays: new Map(),
+    textureAverageRgb: new Map([[7, 0x3456]]),
+    residentTextureIds: new Set([7]),
+  };
+  const scene = assembleScene(
+    rebuild,
+    [map],
+    assets,
+    materials,
+  );
 
   assert.deepEqual(Array.from(scene.locations.textureIds), [7, 7, 7]);
   assert.deepEqual(
