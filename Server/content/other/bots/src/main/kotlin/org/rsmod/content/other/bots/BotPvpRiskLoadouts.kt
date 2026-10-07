@@ -67,17 +67,10 @@ data class BotPvpRiskAssignment(
     val hybridHardestInTier: Boolean get() = role == BotPvpLoadoutRole.Hybrid
 
     /**
-     * Chance that a freshly spawned/restocked bot enables native skull prevention.
-     *
-     * Low/Average are mostly unskulled but retain an aggressive skulled minority, Risker almost
-     * always protects its three kept items, and MAX deliberately accepts skull risk.
+     * Wilderness population bots are active PKers and may initiate on any legal target.
+     * Skull prevention therefore stays disabled in every bracket.
      */
-    val skullPreventionChance: Double get() = when (tier) {
-        BotPvpRiskTier.Low -> 0.75
-        BotPvpRiskTier.Average -> 0.80
-        BotPvpRiskTier.Risker -> 0.95
-        BotPvpRiskTier.Max -> 0.0
-    }
+    val skullPreventionChance: Double get() = 0.0
 
     /** MAX is the only bracket allowed to protect one additional item on death. */
     val usesProtectItem: Boolean get() = tier == BotPvpRiskTier.Max
