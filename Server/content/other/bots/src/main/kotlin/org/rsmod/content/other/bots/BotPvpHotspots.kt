@@ -311,7 +311,7 @@ object BotPvpHotspots {
      */
     fun patrolTarget(identity: Int, step: Int): CoordGrid {
         val anchors = wildernessPatrolAnchors
-        val index = Math.floorMod(identity * 11 + step * 7, anchors.size)
+        val index = Math.floorMod(identity * 11 + step * 8, anchors.size)
         return anchors[index]
     }
 }
