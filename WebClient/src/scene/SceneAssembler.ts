@@ -951,17 +951,22 @@ function appendModel(
       }
     }
 
-    const base = modelColor(faceColor, texture);
-    const shaded = shadeByTriangleNormal(base, a, b, c);
     const textureUvs = texture >= 0
       ? resolveType0FaceTextureUvs(model, face, transformVertex)
       : null;
+    const renderedTexture = textureUvs ? texture : -1;
+    // Unsupported modern texture transforms (render types 1..3) must fall
+    // back to the model's packed-HSL face colour. Passing the original
+    // texture id into modelColor here made those deliberate fallback faces
+    // use the neutral textured-light colour, which rendered them white.
+    const base = modelColor(faceColor, renderedTexture);
+    const shaded = shadeByTriangleNormal(base, a, b, c);
     builder.pushTriangle(
       a,
       b,
       c,
       shaded,
-      textureUvs ? texture : -1,
+      renderedTexture,
       textureUvs,
     );
     triangles += 1;
