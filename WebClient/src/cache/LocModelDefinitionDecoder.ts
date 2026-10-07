@@ -5,6 +5,10 @@ export interface LocModelDefinition {
   readonly sizeX: number;
   readonly sizeZ: number;
   readonly rotated: boolean;
+  readonly contouredGround: number;
+  readonly mergeNormals: boolean;
+  readonly ambient: number;
+  readonly contrast: number;
   readonly modelScaleX: number;
   readonly modelScaleY: number;
   readonly modelScaleZ: number;
@@ -36,6 +40,10 @@ export function decodeLocModelDefinition(
   let sizeX = 1;
   let sizeZ = 1;
   let rotated = false;
+  let contouredGround = -1;
+  let mergeNormals = false;
+  let ambient = 0;
+  let contrast = 0;
   let modelScaleX = 128;
   let modelScaleY = 128;
   let modelScaleZ = 128;
@@ -106,10 +114,14 @@ export function decodeLocModelDefinition(
         break;
       case 17:
       case 18:
-      case 21:
-      case 22:
       case 23:
       case 27:
+        break;
+      case 21:
+        contouredGround = 0;
+        break;
+      case 22:
+        mergeNormals = true;
         break;
       case 62:
         rotated = true;
@@ -123,15 +135,21 @@ export function decodeLocModelDefinition(
         break;
       case 19:
       case 28:
-      case 29:
-      case 39:
       case 69:
       case 75:
-      case 81:
       case 91:
       case 95:
       case 96:
         reader.skip(1);
+        break;
+      case 29:
+        ambient = reader.readI8();
+        break;
+      case 39:
+        contrast = reader.readI8() * 25;
+        break;
+      case 81:
+        contouredGround = reader.readU8() * 256;
         break;
       case 24:
       case 42:
@@ -269,6 +287,10 @@ export function decodeLocModelDefinition(
     sizeX,
     sizeZ,
     rotated,
+    contouredGround,
+    mergeNormals,
+    ambient,
+    contrast,
     modelScaleX,
     modelScaleY,
     modelScaleZ,
@@ -301,6 +323,11 @@ class Reader {
   readU8(): number {
     this.require(1);
     return this.bytes[this.offset++]!;
+  }
+
+  readI8(): number {
+    const value = this.readU8();
+    return value > 0x7f ? value - 0x100 : value;
   }
 
   readU16(): number {
