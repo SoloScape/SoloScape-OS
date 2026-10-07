@@ -115,6 +115,7 @@ let titleMode:
   | 'new-user'
   | 'connecting'
   | 'loading'
+  | 'game-loading'
   | 'game' = 'bootstrap';
 let bootGeneration = 0;
 let mapLoadGeneration = 0;
@@ -204,17 +205,20 @@ function renderConnectingScreen(
 }
 
 function renderGameLoading(
-  progress: number,
+  _progress: number,
   message: string,
 ): void {
   if (!titleRenderer) {
-    renderBootScreen(progress, message);
+    renderBootScreen(100, message);
     return;
   }
 
-  titleMode = 'loading';
+  // After login the original client no longer reuses the centered
+  // title/bootstrap loader. startRebuild enters main state 25 and calls
+  // Client.messageBox(Text.LOADING, true), which is a top-left overlay.
+  titleMode = 'game-loading';
   clientUiCanvas.hidden = false;
-  titleRenderer.renderLoading(progress, message);
+  titleRenderer.renderGameMessage(message);
 }
 
 function gameLoginIsActive(): boolean {
@@ -659,7 +663,6 @@ gameLogin.onGamePacket = (packet) => {
   currentScene = null;
   currentSceneMaps = null;
   currentTerrainSampler = null;
-  sceneRenderer?.clear();
 
   renderGameLoading(100, 'Loading - please wait.');
 
@@ -991,6 +994,7 @@ clientUiCanvas.addEventListener('pointerdown', (event) => {
     titleMode === 'bootstrap' ||
     titleMode === 'connecting' ||
     titleMode === 'loading' ||
+    titleMode === 'game-loading' ||
     titleMode === 'game'
   ) {
     return;
