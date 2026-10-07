@@ -47,9 +47,9 @@ interface ItemWearDefinition {
  *   256..511   = ident-kit id (value - 256)
  *   >=512      = worn object id (value - 512)
  *
- * The loader intentionally keeps animation/skinning out of this first actor
- * milestone. It builds the player's real body/equipment geometry in bind pose
- * so the local player is visible at the server-provided coordinate.
+ * The emitted triangle stream retains each source vertex's classic skin label.
+ * PlayerAnimationController can therefore pose the combined body/equipment
+ * mesh without rebuilding materials or static scene geometry.
  */
 export class PlayerModelAssetLoader {
   private identKitFilesPromise:
@@ -601,11 +601,12 @@ function appendModelPart(
 function vertex(
   model: DecodedModelGeometry,
   index: number,
-): Vec3 {
+): SkinnedVec3 {
   return {
     x: model.vertexX[index]!,
     y: -model.vertexY[index]!,
     z: model.vertexZ[index]!,
+    group: model.vertexGroups[index]!,
   };
 }
 
@@ -613,6 +614,10 @@ interface Vec3 {
   readonly x: number;
   readonly y: number;
   readonly z: number;
+}
+
+interface SkinnedVec3 extends Vec3 {
+  readonly group: number;
 }
 
 interface Rgb {
@@ -623,14 +628,15 @@ interface Rgb {
 
 class MeshBuilder {
   private readonly positions: number[] = [];
+  private readonly vertexGroups: number[] = [];
   private readonly colors: number[] = [];
   private readonly textureCoords: number[] = [];
   private readonly textureIds: number[] = [];
 
   pushTriangle(
-    a: Vec3,
-    b: Vec3,
-    c: Vec3,
+    a: SkinnedVec3,
+    b: SkinnedVec3,
+    c: SkinnedVec3,
     color: Rgb,
     textureId = -1,
     textureUvs:
@@ -649,6 +655,7 @@ class MeshBuilder {
   finish(): SceneMesh {
     return {
       positions: Float32Array.from(this.positions),
+      vertexGroups: Int16Array.from(this.vertexGroups),
       colors: Uint8Array.from(this.colors),
       textureCoords: Float32Array.from(this.textureCoords),
       textureIds: Int32Array.from(this.textureIds),
@@ -657,7 +664,7 @@ class MeshBuilder {
   }
 
   private pushVertex(
-    vertexValue: Vec3,
+    vertexValue: SkinnedVec3,
     color: Rgb,
     textureId: number,
     textureUv?: { readonly u: number; readonly v: number },
@@ -667,6 +674,7 @@ class MeshBuilder {
       vertexValue.y,
       vertexValue.z,
     );
+    this.vertexGroups.push(vertexValue.group);
     this.colors.push(
       clamp(Math.round(color.r), 0, 255),
       clamp(Math.round(color.g), 0, 255),

@@ -46,6 +46,7 @@ export class WebGlSceneRenderer {
   private locationMesh: GpuMesh | null = null;
   private playerMesh: GpuMesh | null = null;
   private playerMeshSource: SceneMesh | null = null;
+  private playerAnimatedPositions: Float32Array | null = null;
   private scene: AssembledScene | null = null;
   private localPlayerPosition: LocalPlayerRenderPosition | null = null;
   private orbitCamera: OrbitCameraRenderState | null = null;
@@ -236,8 +237,35 @@ export class WebGlSceneRenderer {
 
   setLocalPlayerMesh(mesh: SceneMesh | null): void {
     this.playerMeshSource = mesh;
+    this.playerAnimatedPositions = null;
     this.deleteGpuMesh(this.playerMesh);
-    this.playerMesh = mesh ? this.uploadMesh(mesh) : null;
+    this.playerMesh = mesh ? this.uploadMesh(mesh, true) : null;
+  }
+
+  setLocalPlayerAnimatedPositions(
+    positions: Float32Array | null,
+  ): void {
+    if (!this.playerMeshSource) {
+      this.playerAnimatedPositions = null;
+      return;
+    }
+
+    const source = positions ?? this.playerMeshSource.positions;
+    if (source.length !== this.playerMeshSource.positions.length) {
+      throw new RangeError(
+        'Animated player position count does not match the player mesh.',
+      );
+    }
+
+    this.playerAnimatedPositions = positions;
+    if (!this.playerMesh) {
+      return;
+    }
+
+    const gl = this.gl;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.playerMesh.positionBuffer);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, source);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
   }
 
   clear(): void {
@@ -245,6 +273,7 @@ export class WebGlSceneRenderer {
     this.localPlayerPosition = null;
     this.orbitCamera = null;
     this.playerMeshSource = null;
+    this.playerAnimatedPositions = null;
     this.deleteSceneGpuMeshes();
     this.deleteGpuMesh(this.playerMesh);
     this.playerMesh = null;
@@ -328,7 +357,10 @@ export class WebGlSceneRenderer {
     }
   }
 
-  private uploadMesh(mesh: SceneMesh): GpuMesh | null {
+  private uploadMesh(
+    mesh: SceneMesh,
+    dynamicPositions = false,
+  ): GpuMesh | null {
     if (mesh.vertexCount === 0) {
       return null;
     }
@@ -360,7 +392,11 @@ export class WebGlSceneRenderer {
     }
 
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, mesh.positions, gl.STATIC_DRAW);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      mesh.positions,
+      dynamicPositions ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW,
+    );
 
     gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, mesh.colors, gl.STATIC_DRAW);
@@ -496,8 +532,11 @@ export class WebGlSceneRenderer {
     }
     this.deleteGpuMesh(this.playerMesh);
     this.playerMesh = this.playerMeshSource
-      ? this.uploadMesh(this.playerMeshSource)
+      ? this.uploadMesh(this.playerMeshSource, true)
       : null;
+    if (this.playerAnimatedPositions) {
+      this.setLocalPlayerAnimatedPositions(this.playerAnimatedPositions);
+    }
   }
 
   private resizeDrawingBuffer(): void {

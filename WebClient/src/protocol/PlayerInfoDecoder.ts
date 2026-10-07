@@ -5,6 +5,7 @@ import type {
 import type { ServerGamePacket } from './GamePacketFramer';
 import {
   FinePlayerMovement,
+  type FinePlayerMovementSnapshot,
   type FinePlayerRenderState,
 } from '../runtime/PlayerMovement';
 
@@ -203,6 +204,10 @@ export class Rev240PlayerInfoDecoder {
 
   getLocalPlayer(): ClientPlayer | null {
     return this.players[this.localPlayerIndex];
+  }
+
+  getLocalPlayerMovementSnapshot(): FinePlayerMovementSnapshot | null {
+    return this.players[this.localPlayerIndex]?.movement.snapshot() ?? null;
   }
 
   getPlayer(index: number): ClientPlayer | null {

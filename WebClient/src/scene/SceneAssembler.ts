@@ -68,6 +68,8 @@ const GROUND_SHAPE_FACES: readonly (readonly number[])[] = [
 
 export interface SceneMesh {
   readonly positions: Float32Array;
+  /** Optional classic skin label parallel to each emitted vertex. */
+  readonly vertexGroups?: Int16Array;
   readonly colors: Uint8Array;
   readonly textureCoords: Float32Array;
   readonly textureIds: Int32Array;

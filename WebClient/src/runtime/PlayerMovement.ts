@@ -11,12 +11,21 @@ export interface FinePlayerRenderState {
   readonly yaw: number;
 }
 
+export type PlayerLocomotion =
+  | 'idle'
+  | 'walk-forward'
+  | 'walk-back'
+  | 'walk-left'
+  | 'walk-right'
+  | 'run';
+
 export interface FinePlayerMovementSnapshot extends FinePlayerRenderState {
   readonly previousFineX: number;
   readonly previousFineZ: number;
   readonly previousYaw: number;
   readonly dstYaw: number;
   readonly routeLength: number;
+  readonly locomotion: PlayerLocomotion;
 }
 
 /**
@@ -35,6 +44,7 @@ export class FinePlayerMovement {
   private previousYawValue = 0;
   private dstYawValue = 0;
   private routeLengthValue = 0;
+  private locomotionValue: PlayerLocomotion = 'idle';
   private readonly routeX = new Int32Array(ROUTE_CAPACITY);
   private readonly routeZ = new Int32Array(ROUTE_CAPACITY);
   private readonly routeRun = new Uint8Array(ROUTE_CAPACITY);
@@ -85,6 +95,7 @@ export class FinePlayerMovement {
     this.routeX.fill(tileX);
     this.routeZ.fill(tileZ);
     this.routeRun.fill(0);
+    this.locomotionValue = 'idle';
 
     const fineX = tileToFine(tileX);
     const fineZ = tileToFine(tileZ);
@@ -105,6 +116,8 @@ export class FinePlayerMovement {
 
     if (this.routeLengthValue > 0) {
       this.moveRouteTick();
+    } else {
+      this.locomotionValue = 'idle';
     }
 
     this.turnTowardDestination();
@@ -141,6 +154,7 @@ export class FinePlayerMovement {
       previousYaw: this.previousYawValue,
       dstYaw: this.dstYawValue,
       routeLength: this.routeLengthValue,
+      locomotion: this.locomotionValue,
     };
   }
 
@@ -167,6 +181,11 @@ export class FinePlayerMovement {
       targetZ,
     );
 
+    const running = this.routeRun[targetIndex] !== 0;
+    this.locomotionValue = running
+      ? 'run'
+      : selectWalkLocomotion(this.yawValue, this.dstYawValue);
+
     let step = 4;
     if (
       this.yawValue !== this.dstYawValue &&
@@ -180,7 +199,7 @@ export class FinePlayerMovement {
     if (this.routeLengthValue > 3) {
       step = 8;
     }
-    if (this.routeRun[targetIndex] !== 0) {
+    if (running) {
       step <<= 1;
     }
 
@@ -234,6 +253,31 @@ export function jagexYawToRadians(yaw: number): number {
     (yaw & (JAGEX_YAW_UNITS - 1)) *
     (Math.PI * 2 / JAGEX_YAW_UNITS)
   );
+}
+
+/**
+ * Classic route_move movement-sequence choice. dstYaw is the direction of
+ * travel while yaw is the model's current rotation.
+ */
+export function selectWalkLocomotion(
+  yaw: number,
+  dstYaw: number,
+): Exclude<PlayerLocomotion, 'idle' | 'run'> {
+  let delta = (dstYaw - yaw) & (JAGEX_YAW_UNITS - 1);
+  if (delta > JAGEX_YAW_UNITS / 2) {
+    delta -= JAGEX_YAW_UNITS;
+  }
+
+  if (delta >= -256 && delta <= 256) {
+    return 'walk-forward';
+  }
+  if (delta >= 256 && delta < 768) {
+    return 'walk-right';
+  }
+  if (delta >= -768 && delta <= -256) {
+    return 'walk-left';
+  }
+  return 'walk-back';
 }
 
 function destinationYaw(

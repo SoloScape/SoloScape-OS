@@ -6,6 +6,8 @@ export interface DecodedModelGeometry {
   readonly vertexX: Int32Array;
   readonly vertexY: Int32Array;
   readonly vertexZ: Int32Array;
+  /** Classic model skin label for each vertex, or -1 when absent. */
+  readonly vertexGroups: Int16Array;
   readonly faceA: Uint32Array;
   readonly faceB: Uint32Array;
   readonly faceC: Uint32Array;
@@ -25,9 +27,10 @@ export interface DecodedModelGeometry {
  *
  * It supports all four model encodings still present in the modern cache:
  * old, type 1 (-1/-1 trailer), type 2 (-1/-2), and type 3 (-1/-3).
- * Animation groups and advanced texture transform metadata are intentionally
- * skipped here; vertices, triangle indices, face colors/textures, alpha, and
- * type-0 texture triangles are retained for static scene rendering.
+ * Classic vertex animation groups are retained so actor meshes can be posed
+ * by frame/skeleton data. Advanced Animaya weights and texture-transform
+ * metadata remain outside this decoder; static geometry keeps the same compact
+ * representation used by terrain/loc rendering.
  */
 export function decodeModelGeometry(
   id: number,
@@ -64,6 +67,7 @@ function createGeometry(
     vertexX: new Int32Array(vertexCount),
     vertexY: new Int32Array(vertexCount),
     vertexZ: new Int32Array(vertexCount),
+    vertexGroups: new Int16Array(vertexCount).fill(-1),
     faceA: new Uint32Array(faceCount),
     faceB: new Uint32Array(faceCount),
     faceC: new Uint32Array(faceCount),
@@ -85,6 +89,7 @@ type MutableGeometry = {
   vertexX: Int32Array;
   vertexY: Int32Array;
   vertexZ: Int32Array;
+  vertexGroups: Int16Array;
   faceA: Uint32Array;
   faceB: Uint32Array;
   faceC: Uint32Array;
@@ -477,7 +482,7 @@ function decodeVertices(
     model.vertexX[index] = x;
     model.vertexY[index] = y;
     model.vertexZ[index] = z;
-    groups?.u8();
+    model.vertexGroups[index] = groups ? groups.u8() : -1;
   }
 }
 

@@ -10,6 +10,7 @@ import {
   type LoadedSceneAssets,
 } from './cache/SceneAssetLoader';
 import { PlayerModelAssetLoader } from './cache/PlayerModelAssetLoader';
+import { PlayerAnimationAssetLoader } from './cache/PlayerAnimationAssetLoader';
 import {
   SceneMaterialLoader,
   type SceneMaterialAssets,
@@ -58,6 +59,7 @@ import {
   CLIENT_TICK_MS,
 } from './runtime/BrowserGameLoop';
 import { jagexYawToRadians } from './runtime/PlayerMovement';
+import { PlayerAnimationController } from './runtime/PlayerAnimation';
 import {
   OrbitCamera,
   OrbitCameraInputController,
@@ -118,6 +120,8 @@ const mapSquareLoader = new MapSquareLoader(js5, appendLog);
 const sceneAssetLoader = new SceneAssetLoader(js5, appendLog);
 const sceneMaterialLoader = new SceneMaterialLoader(js5, appendLog);
 const playerModelLoader = new PlayerModelAssetLoader(js5, appendLog);
+const playerAnimationLoader =
+  new PlayerAnimationAssetLoader(js5, appendLog);
 const bootRenderer = new ClientBootRenderer(clientUiCanvas);
 
 let sceneRenderer: WebGlSceneRenderer | null = null;
@@ -149,6 +153,8 @@ let currentScene: AssembledScene | null = null;
 let currentSceneMaps: readonly LoadedMapSquare[] | null = null;
 let currentTerrainSampler: SceneTerrainSampler | null = null;
 let currentPlayerMesh: SceneMesh | null = null;
+let currentPlayerAnimation: PlayerAnimationController | null = null;
+let uploadedPlayerAnimationRevision = -1;
 let currentOrbitCameraRenderState: OrbitCameraRenderState | null = null;
 let requestedAppearanceRevision = -1;
 
@@ -278,6 +284,8 @@ function resetSceneDebug(): void {
   currentSceneMaps = null;
   currentTerrainSampler = null;
   currentPlayerMesh = null;
+  currentPlayerAnimation = null;
+  uploadedPlayerAnimationRevision = -1;
   requestedAppearanceRevision = -1;
   playerModelGeneration += 1;
   orbitCamera.clear();
@@ -314,6 +322,18 @@ function syncLocalPlayerRender(
     renderState.fineX,
     renderState.fineZ,
   );
+
+  if (
+    currentPlayerAnimation &&
+    currentPlayerAnimation.poseRevision !==
+      uploadedPlayerAnimationRevision
+  ) {
+    sceneRenderer.setLocalPlayerAnimatedPositions(
+      currentPlayerAnimation.positions,
+    );
+    uploadedPlayerAnimationRevision =
+      currentPlayerAnimation.poseRevision;
+  }
 
   sceneRenderer.setLocalPlayerPosition({
     x,
@@ -439,6 +459,21 @@ function handleViewportWalkTap(
 function tickGameSimulation(): void {
   playerInfo?.tickMovement();
 
+  const localPlayer = playerInfo?.getLocalPlayer();
+  const movement =
+    playerInfo?.getLocalPlayerMovementSnapshot();
+  if (
+    currentPlayerAnimation &&
+    localPlayer?.appearance &&
+    movement
+  ) {
+    currentPlayerAnimation.setLocomotion(
+      localPlayer.appearance,
+      movement.locomotion,
+    );
+    currentPlayerAnimation.tick();
+  }
+
   if (!currentScene || !playerInfo) {
     return;
   }
@@ -513,6 +548,23 @@ function requestLocalPlayerModel(): void {
 
       currentPlayerMesh = mesh;
       sceneRenderer?.setLocalPlayerMesh(mesh);
+      currentPlayerAnimation = mesh?.vertexGroups
+        ? new PlayerAnimationController(
+            playerAnimationLoader,
+            mesh,
+            appendLog,
+          )
+        : null;
+      uploadedPlayerAnimationRevision = -1;
+
+      const movement =
+        playerInfo?.getLocalPlayerMovementSnapshot();
+      if (currentPlayerAnimation && movement) {
+        currentPlayerAnimation.setLocomotion(
+          appearance,
+          movement.locomotion,
+        );
+      }
       syncLocalPlayerRender();
     })
     .catch((error: unknown) => {

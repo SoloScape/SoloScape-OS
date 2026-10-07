@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   FinePlayerMovement,
   interpolateFineCoordinate,
+  selectWalkLocomotion,
   tileToFine,
 } from './PlayerMovement';
 
@@ -22,6 +23,7 @@ test('queues a one-tile waypoint without teleporting fine coordinates', () => {
   assert.equal(moved.fineZ, tileToFine(3200));
   assert.equal(moved.dstYaw, 1536);
   assert.equal(moved.yaw, 2016);
+  assert.equal(moved.locomotion, 'walk-left');
 });
 
 test('run waypoints double the movement step', () => {
@@ -37,6 +39,14 @@ test('run waypoints double the movement step', () => {
     run.snapshot().fineX - tileToFine(3200),
     (walk.snapshot().fineX - tileToFine(3200)) * 2,
   );
+  assert.equal(run.snapshot().locomotion, 'run');
+});
+
+test('selects classic directional walk poses from dstYaw - yaw', () => {
+  assert.equal(selectWalkLocomotion(0, 0), 'walk-forward');
+  assert.equal(selectWalkLocomotion(0, 512), 'walk-right');
+  assert.equal(selectWalkLocomotion(0, 1536), 'walk-left');
+  assert.equal(selectWalkLocomotion(0, 1024), 'walk-back');
 });
 
 test('fine-coordinate interpolation follows previous + delta * alpha', () => {
