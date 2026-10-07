@@ -7,7 +7,17 @@ import type {
 interface GpuMesh {
   readonly positionBuffer: WebGLBuffer;
   readonly colorBuffer: WebGLBuffer;
+  readonly textureCoordBuffer: WebGLBuffer;
+  readonly textureIdBuffer: WebGLBuffer;
   readonly vertexCount: number;
+}
+
+export interface SceneTextureLayer {
+  readonly id: number;
+  readonly width: number;
+  readonly height: number;
+  /** RGBA8 pixels in top-to-bottom row order. */
+  readonly rgba: Uint8Array;
 }
 
 export interface LocalPlayerRenderPosition {
@@ -23,12 +33,18 @@ export class WebGlSceneRenderer {
   private readonly program: WebGLProgram;
   private readonly positionLocation: number;
   private readonly colorLocation: number;
+  private readonly textureCoordLocation: number;
+  private readonly textureIdLocation: number;
   private readonly projectionLocation: WebGLUniformLocation;
   private readonly viewLocation: WebGLUniformLocation;
   private readonly modelLocation: WebGLUniformLocation;
+  private readonly textureSamplerLocation: WebGLUniformLocation;
+  private readonly textureArray: WebGLTexture;
+  private readonly loadedTextureIds = new Set<number>();
   private terrainMesh: GpuMesh | null = null;
   private locationMesh: GpuMesh | null = null;
   private playerMesh: GpuMesh | null = null;
+  private playerMeshSource: SceneMesh | null = null;
   private scene: AssembledScene | null = null;
   private localPlayerPosition: LocalPlayerRenderPosition | null = null;
 
@@ -47,6 +63,10 @@ export class WebGlSceneRenderer {
     this.program = createProgram(gl, VERTEX_SHADER, FRAGMENT_SHADER);
     this.positionLocation = gl.getAttribLocation(this.program, 'aPosition');
     this.colorLocation = gl.getAttribLocation(this.program, 'aColor');
+    this.textureCoordLocation =
+      gl.getAttribLocation(this.program, 'aTextureCoord');
+    this.textureIdLocation =
+      gl.getAttribLocation(this.program, 'aTextureId');
 
     const projectionLocation = gl.getUniformLocation(
       this.program,
@@ -54,12 +74,27 @@ export class WebGlSceneRenderer {
     );
     const viewLocation = gl.getUniformLocation(this.program, 'uView');
     const modelLocation = gl.getUniformLocation(this.program, 'uModel');
-    if (!projectionLocation || !viewLocation || !modelLocation) {
+    const textureSamplerLocation =
+      gl.getUniformLocation(this.program, 'uTextures');
+    if (
+      !projectionLocation ||
+      !viewLocation ||
+      !modelLocation ||
+      !textureSamplerLocation
+    ) {
       throw new Error('Scene shader uniforms are unavailable.');
     }
     this.projectionLocation = projectionLocation;
     this.viewLocation = viewLocation;
     this.modelLocation = modelLocation;
+    this.textureSamplerLocation = textureSamplerLocation;
+
+    const textureArray = gl.createTexture();
+    if (!textureArray) {
+      throw new Error('Unable to allocate the scene texture array.');
+    }
+    this.textureArray = textureArray;
+    this.resetTextureArray();
 
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -68,6 +103,103 @@ export class WebGlSceneRenderer {
 
     window.addEventListener('resize', this.handleResize);
     this.clear();
+  }
+
+  /**
+   * Uploads real cache-backed RGBA textures into a WebGL2 2D texture array.
+   *
+   * Layer numbers intentionally match cache texture ids. Scene meshes keep
+   * those ids, so no per-scene atlas rewrite is required. Meshes are
+   * re-uploaded after this call so faces whose textures just became resident
+   * switch from the colour fallback to texture sampling.
+   */
+  setTextureLayers(layers: readonly SceneTextureLayer[]): void {
+    const gl = this.gl;
+    this.loadedTextureIds.clear();
+
+    if (layers.length === 0) {
+      this.resetTextureArray();
+      this.reuploadMeshesForTextureState();
+      return;
+    }
+
+    const width = layers[0]!.width;
+    const height = layers[0]!.height;
+    if (width <= 0 || height <= 0) {
+      throw new RangeError('Scene textures must have positive dimensions.');
+    }
+
+    let maxId = -1;
+    const seen = new Set<number>();
+    for (const layer of layers) {
+      if (!Number.isInteger(layer.id) || layer.id < 0) {
+        throw new RangeError('Scene texture ids must be non-negative integers.');
+      }
+      if (seen.has(layer.id)) {
+        throw new RangeError('Duplicate scene texture id ' + layer.id + '.');
+      }
+      if (layer.width !== width || layer.height !== height) {
+        throw new RangeError(
+          'All scene texture-array layers must have identical dimensions.',
+        );
+      }
+      if (layer.rgba.length !== width * height * 4) {
+        throw new RangeError(
+          'Texture ' + layer.id + ' has ' + layer.rgba.length +
+            ' RGBA bytes; expected ' + (width * height * 4) + '.',
+        );
+      }
+      seen.add(layer.id);
+      maxId = Math.max(maxId, layer.id);
+    }
+
+    const layerCount = maxId + 1;
+    const maxLayers = gl.getParameter(
+      gl.MAX_ARRAY_TEXTURE_LAYERS,
+    ) as number;
+    if (layerCount > maxLayers) {
+      throw new RangeError(
+        'Texture id ' + maxId + ' exceeds this device\'s ' +
+          maxLayers + '-layer WebGL2 texture-array limit.',
+      );
+    }
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.textureArray);
+    this.configureTextureArraySampling();
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage3D(
+      gl.TEXTURE_2D_ARRAY,
+      0,
+      gl.RGBA8,
+      width,
+      height,
+      layerCount,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      null,
+    );
+
+    for (const layer of layers) {
+      gl.texSubImage3D(
+        gl.TEXTURE_2D_ARRAY,
+        0,
+        0,
+        0,
+        layer.id,
+        width,
+        height,
+        1,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        layer.rgba,
+      );
+      this.loadedTextureIds.add(layer.id);
+    }
+
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
+    this.reuploadMeshesForTextureState();
   }
 
   render(scene: AssembledScene): void {
@@ -88,6 +220,7 @@ export class WebGlSceneRenderer {
   }
 
   setLocalPlayerMesh(mesh: SceneMesh | null): void {
+    this.playerMeshSource = mesh;
     this.deleteGpuMesh(this.playerMesh);
     this.playerMesh = mesh ? this.uploadMesh(mesh) : null;
     this.draw();
@@ -96,6 +229,7 @@ export class WebGlSceneRenderer {
   clear(): void {
     this.scene = null;
     this.localPlayerPosition = null;
+    this.playerMeshSource = null;
     this.deleteSceneGpuMeshes();
     this.deleteGpuMesh(this.playerMesh);
     this.playerMesh = null;
@@ -108,6 +242,7 @@ export class WebGlSceneRenderer {
     this.deleteSceneGpuMeshes();
     this.deleteGpuMesh(this.playerMesh);
     this.playerMesh = null;
+    this.gl.deleteTexture(this.textureArray);
     this.gl.deleteProgram(this.program);
   }
 
@@ -125,6 +260,9 @@ export class WebGlSceneRenderer {
     }
 
     gl.useProgram(this.program);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.textureArray);
+    gl.uniform1i(this.textureSamplerLocation, 0);
 
     const matrices = this.localPlayerPosition
       ? createPlayerFollowCameraMatrices(
@@ -169,13 +307,30 @@ export class WebGlSceneRenderer {
     if (mesh.vertexCount === 0) {
       return null;
     }
+    if (
+      mesh.positions.length !== mesh.vertexCount * 3 ||
+      mesh.colors.length !== mesh.vertexCount * 3 ||
+      mesh.textureCoords.length !== mesh.vertexCount * 2 ||
+      mesh.textureIds.length !== mesh.vertexCount
+    ) {
+      throw new RangeError('Scene mesh attribute lengths are inconsistent.');
+    }
 
     const gl = this.gl;
     const positionBuffer = gl.createBuffer();
     const colorBuffer = gl.createBuffer();
-    if (!positionBuffer || !colorBuffer) {
+    const textureCoordBuffer = gl.createBuffer();
+    const textureIdBuffer = gl.createBuffer();
+    if (
+      !positionBuffer ||
+      !colorBuffer ||
+      !textureCoordBuffer ||
+      !textureIdBuffer
+    ) {
       if (positionBuffer) gl.deleteBuffer(positionBuffer);
       if (colorBuffer) gl.deleteBuffer(colorBuffer);
+      if (textureCoordBuffer) gl.deleteBuffer(textureCoordBuffer);
+      if (textureIdBuffer) gl.deleteBuffer(textureIdBuffer);
       throw new Error('Unable to allocate WebGL scene buffers.');
     }
 
@@ -185,11 +340,26 @@ export class WebGlSceneRenderer {
     gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, mesh.colors, gl.STATIC_DRAW);
 
+    gl.bindBuffer(gl.ARRAY_BUFFER, textureCoordBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, mesh.textureCoords, gl.STATIC_DRAW);
+
+    const residentTextureIds = new Int32Array(mesh.textureIds.length);
+    for (let i = 0; i < mesh.textureIds.length; i += 1) {
+      const textureId = mesh.textureIds[i]!;
+      residentTextureIds[i] = this.loadedTextureIds.has(textureId)
+        ? textureId
+        : -1;
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, textureIdBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, residentTextureIds, gl.STATIC_DRAW);
+
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
     return {
       positionBuffer,
       colorBuffer,
+      textureCoordBuffer,
+      textureIdBuffer,
       vertexCount: mesh.vertexCount,
     };
   }
@@ -223,7 +393,88 @@ export class WebGlSceneRenderer {
       0,
     );
 
+    gl.bindBuffer(gl.ARRAY_BUFFER, mesh.textureCoordBuffer);
+    gl.enableVertexAttribArray(this.textureCoordLocation);
+    gl.vertexAttribPointer(
+      this.textureCoordLocation,
+      2,
+      gl.FLOAT,
+      false,
+      0,
+      0,
+    );
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, mesh.textureIdBuffer);
+    gl.enableVertexAttribArray(this.textureIdLocation);
+    gl.vertexAttribIPointer(
+      this.textureIdLocation,
+      1,
+      gl.INT,
+      0,
+      0,
+    );
+
     gl.drawArrays(gl.TRIANGLES, 0, mesh.vertexCount);
+  }
+
+  private resetTextureArray(): void {
+    const gl = this.gl;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.textureArray);
+    this.configureTextureArraySampling();
+    gl.texImage3D(
+      gl.TEXTURE_2D_ARRAY,
+      0,
+      gl.RGBA8,
+      1,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([255, 255, 255, 255]),
+    );
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, null);
+  }
+
+  private configureTextureArraySampling(): void {
+    const gl = this.gl;
+    gl.texParameteri(
+      gl.TEXTURE_2D_ARRAY,
+      gl.TEXTURE_MIN_FILTER,
+      gl.NEAREST,
+    );
+    gl.texParameteri(
+      gl.TEXTURE_2D_ARRAY,
+      gl.TEXTURE_MAG_FILTER,
+      gl.NEAREST,
+    );
+    // Match the classic client texture rasterizer: U clamps at the edge while
+    // the row coordinate wraps. This is also the convention Olden-Shire's
+    // WebGL2 fidelity path uses.
+    gl.texParameteri(
+      gl.TEXTURE_2D_ARRAY,
+      gl.TEXTURE_WRAP_S,
+      gl.CLAMP_TO_EDGE,
+    );
+    gl.texParameteri(
+      gl.TEXTURE_2D_ARRAY,
+      gl.TEXTURE_WRAP_T,
+      gl.REPEAT,
+    );
+  }
+
+  private reuploadMeshesForTextureState(): void {
+    if (this.scene) {
+      this.deleteSceneGpuMeshes();
+      this.terrainMesh = this.uploadMesh(this.scene.terrain);
+      this.locationMesh = this.uploadMesh(this.scene.locations);
+    }
+    this.deleteGpuMesh(this.playerMesh);
+    this.playerMesh = this.playerMeshSource
+      ? this.uploadMesh(this.playerMeshSource)
+      : null;
+    this.draw();
   }
 
   private resizeDrawingBuffer(): void {
@@ -250,6 +501,8 @@ export class WebGlSceneRenderer {
     }
     this.gl.deleteBuffer(mesh.positionBuffer);
     this.gl.deleteBuffer(mesh.colorBuffer);
+    this.gl.deleteBuffer(mesh.textureCoordBuffer);
+    this.gl.deleteBuffer(mesh.textureIdBuffer);
   }
 }
 
@@ -474,12 +727,16 @@ precision highp float;
 
 in vec3 aPosition;
 in vec3 aColor;
+in vec2 aTextureCoord;
+in int aTextureId;
 
 uniform mat4 uProjection;
 uniform mat4 uView;
 uniform mat4 uModel;
 
 out vec3 vColor;
+out vec2 vTextureCoord;
+flat out int vTextureId;
 out float vDepth;
 
 void main() {
@@ -487,21 +744,37 @@ void main() {
   vec4 viewPosition = uView * worldPosition;
   gl_Position = uProjection * viewPosition;
   vColor = aColor;
+  vTextureCoord = aTextureCoord;
+  vTextureId = aTextureId;
   vDepth = max(0.0, -viewPosition.z);
 }
 `;
 
 const FRAGMENT_SHADER = `#version 300 es
-precision mediump float;
+precision highp float;
+precision highp sampler2DArray;
 
 in vec3 vColor;
+in vec2 vTextureCoord;
+flat in int vTextureId;
 in float vDepth;
+
+uniform sampler2DArray uTextures;
 
 out vec4 outColor;
 
 void main() {
+  vec3 material = vColor;
+  if (vTextureId >= 0) {
+    vec4 texel = texture(uTextures, vec3(vTextureCoord, float(vTextureId)));
+    if (texel.a <= 0.0039) {
+      discard;
+    }
+    material = texel.rgb;
+  }
+
   float fog = smoothstep(9000.0, 28000.0, vDepth);
   vec3 sky = vec3(0.075, 0.105, 0.13);
-  outColor = vec4(mix(vColor, sky, fog), 1.0);
+  outColor = vec4(mix(material, sky, fog), 1.0);
 }
 `;
