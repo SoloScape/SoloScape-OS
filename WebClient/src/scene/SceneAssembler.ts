@@ -488,6 +488,7 @@ function appendNormalTerrainTile(
     level,
     localX,
     localZ,
+    corners,
     materials,
   );
 }
@@ -908,7 +909,6 @@ function appendTerrainTileGeometry(
     level,
     localX,
     localZ,
-    corners,
     materials,
   );
 
