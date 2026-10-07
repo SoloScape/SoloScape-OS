@@ -12,6 +12,35 @@ const IDENT_KIT_GROUP = 3;
 const ITEM_GROUP = 10;
 const MODELS_ARCHIVE = 7;
 
+// PLAYER_INFO transmits five palette indices rather than literal HSL colours.
+// These are the classic client player-composition palettes used for hair,
+// torso, legs, feet and skin. Values are unsigned 16-bit packed Jagex HSL.
+const PLAYER_COLOUR_BASE = [6798, 8741, 25238, 4626, 4550] as const;
+const PLAYER_COLOUR_PALETTES: readonly (readonly number[])[] = [
+  [
+    6798, 107, 10283, 16, 4797, 7744, 5799, 4634,
+    33697, 22433, 2983, 54193,
+  ],
+  [
+    8741, 12, 64030, 43162, 7735, 8404, 1701, 38430,
+    24094, 10153, 56621, 4783, 1341, 16578, 35003, 25239,
+  ],
+  [
+    25238, 8742, 12, 64030, 43162, 7735, 8404, 1701,
+    38430, 24094, 10153, 56621, 4783, 1341, 16578, 35003,
+  ],
+  [4626, 11146, 6439, 12, 4758, 10270],
+  [4550, 4537, 5681, 5673, 5790, 6806, 8076, 4574],
+];
+
+// The torso has a second recolour channel driven by the same appearance index.
+// Applying only the primary 8741 palette leaves shirts/vests visibly wrong.
+const PLAYER_SECONDARY_TORSO_BASE = 9104;
+const PLAYER_SECONDARY_TORSO_PALETTE = [
+  9104, 10275, 7595, 3610, 7975, 8526, 918, 38802,
+  24466, 10145, 58654, 5027, 1457, 16565, 34991, 25486,
+] as const;
+
 interface ModelPart {
   readonly modelId: number;
   readonly recolorFrom: readonly number[];
@@ -145,7 +174,12 @@ export class PlayerModelAssetLoader {
 
     for (const part of parts) {
       const model = await this.getModel(part.modelId);
-      triangles += appendModelPart(builder, model, part);
+      triangles += appendModelPart(
+        builder,
+        model,
+        part,
+        appearance.colours,
+      );
     }
 
     const mesh = builder.finish();
@@ -543,6 +577,7 @@ function appendModelPart(
   builder: MeshBuilder,
   model: DecodedModelGeometry,
   part: ModelPart,
+  appearanceColours: readonly number[],
 ): number {
   let triangles = 0;
 
@@ -561,6 +596,11 @@ function appendModelPart(
         break;
       }
     }
+
+    faceColor = applyPlayerAppearanceColours(
+      faceColor,
+      appearanceColours,
+    );
 
     let texture = model.faceTextures[face]!;
     for (let i = 0; i < part.retextureFrom.length; i += 1) {
@@ -596,6 +636,41 @@ function appendModelPart(
   }
 
   return triangles;
+}
+
+/**
+ * Applies the five PLAYER_INFO body-colour selectors to one packed model HSL.
+ * Ident-kit/item recolours run first; the player-composition palette runs over
+ * the combined result, matching the desktop client's model build order.
+ */
+export function applyPlayerAppearanceColours(
+  inputColour: number,
+  appearanceColours: readonly number[],
+): number {
+  const colour = inputColour & 0xffff;
+
+  for (let channel = 0; channel < PLAYER_COLOUR_BASE.length; channel += 1) {
+    const palette = PLAYER_COLOUR_PALETTES[channel]!;
+    const requested = appearanceColours[channel] ?? 0;
+    const paletteIndex =
+      Number.isInteger(requested) && requested >= 0 && requested < palette.length
+        ? requested
+        : 0;
+
+    if (colour === PLAYER_COLOUR_BASE[channel]) {
+      return palette[paletteIndex]!;
+    }
+
+    if (
+      channel === 1 &&
+      colour === PLAYER_SECONDARY_TORSO_BASE
+    ) {
+      return PLAYER_SECONDARY_TORSO_PALETTE[paletteIndex] ??
+        PLAYER_SECONDARY_TORSO_PALETTE[0]!;
+    }
+  }
+
+  return colour;
 }
 
 function vertex(
