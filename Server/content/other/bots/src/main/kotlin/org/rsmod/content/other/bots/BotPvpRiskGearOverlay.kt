@@ -272,8 +272,8 @@ internal object BotPvpRiskGearOverlay {
         }.maxByOrNull { bundle -> bundle.sumOf(BotPvpEquipmentBudget::value) }.orEmpty()
     }
 
-    internal fun keepsLegacyBaseItem(type: ItemServerType): Boolean =
-        type.stackable || type.name.contains("blessing", ignoreCase = true)
+    internal fun keepsLegacyBaseItem(name: String, stackable: Boolean): Boolean =
+        stackable || name.contains("blessing", ignoreCase = true)
 
     private fun mergeStyle(base: List<String>, preferred: List<ItemServerType>): List<String> {
         val byWearpos = LinkedHashMap<Int, String>()
@@ -283,7 +283,7 @@ internal object BotPvpRiskGearOverlay {
         // That was causing Hybrid (and other sparse plans) to wear the old rune/mystic gear.
         for (symbol in base) {
             val type = BotPvpEquipmentBudget.item(symbol) ?: continue
-            if (type.wearpos1 >= 0 && keepsLegacyBaseItem(type)) {
+            if (type.wearpos1 >= 0 && keepsLegacyBaseItem(type.name, type.stackable)) {
                 byWearpos[type.wearpos1] = symbol
             }
         }
