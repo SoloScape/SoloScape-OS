@@ -529,7 +529,6 @@ function appendInstancedTerrainZone(
         mapLocalZ,
         transformed,
         materials,
-        placement.rotation,
       );
       builder.pushQuad(
         transformed[0]!,
@@ -866,7 +865,6 @@ function terrainTileMaterial(
   localZ: number,
   corners: readonly Vec3[],
   materials: SceneFloorMaterials | null,
-  extraRotation = 0,
 ): TerrainTileMaterial {
   const index = mapTerrainTileIndex(level, localX, localZ);
   const overlayId = map.terrain.overlayIds[index]!;
@@ -925,8 +923,7 @@ function terrainTileMaterial(
       corners[3]!,
     ),
     textureId,
-    rotation:
-      (map.terrain.overlayRotations[index]! + extraRotation) & 3,
+    rotation: map.terrain.overlayRotations[index]! & 3,
   };
 }
 
