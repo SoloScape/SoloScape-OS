@@ -103,7 +103,7 @@ export function pickWalkDestination(
     const groundY = groundYFine(
       level,
       originFineX + x,
-      originFineZ + z,
+      originFineZ - z,
     );
     const delta = y - groundY;
 
@@ -151,7 +151,8 @@ function destinationAt(
   const sceneX = camera.eyeX + ray.x * t;
   const sceneZ = camera.eyeZ + ray.z * t;
   const absoluteFineX = originFineX + sceneX;
-  const absoluteFineZ = originFineZ + sceneZ;
+  // Scene Z is reflected relative to Jagex/world Z to preserve handedness.
+  const absoluteFineZ = originFineZ - sceneZ;
   const sceneY = groundYFine(
     level,
     absoluteFineX,
@@ -188,7 +189,7 @@ function refineTerrainHit(
     const groundY = groundYFine(
       level,
       originFineX + x,
-      originFineZ + z,
+      originFineZ - z,
     );
 
     if (y > groundY) {
