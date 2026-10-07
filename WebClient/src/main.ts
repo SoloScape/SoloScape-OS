@@ -129,7 +129,6 @@ let framedGamePackets = 0;
 let playerInfo: Rev240PlayerInfoDecoder | null = null;
 let currentScene: AssembledScene | null = null;
 let currentSceneMaps: readonly LoadedMapSquare[] | null = null;
-let currentSceneMaterials: SceneMaterialAssets | null = null;
 let currentTerrainSampler: SceneTerrainSampler | null = null;
 let currentPlayerMesh: SceneMesh | null = null;
 let requestedAppearanceRevision = -1;
@@ -253,7 +252,6 @@ function resetSceneDebug(): void {
   (window as SoloScapeDebugWindow).soloscapeLocalPlayer = undefined;
   currentScene = null;
   currentSceneMaps = null;
-  currentSceneMaterials = null;
   currentTerrainSampler = null;
   currentPlayerMesh = null;
   requestedAppearanceRevision = -1;
@@ -692,7 +690,6 @@ gameLogin.onGamePacket = (packet) => {
   (window as SoloScapeDebugWindow).soloscapeScene = undefined;
   currentScene = null;
   currentSceneMaps = null;
-  currentSceneMaterials = null;
   currentTerrainSampler = null;
 
   renderGameLoading(100, 'Loading - please wait.');
@@ -747,7 +744,6 @@ gameLogin.onGamePacket = (packet) => {
         return;
       }
 
-      currentSceneMaterials = materials;
       (window as SoloScapeDebugWindow).soloscapeSceneMaterials =
         materials;
 
