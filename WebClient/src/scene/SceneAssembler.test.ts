@@ -231,6 +231,14 @@ function buildTerrain(): MapTerrain {
   overlayIds.fill(-1);
   const underlayIds = new Int32Array(count);
   underlayIds.fill(-1);
+  // The classic scene builder only emits floor geometry for a real underlay
+  // or overlay. Give level 0 a simple underlay so the baseline fixture still
+  // represents a fully covered 64x64 mapsquare.
+  for (let x = 0; x < 64; x += 1) {
+    for (let z = 0; z < 64; z += 1) {
+      underlayIds[(x << 6) | z] = 1;
+    }
+  }
 
   return {
     explicitHeights,
