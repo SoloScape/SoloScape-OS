@@ -110,6 +110,7 @@ export function decodeLocModelDefinition(
       case 22:
       case 23:
       case 27:
+        break;
       case 62:
         rotated = true;
         break;
