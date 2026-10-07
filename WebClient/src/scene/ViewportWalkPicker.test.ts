@@ -5,25 +5,25 @@ import { pickWalkDestination } from './ViewportWalkPicker';
 
 const camera: OrbitCameraRenderState = {
   orbitX: 64,
-  orbitZ: 64,
+  orbitZ: -64,
   yaw: 0,
   pitch: 256,
   zoom: 1100,
   eyeX: 64,
   eyeY: 256,
-  eyeZ: -256,
+  eyeZ: 256,
   targetX: 64,
   targetY: 0,
-  targetZ: 64,
+  targetZ: -64,
 };
 
 const bounds = {
   minX: 0,
   minY: 0,
-  minZ: 0,
+  minZ: -1024,
   maxX: 1024,
   maxY: 0,
-  maxZ: 1024,
+  maxZ: 0,
 };
 
 test('centre viewport ray resolves the terrain tile under the camera target', () => {
@@ -44,7 +44,7 @@ test('centre viewport ray resolves the terrain tile under the camera target', ()
   assert.equal(pick.tileX, 3200);
   assert.equal(pick.tileZ, 3200);
   assert.ok(Math.abs(pick.sceneX - 64) < 1);
-  assert.ok(Math.abs(pick.sceneZ - 64) < 1);
+  assert.ok(Math.abs(pick.sceneZ + 64) < 1);
 });
 
 test('terrain picker follows non-flat ground height', () => {
