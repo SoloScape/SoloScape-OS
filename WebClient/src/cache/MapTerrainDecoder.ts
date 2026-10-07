@@ -63,16 +63,10 @@ export function decodeMapTerrain(data: Uint8Array): MapTerrain {
             continue;
           }
 
-          underlayIds[index] = opcode - 82;
+          underlayIds[index] = (opcode - 81) & 0xff;
         }
       }
     }
-  }
-
-  if (reader.remaining !== 0) {
-    throw new RangeError(
-      'Map terrain has ' + reader.remaining + ' trailing byte(s).',
-    );
   }
 
   return {
