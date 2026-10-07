@@ -252,7 +252,22 @@ class BotPvpActions @Inject constructor(
         if (isFood(it.id)) it.count else 0
     }
 
-    fun eat(player: Player, combo: Boolean): Boolean {
+    fun canTripleEat(player: Player): Boolean {
+        val normal = player.inv.indices.any {
+            val obj = player.inv[it]
+            obj != null && isFood(obj.id) && !isKarambwan(obj.id)
+        }
+        val karambwan = player.inv.indices.any {
+            player.inv[it]?.id?.let(::isKarambwan) == true
+        }
+        val brew = player.inv.indices.any {
+            val name = player.inv[it]?.id?.let(ServerCacheManager::getItem)?.name
+            name?.startsWith("Saradomin brew", ignoreCase = true) == true
+        }
+        return normal && karambwan && brew
+    }
+
+    fun eat(player: Player, combo: Boolean, triple: Boolean = false): Boolean {
         val normal = player.inv.indices.firstOrNull {
             val obj = player.inv[it]
             obj != null && isFood(obj.id) && !isKarambwan(obj.id)
@@ -260,13 +275,26 @@ class BotPvpActions @Inject constructor(
         val comboSlot = player.inv.indices.firstOrNull {
             player.inv[it]?.id?.let(::isKarambwan) == true
         }
+        val brewSlot = if (triple) {
+            player.inv.indices.firstOrNull {
+                val name = player.inv[it]?.id?.let(ServerCacheManager::getItem)?.name
+                name?.startsWith("Saradomin brew", ignoreCase = true) == true
+            }
+        } else {
+            null
+        }
+        val tripleAvailable = triple && normal != null && comboSlot != null && brewSlot != null
         if (normal == null && comboSlot == null) return false
         val before = inventorySnapshot(player)
         val launched = access.launch(player) {
             if (normal != null) held.interact(this, player.inv, normal, HeldOp.Op1)
-            // Both clicks in one access are necessary for native combo eating; its consume locks
-            // still decide whether either click succeeds and add the real combat delay.
-            if ((combo || normal == null) && comboSlot != null) {
+            if (tripleAvailable) {
+                // Panic-eat order mirrors player PKing: hard food -> brew -> karambwan.
+                held.interact(this, player.inv, checkNotNull(brewSlot), HeldOp.Op1)
+            }
+            // Same-access clicks let the native food/potion scripts enforce their real consume
+            // locks and combat delays instead of giving bots synthetic healing.
+            if ((combo || normal == null || tripleAvailable) && comboSlot != null) {
                 held.interact(this, player.inv, comboSlot, HeldOp.Op1)
             }
         }
