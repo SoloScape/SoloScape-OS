@@ -326,6 +326,31 @@ export function deriveTerrainHeight(
   return previousLevelHeight - delta;
 }
 
+/**
+ * Reuses the exact terrain-height rules used by scene assembly for actor
+ * placement. RuneScape entity coordinates are absolute tiles; the renderer
+ * needs the corresponding scene-space Y value to stand actors on the map.
+ */
+export class SceneTerrainSampler {
+  private readonly heights: TerrainHeightField;
+
+  constructor(maps: readonly LoadedMapSquare[]) {
+    this.heights = new TerrainHeightField(createMapLookup(maps));
+  }
+
+  groundY(
+    level: number,
+    absoluteTileX: number,
+    absoluteTileZ: number,
+  ): number {
+    return -this.heights.height(
+      level,
+      absoluteTileX,
+      absoluteTileZ,
+    );
+  }
+}
+
 class TerrainHeightField {
   private readonly resolved = new Map<number, Int32Array>();
 
