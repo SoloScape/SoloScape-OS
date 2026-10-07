@@ -52,6 +52,7 @@ import {
   BrowserGameLoop,
   CLIENT_TICK_MS,
 } from './runtime/BrowserGameLoop';
+import { jagexYawToRadians } from './runtime/PlayerMovement';
 import {
   CacheTitleScreenRenderer,
   type LoginField,
@@ -265,7 +266,9 @@ function resetSceneDebug(): void {
   sceneRenderer?.clear();
 }
 
-function syncLocalPlayerRender(): void {
+function syncLocalPlayerRender(
+  interpolationAlpha = 1,
+): void {
   if (
     !sceneRenderer ||
     !currentScene ||
@@ -276,33 +279,35 @@ function syncLocalPlayerRender(): void {
   }
 
   const player = playerInfo.getLocalPlayer();
-  if (!player) {
+  const renderState =
+    playerInfo.getLocalPlayerRenderState(interpolationAlpha);
+  if (!player || !renderState) {
     return;
   }
 
   const x =
-    (player.coord.x - currentScene.originTileX) *
-      SCENE_TILE_SIZE +
-    SCENE_TILE_SIZE / 2;
+    renderState.fineX -
+    currentScene.originTileX * SCENE_TILE_SIZE;
   const z =
-    (player.coord.z - currentScene.originTileZ) *
-      SCENE_TILE_SIZE +
-    SCENE_TILE_SIZE / 2;
-  const y = currentTerrainSampler.groundY(
-    player.coord.level,
-    player.coord.x,
-    player.coord.z,
+    renderState.fineZ -
+    currentScene.originTileZ * SCENE_TILE_SIZE;
+  const y = currentTerrainSampler.groundYFine(
+    renderState.level,
+    renderState.fineX,
+    renderState.fineZ,
   );
 
-  sceneRenderer.setLocalPlayerPosition({ x, y, z });
+  sceneRenderer.setLocalPlayerPosition({
+    x,
+    y,
+    z,
+    yaw: jagexYawToRadians(renderState.yaw),
+  });
   (window as SoloScapeDebugWindow).soloscapeLocalPlayer = player;
 }
 
 function tickGameSimulation(): void {
-  // First fixed-step runtime milestone: consume the latest protocol/player
-  // state on the same 20ms cadence as the original client. Route movement,
-  // entity animation and orbit-camera simulation plug into this function next.
-  syncLocalPlayerRender();
+  playerInfo?.tickMovement();
 }
 
 function requestLocalPlayerModel(): void {
@@ -538,6 +543,7 @@ browserGameLoop = new BrowserGameLoop({
   },
   render: (interpolationAlpha) => {
     if (titleMode === 'game') {
+      syncLocalPlayerRender(interpolationAlpha);
       sceneRenderer?.renderFrame(interpolationAlpha);
     }
   },
