@@ -20,10 +20,11 @@ interface Vec3Like {
  * perspective interpolation then provides the perspective-correct sampling
  * step that the software rasterizer performs per pixel.
  *
- * Modern texture render types 1..3 carry extra transform metadata which the
- * current decoder intentionally does not retain yet. Those faces return null
- * so the renderer falls back to the existing colour material rather than
- * applying a visibly wrong texture.
+ * The classic lighting step compacts only referenced type-0 texture anchor
+ * triangles. If a face points at render type 1..3, that axis is discarded in
+ * the lit model and the rasterizer falls back to the face's own A/B/C vertices
+ * as its texture basis. Mirror that behaviour here instead of dropping the
+ * texture entirely; this is important for many scenery objects.
  */
 export function resolveType0FaceTextureUvs(
   model: DecodedModelGeometry,
@@ -47,11 +48,15 @@ export function resolveType0FaceTextureUvs(
     ];
   }
 
-  if (
-    axis >= model.textureRenderTypes.length ||
-    model.textureRenderTypes[axis] !== 0
-  ) {
+  if (axis >= model.textureRenderTypes.length) {
     return null;
+  }
+  if (model.textureRenderTypes[axis] !== 0) {
+    return [
+      { u: 0, v: 0 },
+      { u: 1, v: 0 },
+      { u: 0, v: 1 },
+    ];
   }
 
   const pIndex = model.textureFaceA[axis]!;
