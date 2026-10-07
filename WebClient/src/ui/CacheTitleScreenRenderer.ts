@@ -67,6 +67,10 @@ type TitleView =
       readonly kind: 'loading';
       readonly progress: number;
       readonly message: string;
+    }
+  | {
+      readonly kind: 'game-message';
+      readonly message: string;
     };
 
 /**
@@ -80,6 +84,7 @@ type TitleView =
  */
 export class CacheTitleScreenRenderer {
   private readonly context: CanvasRenderingContext2D;
+  private readonly plain12: CacheBitmapFont;
   private readonly bold12: CacheBitmapFont;
   private readonly logoCanvas: HTMLCanvasElement;
   private readonly titleBoxCanvas: HTMLCanvasElement;
@@ -98,6 +103,7 @@ export class CacheTitleScreenRenderer {
     }
 
     this.context = context;
+    this.plain12 = new CacheBitmapFont(assets.plain12);
     this.bold12 = new CacheBitmapFont(assets.bold12);
     this.logoCanvas = createSpriteCanvas(assets.logo);
     this.titleBoxCanvas = createSpriteCanvas(assets.titleBox);
@@ -159,6 +165,21 @@ export class CacheTitleScreenRenderer {
   }
 
   /**
+   * Original Client.messageBox-style in-game loading overlay.
+   *
+   * This is deliberately separate from the centered title/bootstrap loader:
+   * after login the original client transitions to main state 25 and draws
+   * Text.LOADING in a small black/white box at the top-left of the draw area.
+   */
+  renderGameMessage(message: string): void {
+    this.currentView = {
+      kind: 'game-message',
+      message,
+    };
+    this.renderFrame(performance.now());
+  }
+
+  /**
    * Repaint the retained state so the cache-backed flame animation keeps
    * running even when title input/status text has not changed.
    */
@@ -183,6 +204,9 @@ export class CacheTitleScreenRenderer {
         return;
       case 'loading':
         this.drawLoading(view.progress, view.message, timestampMs);
+        return;
+      case 'game-message':
+        this.drawGameMessage(view.message);
         return;
     }
   }
@@ -439,6 +463,62 @@ export class CacheTitleScreenRenderer {
       'center',
       false,
     );
+  }
+
+  private drawGameMessage(message: string): void {
+    const context = this.context;
+    const lines = message
+      .replace(/<br\s*\/?>/gi, '\n')
+      .split('\n');
+    const maxTextWidth = Math.min(
+      250,
+      Math.max(
+        1,
+        ...lines.map((line) => this.plain12.measure(line)),
+      ),
+    );
+    const lineHeight = 13;
+    const textHeight = Math.max(1, lines.length) * lineHeight;
+    const pad = 4;
+    const textX = pad + 6;
+    const textTop = pad + 6;
+    const boxX = textX - pad;
+    const boxY = textTop - pad;
+    const boxWidth = pad + maxTextWidth + pad;
+    const boxHeight = pad + textHeight + pad;
+
+    context.save();
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.imageSmoothingEnabled = false;
+
+    // Keep the WebGL frame visible underneath, matching messageBox()'s
+    // overlay semantics. The UI canvas itself must otherwise be transparent.
+    context.clearRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+
+    context.fillStyle = '#000';
+    context.fillRect(boxX, boxY, boxWidth, boxHeight);
+    drawRect(
+      context,
+      boxX,
+      boxY,
+      boxWidth,
+      boxHeight,
+      '#ffffff',
+    );
+
+    for (let index = 0; index < lines.length; index += 1) {
+      this.plain12.draw(
+        context,
+        lines[index] ?? '',
+        textX,
+        textTop + 12 + index * lineHeight,
+        WHITE,
+        'left',
+        false,
+      );
+    }
+
+    context.restore();
   }
 
   private drawLoginMessages(
