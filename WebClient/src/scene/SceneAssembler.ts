@@ -488,7 +488,6 @@ function appendNormalTerrainTile(
     level,
     localX,
     localZ,
-    corners,
     materials,
   );
 }
@@ -995,7 +994,6 @@ function terrainSurfaceMaterials(
   level: number,
   localX: number,
   localZ: number,
-  corners: readonly Vec3[],
   materials: SceneFloorMaterials | null,
 ): {
   readonly underlay: TerrainSurfaceMaterial;
