@@ -2,6 +2,7 @@ package org.rsmod.content.other.bots
 
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
+import kotlin.math.abs
 import kotlin.random.Random
 import org.rsmod.api.area.checker.AreaChecker
 import org.rsmod.api.area.checker.wildernessLevel
@@ -43,7 +44,7 @@ class BotPvpCombat @Inject constructor(
 
     private fun reachableRoamPoint(source: CoordGrid, hotspot: BotPvpHotspot): CoordGrid =
         reachablePoint(source, hotspot, maxDistance = 54, attempts = 64)
-            ?: hotspot.anchor
+            ?: source
 
     private fun reachablePoint(
         source: CoordGrid,
@@ -91,6 +92,7 @@ class BotPvpCombat @Inject constructor(
             loadout,
             hotspotId,
             risk,
+            identity,
         )
         for ((stat, level) in loadout.levels) {
             player.statMap.setFineXP(stat, PlayerSkillXPTable.getFineXPFromLevel(level))
@@ -424,7 +426,52 @@ class BotPvpCombat @Inject constructor(
             patrol.z + random.nextInt(-7, 8),
             patrol.level,
         )
-        return reachableRoamPoint(player.coords, hotspot)
+        if (hotspot.fixedHotspot) return reachableRoamPoint(player.coords, hotspot)
+
+        var target = BotPvpHotspots.patrolTarget(state.identity, state.patrolStep)
+        if (player.coords.chebyshevDistance(target) <= 14) {
+            state.patrolStep++
+            target = BotPvpHotspots.patrolTarget(state.identity, state.patrolStep)
+        }
+        return reachablePatrolStep(player.coords, target)
+            ?: reachableRoamPoint(player.coords, hotspot)
+    }
+
+    /**
+     * Advance toward a far-away Wilderness patrol target in short collision-validated hops.
+     * Different bots have different target sequences, so these hops continuously fill the spaces
+     * between activity hotspots instead of leaving permanent dead bands on the map.
+     */
+    private fun reachablePatrolStep(source: CoordGrid, target: CoordGrid): CoordGrid? {
+        val dx = target.x - source.x
+        val dz = target.z - source.z
+        val distance = maxOf(abs(dx), abs(dz))
+        if (distance == 0) return source
+        val step = minOf(46, distance)
+        val projectedX = source.x + (dx * step / distance)
+        val projectedZ = source.z + (dz * step / distance)
+
+        repeat(36) { attempt ->
+            val jitter = if (attempt == 0) 0 else 10
+            val candidate = CoordGrid(
+                projectedX + if (jitter == 0) 0 else random.nextInt(-jitter, jitter + 1),
+                projectedZ + if (jitter == 0) 0 else random.nextInt(-jitter, jitter + 1),
+                source.level,
+            )
+            if (candidate.wildernessLevel(areas) <= 0 ||
+                source.chebyshevDistance(candidate) > 54
+            ) return@repeat
+            val route = routeFinding.findRoute(
+                level = source.level,
+                srcX = source.x,
+                srcZ = source.z,
+                destX = candidate.x,
+                destZ = candidate.z,
+                moveNear = false,
+            )
+            if (route.success) return candidate
+        }
+        return null
     }
 
     private fun retreat(player: Player, state: BotPvpState, cycle: Int): String {
