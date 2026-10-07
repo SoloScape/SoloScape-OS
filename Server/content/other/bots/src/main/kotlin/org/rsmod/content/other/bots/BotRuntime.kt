@@ -126,7 +126,12 @@ class BotPopulation @Inject constructor(
             val name = SourceBotCatalog.names[(identity - 1) % SourceBotCatalog.names.size]
             val initial = initialTask(mode) ?: return added
             val hotspot = if (mode == BotMode.Wilderness) {
-                BotPvpHotspots.choose(identity, membersWorld, difficulty)
+                val occupancy = bots.values.asSequence()
+                    .filter { it.mode == BotMode.Wilderness }
+                    .mapNotNull { it.hotspot?.id }
+                    .groupingBy { it }
+                    .eachCount()
+                BotPvpHotspots.choose(identity, membersWorld, difficulty, occupancy)
             } else null
             val patrol = hotspot?.anchor
             val player = Player().apply {
