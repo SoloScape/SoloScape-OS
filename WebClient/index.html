@@ -2,44 +2,62 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-    <meta name="theme-color" content="#111111" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#000000" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
     <meta name="apple-mobile-web-app-title" content="SoloScape" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <title>SoloScape Web Client</title>
+    <title>SoloScape</title>
   </head>
   <body>
     <main class="app">
-      <section class="toolbar">
-        <div>
-          <strong>SoloScape Web Client</strong>
-          <span id="revision"></span>
-        </div>
-        <div class="connect-row">
-          <input id="gateway-url" aria-label="WebSocket gateway URL" />
-          <button id="connect" type="button">Connect JS5</button>
-        </div>
-        <div id="status" role="status">Disconnected</div>
-        <div class="login-row">
-          <input id="login-username" autocomplete="username" placeholder="Username" aria-label="Game username" />
-          <input id="login-password" autocomplete="current-password" type="password" placeholder="Password" aria-label="Game password" />
-          <button id="login" type="button" disabled>Game login</button>
-        </div>
-        <div id="login-status" role="status">Game login waits for JS5 bootstrap</div>
-      </section>
-
-      <section class="viewport">
+      <section class="viewport" aria-label="SoloScape game client">
         <canvas id="game" width="765" height="503"></canvas>
+        <canvas
+          id="client-ui"
+          width="765"
+          height="503"
+          aria-label="SoloScape loading and login screen"
+        ></canvas>
+
+        <input
+          id="login-username"
+          class="login-capture"
+          autocomplete="username"
+          aria-label="Game username"
+        />
+        <input
+          id="login-password"
+          class="login-capture"
+          autocomplete="current-password"
+          type="password"
+          aria-label="Game password"
+        />
+
         <div id="scene-status" class="scene-status" role="status">
-          <strong id="scene-headline">JS5 cache bootstrap ready</strong>
-          <span id="scene-detail">Connect to fetch the rev-240 cache index</span>
+          <strong id="scene-headline">Starting SoloScape</strong>
+          <span id="scene-detail">Connecting to the local cache gateway</span>
         </div>
       </section>
 
-      <details class="debug">
-        <summary>Transport log</summary>
+      <details id="debug-panel" class="debug" hidden>
+        <summary>Developer / transport</summary>
+        <div class="debug-controls">
+          <input id="gateway-url" aria-label="WebSocket gateway URL" />
+          <button id="connect" type="button">Disconnect JS5</button>
+        </div>
+        <div class="debug-state">
+          <span id="revision"></span>
+          <span id="status">Disconnected</span>
+          <span id="login-status">Game login idle</span>
+        </div>
         <pre id="log"></pre>
       </details>
     </main>
