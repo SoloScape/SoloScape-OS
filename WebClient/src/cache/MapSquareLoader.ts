@@ -2,7 +2,6 @@ import {
   type Js5Client,
   type Js5DownloadedGroup,
 } from './Js5Client';
-import { js5NameHash } from './Js5NameHash';
 import {
   decodeMapLocations,
   type MapLocation,
@@ -14,11 +13,21 @@ import {
 import type { MapSquare } from '../protocol/RegionRebuildDecoder';
 
 export const MAPS_ARCHIVE = 5;
+export const MAP_TERRAIN_FILE = 0;
+export const MAP_LOCATION_FILE = 1;
 
 export interface LoadedMapSquare {
   readonly mapSquare: MapSquare;
+  /**
+   * Legacy diagnostic label retained for scene/debug output.
+   * Rev-240 archive 5 is keyed by packed mapsquare id, not by group names.
+   */
   readonly terrainName: string;
   readonly terrainGroup: number;
+  /**
+   * Legacy diagnostic label retained for scene/debug output.
+   * Terrain and locations are files in the same mapsquare group.
+   */
   readonly locationName: string;
   readonly locationGroup: number | null;
   readonly terrain: MapTerrain;
@@ -46,38 +55,27 @@ export class MapSquareLoader {
   async load(mapSquare: MapSquare): Promise<LoadedMapSquare> {
     const terrainName = 'm' + mapSquare.x + '_' + mapSquare.z;
     const locationName = 'l' + mapSquare.x + '_' + mapSquare.z;
-    const terrainGroup = this.resolveGroup(terrainName);
-
-    if (terrainGroup === null) {
-      throw new Error(
-        'Maps archive is missing terrain group ' + terrainName + '.',
-      );
-    }
-
-    const locationGroup = this.resolveGroup(locationName);
+    const mapGroup = mapSquare.id;
 
     this.log?.(
       'Loading mapsquare ' + mapSquare.x + ',' + mapSquare.z +
-        ': terrain=' + terrainName + '->5:' + terrainGroup +
-        (locationGroup === null
-          ? '; locations=' + locationName + ' missing/empty.'
-          : '; locations=' + locationName + '->5:' + locationGroup + '.'),
+        ': archive-group=5:' + mapGroup +
+        ' terrain-file=' + MAP_TERRAIN_FILE +
+        ' locations-file=' + MAP_LOCATION_FILE + '.',
     );
 
-    const [terrainDownload, locationDownload] = await Promise.all([
-      this.js5.downloadGroup(MAPS_ARCHIVE, terrainGroup),
-      locationGroup === null
-        ? Promise.resolve<Js5DownloadedGroup | null>(null)
-        : this.js5.downloadGroup(MAPS_ARCHIVE, locationGroup),
-    ]);
+    const download = await this.js5.downloadGroup(
+      MAPS_ARCHIVE,
+      mapGroup,
+    );
 
-    const terrainBytes = requireSingleFile(
-      terrainDownload,
+    const terrainBytes = requireMapFile(
+      download,
+      MAP_TERRAIN_FILE,
       terrainName,
     );
-    const locationBytes = locationDownload
-      ? requireSingleFile(locationDownload, locationName)
-      : null;
+    const locationBytes =
+      download.files.get(MAP_LOCATION_FILE)?.slice() ?? null;
 
     const terrain = decodeMapTerrain(terrainBytes);
     const locations = locationBytes
@@ -86,51 +84,36 @@ export class MapSquareLoader {
 
     this.log?.(
       'Decoded mapsquare ' + mapSquare.x + ',' + mapSquare.z +
-        ': terrain=' + terrainBytes.length + ' bytes; locations=' +
-        locations.length + '.',
+        ': group=5:' + mapGroup +
+        '; terrain=' + terrainBytes.length + ' bytes; locations=' +
+        locations.length +
+        (locationBytes ? '' : ' (file 1 absent)') + '.',
     );
 
     return {
       mapSquare,
       terrainName,
-      terrainGroup,
+      terrainGroup: mapGroup,
       locationName,
-      locationGroup,
+      locationGroup: locationBytes ? mapGroup : null,
       terrain,
       locations,
     };
   }
-
-  private resolveGroup(name: string): number | null {
-    const table = this.js5.getArchiveReferenceTable(MAPS_ARCHIVE);
-    if (!table) {
-      throw new Error('Maps archive reference table 5 is unavailable.');
-    }
-    if (!table.hasNames) {
-      throw new Error(
-        'Maps archive reference table 5 does not contain group name hashes.',
-      );
-    }
-
-    const hash = js5NameHash(name);
-    const group = table.groups.find((entry) => entry.nameHash === hash);
-    return group?.id ?? null;
-  }
 }
 
-function requireSingleFile(
+function requireMapFile(
   group: Js5DownloadedGroup,
-  name: string,
+  fileId: number,
+  label: string,
 ): Uint8Array {
-  if (group.files.size !== 1) {
+  const file = group.files.get(fileId);
+  if (!file) {
     throw new Error(
-      'Map group ' + name + ' (5:' + group.group +
-        ') expected exactly one file; found ' + group.files.size + '.',
+      'Map group 5:' + group.group +
+        ' is missing required file ' + fileId +
+        ' (' + label + ').',
     );
   }
-  const file = group.files.values().next().value as Uint8Array | undefined;
-  if (!file) {
-    throw new Error('Map group ' + name + ' is empty.');
-  }
-  return file;
+  return file.slice();
 }
