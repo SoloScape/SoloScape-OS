@@ -4,6 +4,7 @@ import {
 } from '../cache/CacheSpriteDecoder';
 import type { TitleScreenAssets } from '../cache/TitleScreenAssets';
 import { CacheBitmapFont } from './CacheBitmapFont';
+import { CacheLoginFlameAnimation } from './CacheLoginFlameAnimation';
 
 const VIEWPORT_WIDTH = 765;
 const VIEWPORT_HEIGHT = 503;
@@ -40,6 +41,17 @@ interface Rect {
 
 type CacheImageSource = ImageBitmap | HTMLImageElement;
 
+type TitleView =
+  | {
+      readonly kind: 'login';
+      readonly state: LoginRenderState;
+    }
+  | {
+      readonly kind: 'message';
+      readonly message: string;
+      readonly detail?: string;
+    };
+
 export class CacheTitleScreenRenderer {
   private readonly context: CanvasRenderingContext2D;
   private readonly plain12: CacheBitmapFont;
@@ -47,6 +59,8 @@ export class CacheTitleScreenRenderer {
   private readonly logoCanvas: HTMLCanvasElement;
   private readonly titleBoxCanvas: HTMLCanvasElement;
   private readonly titleButtonCanvas: HTMLCanvasElement;
+  private readonly flames: CacheLoginFlameAnimation;
+  private currentView: TitleView | null = null;
 
   private constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -64,6 +78,7 @@ export class CacheTitleScreenRenderer {
     this.logoCanvas = createSpriteCanvas(assets.logo);
     this.titleBoxCanvas = createSpriteCanvas(assets.titleBox);
     this.titleButtonCanvas = createSpriteCanvas(assets.titleButton);
+    this.flames = new CacheLoginFlameAnimation(assets.runes);
   }
 
   static async create(
@@ -75,7 +90,71 @@ export class CacheTitleScreenRenderer {
   }
 
   renderLogin(state: LoginRenderState): void {
-    this.drawBase();
+    this.currentView = {
+      kind: 'login',
+      state: {
+        username: state.username,
+        password: state.password,
+        selectedField: state.selectedField,
+        message: state.message,
+        showCursor: state.showCursor,
+      },
+    };
+    this.renderFrame(performance.now());
+  }
+
+  renderMessage(message: string, detail?: string): void {
+    this.currentView = {
+      kind: 'message',
+      message,
+      detail,
+    };
+    this.renderFrame(performance.now());
+  }
+
+  /**
+   * Repaints the retained title view so the cache-backed flame animation keeps
+   * running even when no login input or status text changed.
+   */
+  renderFrame(timestampMs: number): void {
+    const view = this.currentView;
+    if (!view) {
+      return;
+    }
+
+    if (view.kind === 'login') {
+      this.drawLogin(view.state, timestampMs);
+      return;
+    }
+
+    this.drawMessage(
+      view.message,
+      view.detail,
+      timestampMs,
+    );
+  }
+
+  hitTest(x: number, y: number): TitleHitTarget {
+    if (contains(this.usernameRect(), x, y)) {
+      return 'username';
+    }
+    if (contains(this.passwordRect(), x, y)) {
+      return 'password';
+    }
+    if (contains(this.buttonRect(-BUTTON_CENTER_OFFSET), x, y)) {
+      return 'login';
+    }
+    if (contains(this.buttonRect(BUTTON_CENTER_OFFSET), x, y)) {
+      return 'cancel';
+    }
+    return null;
+  }
+
+  private drawLogin(
+    state: LoginRenderState,
+    timestampMs: number,
+  ): void {
+    this.drawBase(timestampMs);
     this.drawSpriteCentered(
       this.titleBoxCanvas,
       this.assets.titleBox,
@@ -142,8 +221,12 @@ export class CacheTitleScreenRenderer {
     this.drawButton(cancel, 'Cancel');
   }
 
-  renderMessage(message: string, detail?: string): void {
-    this.drawBase();
+  private drawMessage(
+    message: string,
+    detail: string | undefined,
+    timestampMs: number,
+  ): void {
+    this.drawBase(timestampMs);
     this.drawSpriteCentered(
       this.titleBoxCanvas,
       this.assets.titleBox,
@@ -170,23 +253,7 @@ export class CacheTitleScreenRenderer {
     }
   }
 
-  hitTest(x: number, y: number): TitleHitTarget {
-    if (contains(this.usernameRect(), x, y)) {
-      return 'username';
-    }
-    if (contains(this.passwordRect(), x, y)) {
-      return 'password';
-    }
-    if (contains(this.buttonRect(-BUTTON_CENTER_OFFSET), x, y)) {
-      return 'login';
-    }
-    if (contains(this.buttonRect(BUTTON_CENTER_OFFSET), x, y)) {
-      return 'cancel';
-    }
-    return null;
-  }
-
-  private drawBase(): void {
+  private drawBase(timestampMs: number): void {
     const context = this.context;
     context.save();
     context.setTransform(1, 0, 0, 1, 0, 0);
@@ -217,6 +284,8 @@ export class CacheTitleScreenRenderer {
       context.drawImage(this.background, 0, 0);
       context.restore();
     }
+
+    this.flames.draw(context, timestampMs);
 
     this.drawSpriteCentered(
       this.logoCanvas,
