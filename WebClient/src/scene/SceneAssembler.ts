@@ -915,30 +915,41 @@ function appendModel(
   materials: SceneFloorMaterials | null,
 ): number {
   let triangles = 0;
-  const mirrored =
-    definition.rotated !==
-    (placement.modelType === 2 && placement.orientation > 3);
-  const transformVertex = (vertex: number): Vec3 =>
-    transformModelVertex(
+
+  // Match LocType.buildModel: shaped locs toggle mirroring for any rotation
+  // above 3, while shapeless kind-10 locs use only the definition mirror bit.
+  const mirrored = definition.modelTypes === null
+    ? definition.rotated
+    : definition.rotated !== (placement.orientation > 3);
+
+  const localVertices = new Array<Vec3>(model.vertexX.length);
+  const sceneVertices = new Array<Vec3>(model.vertexX.length);
+  for (let vertex = 0; vertex < model.vertexX.length; vertex += 1) {
+    const local = transformModelLocalVertex(
       model,
       vertex,
       definition,
       placement,
       mirrored,
-      centerX,
-      centerZ,
-      clientGroundHeight,
     );
+    localVertices[vertex] = local;
+    sceneVertices[vertex] = {
+      x: centerX + local.x,
+      y: -(clientGroundHeight + local.y),
+      z: centerZ + local.z,
+    };
+  }
+
+  const lighting = calculateModelLighting(model, localVertices, definition);
+  const vertexAt = (vertex: number): Vec3 => sceneVertices[vertex]!;
 
   for (let face = 0; face < model.faceA.length; face += 1) {
-    const alpha = model.faceTransparencies[face]! & 0xff;
-    if (alpha >= 254) {
-      continue;
-    }
-
-    const a = transformVertex(model.faceA[face]!);
-    const b = transformVertex(model.faceB[face]!);
-    const c = transformVertex(model.faceC[face]!);
+    const aIndex = model.faceA[face]!;
+    const bIndex = model.faceB[face]!;
+    const cIndex = model.faceC[face]!;
+    const a = sceneVertices[aIndex]!;
+    const b = sceneVertices[bIndex]!;
+    const d = sceneVertices[cIndex]!;
 
     let faceColor = model.faceColors[face]!;
     for (let i = 0; i < definition.recolorFrom.length; i += 1) {
@@ -956,34 +967,42 @@ function appendModel(
       }
     }
 
+    const renderType = effectiveModelFaceRenderType(model, face);
+    if (renderType === 2 || (texture >= 0 && renderType >= 2)) {
+      continue;
+    }
+
     const textureUvs = texture >= 0
-      ? resolveType0FaceTextureUvs(model, face, transformVertex)
+      ? resolveType0FaceTextureUvs(model, face, vertexAt)
       : null;
     const textureResident =
       texture >= 0 &&
       materials?.residentTextureIds.has(texture) === true;
     const renderedTexture =
       textureUvs && textureResident ? texture : -1;
-
-    // If a texture cannot be sampled (unsupported mapping or a sprite that
-    // failed to become resident), mirror Pix3D's missing-texel fallback by
-    // tinting the face from the texture definition's average packed-HSL.
-    // Falling back to model faceColor is often wrong for textured old-format
-    // models because that slot is intentionally replaced with 127.
     const averageTextureHsl = texture >= 0
       ? materials?.textureAverageRgb.get(texture)
       : undefined;
-    const base = renderedTexture >= 0
-      ? modelColor(faceColor, renderedTexture)
-      : averageTextureHsl !== undefined
-        ? packedHslColor(averageTextureHsl)
-        : modelColor(faceColor, -1);
-    const shaded = shadeByTriangleNormal(base, a, b, c);
-    builder.pushTriangle(
+
+    const colours = lightModelFace(
+      model,
+      face,
+      renderType,
+      faceColor,
+      texture,
+      renderedTexture,
+      averageTextureHsl,
+      lighting,
+    );
+    if (!colours) {
+      continue;
+    }
+
+    builder.pushTriangleColors(
       a,
       b,
-      c,
-      shaded,
+      d,
+      colours,
       renderedTexture,
       textureUvs,
     );
@@ -993,15 +1012,199 @@ function appendModel(
   return triangles;
 }
 
-function transformModelVertex(
+interface ModelNormal {
+  x: number;
+  y: number;
+  z: number;
+  magnitude: number;
+}
+
+interface ModelLighting {
+  readonly vertexNormals: readonly ModelNormal[];
+  readonly faceNormals: readonly Vec3[];
+  readonly ambient: number;
+  readonly scale: number;
+}
+
+function calculateModelLighting(
+  model: DecodedModelGeometry,
+  vertices: readonly Vec3[],
+  definition: LocModelDefinition,
+): ModelLighting {
+  const vertexNormals = Array.from(
+    { length: vertices.length },
+    (): ModelNormal => ({ x: 0, y: 0, z: 0, magnitude: 0 }),
+  );
+  const faceNormals = Array.from(
+    { length: model.faceA.length },
+    (): Vec3 => ({ x: 0, y: 0, z: 0 }),
+  );
+
+  for (let face = 0; face < model.faceA.length; face += 1) {
+    const a = vertices[model.faceA[face]!]!;
+    const b = vertices[model.faceB[face]!]!;
+    const d = vertices[model.faceC[face]!]!;
+
+    let nx = (b.y - a.y) * (d.z - a.z) -
+      (d.y - a.y) * (b.z - a.z);
+    let ny = (b.z - a.z) * (d.x - a.x) -
+      (d.z - a.z) * (b.x - a.x);
+    let nz = (b.x - a.x) * (d.y - a.y) -
+      (d.x - a.x) * (b.y - a.y);
+
+    while (
+      nx > 8192 || ny > 8192 || nz > 8192 ||
+      nx < -8192 || ny < -8192 || nz < -8192
+    ) {
+      nx = Math.trunc(nx / 2);
+      ny = Math.trunc(ny / 2);
+      nz = Math.trunc(nz / 2);
+    }
+
+    const length = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+    nx = Math.trunc(nx * 256 / length);
+    ny = Math.trunc(ny * 256 / length);
+    nz = Math.trunc(nz * 256 / length);
+
+    const baseType = model.faceRenderTypes[face] ?? 0;
+    if (baseType === 0) {
+      for (const vertex of [
+        model.faceA[face]!,
+        model.faceB[face]!,
+        model.faceC[face]!,
+      ]) {
+        const normal = vertexNormals[vertex]!;
+        normal.x += nx;
+        normal.y += ny;
+        normal.z += nz;
+        normal.magnitude += 1;
+      }
+    } else if (baseType === 1) {
+      faceNormals[face] = { x: nx, y: ny, z: nz };
+    }
+  }
+
+  const distance = Math.trunc(Math.sqrt(50 * 50 + 10 * 10 + 50 * 50));
+  const contrast = definition.contrast + 768;
+  return {
+    vertexNormals,
+    faceNormals,
+    ambient: definition.ambient + 64,
+    scale: Math.max(1, Math.trunc(contrast * distance / 256)),
+  };
+}
+
+function effectiveModelFaceRenderType(
+  model: DecodedModelGeometry,
+  face: number,
+): number {
+  const alpha = model.faceTransparencies[face] ?? 0;
+  if (alpha === -2) {
+    return 3;
+  }
+  if (alpha === -1) {
+    return 2;
+  }
+  return model.faceRenderTypes[face] ?? 0;
+}
+
+function lightModelFace(
+  model: DecodedModelGeometry,
+  face: number,
+  renderType: number,
+  faceColor: number,
+  texture: number,
+  renderedTexture: number,
+  averageTextureHsl: number | undefined,
+  lighting: ModelLighting,
+): readonly [Rgb, Rgb, Rgb] | null {
+  const textured = texture >= 0;
+  if (renderType === 2 || (textured && renderType >= 2)) {
+    return null;
+  }
+
+  let intensities: readonly [number, number, number];
+  if (renderType === 1) {
+    const normal = lighting.faceNormals[face]!;
+    const denominator = Math.max(
+      1,
+      lighting.scale + Math.trunc(lighting.scale / 2),
+    );
+    const intensity = Math.trunc(
+      (normal.z * -50 + normal.x * -50 + normal.y * -10) /
+        denominator,
+    ) + lighting.ambient;
+    intensities = [intensity, intensity, intensity];
+  } else if (renderType === 3) {
+    return [
+      packedHslColor(128),
+      packedHslColor(128),
+      packedHslColor(128),
+    ];
+  } else {
+    const vertices = [
+      model.faceA[face]!,
+      model.faceB[face]!,
+      model.faceC[face]!,
+    ] as const;
+    intensities = vertices.map((vertex) => {
+      const normal = lighting.vertexNormals[vertex]!;
+      const denominator = Math.max(
+        1,
+        normal.magnitude * lighting.scale,
+      );
+      return Math.trunc(
+        (normal.z * -50 + normal.x * -50 + normal.y * -10) /
+          denominator,
+      ) + lighting.ambient;
+    }) as unknown as readonly [number, number, number];
+  }
+
+  if (renderedTexture >= 0) {
+    return intensities.map(textureLightRgb) as unknown as readonly [
+      Rgb,
+      Rgb,
+      Rgb,
+    ];
+  }
+
+  if (textured && averageTextureHsl !== undefined) {
+    return intensities.map((intensity) =>
+      packedHslColor(
+        modulatePackedHslLightness(averageTextureHsl, intensity),
+      )
+    ) as unknown as readonly [Rgb, Rgb, Rgb];
+  }
+
+  return intensities.map((intensity) =>
+    packedHslColor(modulatePackedHslLightness(faceColor, intensity))
+  ) as unknown as readonly [Rgb, Rgb, Rgb];
+}
+
+function modulatePackedHslLightness(
+  packedHsl: number,
+  intensity: number,
+): number {
+  const lightness = clamp(
+    Math.trunc((packedHsl & 0x7f) * intensity / 128),
+    2,
+    126,
+  );
+  return (packedHsl & 0xff80) + lightness;
+}
+
+function textureLightRgb(intensity: number): Rgb {
+  const light = clamp(intensity, 2, 126) / 128;
+  const channel = Math.round(light * 255);
+  return { r: channel, g: channel, b: channel };
+}
+
+function transformModelLocalVertex(
   model: DecodedModelGeometry,
   vertex: number,
   definition: LocModelDefinition,
   placement: ModelPlacement,
   mirrored: boolean,
-  centerX: number,
-  centerZ: number,
-  clientGroundHeight: number,
 ): Vec3 {
   let x = model.vertexX[vertex]!;
   let y = model.vertexY[vertex]!;
@@ -1031,20 +1234,42 @@ function transformModelVertex(
     z = oldX;
   }
 
+  x = x * definition.modelScaleX / 128 + definition.offsetX;
+  y = y * definition.modelScaleY / 128 + definition.offsetY;
+  z = z * definition.modelScaleZ / 128 + definition.offsetZ;
+
+  // Kind 11 is a kind-10 model rendered with an additional 45-degree yaw.
+  // Apply it after the loc's resize/offset chain, matching the scene yaw.
   if (placement.diagonal) {
     const rotated = rotateRadians(x, z, Math.PI / 4);
     x = rotated.x;
     z = rotated.z;
   }
 
-  x = x * definition.modelScaleX / 128 + definition.offsetX;
-  y = y * definition.modelScaleY / 128 + definition.offsetY;
-  z = z * definition.modelScaleZ / 128 + definition.offsetZ;
+  return { x, y, z };
+}
 
+function transformModelVertex(
+  model: DecodedModelGeometry,
+  vertex: number,
+  definition: LocModelDefinition,
+  placement: ModelPlacement,
+  mirrored: boolean,
+  centerX: number,
+  centerZ: number,
+  clientGroundHeight: number,
+): Vec3 {
+  const local = transformModelLocalVertex(
+    model,
+    vertex,
+    definition,
+    placement,
+    mirrored,
+  );
   return {
-    x: centerX + x,
-    y: -(clientGroundHeight + y),
-    z: centerZ + z,
+    x: centerX + local.x,
+    y: -(clientGroundHeight + local.y),
+    z: centerZ + local.z,
   };
 }
 
