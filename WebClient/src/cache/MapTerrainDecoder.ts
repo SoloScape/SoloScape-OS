@@ -5,10 +5,10 @@ const TILE_COUNT = LEVELS * MAP_SIZE * MAP_SIZE;
 export interface MapTerrain {
   readonly explicitHeights: Int16Array;
   readonly renderFlags: Uint8Array;
-  readonly overlayIds: Uint16Array;
+  readonly overlayIds: Int32Array;
   readonly overlayShapes: Uint8Array;
   readonly overlayRotations: Uint8Array;
-  readonly underlayIds: Uint16Array;
+  readonly underlayIds: Int32Array;
 }
 
 /**
@@ -24,10 +24,12 @@ export function decodeMapTerrain(data: Uint8Array): MapTerrain {
   const explicitHeights = new Int16Array(TILE_COUNT);
   explicitHeights.fill(-1);
   const renderFlags = new Uint8Array(TILE_COUNT);
-  const overlayIds = new Uint16Array(TILE_COUNT);
+  const overlayIds = new Int32Array(TILE_COUNT);
+  overlayIds.fill(-1);
   const overlayShapes = new Uint8Array(TILE_COUNT);
   const overlayRotations = new Uint8Array(TILE_COUNT);
-  const underlayIds = new Uint16Array(TILE_COUNT);
+  const underlayIds = new Int32Array(TILE_COUNT);
+  underlayIds.fill(-1);
 
   for (let level = 0; level < LEVELS; level += 1) {
     for (let x = 0; x < MAP_SIZE; x += 1) {
@@ -61,7 +63,7 @@ export function decodeMapTerrain(data: Uint8Array): MapTerrain {
             continue;
           }
 
-          underlayIds[index] = (opcode - 81) & 0xffff;
+          underlayIds[index] = opcode - 82;
         }
       }
     }
