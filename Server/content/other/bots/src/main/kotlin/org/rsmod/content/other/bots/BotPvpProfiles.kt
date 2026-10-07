@@ -15,6 +15,19 @@ enum class BotPvpDifficulty(val displayName: String) {
                 it.name.equals(text, ignoreCase = true) ||
                     it.displayName.equals(text, ignoreCase = true)
             }
+
+        /**
+         * "mixed" deliberately rotates evenly through all four brackets so a large synthetic
+         * Wilderness population contains every risk tier instead of inheriting one global tier.
+         */
+        fun configured(text: String, identity: Int): BotPvpDifficulty? {
+            if (text.equals("mixed", ignoreCase = true) ||
+                text.equals("all", ignoreCase = true)
+            ) {
+                return entries[Math.floorMod(identity - 1, entries.size)]
+            }
+            return parse(text)
+        }
     }
 }
 
@@ -65,7 +78,7 @@ object BotPvpProfiles {
             eatAtHpRatio = 0.61, foodCharges = 10, comboEatChance = 0.08,
             combatMoveChance = 0.10, switchChance = 0.35, specUseChance = 0.40,
             specSwitchChance = 0.65, specPressureHpRatio = 0.22, retreatHpRatio = 0.28,
-            chaseDistanceTiles = 7, freezeFollowUpChance = 0.06, freezeUseChance = 0.0,
+            chaseDistanceTiles = 12, freezeFollowUpChance = 0.06, freezeUseChance = 0.0,
             smiteUseChance = 0.04, riskTolerance = 0.15, confidenceTier = 1,
         ),
         BotPvpProfile(
@@ -76,7 +89,7 @@ object BotPvpProfiles {
             eatAtHpRatio = 0.53, foodCharges = 14, comboEatChance = 0.16,
             combatMoveChance = 0.30, switchChance = 0.65, specUseChance = 0.62,
             specSwitchChance = 0.80, specPressureHpRatio = 0.28, retreatHpRatio = 0.24,
-            chaseDistanceTiles = 9, freezeFollowUpChance = 0.12, freezeUseChance = 0.16,
+            chaseDistanceTiles = 15, freezeFollowUpChance = 0.12, freezeUseChance = 0.16,
             smiteUseChance = 0.10, riskTolerance = 0.30, confidenceTier = 2,
         ),
         BotPvpProfile(
@@ -87,7 +100,7 @@ object BotPvpProfiles {
             eatAtHpRatio = 0.47, foodCharges = 20, comboEatChance = 0.26,
             combatMoveChance = 0.55, switchChance = 0.75, specUseChance = 0.80,
             specSwitchChance = 0.92, specPressureHpRatio = 0.34, retreatHpRatio = 0.21,
-            chaseDistanceTiles = 12, freezeFollowUpChance = 0.20, freezeUseChance = 0.32,
+            chaseDistanceTiles = 18, freezeFollowUpChance = 0.20, freezeUseChance = 0.32,
             smiteUseChance = 0.18, oneTickUseChance = 0.70, oneTickGmaulChance = 0.70,
             oneTickSwitchChance = 0.75, oneTickCooldown = ticks(1800, 1800).first,
             nextHitScriptChance = 0.92, nextHitStyleSwitchChance = 0.85,
@@ -103,7 +116,7 @@ object BotPvpProfiles {
             eatAtHpRatio = 0.39, foodCharges = 24, comboEatChance = 0.62,
             combatMoveChance = 0.75, switchChance = 0.95, specUseChance = 0.98,
             specSwitchChance = 1.0, specPressureHpRatio = 0.50, retreatHpRatio = 0.14,
-            chaseDistanceTiles = 18, freezeFollowUpChance = 0.50, freezeUseChance = 0.74,
+            chaseDistanceTiles = 24, freezeFollowUpChance = 0.50, freezeUseChance = 0.74,
             smiteUseChance = 0.44, oneTickUseChance = 0.95, oneTickGmaulChance = 0.95,
             oneTickSwitchChance = 0.98, oneTickCooldown = ticks(900, 900).first,
             nextHitScriptChance = 0.995, nextHitStyleSwitchChance = 0.98,
