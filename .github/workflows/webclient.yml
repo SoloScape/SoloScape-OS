@@ -1,0 +1,41 @@
+name: WebClient
+
+on:
+  push:
+    paths:
+      - 'WebClient/**'
+      - '.github/workflows/webclient.yml'
+  pull_request:
+    paths:
+      - 'WebClient/**'
+      - '.github/workflows/webclient.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: WebClient
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Protocol tests
+        run: npm run test:protocol
+
+      - name: Build
+        run: npm run build
