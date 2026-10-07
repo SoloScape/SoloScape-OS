@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   FinePlayerMovement,
+  interpolateFineCoordinate,
   tileToFine,
 } from './PlayerMovement';
 
@@ -38,6 +39,15 @@ test('run waypoints double the movement step', () => {
   );
 });
 
+test('fine-coordinate interpolation follows previous + delta * alpha', () => {
+  assert.equal(interpolateFineCoordinate(100, 140, 0), 100);
+  assert.equal(interpolateFineCoordinate(100, 140, 0.25), 110);
+  assert.equal(interpolateFineCoordinate(100, 140, 0.5), 120);
+  assert.equal(interpolateFineCoordinate(100, 140, 1), 140);
+  assert.equal(interpolateFineCoordinate(100, 140, -1), 100);
+  assert.equal(interpolateFineCoordinate(100, 140, 2), 140);
+});
+
 test('render state interpolates between fixed simulation ticks', () => {
   const movement = new FinePlayerMovement(3200, 3200);
   movement.enqueueTile(3201, 3200, false);
@@ -46,6 +56,20 @@ test('render state interpolates between fixed simulation ticks', () => {
   const render = movement.renderState(0.5);
   assert.equal(render.fineX, tileToFine(3200) + 1);
   assert.equal(render.fineZ, tileToFine(3200));
+});
+
+test('render interpolation does not mutate fixed simulation state', () => {
+  const movement = new FinePlayerMovement(3200, 3200);
+  movement.enqueueTile(3201, 3200, false);
+  movement.tick();
+
+  const before = movement.snapshot();
+  movement.renderState(0.25);
+  movement.renderState(0.5);
+  movement.renderState(0.75);
+  const after = movement.snapshot();
+
+  assert.deepEqual(after, before);
 });
 
 test('large discontinuities snap and clear the route', () => {
