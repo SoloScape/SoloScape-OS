@@ -49,10 +49,15 @@ input {
   gap: 12px;
 }
 
-.connect-row {
+.connect-row,
+.login-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
+}
+
+.login-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
 }
 
 input,
@@ -69,6 +74,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .viewport {
   min-height: 0;
   display: grid;
@@ -80,7 +90,7 @@ button {
 }
 
 #game {
-  width: min(100%, calc((100dvh - 190px) * 765 / 503));
+  width: min(100%, calc((100dvh - 270px) * 765 / 503));
   max-height: 100%;
   aspect-ratio: 765 / 503;
   background: #000;
@@ -88,7 +98,8 @@ button {
   touch-action: none;
 }
 
-#status {
+#status,
+#login-status {
   font-size: 0.9rem;
   opacity: 0.85;
 }
@@ -105,12 +116,26 @@ button {
   font-size: 0.8rem;
 }
 
-@media (max-height: 520px) and (orientation: landscape) {
+@media (max-width: 680px) {
+  .login-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .login-row button {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-height: 620px) and (orientation: landscape) {
   .debug {
     display: none;
   }
 
   .app {
     grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  #game {
+    width: min(100%, calc((100dvh - 250px) * 765 / 503));
   }
 }
