@@ -176,11 +176,19 @@ class BotPvpCombat @Inject constructor(
         if (cycle >= state.nextSupport) {
             if (BotPvpPolicy.shouldEat(player.hitpoints, player.baseHitpointsLvl,
                     state.profile.eatAtHpRatio)) {
-                val combo = random.nextDouble() < state.profile.comboEatChance &&
-                    player.hitpoints <= player.baseHitpointsLvl * state.profile.eatAtHpRatio * 0.72
-                if (native.eat(player, combo)) {
+                val panicHp =
+                    player.hitpoints <= player.baseHitpointsLvl * state.profile.eatAtHpRatio * 0.55
+                val triple = panicHp && state.profile.tripleEatChance > 0.0 &&
+                    native.canTripleEat(player) &&
+                    random.nextDouble() < state.profile.tripleEatChance
+                val combo = triple || (
+                    random.nextDouble() < state.profile.comboEatChance &&
+                        player.hitpoints <=
+                            player.baseHitpointsLvl * state.profile.eatAtHpRatio * 0.72
+                    )
+                if (native.eat(player, combo = combo, triple = triple)) {
                     state.nextSupport = cycle + 1
-                    return "eating"
+                    return if (triple) "triple eating" else "eating"
                 }
             }
             if (native.drink(player, restore = true)) {
