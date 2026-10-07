@@ -159,6 +159,52 @@ test('culls terrain/loc geometry above the requested visible plane', () => {
   assert.equal(scene.locations.vertexCount, 3);
 });
 
+test('falls back to face colour for unsupported textured loc faces', () => {
+  const map = buildMap([
+    {
+      id: 1,
+      localX: 1,
+      localZ: 2,
+      level: 0,
+      shape: 10,
+      angle: 0,
+    },
+  ]);
+  const baseAssets = buildAssets();
+  const baseModel = baseAssets.models.get(100)!;
+  const model: DecodedModelGeometry = {
+    ...baseModel,
+    faceTextures: Int32Array.from([7]),
+    faceTextureCoords: Int32Array.from([0]),
+    textureFaceA: Uint16Array.from([0]),
+    textureFaceB: Uint16Array.from([1]),
+    textureFaceC: Uint16Array.from([2]),
+    // Render type 1 needs transform metadata we do not retain yet.
+    textureRenderTypes: Int8Array.from([1]),
+  };
+  const assets: LoadedSceneAssets = {
+    ...baseAssets,
+    models: new Map([[100, model]]),
+  };
+  const rebuild: NormalRegionRebuild = {
+    kind: 'normal',
+    zoneX: 6,
+    zoneZ: 6,
+    worldArea: 0,
+    mapSquares: [map.mapSquare],
+  };
+
+  const scene = assembleScene(rebuild, [map], assets, null, 0);
+
+  assert.deepEqual(Array.from(scene.locations.textureIds), [-1, -1, -1]);
+  // Regression guard: unsupported textured faces must use their packed-HSL
+  // fallback instead of the near-white neutral texture-light colour.
+  assert.equal(
+    Array.from(scene.locations.colors).every((channel) => channel > 220),
+    false,
+  );
+});
+
 test('emits cache texture ids and type-0 UVs for textured loc faces', () => {
   const map = buildMap([
     {
