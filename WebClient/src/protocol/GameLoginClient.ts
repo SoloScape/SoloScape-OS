@@ -11,6 +11,7 @@ import {
   type LoginSuccess,
 } from './GameLoginProtocol';
 import { IsaacRandom } from './IsaacRandom';
+import { encodeMoveGameClickPacket } from './GameClientPacketEncoder';
 import {
   decodeProofOfWorkChallenge,
   encodeProofOfWorkReply,
@@ -222,6 +223,35 @@ export class GameLoginClient {
       throw new Error('Server ISAAC is unavailable before the login block is sent.');
     }
     return this.serverIsaac;
+  }
+
+  sendMoveGameClick(
+    x: number,
+    z: number,
+    keyCombination = 0,
+  ): void {
+    if (
+      this.phase !== 'game' ||
+      this.state !== 'game' ||
+      !this.clientIsaac
+    ) {
+      throw new Error(
+        'Cannot send MOVE_GAMECLICK before the game session is active.',
+      );
+    }
+
+    const packet = encodeMoveGameClickPacket(
+      x,
+      z,
+      keyCombination,
+      this.clientIsaac,
+    );
+    this.transport.send(packet);
+    this.onLog?.(
+      'TX MOVE_GAMECLICK: x=' + x +
+        ' z=' + z +
+        ' keys=' + keyCombination + '.',
+    );
   }
 
   private handleControlMessage(text: string): void {
