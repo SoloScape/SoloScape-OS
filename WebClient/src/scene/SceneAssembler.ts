@@ -1405,30 +1405,171 @@ function makeTerrainShapeNode(
   };
 }
 
-function rgb24(rgb: number): Rgb {
+function underlayHslFromRgb(rgb: number): UnderlayHsl {
+  const r = ((rgb >>> 16) & 0xff) / 256;
+  const g = ((rgb >>> 8) & 0xff) / 256;
+  const b = (rgb & 0xff) / 256;
+  const low = Math.min(r, g, b);
+  const high = Math.max(r, g, b);
+  let hue = 0;
+  let saturation = 0;
+  const lightness = (low + high) / 2;
+
+  if (low !== high) {
+    saturation = lightness < 0.5
+      ? (high - low) / (low + high)
+      : (high - low) / (2 - high - low);
+    if (r === high) {
+      hue = (g - b) / (high - low);
+    } else if (g === high) {
+      hue = (b - r) / (high - low) + 2;
+    } else {
+      hue = (r - g) / (high - low) + 4;
+    }
+  }
+
+  hue /= 6;
+  const sat = clamp(Math.trunc(saturation * 256), 0, 255);
+  const light = clamp(Math.trunc(lightness * 256), 0, 255);
+  const chromaValue = lightness > 0.5
+    ? (1 - lightness) * saturation * 512
+    : saturation * lightness * 512;
+  const chroma = Math.max(1, Math.trunc(chromaValue));
   return {
-    r: (rgb >>> 16) & 0xff,
-    g: (rgb >>> 8) & 0xff,
-    b: rgb & 0xff,
+    hue: Math.trunc(chroma * hue),
+    saturation: sat,
+    lightness: light,
+    chroma,
   };
 }
 
+function getTableFromRgb(rgb: number): number {
+  const r = ((rgb >>> 16) & 0xff) / 256;
+  const g = ((rgb >>> 8) & 0xff) / 256;
+  const b = (rgb & 0xff) / 256;
+  const low = Math.min(r, g, b);
+  const high = Math.max(r, g, b);
+  let hue = 0;
+  let saturation = 0;
+  const lightness = (low + high) / 2;
+
+  if (low !== high) {
+    saturation = lightness < 0.5
+      ? (high - low) / (low + high)
+      : (high - low) / (2 - high - low);
+    if (r === high) {
+      hue = (g - b) / (high - low);
+    } else if (g === high) {
+      hue = (b - r) / (high - low) + 2;
+    } else {
+      hue = (r - g) / (high - low) + 4;
+    }
+  }
+
+  return getTable(
+    Math.trunc(hue / 6 * 256),
+    clamp(Math.trunc(saturation * 256), 0, 255),
+    clamp(Math.trunc(lightness * 256), 0, 255),
+  );
+}
+
+function getTable(
+  hue: number,
+  saturationValue: number,
+  lightness: number,
+): number {
+  let saturation = saturationValue;
+  if (lightness > 179) saturation = Math.trunc(saturation / 2);
+  if (lightness > 192) saturation = Math.trunc(saturation / 2);
+  if (lightness > 217) saturation = Math.trunc(saturation / 2);
+  if (lightness > 243) saturation = Math.trunc(saturation / 2);
+  return (
+    Math.trunc(lightness / 2) +
+    (Math.trunc(hue / 4) << 10) +
+    (Math.trunc(saturation / 32) << 7)
+  );
+}
+
+function getUnderlayColour(index: number, intensity: number): number {
+  if (index === -1) {
+    return 12345678;
+  }
+  const lightness = clamp(
+    Math.trunc((index & 0x7f) * intensity / 128),
+    2,
+    126,
+  );
+  return (index & 0xff80) + lightness;
+}
+
+function getOverlayColour(index: number, intensity: number): number {
+  if (index === -2) {
+    return 12345678;
+  }
+  if (index === -1) {
+    return clamp(intensity, 2, 126);
+  }
+  const lightness = clamp(
+    Math.trunc((index & 0x7f) * intensity / 128),
+    2,
+    126,
+  );
+  return (index & 0xff80) + lightness;
+}
+
+/** Exact 65,536-entry Pix3D HSL palette formula at brightness/gamma 0.8. */
 function packedHslColor(value: number): Rgb {
-  return hslToRgb(
-    ((value >>> 10) & 0x3f) / 64,
-    ((value >>> 7) & 0x7) / 8,
-    (value & 0x7f) / 128,
+  const index = value & 0xffff;
+  const hueSat = index >>> 7;
+  const hue = (hueSat >>> 3) / 64 + 0.0078125;
+  const saturation = (hueSat & 0x7) / 8 + 0.0625;
+  const lightness = (index & 0x7f) / 128;
+
+  let r = lightness;
+  let g = lightness;
+  let b = lightness;
+  if (saturation !== 0) {
+    const q = lightness < 0.5
+      ? (saturation + 1) * lightness
+      : saturation + lightness - saturation * lightness;
+    const p = lightness * 2 - q;
+    r = hueToRgb(p, q, hue + 1 / 3);
+    g = hueToRgb(p, q, hue);
+    b = hueToRgb(p, q, hue - 1 / 3);
+  }
+
+  return {
+    r: gammaChannel(r, 0.8),
+    g: gammaChannel(g, 0.8),
+    b: gammaChannel(b, 0.8),
+  };
+}
+
+function hueToRgb(p: number, q: number, source: number): number {
+  let t = source;
+  if (t < 0) t += 1;
+  if (t > 1) t -= 1;
+  if (t * 6 < 1) return p + (q - p) * 6 * t;
+  if (t * 2 < 1) return q;
+  if (t * 3 < 2) return p + (q - p) * (2 / 3 - t) * 6;
+  return p;
+}
+
+function gammaChannel(value: number, gamma: number): number {
+  return clamp(
+    Math.trunc(Math.pow(value, gamma) * 256),
+    0,
+    255,
   );
 }
 
 function modelColor(faceColor: number, texture: number): Rgb {
-  const hue = ((faceColor >>> 10) & 0x3f) / 64;
-  const saturation = ((faceColor >>> 7) & 0x7) / 8;
-  const lightness = (faceColor & 0x7f) / 128;
-  const rgb = hslToRgb(hue, saturation, lightness);
-  return texture >= 0
-    ? scaleRgb(rgb, 0.86)
-    : rgb;
+  if (texture >= 0) {
+    // Textured faces carry lighting in the RGB attribute; the fragment shader
+    // multiplies this grayscale factor into the sampled cache texel.
+    return { r: 232, g: 232, b: 232 };
+  }
+  return packedHslColor(faceColor);
 }
 
 function shadeByTriangleNormal(
