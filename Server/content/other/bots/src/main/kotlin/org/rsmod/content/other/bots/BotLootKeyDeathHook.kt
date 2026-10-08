@@ -1,10 +1,12 @@
 package org.rsmod.content.other.bots
 
+import dev.openrune.ServerCacheManager
 import jakarta.inject.Inject
 import org.rsmod.api.death.PlayerDeathContext
 import org.rsmod.api.death.PlayerDeathDrops.Companion.DROP_DURATION_PVP
 import org.rsmod.api.death.PlayerDeathHandling
 import org.rsmod.api.death.PlayerDeathHook
+import org.rsmod.api.death.PlayerDeathDrops
 import org.rsmod.api.death.PlayerDeathItemHook
 import org.rsmod.api.death.UntradeableHandling
 import org.rsmod.api.invtx.invAdd
@@ -42,6 +44,41 @@ internal object BotLootKeys {
     fun isKey(obj: InvObj?): Boolean = obj != null && types.any { obj.isType(it) }
 }
 
+internal object BotPvpDeathPolicy {
+    fun isLootKeyDeath(wildernessLevel: Int, inInstance: Boolean): Boolean =
+        wildernessLevel > 0 && !inInstance
+}
+
+internal object BotPvpCrystalDeath {
+    private const val CRYSTAL_ARMOUR_SEED_NAME = "Crystal armour seed"
+
+    fun seedCount(itemName: String): Int = when (itemName.lowercase()) {
+        "crystal helm" -> 1
+        "crystal legs" -> 2
+        "crystal body" -> 3
+        else -> 0
+    }
+
+    fun convertLostArmour(lostUntradeable: List<InvObj>): List<InvObj> {
+        val seeds = lostUntradeable.sumOf { item ->
+            val type = ServerCacheManager.getItem(item.id) ?: return@sumOf 0
+            seedCount(type.name) * item.count
+        }
+        if (seeds <= 0) return emptyList()
+
+        val seed = ServerCacheManager.getItemTypes()
+            .asSequence()
+            .filter {
+                it.tradeable && !it.isCert && !it.isPlaceholder &&
+                    !it.isTransformation && !it.isDummyItem
+            }
+            .firstOrNull { it.name.equals(CRYSTAL_ARMOUR_SEED_NAME, ignoreCase = true) }
+            ?: return emptyList()
+
+        return listOf(InvObj(seed, seeds))
+    }
+}
+
 internal class BotLootKeyDeathHook
 @Inject
 constructor(private val population: BotPopulation) : PlayerDeathHook {
@@ -49,24 +86,42 @@ constructor(private val population: BotPopulation) : PlayerDeathHook {
         get() = BOT_DEATH_PRIORITY
 
     override fun handleDeath(context: PlayerDeathContext): PlayerDeathHandling? {
-        if (!eligible(context)) return null
+        if (!population.isPvpBot(context.player)) return null
+
+        // PvP bots are synthetic economic actors. Their equipment may only enter the economy
+        // through the Wilderness loot-key path below. If one dies after respawning in Lumbridge,
+        // while returning to its hotspot, in an instance, or anywhere else outside valid
+        // Wilderness PvP, destroy the synthetic carried loadout instead of falling through to
+        // normal player death handling and spilling it onto the ground.
+        if (!BotPvpDeathPolicy.isLootKeyDeath(context.wildernessLevel, context.inInstance)) {
+            return PlayerDeathHandling(
+                keepCount = 0,
+                dropReceiver = null,
+                dropDuration = DROP_DURATION_PVP,
+                revealDelay = DROP_DURATION_PVP + 1,
+                supplyPile = false,
+                untradeableHandling = UntradeableHandling.DESTROY,
+                destroyAllCarried = true,
+                spawnRemains = false,
+            )
+        }
+
         return PlayerDeathHandling(
-            keepCount = 0,
+            keepCount = PlayerDeathDrops.wildernessKeepCount(
+                isSkulled = context.isSkulled,
+                hasProtectItem = context.hasProtectItem,
+            ),
             dropReceiver = null,
             dropDuration = DROP_DURATION_PVP,
             // Keep any fallback ground key private for its entire lifetime.
             revealDelay = DROP_DURATION_PVP + 1,
             supplyPile = false,
             untradeableHandling = UntradeableHandling.DESTROY,
-            destroyAllCarried = true,
+            destroyLostCarried = true,
             spawnRemains = false,
         )
     }
 
-    private fun eligible(context: PlayerDeathContext): Boolean =
-        context.wildernessLevel > 0 &&
-            !context.inInstance &&
-            population.isBot(context.player)
 
     private companion object {
         private const val BOT_DEATH_PRIORITY = 50
@@ -79,19 +134,22 @@ constructor(
     private val population: BotPopulation,
     private val store: BotLootKeyStore,
     private val objRepo: ObjRepository,
+    private val deathDrops: PlayerDeathDrops,
 ) : PlayerDeathItemHook {
     override fun beforeDrops(context: PlayerDeathContext, handling: PlayerDeathHandling) {
-        if (context.wildernessLevel <= 0 || context.inInstance) return
-        if (!population.isBot(context.player)) return
+        if (!BotPvpDeathPolicy.isLootKeyDeath(context.wildernessLevel, context.inInstance)) return
+        if (!population.isPvpBot(context.player)) return
 
-        // Bot-vs-bot (or environment) deaths never create economic loot. The bot death handling
-        // destroys the carried inventory after this hook, so only a real player killer can receive
-        // a copy of the loot through a Wilderness loot key.
+        // Bot-vs-bot (or environment) deaths never create economic loot. For a real player kill,
+        // select the same items normal Wilderness death handling says are actually lost. Dangerous
+        // PvP deaths revert lost crystal armour into armour seeds (helm=1, legs=2, body=3), while
+        // the bot handling destroys the original lost objects after this hook.
         val killer = context.killer ?: return
         if (population.isBot(killer)) return
 
         val victim = context.player
-        val carried = victim.inv.filterNotNull { true } + victim.worn.filterNotNull { true }
+        val result = deathDrops.selectDrops(victim, context, handling)
+        val carried = result.lostTradeable + BotPvpCrystalDeath.convertLostArmour(result.lostUntradeable)
         if (carried.isEmpty()) return
 
         val keyType = BotLootKeys.nextType(killer)

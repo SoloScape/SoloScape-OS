@@ -37,6 +37,18 @@ internal class BotLootKeyStore @Inject constructor() {
     fun get(id: Int): List<InvObj>? = bundles[id]?.map { InvObj(it) }
 
     @Synchronized
+    fun replace(id: Int, items: List<InvObj>): Boolean {
+        if (!bundles.containsKey(id)) return false
+        if (items.isEmpty()) {
+            remove(id)
+        } else {
+            bundles[id] = items.map { InvObj(it) }
+            persist()
+        }
+        return true
+    }
+
+    @Synchronized
     fun remove(id: Int): List<InvObj>? {
         val removed = bundles.remove(id) ?: return null
         groundBundles.entries.removeIf { it.value == id }

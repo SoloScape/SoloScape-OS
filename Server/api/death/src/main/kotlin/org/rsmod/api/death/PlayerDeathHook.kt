@@ -37,6 +37,7 @@ public data class PlayerDeathHandling(
     val untradeableHandling: UntradeableHandling,
     val dropAllCarried: Boolean = false,
     val destroyAllCarried: Boolean = false,
+    val destroyLostCarried: Boolean = false,
     val spawnRemains: Boolean = true,
 )
 

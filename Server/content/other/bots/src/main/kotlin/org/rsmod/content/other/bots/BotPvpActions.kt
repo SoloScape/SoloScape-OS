@@ -217,6 +217,22 @@ class BotPvpActions @Inject constructor(
         return queuePrayer(player, prayer)
     }
 
+    fun protectItem(player: Player, enabled: Boolean): Boolean {
+        val prayer = prayers.prayerList.firstOrNull {
+            it.enabled == "varbit.prayer_protectitem"
+        } ?: return false
+        val active = player.vars[prayer.enabled] != 0
+        if (active == enabled) return true
+        if (player.queueList.count("queue.prayer_toggle") >= 2) return false
+        if (enabled && (player.prayerLvl <= 0 || !prayer.hasAllRequirements(player))) return false
+        player.strongQueue("queue.prayer_toggle", 1, args = prayer)
+        return true
+    }
+
+    fun setSkullPrevention(player: Player, enabled: Boolean) {
+        VarPlayerIntMapSetter.set(player, "varbit.skull_prevent_enabled", if (enabled) 1 else 0)
+    }
+
     fun special(player: Player): Boolean {
         // Do not toggle an already armed attack off. Granite maul is a native ordinary combat
         // special with two queued blows here, so it also respects the current attack delay.
@@ -236,7 +252,22 @@ class BotPvpActions @Inject constructor(
         if (isFood(it.id)) it.count else 0
     }
 
-    fun eat(player: Player, combo: Boolean): Boolean {
+    fun canTripleEat(player: Player): Boolean {
+        val normal = player.inv.indices.any {
+            val obj = player.inv[it]
+            obj != null && isFood(obj.id) && !isKarambwan(obj.id)
+        }
+        val karambwan = player.inv.indices.any {
+            player.inv[it]?.id?.let(::isKarambwan) == true
+        }
+        val brew = player.inv.indices.any {
+            val name = player.inv[it]?.id?.let(ServerCacheManager::getItem)?.name
+            name?.startsWith("Saradomin brew", ignoreCase = true) == true
+        }
+        return normal && karambwan && brew
+    }
+
+    fun eat(player: Player, combo: Boolean, triple: Boolean = false): Boolean {
         val normal = player.inv.indices.firstOrNull {
             val obj = player.inv[it]
             obj != null && isFood(obj.id) && !isKarambwan(obj.id)
@@ -244,13 +275,26 @@ class BotPvpActions @Inject constructor(
         val comboSlot = player.inv.indices.firstOrNull {
             player.inv[it]?.id?.let(::isKarambwan) == true
         }
+        val brewSlot = if (triple) {
+            player.inv.indices.firstOrNull {
+                val name = player.inv[it]?.id?.let(ServerCacheManager::getItem)?.name
+                name?.startsWith("Saradomin brew", ignoreCase = true) == true
+            }
+        } else {
+            null
+        }
+        val tripleAvailable = triple && normal != null && comboSlot != null && brewSlot != null
         if (normal == null && comboSlot == null) return false
         val before = inventorySnapshot(player)
         val launched = access.launch(player) {
             if (normal != null) held.interact(this, player.inv, normal, HeldOp.Op1)
-            // Both clicks in one access are necessary for native combo eating; its consume locks
-            // still decide whether either click succeeds and add the real combat delay.
-            if ((combo || normal == null) && comboSlot != null) {
+            if (tripleAvailable) {
+                // Panic-eat order mirrors player PKing: hard food -> brew -> karambwan.
+                held.interact(this, player.inv, checkNotNull(brewSlot), HeldOp.Op1)
+            }
+            // Same-access clicks let the native food/potion scripts enforce their real consume
+            // locks and combat delays instead of giving bots synthetic healing.
+            if ((combo || normal == null || tripleAvailable) && comboSlot != null) {
                 held.interact(this, player.inv, comboSlot, HeldOp.Op1)
             }
         }
@@ -265,12 +309,14 @@ class BotPvpActions @Inject constructor(
         val slot = player.inv.indices.firstOrNull {
             val type = player.inv[it]?.id?.let(ServerCacheManager::getItem)
                 ?: return@firstOrNull false
-            if (type.interfaceOptions?.none { it.equals("Drink", true) } != false) {
+            val name = type.name
+            val heart = name.equals("Imbued heart", true) || name.equals("Smouldering heart", true)
+            if (!heart && type.interfaceOptions?.none { it.equals("Drink", true) } != false) {
                 return@firstOrNull false
             }
-            val name = type.name
             when {
-                restore && name.startsWith("Super restore", true) -> depletedPrayer || drained
+                restore && (name.startsWith("Super restore", true) ||
+                    name.startsWith("Blighted super restore", true)) -> depletedPrayer || drained
                 restore && name.startsWith("Prayer potion", true) -> depletedPrayer
                 // Restore a brew's stat drains before drinking another dose.
                 restore && name.startsWith("Saradomin brew", true) ->
@@ -282,10 +328,15 @@ class BotPvpActions @Inject constructor(
                     style == BotPvpStyle.Melee && player.stat("stat.attack") <= player.statBase("stat.attack")
                 name.startsWith("Super strength", true) || name.startsWith("Strength potion", true) ->
                     style == BotPvpStyle.Melee && player.stat("stat.strength") <= player.statBase("stat.strength")
-                name.startsWith("Ranging potion", true) ->
-                    style == BotPvpStyle.Ranged && player.stat("stat.ranged") <= player.statBase("stat.ranged")
+                name.startsWith("Ranging potion", true) ||
+                    name.startsWith("Blighted ranging potion", true) ->
+                    style == BotPvpStyle.Ranged &&
+                        player.stat("stat.ranged") <= player.statBase("stat.ranged")
                 name.startsWith("Magic potion", true) ->
-                    style == BotPvpStyle.Magic && player.stat("stat.magic") <= player.statBase("stat.magic")
+                    style == BotPvpStyle.Magic &&
+                        player.stat("stat.magic") <= player.statBase("stat.magic")
+                heart -> style == BotPvpStyle.Magic &&
+                    player.stat("stat.magic") <= player.statBase("stat.magic")
                 else -> false
             }
         } ?: return false
@@ -323,6 +374,9 @@ class BotPvpActions @Inject constructor(
         ) return false
         val depth = minOf(player.coords.wildernessLevel(areas), target.coords.wildernessLevel(areas))
         if (depth < 1 || abs(player.combatLevel - target.combatLevel) > depth) return false
+        if (player.vars["varbit.skull_prevent_enabled"] != 0 && wouldSkull(player, target)) {
+            return false
+        }
         if (!player.mapMultiway(areas)) {
             val owner = player.vars["varp.pk_predator1"]
             if (player.isInCombat() && owner != -1 && owner != target.uid.packed) return false
@@ -394,10 +448,18 @@ class BotPvpActions @Inject constructor(
                 ?: return "item $symbol is missing from the installed cache"
             types[symbol] = type
         }
+        val runePackTypes = LinkedHashMap<Int, ItemServerType>(loadout.runePacks.size)
+        for (id in loadout.runePacks.keys) {
+            val type = ServerCacheManager.getItem(id)
+                ?: return "item id $id is missing from the installed cache"
+            runePackTypes[id] = type
+        }
 
         val fixedSlots = extras.size +
             loadout.runes.size + loadout.consumables.entries.sumOf {
                 if (types.getValue(it.key).stackable) 1 else it.value
+            } + loadout.runePacks.entries.sumOf {
+                if (runePackTypes.getValue(it.key).stackable) 1 else it.value
             }
         if (fixedSlots > 24) {
             return "loadout reserves $fixedSlots inventory slots before food (maximum 24)"
@@ -437,6 +499,16 @@ class BotPvpActions @Inject constructor(
                 return "could not add $count x $symbol to inventory (found $present)"
             }
         }
+        for ((id, count) in loadout.runePacks) {
+            val type = runePackTypes.getValue(id)
+            player.invAdd(player.inv, type.id, count)
+            val present = player.inv.objs.filterNotNull()
+                .filter { it.id == type.id }
+                .sumOf { it.count }
+            if (present < count) {
+                return "could not add $count x item id $id to inventory (found $present)"
+            }
+        }
 
         val free = player.inv.objs.count { it == null }
         if (free < 4) return "only $free inventory slots remain for food"
@@ -472,7 +544,28 @@ class BotPvpActions @Inject constructor(
         ServerCacheManager.getItem(id)?.interfaceOptions?.any { it.equals("Eat", true) } == true
 
     private fun isKarambwan(id: Int): Boolean =
-        ServerCacheManager.getItem(id)?.name.equals("Cooked karambwan", true)
+        ServerCacheManager.getItem(id)?.name?.contains("karambwan", ignoreCase = true) == true
+
+    /**
+     * Mirrors the Wilderness PvP skull hook so bots with skull prevention enabled do not select a
+     * target that the native attack validator will reject.
+     */
+    private fun wouldSkull(player: Player, target: Player): Boolean {
+        val targetPacked = target.uid.packed
+        val playerPacked = player.uid.packed
+
+        if (player.vars["varp.pk_predator1"] == targetPacked) return false
+        if (player.vars["varp.pk_predator2"] == targetPacked) return false
+        if (player.vars["varp.pk_predator3"] == targetPacked) return false
+
+        if (!player.isInPvpCombat()) return true
+
+        if (player.vars["varp.pk_prey1"] == targetPacked) return false
+        if (player.vars["varp.pk_prey2"] == targetPacked) return false
+        if (target.vars["varp.pk_predator1"] == playerPacked) return false
+        if (target.vars["varp.pk_predator2"] == playerPacked) return false
+        return true
+    }
 
     private fun protectionVar(style: BotPvpStyle): String = when (style) {
         BotPvpStyle.Melee -> "varbit.prayer_protectfrommelee"

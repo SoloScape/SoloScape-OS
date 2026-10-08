@@ -7,6 +7,8 @@ internal class BotPvpState(
     val profile: BotPvpProfile,
     val loadout: BotPvpLoadout,
     val hotspotId: String? = null,
+    val risk: BotPvpRiskAssignment = BotPvpRiskLoadouts.assignment(profile.id, loadout),
+    val identity: Int = 0,
 ) {
     val reaction = BotPvpReaction()
     var target: Player? = null
@@ -31,4 +33,6 @@ internal class BotPvpState(
     var returning = false
     var lastCoords = CoordGrid(0, 0)
     var stationary = 0
+    var preventSkull = false
+    var patrolStep = 0
 }

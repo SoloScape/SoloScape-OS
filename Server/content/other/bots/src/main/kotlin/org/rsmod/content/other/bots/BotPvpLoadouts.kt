@@ -18,9 +18,12 @@ data class BotPvpLoadout(
     val food: String,
     val consumables: Map<String, Int>,
     val runes: Map<String, Int>,
+    val runePacks: Map<Int, Int> = emptyMap(),
 )
 
 object BotPvpLoadouts {
+    internal const val BLIGHTED_ANCIENT_ICE_SACK_ID = 24607
+    internal const val BLIGHTED_ANCIENT_ICE_SACK_COUNT = 100
     private fun levels(
         attack: Int = 99, defence: Int = 99, strength: Int = 99,
         hitpoints: Int = 99, ranged: Int = 99, magic: Int = 99, prayer: Int = 99,
@@ -291,6 +294,7 @@ object BotPvpLoadouts {
             in lunarVariants -> Spellbook.Lunars
             else -> Spellbook.Standard
         }
+        val exact = exactLevels(id)
         val f2pMageOnly = id in setOf("f2p_bind_blast", "f2p_fire_blast_pure", "f2p_wind_blast_pure")
         val f2pMageRange = id == "f2p_bind_maple"
         val f2pMageMelee = id == "f2p_bind_r2h" || id == "f2p_bind_rbaxe"
@@ -313,16 +317,23 @@ object BotPvpLoadouts {
             book == Spellbook.Ancients -> attackSpell
             else -> null
         }
+        val hasIceBarrage = book == Spellbook.Ancients &&
+            exact.getValue("stat.magic") >= 94
+        val runePacks = if (hasIceBarrage) {
+            mapOf(BLIGHTED_ANCIENT_ICE_SACK_ID to BLIGHTED_ANCIENT_ICE_SACK_COUNT)
+        } else {
+            emptyMap()
+        }
         val runes = when {
             id.startsWith("f2p_") && attackSpell != null -> f2pMagicRunes
-            book == Spellbook.Ancients -> ancientRunes
+            book == Spellbook.Ancients && !hasIceBarrage -> ancientRunes
             book == Spellbook.Lunars -> lunarRunes
             else -> emptyMap()
         }
         return base.copy(
             id = id,
             members = !definition.f2p,
-            levels = exactLevels(id),
+            levels = exact,
             styles = styles,
             primaryStyle = primary,
             specialWeapons = specialsFor(id, base),
@@ -333,6 +344,7 @@ object BotPvpLoadouts {
             food = if (definition.f2p) "obj.swordfish" else "obj.shark",
             consumables = if (definition.f2p) emptyMap() else base.consumables,
             runes = runes,
+            runePacks = runePacks,
         )
     }
 

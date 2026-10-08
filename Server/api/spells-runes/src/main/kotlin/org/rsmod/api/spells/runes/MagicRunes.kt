@@ -22,6 +22,13 @@ import org.rsmod.game.inv.Inventory
 import org.rsmod.game.inv.isType
 
 public object MagicRunes {
+    private const val BLIGHTED_ANCIENT_ICE_SACK_ID = 24607
+    private val blightedIceSpells = setOf(
+        "obj.58_ice_rush",
+        "obj.70_ice_burst",
+        "obj.82_ice_blitz",
+        "obj.94_ice_barrage",
+    )
     /*
      * Warning: This function is complex, but necessarily so. It replicates subtle behavior from
      * the official game regarding how requirements are validated and consumed - especially combo
@@ -372,8 +379,16 @@ public object MagicRunes {
         useFakeRunes: Boolean,
         allowBlighted: Boolean,
     ): Validation.Valid? {
-
-        return null
+        if (useFakeRunes || !allowBlighted || blightedIceSpells.none { spell.isType(it) }) {
+            return null
+        }
+        val sack = ServerCacheManager.getItem(BLIGHTED_ANCIENT_ICE_SACK_ID) ?: return null
+        val slot = player.inv.indexOfFirst { it.isType(sack) }
+        if (slot < 0) {
+            return null
+        }
+        val internalName = RSCM.getReverseMapping(RSCMType.OBJ, sack.id)
+        return Validation.Valid.HasEnough(Source.InvSource(internalName, slot, 1))
     }
 
     public sealed class Validation {

@@ -25,6 +25,7 @@ data class BotPvpHotspot(
     val freeWorldFamilies: Set<String> = emptySet(),
     val styleWeights: Map<BotPvpStyle, Double>,
     val activityWeights: Map<String, Double>,
+    val fixedHotspot: Boolean = false,
 ) {
     fun families(members: Boolean): Set<String> = if (members) {
         allowedFamilies.filterTo(linkedSetOf()) { !it.startsWith("f2p_") }
@@ -36,10 +37,19 @@ data class BotPvpHotspot(
         coord.level == anchor.level && coord.x in minX..maxX && coord.z in minZ..maxZ
 
     fun spawn(random: Random): CoordGrid {
-        val x = (anchor.x + random.nextInt(-roamRadius, roamRadius + 1)).coerceIn(minX, maxX)
-        val z = (anchor.z + random.nextInt(-roamRadius, roamRadius + 1)).coerceIn(minZ, maxZ)
+        // Keep initial placement close to a known-good anchor; broad roaming happens after spawn.
+        val radius = minOf(roamRadius, 7)
+        val x = (anchor.x + random.nextInt(-radius, radius + 1)).coerceIn(minX, maxX)
+        val z = (anchor.z + random.nextInt(-radius, radius + 1)).coerceIn(minZ, maxZ)
         return CoordGrid(x, z, anchor.level)
     }
+
+    fun roam(random: Random): CoordGrid =
+        CoordGrid(
+            random.nextInt(minX, maxX + 1),
+            random.nextInt(minZ, maxZ + 1),
+            anchor.level,
+        )
 }
 
 object BotPvpHotspots {
@@ -101,7 +111,7 @@ object BotPvpHotspots {
         BotPvpHotspot(
             id = "edge_ditch", anchor = CoordGrid(3085, 3528),
             minX = 3078, maxX = 3091, minZ = 3525, maxZ = 3535,
-            targetBots = 13, maxBots = 18, roamRadius = 6, lingerCycles = 15,
+            targetBots = 10, maxBots = 10, roamRadius = 6, lingerCycles = 15,
             maxSimultaneousFights = 5,
             allowedProfiles = setOf(
                 BotPvpDifficulty.Standard,
@@ -126,11 +136,12 @@ object BotPvpHotspots {
                 "fight" to 0.05,
                 "escape" to 0.08,
             ),
+            fixedHotspot = true,
         ),
         BotPvpHotspot(
             id = "edge_south", anchor = CoordGrid(3099, 3529),
             minX = 3092, maxX = 3106, minZ = 3525, maxZ = 3536,
-            targetBots = 9, maxBots = 14, roamRadius = 7, lingerCycles = 19,
+            targetBots = 9, maxBots = 10, roamRadius = 7, lingerCycles = 19,
             maxSimultaneousFights = 4,
             allowedProfiles = BotPvpDifficulty.entries.toSet(),
             allowedFamilies = setOf(
@@ -151,11 +162,12 @@ object BotPvpHotspots {
                 "fight" to 0.20,
                 "escape" to 0.18,
             ),
+            fixedHotspot = true,
         ),
         BotPvpHotspot(
             id = "varrock_ditch", anchor = CoordGrid(3243, 3526),
             minX = 3228, maxX = 3262, minZ = 3525, maxZ = 3542,
-            targetBots = 80, maxBots = 112, roamRadius = 3, lingerCycles = 17,
+            targetBots = 10, maxBots = 10, roamRadius = 3, lingerCycles = 17,
             maxSimultaneousFights = 8,
             allowedProfiles = BotPvpDifficulty.entries.toSet(),
             allowedFamilies = f2p,
@@ -170,11 +182,12 @@ object BotPvpHotspots {
                 "fight" to 0.22,
                 "escape" to 0.12,
             ),
+            fixedHotspot = true,
         ),
         BotPvpHotspot(
             id = "revs_entrance", anchor = CoordGrid(3134, 3838),
             minX = 3129, maxX = 3139, minZ = 3833, maxZ = 3843,
-            targetBots = 6, maxBots = 12, roamRadius = 4, lingerCycles = 16,
+            targetBots = 6, maxBots = 10, roamRadius = 4, lingerCycles = 16,
             maxSimultaneousFights = null,
             allowedProfiles = setOf(
                 BotPvpDifficulty.Standard,
@@ -197,11 +210,12 @@ object BotPvpHotspots {
                 "fight" to 0.10,
                 "escape" to 0.30,
             ),
+            fixedHotspot = true,
         ),
         BotPvpHotspot(
             id = "green_drags_gate", anchor = CoordGrid(2988, 3610),
             minX = 2974, maxX = 3002, minZ = 3598, maxZ = 3622,
-            targetBots = 6, maxBots = 12, roamRadius = 8, lingerCycles = 16,
+            targetBots = 6, maxBots = 10, roamRadius = 8, lingerCycles = 16,
             maxSimultaneousFights = null,
             allowedProfiles = setOf(
                 BotPvpDifficulty.Novice,
@@ -225,21 +239,33 @@ object BotPvpHotspots {
                 "fight" to 0.08,
                 "escape" to 0.22,
             ),
+            fixedHotspot = true,
         ),
 
-        // Native coverage regions. Anchors are established Wilderness activity/NPC areas from the
-        // installed map cache, spread west-to-east and low-to-deep Wilderness.
-        roaming("dark_warriors", CoordGrid(3029, 3638), radiusX = 15, radiusZ = 14),
-        roaming("crazy_archaeologist", CoordGrid(2977, 3702), radiusX = 14, radiusZ = 14),
-        roaming("eastern_unicorns", CoordGrid(3218, 3678), radiusX = 15, radiusZ = 14),
-        roaming("black_chins", CoordGrid(3148, 3770), radiusX = 12, radiusZ = 12),
-        roaming("eastern_mid", CoordGrid(3309, 3765), radiusX = 15, radiusZ = 15),
-        roaming("chaos_fanatic", CoordGrid(2979, 3846), radiusX = 13, radiusZ = 12, deep = true),
-        roaming("demonic_ruins", CoordGrid(3287, 3883), radiusX = 11, radiusZ = 11, deep = true),
-        roaming("mage_arena", CoordGrid(3102, 3938), radiusX = 14, radiusZ = 14, deep = true),
-        roaming("resource_area", CoordGrid(3185, 3933), radiusX = 13, radiusZ = 13, deep = true),
-        roaming("rogues_castle", CoordGrid(3284, 3946), radiusX = 12, radiusZ = 12, deep = true),
-        roaming("frozen_plateau", CoordGrid(2964, 3944), radiusX = 14, radiusZ = 14, deep = true),
+        // Broad native coverage regions. Candidate tiles now cover much larger Wilderness bands;
+        // BotPvpCombat collision-validates them against a known-good anchor before spawning or
+        // routing a bot there, so wider distribution does not trade off against reachability.
+        roaming("low_west", CoordGrid(2998, 3562), radiusX = 46, radiusZ = 36),
+        roaming("low_center", CoordGrid(3125, 3565), radiusX = 50, radiusZ = 37),
+        roaming("low_east", CoordGrid(3260, 3562), radiusX = 52, radiusZ = 36),
+        roaming("dark_warriors", CoordGrid(3029, 3638), radiusX = 48, radiusZ = 40),
+        roaming("graveyard_shadows", CoordGrid(3165, 3672), radiusX = 50, radiusZ = 42),
+        roaming("eastern_unicorns", CoordGrid(3218, 3678), radiusX = 50, radiusZ = 42),
+        roaming("crazy_archaeologist", CoordGrid(2977, 3702), radiusX = 46, radiusZ = 42),
+        roaming("forgotten_cemetery", CoordGrid(2978, 3760), radiusX = 46, radiusZ = 42),
+        roaming("boneyard", CoordGrid(3255, 3748), radiusX = 50, radiusZ = 42),
+        roaming("black_chins", CoordGrid(3148, 3770), radiusX = 50, radiusZ = 44),
+        roaming("eastern_mid", CoordGrid(3309, 3765), radiusX = 48, radiusZ = 44),
+        roaming("chaos_fanatic", CoordGrid(2979, 3846), radiusX = 46, radiusZ = 40, deep = true),
+        roaming("lava_maze", CoordGrid(3075, 3855), radiusX = 48, radiusZ = 40, deep = true),
+        roaming("red_dragon_isle", CoordGrid(3194, 3858), radiusX = 46, radiusZ = 40, deep = true),
+        roaming("demonic_ruins", CoordGrid(3287, 3883), radiusX = 48, radiusZ = 42, deep = true),
+        roaming("rune_rocks", CoordGrid(3060, 3885), radiusX = 44, radiusZ = 38, deep = true),
+        roaming("fountain_of_rune", CoordGrid(3370, 3890), radiusX = 40, radiusZ = 38, deep = true),
+        roaming("mage_arena", CoordGrid(3102, 3938), radiusX = 46, radiusZ = 36, deep = true),
+        roaming("resource_area", CoordGrid(3185, 3933), radiusX = 46, radiusZ = 36, deep = true),
+        roaming("rogues_castle", CoordGrid(3284, 3946), radiusX = 46, radiusZ = 36, deep = true),
+        roaming("frozen_plateau", CoordGrid(2964, 3944), radiusX = 46, radiusZ = 36, deep = true),
     )
 
     private val byId = all.associateBy { it.id }
@@ -258,12 +284,34 @@ object BotPvpHotspots {
         }
 
     /**
-     * Spread consecutive world-bot identities evenly across every compatible region. TSPS
-     * targetBots/maxBots remain available as source metadata, but no single imported hotspot is
-     * allowed to dominate a large SoloScape population.
+     * Fixed activity hotspots are capped by [BotPvpHotspot.maxBots]. After those fill, additional
+     * PKers are balanced across the broad roaming regions instead of piling onto landmark tiles.
      */
-    fun choose(identity: Int, members: Boolean, difficulty: BotPvpDifficulty): BotPvpHotspot {
+    fun choose(
+        identity: Int,
+        members: Boolean,
+        difficulty: BotPvpDifficulty,
+        occupancy: Map<String, Int> = emptyMap(),
+    ): BotPvpHotspot {
         val choices = available(members, difficulty).ifEmpty { all }
-        return choices[Math.floorMod(identity - 1, choices.size)]
+        val uncapped = choices.filter {
+            !it.fixedHotspot || occupancy.getOrDefault(it.id, 0) < it.maxBots
+        }.ifEmpty { choices.filterNot(BotPvpHotspot::fixedHotspot).ifEmpty { choices } }
+        val minimum = uncapped.minOfOrNull { occupancy.getOrDefault(it.id, 0) } ?: 0
+        val leastOccupied = uncapped.filter { occupancy.getOrDefault(it.id, 0) == minimum }
+        return leastOccupied[Math.floorMod(identity - 1, leastOccupied.size)]
+    }
+
+    private val wildernessPatrolAnchors: List<CoordGrid>
+        get() = all.filterNot(BotPvpHotspot::fixedHotspot).map(BotPvpHotspot::anchor)
+
+    /**
+     * Deterministic, de-synchronised patrol targets make roaming bots cross between Wilderness
+     * regions over time instead of orbiting one spawn rectangle forever.
+     */
+    fun patrolTarget(identity: Int, step: Int): CoordGrid {
+        val anchors = wildernessPatrolAnchors
+        val index = Math.floorMod(identity * 11 + step * 8, anchors.size)
+        return anchors[index]
     }
 }
