@@ -4,6 +4,8 @@ import { mapTerrainTileIndex } from '../cache/MapTerrainDecoder';
 import type { CacheGameUiAssets } from '../cache/CacheGameUiAssets';
 import { cacheSpriteCanvas } from '../cache/CacheGameUiAssets';
 import { CacheBitmapFont } from './CacheBitmapFont';
+import type { Js5Client } from '../cache/Js5Client';
+import { CacheInterfaceRenderer } from './CacheInterfaceRenderer';
 
 type TabId =
   | 'combat' | 'inventory' | 'equipment' | 'prayer' | 'magic'
@@ -36,6 +38,18 @@ const EXTRA_STONES: readonly HudAction[] = [
   { id: 'account', name: 'Account', icon: 'shield' },
 ];
 const STONES = [...MAIN_STONES, ...EXTRA_STONES];
+
+/**
+ * Classic OSRS interface group ids (verified against archive 3 on demand).
+ * These are the cache widget groups, not synthetic web-panel templates.
+ * Server IF_OPENSUB bindings will eventually supersede the default map.
+ */
+const CACHE_TAB_GROUPS: Partial<Record<TabId, number>> = {
+  combat: 593, inventory: 149, equipment: 387, prayer: 541,
+  magic: 218, quests: 629, journal: 629, skills: 320,
+  friends: 429, clan: 707, emotes: 216, music: 239,
+  settings: 116, account: 109,
+};
 
 // Indices of the classic cache-8 sideicons sprite sheet. Only use a sprite
 // when the downloaded sheet contains that frame; leave other actions alone.
@@ -121,6 +135,8 @@ export class MobileHud {
   private readonly playerMarker: HTMLElement;
   private readonly mapSquares = new Map<number, LoadedMapSquare>();
   private cacheFont: CacheBitmapFont | null = null;
+  private interfaceRenderer: CacheInterfaceRenderer | null = null;
+  private interfaceGroupIds = new Set<number>();
   private cachedIconUrls = new Map<string, string>();
   private selectedTab: TabId | null = null;
   private activeProfile = 0;
@@ -220,7 +236,12 @@ export class MobileHud {
    * Replace vector placeholders with original JS5 archive-8 sprite frames.
    * Use the original cached b12 bitmap font for panel headings.
    */
-  setCacheAssets(assets: CacheGameUiAssets): void {
+  setCacheAssets(assets: CacheGameUiAssets, js5: Js5Client): void {
+    this.interfaceRenderer?.cancel();
+    this.interfaceRenderer = new CacheInterfaceRenderer(
+      js5, assets.interfaces, assets.bold12,
+    );
+    this.interfaceGroupIds = new Set(assets.interfaces.availableGroupIds);
     this.cacheFont = new CacheBitmapFont(assets.bold12);
     this.cachedIconUrls.clear();
     for (const [tab, index] of Object.entries(CACHE_SIDE_ICON)) {
@@ -232,6 +253,7 @@ export class MobileHud {
     if (this.selectedTab) {
       this.renderPanelHeading(STONES.find((stone) => stone.id === this.selectedTab)?.name ??
         this.selectedTab);
+      this.renderCachedPanel(this.selectedTab);
     }
   }
 
@@ -407,7 +429,7 @@ export class MobileHud {
     this.selectedTab = tab;
     this.panel.hidden = false;
     this.renderPanelHeading(STONES.find((entry) => entry.id === tab)?.name ?? tab);
-    this.panelBody.innerHTML = this.buildPanel(tab);
+    this.renderCachedPanel(tab);
     this.updateActiveTab();
   }
 
@@ -426,49 +448,26 @@ export class MobileHud {
     }
   }
 
-  private buildPanel(tab: TabId): string {
-    const note = '<p class="hud-pending">Awaiting game interface packets</p>';
-    if (tab === 'inventory') {
-      return '<div class="hud-inventory-grid" aria-label="28 inventory slots">' +
-        Array.from({ length: 28 }, (_, i) =>
-          '<div class="hud-item-slot" aria-label="Empty slot ' + (i + 1) + '"></div>').join('') +
-        '</div>' + note;
+  /**
+   * Actual sidebar content is downloaded from cache archive 3. No HTML
+   * inventory / prayer / skills slots are fabricated when it is missing.
+   */
+  private renderCachedPanel(tab: TabId): void {
+    const groupId = CACHE_TAB_GROUPS[tab];
+    if (groupId === undefined) {
+      this.panelBody.textContent = 'No cache interface is mapped to this tab.';
+      return;
     }
-    if (tab === 'skills') {
-      const skills = [
-        'Attack', 'Hitpoints', 'Mining', 'Strength', 'Agility', 'Smithing',
-        'Defence', 'Herblore', 'Fishing', 'Ranged', 'Thieving', 'Cooking',
-        'Prayer', 'Crafting', 'Firemaking', 'Magic', 'Fletching', 'Woodcutting',
-        'Runecraft', 'Slayer', 'Farming', 'Construction', 'Hunter', 'Sailing',
-      ];
-      return '<div class="hud-skills-grid">' +
-        skills.map((skill) => '<div class="hud-skill" title="' + skill +
-          '"><span>' + skill.slice(0, 2) + '</span><b>—/—</b></div>').join('') +
-        '</div>' + note;
+    if (!this.interfaceRenderer) {
+      this.panelBody.textContent = 'Loading original game interfaces from cache...';
+      return;
     }
-    if (tab === 'equipment') {
-      return '<div class="hud-equipment-grid">' +
-        Array.from({ length: 11 }, () => '<div class="hud-equip-slot"></div>').join('') +
-        '</div>' + note;
+    if (!this.interfaceGroupIds.has(groupId)) {
+      this.panelBody.textContent = 'Cache interface 3:' + groupId +
+        ' is not present in this revision. No placeholder panel will be drawn.';
+      return;
     }
-    if (tab === 'prayer' || tab === 'magic' || tab === 'emotes') {
-      return '<div class="hud-spell-grid">' +
-        Array.from({ length: tab === 'emotes' ? 12 : 20 }, (_, i) =>
-          '<span class="hud-spell-slot" aria-label="Unavailable ' + tab +
-          ' slot ' + (i + 1) + '">' +
-          icon(tab === 'prayer' ? 'star' : tab === 'magic' ? 'sparkle' : 'person') +
-          '</span>').join('') + '</div>' + note;
-    }
-    if (tab === 'combat') {
-      return '<div class="hud-combat-title">' + icon('swords') +
-        '<span>Combat level: —</span></div><div class="hud-combat-styles">' +
-        ['Accurate', 'Aggressive', 'Controlled', 'Defensive'].map((name) =>
-          '<span>' + name + '</span>').join('') + '</div>' + note;
-    }
-    return '<div class="hud-panel-empty">' + icon(
-      STONES.find((stone) => stone.id === tab)?.icon ?? 'book',
-    ) + '<span>' + (STONES.find((stone) => stone.id === tab)?.name ?? tab) +
-      '</span></div>' + note;
+    void this.interfaceRenderer.show(groupId, this.panelBody);
   }
 
   /**
