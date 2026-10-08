@@ -267,10 +267,11 @@ export function baseTileHeight(x,y) {
  */
 function decodeTerrainTiles(data,mapX,mapY,opcodeWidth) {
     const heights=new Int32Array(PLANES*SIDE*SIDE);
-    const underlays=new Uint16Array(SIDE*SIDE);
-    const overlays=new Int16Array(SIDE*SIDE);
-    const overlayShapes=new Uint8Array(SIDE*SIDE);
-    const overlayRotations=new Uint8Array(SIDE*SIDE);
+    const underlays=new Uint16Array(PLANES*SIDE*SIDE);
+    const overlays=new Int16Array(PLANES*SIDE*SIDE);
+    const overlayShapes=new Uint8Array(PLANES*SIDE*SIDE);
+    const overlayRotations=new Uint8Array(PLANES*SIDE*SIDE);
+    const renderFlags=new Uint8Array(PLANES*SIDE*SIDE);
     let at=0;
     const nextOpcode=()=>{
         requireBytes(data,at,opcodeWidth);
@@ -308,20 +309,23 @@ function decodeTerrainTiles(data,mapX,mapY,opcodeWidth) {
             }
             if(op<=49){
                 const overlay=overlayValue();
-                if(plane===0){
-                    overlays[x*SIDE+y]=overlay;
-                    overlayShapes[x*SIDE+y]=(op-2)>>2;
-                    overlayRotations[x*SIDE+y]=(op-2)&3;
-                }
+                overlays[loc]=overlay;
+                overlayShapes[loc]=(op-2)>>2;
+                overlayRotations[loc]=(op-2)&3;
             }else if(op>81){
-                if(plane===0)underlays[x*SIDE+y]=op-81;
-            }
+                underlays[loc]=op-81;
+            }else renderFlags[loc]=op-49;
         }
         if(!ended)throw new Error("Malformed terrain tile with excessive opcodes");
     }
+    const planes=Array.from({length:PLANES},(_,plane)=>{
+        const start=plane*SIDE*SIDE,end=start+SIDE*SIDE;
+        return Object.fromEntries(Object.entries({heights,underlays,overlays,overlayShapes,overlayRotations,renderFlags})
+            .map(([key,values])=>[key,values.subarray(start,end)]));
+    });
     return {
-        mapX,mapY,side:SIDE,heights:heights.subarray(0,SIDE*SIDE),
-        underlays,overlays,overlayShapes,overlayRotations,
+        mapX,mapY,side:SIDE,
+        ...planes[0],planes,
         sourceBytes:data.length,consumedBytes:at,
         trailingBytes:data.length-at,terrainFormat:opcodeWidth===2?"u16":"u8",
     };

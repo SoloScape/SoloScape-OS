@@ -715,3 +715,56 @@ Tests cover all four model formats, signed vertex deltas, strict locations and
 definitions, XTEA header/tail handling, native CRC rejection, shape/rotation
 mapping, footprint heights and contouring, stale Travel results, omitted material
 paths, and actual headless WebGL scenery depth, recolouring and buffer disposal.
+
+### Textures, upper planes and bridges (8 October 2026)
+
+The native scene now reads CRC-verified texture definitions from index 9/group 0
+and their indexed sprites from index 8. Revision 233+ uses the pinned client's
+seven-byte simplified texture layout; the older definition decoder retains its
+sprite lists, palette transforms and animation metadata. Normalized 64/128-pixel
+sprites keep transparent cutouts and use the client brightness preset 0.8. No
+generated texture images are checked in. Texture animation remains frozen at its
+first frame; blended alpha faces remain omitted.
+
+`texture-mapper.mjs` is a standalone BSD-licensed adaptation of the pinned TSPS
+mapper, including mapping triangles and cylindrical/planar/spherical mappings.
+To regenerate it, run `node scripts/adapt-texture-mapper.mjs` from `Mobile` with
+the pinned submodule present. UVs stay attached to face corners through mirroring,
+rotation, scaling, retexture mappings and multipart welding. Invalid mappings or
+missing/corrupt texture assets omit their faces rather than substituting colours.
+The textured WebGL path uses perspective-correct repeating UVs, client vertex
+light intensities, nearest sampling, depth testing and alpha cutouts. Terrain
+textures share the same verified assets. Texture buffers/images are released on
+replacement, Travel and disposal.
+
+Terrain decoding retains all four physical planes, including their render flags,
+floor IDs and topology. Upper-plane terrain lighting samples the matching plane
+of verified neighbours. Scenery uses each location's original plane heights;
+wall-decoration displacement lookup also stays within that plane. The bridge
+flag (bit 2 on plane 1) demotes logical scene levels at each tile/location origin
+without changing physical heights or emitting replicas. The original base
+terrain remains below the bridge. This supplies static bridge rendering, not
+movement/collision or an authenticated player's plane transitions.
+
+The **Floor view** selector starts at **Ground + bridges**. Higher views include
+successive logical levels, ending at **All floors + roofs**, without reloading
+assets or resetting the camera. This is a development cutaway control, not the
+desktop client's automatic roof-visibility algorithm.
+
+Live m50_50 now loads **22 textures and 305 models**, rendering **4,395 static
+placements across four map planes**, with **zero asset/placement errors**.
+The 331 remaining placements and 4,312 faces are omitted for dynamic/state,
+alpha or unsupported rendering paths. Its 40 bridge-flagged tiles retain both
+surface height and underlying terrain. Browser ground and all-floor views were
+compared with the supplied desktop courtyard image: walls, tree canopies, water,
+bridge surfaces and upper battlements are visible. Exact camera/pixel parity,
+object shadows, cross-object normals, blended transparency, animation and login
+remain outstanding.
+
+Tests cover revision-dependent definitions, normalized/tinted sprite pixels,
+non-default UV preservation, retexture/mirroring, four-plane decoding, bridge
+level demotion and physical heights, same-plane halo sampling, native texture
+CRC rejection and stale Travel. The real Chrome WebGL check also proves lit
+texture pixels, upper-level visibility, transparent cutouts and GPU resource
+cleanup. On Windows, set `CHROME_BIN` to an installed Chrome executable to run
+that check locally; Linux CI runs it by default.

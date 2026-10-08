@@ -5,6 +5,7 @@ import { NativeTerrainViewport } from "./world-webgl.mjs";
 import { loadFloorMaterials } from "./floor-materials.mjs";
 import { displayTerrainProgressively } from "./world-startup.mjs";
 import { loadStaticScenery } from "./scenery-models.mjs";
+import {SceneTextures} from "./texture-cache.mjs";
 
 const byId=id=>document.getElementById(id);
 const details=byId("loading-detail"),loading=byId("loading"),status=byId("map-status");
@@ -12,6 +13,7 @@ const button=byId("load-world"),x=byId("map-x"),y=byId("map-y");
 const network=byId("network"),dot=byId("network-dot");
 const worldLabel=byId("world-label");
 const sceneryStatus=byId("scenery-status");
+const levelSelector=byId("scene-level");
 const cache=new NativeJs5Cache({revision:240});
 let renderer=null,attempt=0;
 
@@ -37,6 +39,7 @@ async function enterWorld(allowFallback=false){
             throw new Error("Region coordinates must be integers from 0 to 255");
         }
         if(!renderer)renderer=new NativeTerrainViewport(byId("world-canvas"));
+        renderer.setSceneLevel(Number(levelSelector.value));
         const region=await loadNativeTerrain(cache,mapX,mapY,{allowFallback});
         if(sequence!==attempt)return;
         const fallbackNote=region.fallback?
@@ -79,6 +82,7 @@ async function enterWorld(allowFallback=false){
             fetchMaterials:scene=>loadFloorMaterials(cache,scene),
             applyMaterials:(scene,floors)=>{
                 scene.floorMaterials=floors;
+                displayedTerrain=scene;
                 renderer.setTerrain(scene,{resetCamera:false});
                 status.textContent=sceneDescription+
                     `Cache-defined tiles with blended HSL and vertex lighting: ${floors.loadedUnderlays}/${floors.selectedUnderlays} underlays, `+
@@ -86,7 +90,7 @@ async function enterWorld(allowFallback=false){
                     (scene.neighbours?`${scene.neighbours.size}/8 neighbouring regions supply edge heights, normals and blend colours. `:
                         "Neighbouring terrain is still loading. ")+
                     (scene.unavailableNeighbours?.length?"Unavailable neighbours leave incomplete edges. ":"")+
-                    "Missing, textured and transparent floor faces are not drawn. Object shadows, textures and players are not implemented.";
+                    "Textures and scenery load next. Missing materials are omitted; shadows and players remain unavailable.";
             },
             onMaterialError:error=>{
                 status.textContent=sceneDescription+
@@ -101,7 +105,12 @@ async function enterWorld(allowFallback=false){
             const response=await fetch("/region-keys.json");
             if(!response.ok)throw new Error("Local region key configuration unavailable");
             const keys=await response.json();key=keys[(region.mapX<<8)|region.mapY];
-            const scenery=await loadStaticScenery(cache,displayedTerrain,{key,
+            const textureSource=new SceneTextures(cache,{isCurrent:()=>sequence===attempt});
+            for(const def of [...(displayedTerrain.floorMaterials?.underlays?.values()??[]),...(displayedTerrain.floorMaterials?.overlays?.values()??[])]){
+                if(sequence!==attempt)return;
+                if(def.textureId>=0)await textureSource.load(def.textureId);
+            }
+            const scenery=await loadStaticScenery(cache,displayedTerrain,{key,textureSource,
                 isCurrent:()=>sequence===attempt,
                 onProgress:progress=>{
                     if(sequence===attempt)sceneryStatus.textContent=
@@ -110,11 +119,13 @@ async function enterWorld(allowFallback=false){
             });
             if(!scenery||sequence!==attempt)return;
             renderer.setScenery(scenery);
-            sceneryStatus.textContent=`Static scenery: ${scenery.rendered} ground-plane placements, `+
+            renderer.setTerrain({...displayedTerrain,textures:scenery.textures},{resetCamera:false});
+            sceneryStatus.textContent=`Static scenery: ${scenery.rendered} placements across four map planes, `+
                 `${scenery.models} verified models; ${scenery.skipped} placements and ${scenery.omittedFaces} faces omitted. `+
-                `${scenery.upperPlaneLocations} upper-plane locations are not drawn. `+
-                "Animated/state-dependent objects, textures and alpha faces remain unsupported."+
+                `${scenery.textures.size} textures loaded; bridge surfaces retain their map heights. `+
+                "Floor view controls upper-plane visibility. Animated/state-dependent objects and blended alpha faces remain unsupported."+
                 (scenery.errors.length?` ${scenery.errors.length} asset/placement errors; first: ${scenery.errors[0].reason}.`:"");
+            status.textContent=sceneDescription+"Four-plane terrain and static scenery use verified cache textures and HSL lighting. Ground view includes bridges and their underlying terrain. Shadows, animated textures and players remain unavailable.";
         }).catch(error=>{
             if(sequence===attempt)sceneryStatus.textContent="Static scenery unavailable: "+error.message+". Terrain remains visible.";
         });
@@ -127,5 +138,6 @@ async function enterWorld(allowFallback=false){
     }
 }
 button.addEventListener("click",()=>enterWorld(false));
+levelSelector.addEventListener("change",()=>renderer?.setSceneLevel(Number(levelSelector.value)));
 window.addEventListener("pagehide",()=>renderer?.dispose(),{once:true});
 enterWorld(true);

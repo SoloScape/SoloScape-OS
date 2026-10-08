@@ -174,3 +174,25 @@ test("scenery loading after Travel does not return an obsolete scene",async()=>{
     const result=await loadStaticScenery(cache,{...flatTerrain(),mapX:50,mapY:50,group:97},{isCurrent:()=>current});
     assert.equal(result,null);
 });
+
+test("upper-plane locations use physical heights and bridge origin demotion without duplicate models",async()=>{
+    const {cache,requests}=sceneCache();
+    const terrain={...flatTerrain(),mapX:50,mapY:50,group:97};
+    terrain.planes=Array.from({length:4},(_,plane)=>({...flatTerrain(),heights:new Int32Array(4096).fill(-240*plane),renderFlags:new Uint8Array(4096)}));
+    terrain.planes[1].renderFlags[1*64+2]=2;
+    const loadGroup=cache.loadGroup.bind(cache);
+    cache.loadGroup=async(a,g)=>{
+        const data=await loadGroup(a,g);
+        if(a!==5)return data;
+        // Verified archive transport is covered above; extend this location fixture to all planes.
+        const locations=Buffer.from([6,0x80,0x43,40,0x90,1,40,0x90,1,40,0x90,1,40,0,0]);
+        const table=Buffer.alloc(8);table.writeInt32BE(1,0);table.writeInt32BE(locations.length-1,4);
+        return plainContainer(Buffer.concat([Buffer.from([0]),locations,table,Buffer.from([1])]));
+    };
+    const scene=await loadStaticScenery(cache,terrain);
+    assert.equal(scene.rendered,4);assert.equal(scene.upperPlaneLocations,3);assert.equal(scene.models,1);
+    assert.deepEqual(scene.levelCounts,[6,3,3,0]);
+    const heights=[];for(let i=1;i<scene.vertices.length;i+=6)heights.push(scene.vertices[i]);
+    assert.deepEqual([...new Set(heights)].map(v=>v||0),[0,1,1.875,2.875,3.75,4.75,5.625,6.625]);
+    assert.equal(requests.filter(r=>r==="7:1").length,1);
+});

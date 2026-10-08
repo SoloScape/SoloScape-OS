@@ -75,3 +75,7 @@ jobs:
           node --check Mobile/browser/scenery-models.mjs
           node --check Mobile/browser/region-keys.mjs
           node --check Mobile/scripts/adapt-model-codec.mjs
+          node --check Mobile/browser/texture-cache.mjs
+          node --check Mobile/browser/texture-mapper.mjs
+          node --check Mobile/browser/scene-planes.mjs
+          node --check Mobile/scripts/adapt-texture-mapper.mjs

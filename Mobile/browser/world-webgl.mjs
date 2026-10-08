@@ -29,6 +29,7 @@
 // Tile topology adapted from RSPSApp/tsps b9ca431 SceneTileModel (BSD-2-Clause).
 // Cache geometry and packed-HSL vertex colours use the client terrain pipeline.
 import { prepareFloorLighting, adjustFloorLight, HSL_PALETTE, sampleTerrain } from "./floor-lighting.mjs";
+import {terrainPlane,sceneLevel,validateSceneLevel} from "./scene-planes.mjs";
 function shader(gl,type,source){
     const sh=gl.createShader(type);
     gl.shaderSource(sh,source);gl.compileShader(sh);
@@ -38,24 +39,32 @@ function shader(gl,type,source){
     }
     return sh;
 }
-function program(gl){
+function program(gl,textured=false){
     const vs=shader(gl,gl.VERTEX_SHADER,`attribute vec3 a_position;
 attribute vec3 a_color;
 uniform mat4 u_mvp;
 varying highp float v_hsl_w;
 varying highp float v_w;
+varying highp vec2 v_uv;
 void main(){
     vec4 v=u_mvp*vec4(a_position,1.0);
     gl_Position=v;
     v_hsl_w=a_color.x*v.w;
     v_w=v.w;
+    v_uv=a_color.yz;
 }`);
     const fs=shader(gl,gl.FRAGMENT_SHADER,`precision highp float;
 uniform sampler2D u_palette;
 uniform bool u_wireframe;
+uniform sampler2D u_texture;
 varying highp float v_hsl_w;
 varying highp float v_w;
+varying highp vec2 v_uv;
 void main(){
+    ${textured?`vec4 texel=texture2D(u_texture,v_uv);
+    if(texel.a<0.1)discard;
+    float light=clamp(v_hsl_w/v_w,2.0,126.0)/128.0;
+    gl_FragColor=vec4(texel.rgb*light,1.0);return;`:""}
     if(u_wireframe){gl_FragColor=vec4(1.0);return;}
     float hsl=clamp(floor(v_hsl_w/v_w),0.0,65535.0);
     vec2 cell=vec2(mod(hsl,256.0),floor(hsl/256.0));
@@ -167,14 +176,14 @@ export function buildTileGeometry(shape,rotation,heights,cornerColors) {
     return faces;
 }
 
-export function buildTerrainMesh(terrain){
+function buildPlaneMesh(terrain){
     if(!terrain||terrain.side!==64||terrain.heights?.length!==4096||
         terrain.underlays?.length!==4096||terrain.overlays?.length!==4096||
         terrain.overlayShapes&&terrain.overlayShapes.length!==4096||
         terrain.overlayRotations&&terrain.overlayRotations.length!==4096) {
         throw new Error("Invalid terrain mesh input");
     }
-    const numbers=[];
+    const levels=Array.from({length:4},()=>[]),textured=new Map();
     const materials=terrain.floorMaterials;
     const lighting=materials?prepareFloorLighting(terrain,materials):null;
     for(let x=0;x<64;x++)for(let y=0;y<64;y++){
@@ -188,18 +197,41 @@ export function buildTerrainMesh(terrain){
         const underlayDef=materials?.underlays?.get(terrain.underlays[i]-1);
         const underlay=underlayDef?.textureId>=0?-1:(lighting?.underlays[i]??-1);
         const overlayHsl=lighting?.overlays.get(overlay-1)??-1;
+        const underlayTex=underlayDef?.textureId??-1,overlayTex=materials?.overlays?.get(overlay-1)?.textureId??-1;
         const colors=lighting?{
-            underlay:cornerIndices.map(c=>adjustFloorLight(underlay,lighting.lights[c])),
-            overlay:cornerIndices.map(c=>adjustFloorLight(overlayHsl,lighting.lights[c])),
+            underlay:cornerIndices.map(c=>underlayTex>=0?Math.max(2,Math.min(126,lighting.lights[c])):adjustFloorLight(underlay,lighting.lights[c])),
+            overlay:cornerIndices.map(c=>overlayTex>=0?Math.max(2,Math.min(126,lighting.lights[c])):adjustFloorLight(overlayHsl,lighting.lights[c])),
         }:undefined;
+        const level=sceneLevel(terrain.baseTerrain??terrain,terrain.plane??0,x,y);
         for(const face of buildTileGeometry(shape,rotation,heights,colors)){
-            if(lighting&&(face.isOverlay?overlayHsl:underlay)===-1)continue;
+            const texture=face.isOverlay?overlayTex:underlayTex;
+            let numbers=levels[level];
+            if(lighting&&texture>=0){
+                if(!terrain.textures?.has(texture))continue;
+                const key=`${level}:${texture}`;
+                if(!textured.has(key))textured.set(key,{level,texture,numbers:[]});
+                numbers=textured.get(key).numbers;
+            }else if(lighting&&(face.isOverlay?overlayHsl:underlay)===-1)continue;
             for(const [vx,vy,h,hsl] of face.vertices) {
-                numbers.push(x+vx-31.5,-h/128,y+vy-31.5,hsl??0,0,0);
+                numbers.push(x+vx-31.5,-h/128,y+vy-31.5,hsl??0,
+                    texture>=0?x+vx:0,texture>=0?y+vy:0);
             }
         }
     }
-    return new Float32Array(numbers);
+    return {levels,textured};
+}
+
+export function buildTerrainMesh(terrain){return new Float32Array(buildPlaneMesh(terrain).levels.flat());}
+
+export function buildTerrainScene(terrain){
+    const levels=Array.from({length:4},()=>[]),texturedBatches=[];
+    for(let p=0;p<4;p++){
+        const view=terrainPlane(terrain,p);if(!view||p>0&&!terrain.floorMaterials)continue;
+        const mesh=buildPlaneMesh(view);
+        for(let level=0;level<4;level++)for(const v of mesh.levels[level])levels[level].push(v);
+        for(const b of mesh.textured.values())texturedBatches.push({level:b.level,texture:b.texture,vertices:new Float32Array(b.numbers)});
+    }
+    return {vertices:new Float32Array(levels.flat()),levelCounts:levels.map(v=>v.length/6),texturedBatches};
 }
 
 export function terrainWireframe(vertices){
@@ -224,6 +256,7 @@ export class NativeTerrainViewport {
         if(!this.gl)throw new Error("WebGL not supported on this device");
         const gl=this.gl;
         this.program=program(gl);
+        this.textureProgram=program(gl,true);this.textures=new Map();this.terrainBatches=[];this.sceneryBatches=[];this.visibleLevel=0;
         this.buf=gl.createBuffer();
         this.sceneryBuf=gl.createBuffer();this.sceneryCount=0;
         this.palette=gl.createTexture();
@@ -278,12 +311,14 @@ export class NativeTerrainViewport {
     }
     setTerrain(terrain,{resetCamera=true}={}){
         const gl=this.gl;
-        const mesh=buildTerrainMesh(terrain);
+        const scene=buildTerrainScene(terrain),mesh=scene.vertices;
         this.drawMode=terrain.floorMaterials?gl.TRIANGLES:gl.LINES;
         const vertices=terrain.floorMaterials?mesh:terrainWireframe(mesh);
         gl.bindBuffer(gl.ARRAY_BUFFER,this.buf);
         gl.bufferData(gl.ARRAY_BUFFER,vertices,gl.STATIC_DRAW);
         this.count=vertices.length/6;
+        this.terrainLevelCounts=this.drawMode===gl.LINES?scene.levelCounts.map(n=>n*2):scene.levelCounts;
+        this.replaceBatches("terrainBatches",scene.texturedBatches);
         if(resetCamera){
             this.target=[0,-terrain.heights[32*64+32]/128,0];
             this.setScenery(null);
@@ -295,6 +330,31 @@ export class NativeTerrainViewport {
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER,this.sceneryBuf);
         this.gl.bufferData(this.gl.ARRAY_BUFFER,vertices,this.gl.STATIC_DRAW);
         this.sceneryCount=vertices.length/6;
+        this.sceneryLevelCounts=scene?.levelCounts??[this.sceneryCount,0,0,0];
+        this.replaceBatches("sceneryBatches",scene?.texturedBatches??[]);
+        for(const texture of this.textures.values())this.gl.deleteTexture(texture);
+        this.textures.clear();
+        const gl=this.gl;
+        for(const [id,data] of scene?.textures??[]){
+            if((data.size!==64&&data.size!==128)||data.pixels?.length!==data.size*data.size*4)throw new Error("Invalid scene texture");
+            const texture=gl.createTexture();this.textures.set(id,texture);
+            gl.bindTexture(gl.TEXTURE_2D,texture);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
+            gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,data.size,data.size,0,gl.RGBA,gl.UNSIGNED_BYTE,data.pixels);
+        }
+    }
+    setSceneLevel(level){validateSceneLevel(level);this.visibleLevel=level;}
+    replaceBatches(name,batches){
+        const gl=this.gl;
+        for(const batch of this[name])gl.deleteBuffer(batch.buffer);
+        this[name]=batches.map(b=>{
+            if(!(b.vertices instanceof Float32Array)||b.vertices.length%18)throw new Error("Invalid textured mesh");
+            const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,b.vertices,gl.STATIC_DRAW);
+            return {buffer,count:b.vertices.length/6,texture:b.texture,level:b.level};
+        });
     }
     render(){
         const gl=this.gl,canvas=this.canvas;
@@ -303,7 +363,7 @@ export class NativeTerrainViewport {
         if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
         gl.viewport(0,0,w,h);
         gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
-        if(!this.count)return;
+        if(!this.count&&!this.sceneryCount&&!this.terrainBatches.length&&!this.sceneryBatches.length)return;
         const p=this.pitch,d=this.distance;
         const eye=[
             this.target[0]+Math.sin(this.yaw)*Math.cos(p)*d,
@@ -321,13 +381,24 @@ export class NativeTerrainViewport {
         const a=gl.getAttribLocation(this.program,"a_position"),c=gl.getAttribLocation(this.program,"a_color");
         gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);
         gl.enableVertexAttribArray(c);gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
-        gl.drawArrays(this.drawMode,0,this.count);
+        gl.drawArrays(this.drawMode,0,this.terrainLevelCounts?.slice(0,this.visibleLevel+1).reduce((a,b)=>a+b,0)??this.count);
         if(this.sceneryCount){
             gl.uniform1i(gl.getUniformLocation(this.program,"u_wireframe"),0);
             gl.bindBuffer(gl.ARRAY_BUFFER,this.sceneryBuf);
             gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);
             gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
-            gl.drawArrays(gl.TRIANGLES,0,this.sceneryCount);
+            gl.drawArrays(gl.TRIANGLES,0,this.sceneryLevelCounts.slice(0,this.visibleLevel+1).reduce((a,b)=>a+b,0));
+        }
+        gl.useProgram(this.textureProgram);
+        gl.uniformMatrix4fv(gl.getUniformLocation(this.textureProgram,"u_mvp"),false,matrix);
+        gl.uniform1i(gl.getUniformLocation(this.textureProgram,"u_texture"),0);
+        const ta=gl.getAttribLocation(this.textureProgram,"a_position"),tc=gl.getAttribLocation(this.textureProgram,"a_color");
+        gl.enableVertexAttribArray(ta);gl.enableVertexAttribArray(tc);
+        for(const batch of [...this.terrainBatches,...this.sceneryBatches]){
+            const texture=this.textures.get(batch.texture);if(!texture||batch.level>this.visibleLevel)continue;
+            gl.bindTexture(gl.TEXTURE_2D,texture);gl.bindBuffer(gl.ARRAY_BUFFER,batch.buffer);
+            gl.vertexAttribPointer(ta,3,gl.FLOAT,false,24,0);gl.vertexAttribPointer(tc,3,gl.FLOAT,false,24,12);
+            gl.drawArrays(gl.TRIANGLES,0,batch.count);
         }
     }
     dispose(){
@@ -339,5 +410,8 @@ export class NativeTerrainViewport {
         window.removeEventListener("keydown",this.onKey);
         this.gl.deleteBuffer(this.buf);this.gl.deleteBuffer(this.sceneryBuf);this.gl.deleteTexture(this.palette);
         this.gl.deleteProgram(this.program);
+        this.gl.deleteProgram(this.textureProgram);
+        for(const texture of this.textures.values())this.gl.deleteTexture(texture);
+        for(const batch of [...this.terrainBatches,...this.sceneryBatches])this.gl.deleteBuffer(batch.buffer);
     }
 }

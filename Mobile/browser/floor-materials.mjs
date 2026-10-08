@@ -140,6 +140,14 @@ export async function loadFloorMaterials(cache,terrain) {
         throw new Error("Invalid terrain floor tile IDs");
     }
     const u=terrainIds(terrain.underlays),o=terrainIds(terrain.overlays,true);
+    // Upper surfaces and their halo use the same verified floor configuration.
+    for(const plane of terrain.planes??[]){
+        for(const id of terrainIds(plane.underlays))u.add(id);
+        for(const id of terrainIds(plane.overlays,true))o.add(id);
+    }
+    for(const region of terrain.neighbours?.values()??[])for(const plane of region.planes??[]){
+        for(const id of terrainIds(plane.underlays))u.add(id);
+    }
     // Neighbour underlays contribute to the selected region's blend windows.
     for(let x=-4;x<=68;x++)for(let y=-4;y<=68;y++){
         if(x>=0&&x<64&&y>=0&&y<64)continue;

@@ -30,6 +30,9 @@ import { decodeObjectDefinition } from "./object-definitions.mjs";
 import { loadRegionLocations, verifiedCatalog, decodeGroup } from "./location-cache.mjs";
 import { unpackArchiveFiles } from "./floor-materials.mjs";
 import { sampleTerrain, adjustFloorLight } from "./floor-lighting.mjs";
+import {computeTextureCoords} from "./texture-mapper.mjs";
+import {SceneTextures} from "./texture-cache.mjs";
+import {terrainPlane,sceneLevel} from "./scene-planes.mjs";
 
 export function decodeModel(bytes){
     if(!(bytes instanceof Uint8Array)||bytes.length<18||bytes.length>2*1024*1024)throw new Error("Invalid model length");
@@ -38,6 +41,18 @@ export function decodeModel(bytes){
     if(model.verticesCount>65535||model.faceCount>65535)throw new Error("Model exceeds geometry limit");
     for(const indices of [model.indices1,model.indices2,model.indices3]){
         if(!indices||indices.some(i=>i<0||i>=model.verticesCount))throw new Error("Model face index out of bounds");
+    }
+    if(model.faceTextures){
+        for(let i=0;i<model.faceCount;i++){
+            const coord=model.textureCoords?.[i]??-1;
+            if(coord!==-1){
+                const t=coord&255,type=model.textureRenderTypes?.[t]??0;
+                if(t>=model.textureFaceCount||type<0||type>3)throw new Error("Model texture mapping out of bounds");
+                if(type===0&&[model.textureMappingP[t],model.textureMappingM[t],model.textureMappingN[t]]
+                    .some(v=>v<0||v>=model.verticesCount))throw new Error("Model texture vertex out of bounds");
+            }
+        }
+        model.textureUvs=computeTextureCoords({isSd:()=>true},model);
     }
     return model;
 }
@@ -91,20 +106,22 @@ function transformPart(model,d,part){
         vertices.push([x,y,z]);
     }
     const recolors=new Map(d.recolors),retextures=new Map(d.retextures);
+    const uvs=model.textureUvs??computeTextureCoords({isSd:()=>true},model);
     const faces=[];
     for(let i=0;i<model.faceCount;i++){
         let texture=model.faceTextures?.[i]??-1;
         texture=retextures.get(texture)??texture;
         let indices=[model.indices1[i],model.indices2[i],model.indices3[i]];
-        if(mirror)indices.reverse();
+        let uv=uvs?Array.from(uvs.subarray(i*6,i*6+6)):null;
+        if(mirror){indices.reverse();if(uv)uv=[...uv.slice(4,6),...uv.slice(2,4),...uv.slice(0,2)];}
         faces.push({indices,color:recolors.get(model.faceColors[i])??model.faceColors[i],
-            type:model.faceRenderTypes?.[i]??0,alpha:model.faceAlphas?.[i]??0,texture});
+            type:model.faceRenderTypes?.[i]??0,alpha:model.faceAlphas?.[i]??0,texture,uv});
     }
     return {vertices,faces};
 }
 
 /** Emit the same six-float position/packed-HSL layout as ground geometry. */
-export function buildObjectMesh(terrain,loc,d,part,models){
+export function buildObjectMesh(terrain,loc,d,part,models,{textures=new Map()}={}){
     let sizeX=d.sizeX,sizeY=d.sizeY;
     if(loc.rotation&1)[sizeX,sizeY]=[sizeY,sizeX];
     const sx=loc.x+(sizeX>>1),ex=loc.x+((sizeX+1)>>1),sy=loc.y+(sizeY>>1),ey=loc.y+((sizeY+1)>>1);
@@ -136,13 +153,19 @@ export function buildObjectMesh(terrain,loc,d,part,models){
     const intensity=(Math.trunc(Math.sqrt(5100))*(768+d.contrast))>>8;
     if(intensity<=0)throw new Error("Invalid object lighting contrast");
     const dot=n=>-50*n[0]-10*n[1]-50*n[2],ambient=64+d.ambient;
-    const out=[],maxHeight=vertices.reduce((max,v)=>Math.max(max,-v[1]),1);
+    const out=[],textured=new Map(),maxHeight=vertices.reduce((max,v)=>Math.max(max,-v[1]),1);
     let omittedFaces=0;
     for(let i=0;i<faces.length;i++){
         const f=faces[i];
-        // Textures and partial alpha need their own renderer; never replace them.
-        if(f.texture>=0||f.alpha!==0||f.type>1){omittedFaces++;continue;}
-        for(const index of f.indices){
+        if(f.alpha!==0||f.type>1||f.type<0||f.texture>=0&&
+            (!textures.has(f.texture)||!f.uv?.every(Number.isFinite))){omittedFaces++;continue;}
+        let target=out;
+        if(f.texture>=0){
+            if(!textured.has(f.texture))textured.set(f.texture,[]);
+            target=textured.get(f.texture);
+        }
+        for(let corner=0;corner<3;corner++){
+            const index=f.indices[corner];
             const [vx,vy,vz]=vertices[index],x=centerX+vx/128,z=centerY+vz/128;
             let groundOffset=0;
             if(d.contour===0)groundOffset=heightAt(terrain,x,z)-centerHeight;
@@ -153,32 +176,35 @@ export function buildObjectMesh(terrain,loc,d,part,models){
             const normal=f.type===1?faceNormals[i]:normals[index];
             const denominator=f.type===1?intensity+(intensity>>1):intensity*Math.max(1,normal[3]);
             const light=ambient+Math.trunc(dot(normal)/denominator);
-            out.push(x-31.5,-(centerHeight+vy+groundOffset)/128,z-31.5,adjustFloorLight(f.color,light),0,0);
+            target.push(x-31.5,-(centerHeight+vy+groundOffset)/128,z-31.5,
+                ...(f.texture>=0?[Math.max(2,Math.min(126,light)),f.uv[corner*2],f.uv[corner*2+1]]:
+                    [adjustFloorLight(f.color,light),0,0]));
         }
     }
-    return {vertices:new Float32Array(out),omittedFaces};
+    return {vertices:new Float32Array(out),texturedBatches:new Map(Array.from(textured,([id,v])=>[id,new Float32Array(v)])),omittedFaces};
 }
 
-export async function loadStaticScenery(cache,terrain,{key,isCurrent=()=>true,onProgress=()=>{}}={}){
+export async function loadStaticScenery(cache,terrain,{key,isCurrent=()=>true,onProgress=()=>{},textureSource=new SceneTextures(cache,{isCurrent})}={}){
     const source=await loadRegionLocations(cache,terrain,{key});
     if(!isCurrent())return null;
-    const table=await verifiedCatalog(cache,2),ids=new Set(source.locations.filter(l=>l.plane===0).map(l=>l.id));
+    const table=await verifiedCatalog(cache,2),ids=new Set(source.locations.map(l=>l.id));
     if(ids.size>4096)throw new Error("Scene definition count exceeds limit");
     const files=table.fileIdsForGroup.get(6);
     if(!files)throw new Error("Object configuration group 2:6 is missing");
     const definitions=unpackArchiveFiles(await decodeGroup(await cache.loadGroup(2,6)),files,ids,{maxFiles:100000});
     const decoded=new Map(),errors=[];
     for(const [id,bytes] of definitions){try{decoded.set(id,decodeObjectDefinition(bytes,id));}catch(error){errors.push({id,reason:error.message});}}
-    const models=new Map(),modelErrors=new Set(),meshes=[],placements=[],walls=new Map();
+    const models=new Map(),modelErrors=new Set(),meshes=Array.from({length:4},()=>[]),placements=[],walls=new Map(),textured=new Map();
+    const planeViews=Array.from({length:4},(_,p)=>terrainPlane(terrain,p));
     let rendered=0,skipped=0,omittedFaces=0,totalFloats=0;
-    for(const loc of source.locations){if(loc.plane===0&&loc.shape<=3){const d=decoded.get(loc.id);if(d)walls.set(`${loc.x},${loc.y}`,d.decorDisplacement);}}
+    for(const loc of source.locations){if(loc.shape<=3){const d=decoded.get(loc.id);if(d)walls.set(`${loc.plane},${loc.x},${loc.y}`,d.decorDisplacement);}}
     for(const loc of source.locations){
         if(!isCurrent())return null;
-        if(loc.plane!==0)continue;
+        const view=planeViews[loc.plane],level=sceneLevel(terrain,loc.plane,loc.x,loc.y);
         const d=decoded.get(loc.id);
         // Dynamic transformations depend on authenticated varp/varbit state.
-        if(!d||d.transforms||d.seqId!==-1||!d.sizeX||!d.sizeY){skipped++;continue;}
-        const parts=placementParts(loc,d,walls.get(`${loc.x},${loc.y}`));
+        if(!view||!d||d.transforms||d.seqId!==-1||!d.sizeX||!d.sizeY){skipped++;continue;}
+        const parts=placementParts(loc,d,walls.get(`${loc.plane},${loc.x},${loc.y}`));
         let drawn=false;
         for(const part of parts){
             if(!part.modelIds.length)continue;
@@ -193,20 +219,30 @@ export async function loadStaticScenery(cache,terrain,{key,isCurrent=()=>true,on
                 const model=models.get(id);if(model)components.push(model);
             }
             if(components.length!==part.modelIds.length)continue;
+            const textureIds=new Set(),retextures=new Map(d.retextures);
+            for(const model of components)for(const id of model.faceTextures??[])if(id>=0)textureIds.add(retextures.get(id)??id);
+            for(const id of textureIds){if(!isCurrent())return null;await textureSource.load(id);}
             try{
-                const mesh=buildObjectMesh(terrain,loc,d,part,components);omittedFaces+=mesh.omittedFaces;
+                const mesh=buildObjectMesh(view,loc,d,part,components,{textures:textureSource.textures});omittedFaces+=mesh.omittedFaces;
                 totalFloats+=mesh.vertices.length;
-                meshes.push(mesh.vertices);drawn ||= mesh.vertices.length>0;
+                meshes[level].push(mesh.vertices);drawn ||= mesh.vertices.length>0;
+                for(const [id,vertices] of mesh.texturedBatches){
+                    const key=`${level}:${id}`;
+                    if(!textured.has(key))textured.set(key,{level,texture:id,chunks:[]});
+                    textured.get(key).chunks.push(vertices);totalFloats+=vertices.length;drawn ||=vertices.length>0;
+                }
             }catch(error){errors.push({id:loc.id,x:loc.x,y:loc.y,reason:error.message});}
         }
-        if(totalFloats>12_000_000)throw new Error("Scene mesh exceeds limit");
+        if(totalFloats>24_000_000)throw new Error("Scene mesh exceeds limit");
         if(drawn){rendered++;placements.push({id:loc.id,name:d.name,x:loc.x,y:loc.y,shape:loc.shape,rotation:loc.rotation});}else skipped++;
         if((rendered+skipped)%100===0)onProgress({rendered,skipped,models:models.size});
     }
     if(!isCurrent())return null;
-    const vertices=new Float32Array(totalFloats);let at=0;
-    for(const mesh of meshes){vertices.set(mesh,at);at+=mesh.length;}
-    return {vertices,placements,rendered,skipped,omittedFaces,models:models.size,definitions:decoded.size,
+    const join=chunks=>{const out=new Float32Array(chunks.reduce((n,v)=>n+v.length,0));let at=0;for(const v of chunks){out.set(v,at);at+=v.length;}return out;};
+    const levelCounts=meshes.map(chunks=>chunks.reduce((n,v)=>n+v.length/6,0));
+    const vertices=join(meshes.flat()),texturedBatches=Array.from(textured.values(),b=>({level:b.level,texture:b.texture,vertices:join(b.chunks)}));
+    errors.push(...textureSource.errors);
+    return {vertices,levelCounts,texturedBatches,textures:textureSource.textures,placements,rendered,skipped,omittedFaces,models:models.size,definitions:decoded.size,
         locations:source.locations.length,upperPlaneLocations:source.locations.filter(l=>l.plane>0).length,
         locationGroup:source.group,keyUsed:source.keyUsed,errors};
 }

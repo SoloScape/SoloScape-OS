@@ -95,6 +95,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
             "/app.mjs","/native-js5.mjs","/terrain-world.mjs",
             "/world-webgl.mjs","/floor-materials.mjs","/floor-lighting.mjs","/world-startup.mjs",
             "/cache-reader.mjs","/model-codec.mjs","/object-definitions.mjs","/location-cache.mjs","/scenery-models.mjs",
+            "/texture-cache.mjs","/texture-mapper.mjs","/scene-planes.mjs",
         ];
         for(const path of modules){
             const response=await fetch(root+path);
@@ -113,7 +114,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
 });
 
 test("real WebGL shader renders client HSL palette pixels and releases palette texture",
-    {timeout:60000,skip:process.platform!=="linux"},async()=>{
+    {timeout:60000,skip:process.platform!=="linux"&&!process.env.CHROME_BIN},async()=>{
     const chrome=process.env.CHROME_BIN||"/usr/bin/google-chrome";
     await access(chrome);
     const browserRoot=new URL("../browser/",import.meta.url);
@@ -147,7 +148,27 @@ try{
     gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
     const objectRgb=HSL_PALETTE[2000],objectExpected=[objectRgb>>>16&255,objectRgb>>>8&255,objectRgb&255,255];
     if(objectExpected.some((v,i)=>v!==pixel[i]))throw new Error("Scenery pixel "+pixel+" expected "+objectExpected);
+    const texPixels=new Uint8Array(64*64*4);
+    for(let i=0;i<texPixels.length;i+=4)texPixels.set([128,64,32,255],i);
+    const textured=new Float32Array(object);
+    for(let i=0;i<textured.length;i+=6){textured[i+3]=64;textured[i+4]=(i/6)%2+.25;textured[i+5]=.25;}
+    const texturedScene={vertices:new Float32Array(),levelCounts:[0,0,0,0],
+        texturedBatches:[{level:1,texture:3,vertices:textured}],textures:new Map([[3,{size:64,pixels:texPixels}]])};
+    viewport.setScenery(texturedScene);viewport.render();
+    gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    if(expected.some((v,i)=>v!==pixel[i]))throw new Error("Upper texture leaked into ground view");
+    viewport.setSceneLevel(1);viewport.render();
+    gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    if([64,32,16,255].some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("Lit texture pixel "+pixel);
+    const oldTexture=viewport.textures.get(3),oldBuffer=viewport.sceneryBatches[0].buffer;
+    for(let i=3;i<texPixels.length;i+=4)texPixels[i]=0;
+    viewport.setScenery(texturedScene);viewport.render();
+    if(gl.isTexture(oldTexture)||gl.isBuffer(oldBuffer))throw new Error("Replacing texture scene leaked GPU resources");
+    gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    if(expected.some((v,i)=>v!==pixel[i]))throw new Error("Texture cutout obscured terrain");
+    const sceneTexture=viewport.textures.get(3),sceneBuffer=viewport.sceneryBatches[0].buffer;
     viewport.setTerrain(terrain);if(viewport.sceneryCount!==0)throw new Error("Travel retained obsolete scenery");
+    if(gl.isTexture(sceneTexture)||gl.isBuffer(sceneBuffer)||viewport.sceneryBatches.length)throw new Error("Travel retained texture resources");
     if(gl.getError()!==gl.NO_ERROR)throw new Error("WebGL error");
     const palette=viewport.palette;
     const sceneryBuffer=viewport.sceneryBuf;
@@ -165,7 +186,7 @@ await fetch("/result?status="+encodeURIComponent(document.body.dataset.result));
                 res.writeHead(200);res.end("received");
             }else if(req.url==="/"){
                 res.writeHead(200,{"Content-Type":"text/html"});res.end(html);
-            }else if(["/world-webgl.mjs","/floor-lighting.mjs"].includes(req.url)){
+            }else if(["/world-webgl.mjs","/floor-lighting.mjs","/scene-planes.mjs"].includes(req.url)){
                 res.writeHead(200,{"Content-Type":"text/javascript"});
                 res.end(await readFile(new URL(req.url.slice(1),browserRoot)));
             }else{res.writeHead(404);res.end();}
