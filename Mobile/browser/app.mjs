@@ -145,23 +145,34 @@ levelSelector.addEventListener("change",()=>renderer?.setSceneLevel(Number(level
 const loginForm=byId("login-form"),loginButton=byId("login-submit"),disconnect=byId("login-disconnect"),loginStatus=byId("login-status");
 let loginConfig=null,gameSession=null,gameplay=null,loginBusy=false,sessionAttempt=0;
 const npcMenu=byId("npc-menu"),npcMenuTitle=byId("npc-menu-title"),npcMenuActions=byId("npc-menu-actions");
+const examineResult=byId("npc-examine-result");
+let examineTimer=null;
+function showExamine({name,description}){
+    clearTimeout(examineTimer);
+    examineResult.textContent=`${name}: ${description}`;examineResult.hidden=false;
+    examineTimer=setTimeout(()=>{examineResult.hidden=true;},9000);
+}
 function hideNpcMenu(){npcMenu.hidden=true;npcMenuActions.replaceChildren();}
 function showNpcMenu(info){
     hideNpcMenu();if(!info)return;
-    npcMenuTitle.textContent=info.name;
-    if(!info.actions.length){
-        const note=document.createElement("span");note.className="npc-menu-empty";
-        note.textContent="No available interactions";npcMenuActions.append(note);
-    }
+    npcMenuTitle.textContent=`Choose Option — ${info.name}`;
     for(const {slot,label} of info.actions){
         const button=document.createElement("button");button.type="button";
         button.textContent=label;
+        if(label.trim().toLowerCase()==="attack")button.classList.add("npc-option--attack");
         button.addEventListener("click",()=>{
             try{gameplay?.interactNpc(info.index,slot,{run:info.run});}
             catch(error){loginStatus.textContent="NPC interaction unavailable: "+error.message;}
         });
         npcMenuActions.append(button);
     }
+    const examine=document.createElement("button");examine.type="button";
+    examine.className="npc-menu-examine";examine.textContent=`Examine ${info.name}`;
+    examine.addEventListener("click",()=>{
+        try{gameplay?.examineNpc(info.index);}
+        catch(error){loginStatus.textContent="Examine unavailable: "+error.message;}
+    });
+    npcMenuActions.append(examine);
     npcMenu.hidden=false;
     const world=npcMenu.parentElement,limitX=world.clientWidth-npcMenu.offsetWidth-8,
         limitY=world.clientHeight-npcMenu.offsetHeight-8;
@@ -186,6 +197,7 @@ async function prepareLogin(){
 loginForm.addEventListener("submit",async event=>{
     event.preventDefault();if(loginBusy||gameSession?.connected||!loginConfig)return;
     const sequence=++sessionAttempt;loginBusy=true;loginButton.disabled=true;disconnect.hidden=false;
+    examineResult.hidden=true;
     const credentials={username:byId("login-username").value,password:byId("login-password").value,otp:byId("login-otp").value};
     byId("login-password").value="";byId("login-otp").value="";
     loginStatus.textContent="Checking the login cache manifest…";
@@ -210,7 +222,7 @@ loginForm.addEventListener("submit",async event=>{
                 loginStatus.textContent=message;loginButton.disabled=false;disconnect.hidden=true;
             },
         });
-        gameplay=new NativeGameplay({cache:loginCache,viewport:renderer,session:gameSession,onNpcMenu:showNpcMenu,
+        gameplay=new NativeGameplay({cache:loginCache,viewport:renderer,session:gameSession,onNpcMenu:showNpcMenu,onExamine:showExamine,
             run:()=>byId("run-movement").checked,
             onStatus:message=>{if(sequence===sessionAttempt)loginStatus.textContent=message;},
             onRegion:region=>{
@@ -233,10 +245,10 @@ loginForm.addEventListener("submit",async event=>{
     }finally{credentials.password="";credentials.otp="";if(sequence===sessionAttempt)loginBusy=false;}
 });
 disconnect.addEventListener("click",()=>{
-    sessionAttempt++;gameplay?.close();hideNpcMenu();gameSession?.close();gameSession=null;gameplay=null;loginBusy=false;
+    sessionAttempt++;gameplay?.close();hideNpcMenu();clearTimeout(examineTimer);examineResult.hidden=true;gameSession?.close();gameSession=null;gameplay=null;loginBusy=false;
     button.disabled=false;levelSelector.disabled=false;loading.hidden=true;
     loginButton.disabled=!loginConfig;disconnect.hidden=true;loginStatus.textContent="Disconnected";
 });
-window.addEventListener("pagehide",()=>{sessionAttempt++;gameplay?.close();gameSession?.close();renderer?.dispose();},{once:true});
+window.addEventListener("pagehide",()=>{sessionAttempt++;clearTimeout(examineTimer);gameplay?.close();gameSession?.close();renderer?.dispose();},{once:true});
 void prepareLogin();
 enterWorld(true);

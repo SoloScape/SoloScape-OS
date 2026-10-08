@@ -13,3 +13,17 @@
 .npc-menu #npc-menu-cancel{margin-top:8px;background:#172c30;color:#b3c7c2;text-align:center}
 .npc-menu-empty{font-size:12px;color:#b5c6bb;padding:10px 4px}
 @media(max-width:780px){.npc-menu{left:8px!important;right:8px;top:auto!important;bottom:54px;width:auto;max-height:42%;}}
+
+/* RuneScape-style NPC choices: compact desktop menu, finger-sized mobile targets. */
+.npc-menu{background:#151d1cf5;border:1px solid #bda77c;box-shadow:0 3px 0 #06110c,0 14px 32px #000c;padding:8px;min-width:230px;width:max-content;max-width:min(92%,320px)}
+.npc-menu strong{color:#e8d6aa;padding:5px 8px;border-bottom:1px solid #6d6552;margin:0 0 4px}
+.npc-menu button{background:transparent;border:0;border-radius:3px;min-height:32px;color:#e2e8db;font-weight:600;padding:6px 10px}
+.npc-menu button:hover,.npc-menu button:focus-visible{background:#32453e;outline:1px solid #c7ac72;outline-offset:0}
+.npc-menu button.npc-option--attack{color:#e7a2a2}
+.npc-menu button.npc-menu-examine{color:#dbc692;border-top:1px solid #464c40;border-radius:0;margin-top:4px}
+.npc-menu #npc-menu-cancel{margin-top:5px;border-top:1px solid #464c40;border-radius:0}
+.npc-examine-result{position:absolute;z-index:4;bottom:105px;left:20px;max-width:min(620px,calc(100% - 40px));border:1px solid #847451;background:#161e18e8;color:#f0dfb2;border-radius:8px;padding:10px 14px;font-size:13px;line-height:1.5;pointer-events:none}
+.npc-examine-result[hidden]{display:none}
+@media(max-width:780px){.npc-menu{min-width:0;max-width:none;width:auto}.npc-menu button{min-height:46px;font-size:15px}.npc-examine-result{left:8px;bottom:85px;max-width:calc(100% - 16px)}}
+
+#world-canvas{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}

@@ -66,8 +66,8 @@ movement requests, rebuilds and plane changes are decoded from the live
 game stream. The native client also decodes revision-240 NPC V6 updates,
 loads verified NPC cache definitions/models and renders nearby NPCs
 using classic idle/walk/run
-and action animation. Tapping an NPC opens a cache-defined action menu
-that sends native OPNPC_V2 requests. Instanced regions, dynamic NPC
+and action animation. Left-click or quick-tap an NPC to use its first
+available action; right-click or touch-and-hold opens the full menu. Instanced regions, dynamic NPC
 transforms and specialised
 customisation, interfaces and chat remain
 incomplete; NPC interaction packets still need live server verification.
@@ -88,11 +88,18 @@ rendered NPC counts.
 
 NPC rendering was confirmed working in a live local client on 8 October
 2026; newly implemented NPC interactions still need a live server check.
-Tap or click a rendered NPC to open its real cache actions (Talk-to,
-Trade, Attack, etc., when present); the visible-action mask is respected.
-The selected slot is encoded using the server's OPNPC1_V2 through
-OPNPC5_V2 client packets; the server handles pathing and available
-action scripts.
+Right-click an NPC on desktop, or hold a finger on an NPC for 475 ms
+on mobile, to open its full RuneScape-style action menu (Talk-to, Trade,
+Attack, etc. when available), followed by Examine and Cancel.
+Left-click or short-tap performs the first visible primary action; if
+none exists, it opens the menu with Examine. Holding while dragging
+cancels the menu gesture, preserving camera orbit controls. The
+server-controlled visibility mask is respected.
+The selected primary slot uses OPNPC1_V2 through OPNPC5_V2; Examine
+uses opcode 101 (OPNPC6) with the NPC's cache type ID. The client
+shows the cache description until native chat is implemented, and the
+server remains responsible for authoritative examines, NPC pathing
+and available action scripts.
 Tapping ground or Cancel dismisses the menu; no action is sent for an
 NPC that despawned or changed type. Dynamic varbit/varp-driven NPC morphs,
 specialised model customisation, skeletal sequences, effects, and NPCs

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {NPC_OPCODES,encodeNpcInteraction,npcActionOptions} from "../browser/npc-interactions.mjs";
+import {NPC_OPCODES,encodeNpcInteraction,encodeNpcExamine,npcActionOptions} from "../browser/npc-interactions.mjs";
+import {NpcLongPress,NPC_HOLD_DELAY_MS} from "../browser/npc-pointer.mjs";
 import {pickNpcTriangles} from "../browser/world-webgl.mjs";
 import {NativeGameplay} from "../browser/native-gameplay.mjs";
 
@@ -86,4 +87,67 @@ test("selection is cancelled after despawn, type change or async definition inva
     game.npcs.npcs.delete(4);game.updateNpcMotions();
     assert.equal(game.selectedNpc,null);
     game.close();assert.equal(menus.at(-1),null);
+});
+
+test("revision-240 Examine uses OPNPC6 and the NPC type ID, not its runtime index",()=>{
+    assert.deepEqual(encodeNpcExamine(0x1234),{opcode:101,payload:Uint8Array.of(0x12,0xb4)});
+    assert.deepEqual([...encodeNpcExamine(0).payload],[0,128]);
+    assert.throws(()=>encodeNpcExamine(-1),/definition/);
+    assert.throws(()=>encodeNpcExamine(65536),/definition/);
+});
+test("short tap or left-click uses first visible cache action; context mode retains all options",async()=>{
+    const sent=[],menus=[],view={onNpc:null,onNpcCancel:null,onDestination:null,setActors(){}};
+    const game=new NativeGameplay({cache:{},viewport:view,session:{sendGame(...x){sent.push(x);}},
+        onNpcMenu:menu=>menus.push(menu)});
+    game.sync={local:{plane:0}};
+    game.npcs.npcs.set(17,{index:17,type:222,x:3210,y:3200,plane:0,visibleOps:0b00100});
+    game.npcModels.definition=async()=>({name:"Merchant",actions:["Talk-to",null,"Trade","Attack"]});
+    await game.selectNpc({index:17,x:6,y:8,mode:"default"});
+    assert.deepEqual(sent.map(([opcode,payload])=>[opcode,[...payload]]),[[43,[17,0,128,0]]]);
+    assert.equal(menus.at(-1),null);
+    sent.length=0;
+    await game.selectNpc({index:17,x:6,y:8,mode:"menu"});
+    assert.deepEqual(menus.at(-1).actions,[{slot:2,label:"Trade"}]);
+    assert.equal(sent.length,0);
+    game.close();
+});
+test("Examine sends server packet and exposes cache description; stale selection is blocked",async()=>{
+    const sent=[],descriptions=[],view={onNpc:null,onNpcCancel:null,onDestination:null,setActors(){}};
+    const game=new NativeGameplay({cache:{},viewport:view,session:{sendGame(...args){sent.push(args);}},
+        onExamine:info=>descriptions.push(info)});
+    game.sync={local:{plane:0}};
+    game.npcs.npcs.set(410,{index:410,type:0x1234,plane:0});
+    game.npcModels.definition=async()=>({name:"Knight",examine:"A guard of the realm.",actions:["Talk-to"]});
+    await game.selectNpc({index:410,x:18,y:20,mode:"menu"});
+    assert.equal(game.examineNpc(410),true);
+    assert.deepEqual(sent.map(([opcode,payload])=>[opcode,[...payload]]),[[101,[0x12,0xb4]]]);
+    assert.deepEqual(descriptions,[{name:"Knight",description:"A guard of the realm."}]);
+    assert.equal(game.examineNpc(410),false);
+    await game.selectNpc({index:410,x:18,y:20});
+    game.npcs.npcs.delete(410);
+    assert.equal(game.examineNpc(410),false);
+    assert.equal(sent.length,1);
+    game.close();
+});
+test("long-press opens options only after a stationary hold; release does not click again",()=>{
+    let sequence=0;
+    const callbacks=new Map(),events=[];
+    const schedule=cb=>{const id=++sequence;callbacks.set(id,()=>{callbacks.delete(id);cb();});return id;};
+    const unschedule=id=>callbacks.delete(id);
+    const press=new NpcLongPress(npc=>events.push(npc),{schedule,unschedule});
+    assert.equal(NPC_HOLD_DELAY_MS,475);
+    press.start(1,10,20,{index:5});assert.equal(callbacks.size,1);
+    assert.equal(press.finish(1),false);assert.equal(callbacks.size,0);
+    press.start(1,10,20,{index:5});
+    press.move(1,11,21);assert.equal(callbacks.size,1);
+    for(const cb of [...callbacks.values()])cb();
+    assert.deepEqual(events,[{index:5}]);
+    assert.equal(press.finish(1),true);
+    assert.equal(press.finish(1),false);
+    press.start(2,10,20,{index:6});press.move(2,20,20);
+    assert.equal(callbacks.size,0);
+    press.start(3,10,20,null);assert.equal(callbacks.size,0);
+    press.start(4,10,20,{index:7});press.cancel();
+    assert.equal(callbacks.size,0);
+    assert.deepEqual(events,[{index:5}]);
 });

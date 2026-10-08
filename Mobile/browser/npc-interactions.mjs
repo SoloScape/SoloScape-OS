@@ -1,6 +1,11 @@
 // Revision-240 rsprot OPNPC*_V2 client wire layouts (subop 0 = primary action).
 // Opcodes and field permutations match osrs-240 OpNpc1..5V2Decoder.
 export const NPC_OPCODES=Object.freeze([59,87,43,35,73]);
+export const NPC_EXAMINE_OPCODE=101;
+export function encodeNpcExamine(type){
+    if(!Number.isInteger(type)||type<0||type>65535)throw new Error("Invalid NPC definition for Examine");
+    return {opcode:NPC_EXAMINE_OPCODE,payload:Uint8Array.of(type>>>8,(type+128)&255)};
+}
 export function encodeNpcInteraction(index,slot,{controlKey=false,subop=0}={}){
     if(!Number.isInteger(index)||index<0||index>=65535)throw new Error("Invalid NPC index");
     if(!Number.isInteger(slot)||slot<0||slot>4)throw new Error("Invalid NPC action slot");

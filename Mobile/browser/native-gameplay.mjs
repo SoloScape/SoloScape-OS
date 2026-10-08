@@ -1,7 +1,7 @@
 import {NativePlayerSync} from "./player-sync.mjs";
 import {NativeNpcSync} from "./npc-sync.mjs";
 import {NativeNpcModels} from "./npc-models.mjs";
-import {encodeNpcInteraction,npcActionOptions} from "./npc-interactions.mjs";
+import {encodeNpcInteraction,encodeNpcExamine,npcActionOptions} from "./npc-interactions.mjs";
 import {decodeRebuild,encodeMoveDestination,encodeWindowStatus,MOVE_GAMECLICK,MAP_BUILD_COMPLETE,WINDOW_STATUS} from "./player-protocol.mjs";
 import {loadNativeTerrain} from "./terrain-world.mjs";
 import {loadFloorMaterials} from "./floor-materials.mjs";
@@ -25,10 +25,10 @@ export function interpolatePlayer(motion,now){
 }
 
 export class NativeGameplay {
-    constructor({cache,viewport,session,onStatus=()=>{},onRegion=()=>{},onNpcMenu=()=>{},run=()=>false,
+    constructor({cache,viewport,session,onStatus=()=>{},onRegion=()=>{},onNpcMenu=()=>{},onExamine=()=>{},run=()=>false,
         loadTerrain=loadNativeTerrain,loadMaterials=loadFloorMaterials,loadScenery=loadStaticScenery,
         models=new NativePlayerModels(cache),now=()=>performance.now()}={}){
-        this.cache=cache;this.viewport=viewport;this.session=session;this.onStatus=onStatus;this.onRegion=onRegion;this.onNpcMenu=onNpcMenu;this.run=run;
+        this.cache=cache;this.viewport=viewport;this.session=session;this.onStatus=onStatus;this.onRegion=onRegion;this.onNpcMenu=onNpcMenu;this.onExamine=onExamine;this.run=run;
         this.loadTerrain=loadTerrain;this.loadMaterials=loadMaterials;this.loadScenery=loadScenery;this.models=models;this.now=now;
         this.generation=0;this.closed=false;this.regions=new Map();this.packetCount=0;this.animationStarted=now();
         this.npcs=new NativeNpcSync();this.npcModels=new NativeNpcModels(models);this.npcMotions=new Map();this.npcDrawn=0;this.selectionToken=0;this.selectedNpc=null;
@@ -132,7 +132,7 @@ export class NativeGameplay {
     clearNpcMenu(){
         this.selectionToken++;this.selectedNpc=null;this.onNpcMenu(null);
     }
-    async selectNpc({index,x,y,run=false}){
+    async selectNpc({index,x,y,run=false,mode="menu"}){
         if(this.closed||this.loading||!this.sync?.local)return;
         const npc=this.npcs.npcs.get(index);
         if(!npc)return;
@@ -143,12 +143,23 @@ export class NativeGameplay {
             if(this.closed||this.loading||token!==this.selectionToken||generation!==this.generation||
                 this.npcs.npcs.get(index)?.type!==type)return;
             const actions=npcActionOptions(definition,this.npcs.npcs.get(index));
-            this.selectedNpc={index,type,slots:actions.map(a=>a.slot)};
+            this.selectedNpc={index,type,slots:actions.map(a=>a.slot),definition};
+            if(mode==="default"&&actions.length){this.interactNpc(index,actions[0].slot,{run});return;}
             this.onNpcMenu({index,name:this.npcs.npcs.get(index).name||definition.name||`NPC ${type}`,
                 actions,x,y,run});
         }catch(error){
             if(token===this.selectionToken&&!this.closed)this.onStatus("NPC options unavailable: "+error.message);
         }
+    }
+    examineNpc(index){
+        const selected=this.selectedNpc,npc=this.npcs.npcs.get(index);
+        if(this.closed||this.loading||!selected||selected.index!==index||selected.type!==npc?.type)return false;
+        const {opcode,payload}=encodeNpcExamine(selected.type);
+        this.session.sendGame(opcode,payload);
+        const name=npc.name||selected.definition.name||`NPC ${selected.type}`;
+        this.onExamine({name,description:selected.definition.examine||"No cache description available."});
+        this.clearNpcMenu();
+        return true;
     }
     interactNpc(index,slot,{run=false}={}){
         const selected=this.selectedNpc,npc=this.npcs.npcs.get(index);

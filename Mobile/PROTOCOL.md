@@ -1,6 +1,6 @@
 # TSPS → SoloScape protocol interoperability
 
-Status: **native revision-240 browser login and native player/NPC update decoding implemented; TSPS protocol remains incompatible**. Synthetic account login is verified against the installed rsprot decoder and gateway. A real local authentication and game packet stream were previously observed, and the NPC renderer has now been confirmed working in a live local client. Native OPNPC_V2 interaction requests are implemented but still require live testing.
+Status: **native revision-240 browser login and native player/NPC update decoding implemented; TSPS protocol remains incompatible**. Synthetic account login is verified against the installed rsprot decoder and gateway. A real local authentication and game packet stream were previously observed, and the NPC renderer has now been confirmed working in a live local client. Native OPNPC_V2 primary interactions and OPNPC6 Examine are implemented and fixture-tested, with live interaction still awaiting confirmation.
 
 ## Audited versions
 

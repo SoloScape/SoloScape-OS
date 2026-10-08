@@ -30,6 +30,7 @@
 // Cache geometry and packed-HSL vertex colours use the client terrain pipeline.
 import { prepareFloorLighting, adjustFloorLight, HSL_PALETTE, sampleTerrain } from "./floor-lighting.mjs";
 import {terrainPlane,sceneLevel,validateSceneLevel} from "./scene-planes.mjs";
+import {NpcLongPress} from "./npc-pointer.mjs";
 function shader(gl,type,source){
     const sh=gl.createShader(type);
     gl.shaderSource(sh,source);gl.compileShader(sh);
@@ -360,11 +361,30 @@ export class NativeTerrainViewport {
         this.target=[0,10,0];
         this.pointer=null;
         this.disposed=false;
-        this.onPointerDown=e=>{this.pointer={id:e.pointerId,x:e.clientX,y:e.clientY,startX:e.clientX,startY:e.clientY,dragged:false,button:e.button};
+        this.pickNpcAt=(clientX,clientY)=>{
+            if(!this.actorPickMeshes.length)return null;
+            const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return null;
+            const nx=2*(clientX-rect.left)/rect.width-1,ny=1-2*(clientY-rect.top)/rect.height;
+            const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,rect.width/rect.height);
+            const npc=pickNpcTriangles(this.actorPickMeshes,matrix,nx,ny);
+            return npc?{index:npc.index,x:clientX-rect.left,y:clientY-rect.top}:null;
+        };
+        this.lastNpcHold=-Infinity;
+        this.longPress=new NpcLongPress(hit=>{
+            this.lastNpcHold=performance.now();this.onNpc({...hit,mode:"menu"});
+        },{slop:6});
+        this.onPointerDown=e=>{
+            if(this.pointer)this.longPress.cancel();
+            this.pointer={id:e.pointerId,x:e.clientX,y:e.clientY,startX:e.clientX,startY:e.clientY,dragged:false,button:e.button,pointerType:e.pointerType};
+            if(e.pointerType==="touch"&&e.isPrimary!==false){
+                const hit=this.pickNpcAt(e.clientX,e.clientY);
+                this.longPress.start(e.pointerId,e.clientX,e.clientY,hit?{...hit,run:false}:null);
+            }
             canvas.setPointerCapture?.(e.pointerId);};
         this.onPointerMove=e=>{
             if(!this.pointer||this.pointer.id!==e.pointerId)return;
             const dx=e.clientX-this.pointer.x,dy=e.clientY-this.pointer.y;
+            this.longPress.move(e.pointerId,e.clientX,e.clientY);
             this.pointer.dragged ||=Math.hypot(e.clientX-this.pointer.startX,e.clientY-this.pointer.startY)>6;
             if(!this.pointer.dragged)return;
             this.yaw+=dx*.007;this.pitch=Math.max(.18,Math.min(1.38,this.pitch+dy*.007));
@@ -373,13 +393,14 @@ export class NativeTerrainViewport {
         this.onPointerUp=e=>{
             if(this.pointer?.id!==e.pointerId)return;
             const pointer=this.pointer;this.pointer=null;
-            if(e.type==="pointercancel"||pointer.dragged||![0,2].includes(pointer.button))return;
+            const held=this.longPress.finish(e.pointerId);
+            if(e.type==="pointercancel"||held||pointer.dragged||pointer.button!==0)return;
             const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return;
             const nx=2*(e.clientX-rect.left)/rect.width-1,ny=1-2*(e.clientY-rect.top)/rect.height;
             const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,rect.width/rect.height);
-            const npc=pickNpcTriangles(this.actorPickMeshes,matrix,nx,ny);
+            const npc=this.pickNpcAt(e.clientX,e.clientY);
             if(npc){
-                this.onNpc({index:npc.index,x:e.clientX-rect.left,y:e.clientY-rect.top,run:e.shiftKey});
+                this.onNpc({...npc,run:e.shiftKey,mode:"default"});
                 return;
             }
             this.onNpcCancel();
@@ -388,7 +409,16 @@ export class NativeTerrainViewport {
             const tile=pickTerrainTile(this.pickVertices.subarray(0,count),matrix,nx,ny);
             if(tile)this.onDestination({...tile,run:e.shiftKey});
         };
-        this.onContextMenu=e=>{if(this.actorPickMeshes.length)e.preventDefault();};
+        this.onContextMenu=e=>{
+            const npc=this.pickNpcAt(e.clientX,e.clientY);
+            if(!npc)return;
+            e.preventDefault();
+            // Mobile OSes may synthesise contextmenu before or after our hold.
+            if(e.pointerType==="touch"||e.sourceCapabilities?.firesTouchEvents||
+                this.pointer?.pointerType==="touch"||performance.now()-this.lastNpcHold<800)return;
+            this.longPress.cancel();
+            this.onNpc({...npc,mode:"menu",run:e.shiftKey});
+        };
         this.onWheel=e=>{e.preventDefault();this.distance=Math.max(18,Math.min(170,this.distance*Math.exp(e.deltaY*.001)));};
         this.onKey=e=>{
             if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName||""))return;
@@ -520,7 +550,7 @@ export class NativeTerrainViewport {
         }
     }
     dispose(){
-        this.disposed=true;cancelAnimationFrame(this.raf);
+        this.disposed=true;this.longPress.cancel();cancelAnimationFrame(this.raf);
         for(const [name,fn] of [["pointerdown",this.onPointerDown],["pointermove",this.onPointerMove],
             ["pointerup",this.onPointerUp],["pointercancel",this.onPointerUp],["contextmenu",this.onContextMenu],["wheel",this.onWheel]]) {
             this.canvas.removeEventListener(name,fn);
