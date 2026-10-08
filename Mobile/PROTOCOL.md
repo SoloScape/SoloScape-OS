@@ -9,15 +9,17 @@ Their byte permutations match the installed revision-240 rsprot encoders.
 Resync mounts/events are decoded completely before replacing state. Update
 and mount counts are bounded; assets load asynchronously from verified index 3.
 Event ranges preserve the wire's `65535` = `-1` component sentinel; only
-the base widget's `-1` permissions are currently used (item slots are not drawn).
+the base widget's `-1` permissions and dynamic dialogue-choice child IDs are
+used (item slots are not drawn).
 
 Native IF1 buttons use opcode 11 with a big-endian combined widget ID;
 IF3 buttons use opcode 1 with ID, big-endian sub/item IDs and operation 1..10
 (nine bytes). Continue uses opcode 82 with a big-endian widget ID and
 `g2Alt3` sub ID; modal close uses opcode 98 with no payload. ISAAC framing
 belongs to `NativeGameSession`. Primary IF3 actions require a cache action
-label and the corresponding server event bit. CS1/CS2, script-created
-components and model/item widgets remain unsupported. Fixture, real-browser
+label and the corresponding server event bit. Pause-button permission bit 0
+enables Continue and dialogue choices; each sends its own child ID and is
+blocked from repeating until the next page. Fixture, real-browser
 canvas and JVM interoperability tests pass; live account/phone interface
 behaviour has not yet been established.
 
@@ -28,10 +30,18 @@ revision-240 interface cache index 3, including parent linkage, alignment and
 static text/sprite/rectangle/line widgets. Sprites are verified index-8 assets,
 and typography is drawn from the cache's original index-8/13 bitmap fonts.
 The developer interface-group preview is read-only; it does not open a
-server-owned interface or execute CS2. Unsupported inventories, item models,
-3D component models and dynamic script state are omitted and counted rather
-than replaced with invented visuals. Server-driven IF_OPENTOP/IF_OPENSUB,
-component mutations, dialogue and chat remain separate future work.
+server-owned interface or execute CS2. Authenticated dialogue executes verified
+scripts 58 (choice builder), 600 (text alignment), 2379 (background reset) and
+their supported dependencies with bounded decoding/execution. Varp updates
+feed script varbit reads. The native dialogue branch of chatbox scripts
+113/923 reveals group 162's modal/background hosts for groups 217/219/231
+and hides history until close; other chatbox script branches remain unported.
+`IF_SETNPCHEAD`, `IF_SETNPCHEAD_ACTIVE`, `IF_SETPLAYERHEAD` and `IF_SETANIM`
+select real cache head parts and animations. The software portrait renderer
+uses cached colours/textures and parent clipping. General listeners,
+varbit-transformed NPC heads, inventories, item models and chat input/history
+remain unsupported. Live cache choice scripts and animated NPC heads passed;
+authenticated dialogue and physical-phone validation remain outstanding.
 
 ## Audited versions
 

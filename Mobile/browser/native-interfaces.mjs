@@ -99,7 +99,7 @@ export function decodeWidget(uid,bytes){
         for(let i=0,n=bounded(r.readUnsignedByte(),64,"widget actions");i<n;i++)widget.actions.push(r.readString());
         widget.dragZoneSize=r.readUnsignedByte();widget.dragThreshold=r.readUnsignedByte();
         widget.isScrollBar=r.readUnsignedByte()===1;widget.spellActionName=r.readString();
-        const events=listeners(r);widget.listenerCount=events.listeners.filter(a=>a.length).length;
+        const events=listeners(r);widget.listeners=events.listeners;widget.listenerCount=events.listeners.filter(a=>a.length).length;
         widget.triggerCount=events.triggers.reduce((n,a)=>n+a.length,0);
     }else{
         widget.opacity=r.readUnsignedByte();widget.mouseOverRedirect=nullable(r.readUnsignedShort());

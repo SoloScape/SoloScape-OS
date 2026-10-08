@@ -26,13 +26,14 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
 THE POSSIBILITY OF SUCH DAMAGE.
 */
 // Native IF1/IF3 cache widget canvas renderer. Layout follows the
-// pinned TSPS widgets/layout/WidgetLayout.ts. Never executes CS1/CS2 or invents
-// missing sprites, player/item models, animation or server state.
+// pinned TSPS widgets/layout/WidgetLayout.ts. Assets and actor state come from
+// the verified cache and game stream.
 import {NativeInterfaces} from "./native-interfaces.mjs";
 import {loadCacheMenuFont} from "./native-menu.mjs";
 import {decodeGroup,verifiedCatalog} from "./location-cache.mjs";
 import {unpackArchiveFiles} from "./floor-materials.mjs";
 import {decodeIndexedSprites} from "./sprite-preview.mjs";
+import {rasterizeChathead} from "./dialogue-models.mjs";
 
 const rgb=n=>"#"+(n&0xffffff).toString(16).padStart(6,"0");
 const safe=(n,max)=>Math.max(-max,Math.min(max,n));
@@ -60,26 +61,41 @@ export function flattenInterface(group,width,height,{limit=2048}={}){
     const nodes=[],seen=new Set(),skipped=[];
     function visit(widget,px,py,pw,ph,clip,depth){
         if(depth>64||nodes.length>limit)throw new Error("Interface tree exceeds safety limits");
-        if(seen.has(widget.uid))return;
-        seen.add(widget.uid);
+        const key=widget.uid+":"+(widget.childIndex??-1);
+        if(seen.has(key))return;
+        seen.add(key);
         if(widget.hidden)return;
         const layout=widgetLayout(widget,pw,ph),x=px+layout.x,y=py+layout.y;
         const w=layout.width,h=layout.height;
         if(!Number.isFinite(x)||!Number.isFinite(y)||!Number.isFinite(w)||!Number.isFinite(h))throw new Error("Unsafe widget layout");
         if(Math.abs(x)>1e6||Math.abs(y)>1e6||Math.abs(w)>4096||Math.abs(h)>4096)throw new Error("Widget layout outside bounds");
-        const widgetClip={x:Math.max(clip.x,x),y:Math.max(clip.y,y),
+        const widgetClip=widget.type===6?clip:{x:Math.max(clip.x,x),y:Math.max(clip.y,y),
             r:Math.min(clip.r,x+Math.max(0,w)),b:Math.min(clip.b,y+Math.max(0,h))};
         if(widgetClip.r<=widgetClip.x||widgetClip.b<=widgetClip.y)return;
         nodes.push({widget,x,y,width:w,height:h,clip:widgetClip});
-        if(![0,3,4,5,9].includes(widget.type))skipped.push({uid:widget.uid,type:widget.type});
+        if(![0,3,4,5,6,9].includes(widget.type)||(widget.type===6&&!widget.modelKind))skipped.push({uid:widget.uid,type:widget.type});
         const childX=x-Math.max(0,Math.min(widget.scrollX??0,Math.max(0,(widget.scrollWidth||w)-w))),
             childY=y-Math.max(0,Math.min(widget.scrollY??0,Math.max(0,(widget.scrollHeight||h)-h))),
             childW=widget.scrollWidth||w,childH=widget.scrollHeight||h;
-        for(const child of group.children.get(widget.uid)??[])visit(child,childX,childY,childW,childH,widgetClip,depth+1);
+        const children=[...(widget.childIndex===undefined?group.children.get(widget.uid)??[]:[]),
+            ...(widget.dynamicChildren??[]).filter(Boolean)];
+        for(const child of children)visit(child,childX,childY,childW,childH,widgetClip,depth+1);
     }
     const clip={x:0,y:0,r:width,b:height};
     for(const root of group.roots)visit(root,0,0,width,height,clip,0);
     return {nodes,skipped};
+}
+export function wrapCacheText(font,text,width){
+    const lines=[];
+    for(const paragraph of String(text??"").replace(/<br\s*\/?>/gi,"\n").replace(/<[^>]*>/g,"").split("\n")){
+        let line="";
+        for(const word of paragraph.split(" ")){
+            const next=line?line+" "+word:word;
+            if(line&&font.measure(next)>width){lines.push(line);line=word;}else line=next;
+        }
+        lines.push(line);if(lines.length>128)throw new Error("Widget text exceeds line budget");
+    }
+    return lines;
 }
 export class NativeInterfaceAssets{
     constructor(cache){this.cache=cache;this.fonts=new Map();this.sprites=new Map();}
@@ -142,8 +158,7 @@ function drawWidget(ctx,node,assets){
     }else if(w.type===4){
         const font=assets.fonts.get(w.fontId)?.value;
         if(!font)return;
-        const text=String(w.text??"").replace(/<br\s*\/?>/gi,"\n");
-        const rows=text.split("\n").slice(0,128),step=Math.max(1,w.lineHeight||font.ascent||12);
+        const rows=wrapCacheText(font,w.text,width),step=Math.max(1,w.lineHeight||font.ascent||12);
         const ascent=Math.max(1,font.ascent||12);
         for(let i=0;i<rows.length;i++){
             const line=rows[i].replace(/<[^>]*>/g,"");
@@ -158,6 +173,13 @@ function drawWidget(ctx,node,assets){
             if(w.textShadowed)font.draw(ctx,line,tx+1,ty+1,"#000000");
             font.draw(ctx,line,tx,ty,rgb(w.color));
         }
+    }else if(w.type===6){
+        const source=assets.heads.get(w.uid+":"+(w.childIndex??-1));if(!source)return;
+        const c=node.clip,iw=Math.ceil(c.r-c.x),ih=Math.ceil(c.b-c.y);
+        const canvas=document.createElement("canvas");canvas.width=iw;canvas.height=ih;
+        const context=canvas.getContext("2d"),data=context.createImageData(iw,ih);
+        data.data.set(rasterizeChathead(source,w,iw,ih,x+width/2-c.x,y+height/2-c.y));
+        context.putImageData(data,0,0);ctx.drawImage(canvas,c.x,c.y);
     }else if(w.type===5){
         const frame=assets.sprites.get(w.spriteId)?.value;
         if(!frame)return;
@@ -178,6 +200,7 @@ export class NativeInterfaceCanvas{
     constructor(canvas,cache){
         this.canvas=canvas;this.cache=cache;this.interfaces=new NativeInterfaces(cache);
         this.assets=new NativeInterfaceAssets(cache);this.assets.spriteCanvases=new Map();
+        this.assets.heads=new Map();this.portraits=null;
         this.generation=0;this.active=null;
     }
     async show(groupId){
@@ -188,20 +211,45 @@ export class NativeInterfaceCanvas{
     }
     async showGroup(group){
         const token=++this.generation,groupId=group.groupId;
+        clearInterval(this.headTimer);this.headTimer=null;
         const bounds=this.bounds(),layout=flattenInterface(group,bounds.width,bounds.height);
         const fonts=[...new Set(layout.nodes.filter(n=>n.widget.type===4&&n.widget.fontId>=0).map(n=>n.widget.fontId))];
         const sprites=[...new Set(layout.nodes.filter(n=>n.widget.type===5&&n.widget.spriteId>=0).map(n=>n.widget.spriteId))];
         if(fonts.length>32||sprites.length>128)throw new Error("Interface exceeds bounded asset budget");
         const unavailable=[];
+        const headNodes=layout.nodes.filter(n=>n.widget.type===6&&n.widget.modelKind);
+        if(headNodes.length>8)throw new Error("Interface exceeds portrait budget");
+        const sources=new Map(),heads=new Map(),started=performance.now();
         await Promise.all([...fonts.map(async id=>{
             try{await this.assets.font(id);}catch(error){unavailable.push({kind:"font",id,reason:error.message});}
         }),...sprites.map(async id=>{
             try{const frame=await this.assets.sprite(id);
                 if(token===this.generation)this.assets.spriteCanvases.set(id,frameCanvas(frame));
             }catch(error){unavailable.push({kind:"sprite",id,reason:error.message});}
+        }),...headNodes.map(async({widget})=>{
+            try{
+                if(!this.portraits)throw new Error("Synchronized portrait models unavailable");
+                const source=await this.portraits.load(widget),key=widget.uid+":"+(widget.childIndex??-1);
+                sources.set(key,source);
+                try{heads.set(key,await this.portraits.pose(source,widget,0));}
+                catch(error){heads.set(key,source);unavailable.push({kind:"animation",id:widget.sequenceId,reason:error.message});}
+            }catch(error){unavailable.push({kind:"model",id:widget.modelId,reason:error.message});}
         })]);
         if(token!==this.generation)return null;
-        this.active={group,layout,unavailable};this.canvas.hidden=false;this.paint();
+        this.assets.heads=heads;this.active={group,layout,unavailable};this.canvas.hidden=false;this.paint();
+        const animated=headNodes.filter(n=>n.widget.sequenceId>=0&&sources.has(n.widget.uid+":"+(n.widget.childIndex??-1)));
+        let busy=false;
+        if(animated.length&&!unavailable.some(a=>a.kind==="animation"))this.headTimer=setInterval(async()=>{
+            if(busy||token!==this.generation)return;busy=true;
+            try{
+                const frames=await Promise.all(animated.map(async({widget})=>{
+                    const key=widget.uid+":"+(widget.childIndex??-1);
+                    return [key,await this.portraits.pose(sources.get(key),widget,performance.now()-started)];
+                }));
+                if(token===this.generation){for(const [key,source] of frames)heads.set(key,source);this.paint();}
+            }catch(error){if(token===this.generation){unavailable.push({kind:"animation",reason:error.message});clearInterval(this.headTimer);}}
+            finally{busy=false;}
+        },100);
         return {groupId,components:group.widgets.size,rendered:layout.nodes.length,
             unsupported:layout.skipped.length,missingAssets:unavailable.length};
     }
@@ -225,5 +273,5 @@ export class NativeInterfaceCanvas{
             ctx.clip();drawWidget(ctx,node,this.assets);ctx.restore();
         }
     }
-    close(){++this.generation;this.active=null;this.canvas.hidden=true;}
+    close(){++this.generation;clearInterval(this.headTimer);this.headTimer=null;this.assets.heads.clear();this.active=null;this.canvas.hidden=true;}
 }

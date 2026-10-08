@@ -78,7 +78,9 @@ export class NativeGameplay {
             this.motion={from:snap?{x:player.x,y:player.y}:interpolatePlayer(this.motion,now),target:{...player},started:now};
         }else this.motion.target={...player};
         if(player.moving!==previous?.moving||player.sequence!==previous?.sequence){this.animationStarted=now;this.animationId=null;}
-        if(player.appearance!==previous?.appearance){this.renderError=null;this.drawBlockedUntil=0;this.modelReady=false;}
+        if(player.appearance!==previous?.appearance){
+            this.renderError=null;this.drawBlockedUntil=0;this.modelReady=false;this.interfaces?.refreshPortraits?.();
+        }
         if(this.destination&&player.x===this.destination.x&&player.y===this.destination.y)this.destination=null;
     }
     async loadRebuild(rebuild){

@@ -103,17 +103,31 @@ ISAAC stream. IF3 action permissions follow the server's event flags.
 Interface clicks do not also trigger world movement. The developer preview
 is disabled during login/gameplay and remains read-only outside a session.
 
-Model, inventory/item and CS2-driven interface content are currently
-decoded or tracked as unsupported, not drawn. CS1/CS2 listeners remain
-inert, including script-created widgets, dialogue setup and local varp
-buttons. This connects the supported widget renderer to the server; it
-does not establish complete dialogue, inventory or chatbox behaviour.
-Live authenticated interface/phone validation remains outstanding.
+NPC/player dialogue now consumes `RUNCLIENTSCRIPT`, `IF_SETNPCHEAD`,
+`IF_SETNPCHEAD_ACTIVE`, `IF_SETPLAYERHEAD`, `IF_SETANIM` and varp updates.
+Verified CS2 scripts 58/600/2379 and their dependencies create the choice
+rows, align wrapped text and reset dialogue background state. Execution,
+calls, stacks and dynamic widget counts are bounded; unknown operations
+abort. The native dialogue branch reveals the real chatbox modal and cache
+background while hiding history, following scripts 113/923. Cached widget
+definitions remain unchanged and closing the dialogue restores visibility.
+Cache chathead parts, appearance colours/customisations, textures and classic
+animations render inside the inherited clipping rectangle. Unavailable
+animation leaves the cache head at rest; no replacement art is generated.
+Continue uses the server's pause-button permission; choices retain their
+dynamic child IDs. Click/tap, Space/Enter and keys 1–5 share that path, with
+duplicate submissions blocked until the next page arrives.
+
+General CS1/CS2 listeners, inventory/item models, chat history/input and
+varbit-transformed NPC heads remain unsupported. Portraits use a bounded
+software rasterizer; pixel parity with the full client is not established.
+Live cache scripts/fonts and animated NPC heads were exercised locally;
+a logged-in dialogue walkthrough and physical-phone validation remain pending.
 
 `npm test` covers wire vectors, nested mounts, updates, event permissions,
 button encoding, cancellation, pointer routing and real Chrome canvas
 painting. With Java 21+ and the installed server libraries available,
-`npm run test:interfaces:rsprot` checks all 11 supported incoming layouts
+`npm run test:interfaces:rsprot` checks all 18 supported incoming layouts
 against actual JVM encoders and sends synthetic IF1/IF3/Continue button
 payloads through the JVM decoders. Set `JAVA_BIN` if needed; no account
 credentials or captured cache/game data are used.

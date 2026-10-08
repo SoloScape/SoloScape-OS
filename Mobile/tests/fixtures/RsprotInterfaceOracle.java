@@ -10,7 +10,7 @@ import net.rsprot.crypto.cipher.StreamCipher;
 class RsprotInterfaceOracle {
     static final int UID=0x12345678;
     static void emit(String name,String type,Object message) throws Exception {
-        var encoder=Class.forName("net.rsprot.protocol.game.outgoing.codec.interfaces."+type+"Encoder").getConstructor().newInstance();
+        var encoder=Class.forName("net.rsprot.protocol.game.outgoing.codec."+(type.contains(".")?type:"interfaces."+type)+"Encoder").getConstructor().newInstance();
         var method=Arrays.stream(encoder.getClass().getMethods()).filter(m->m.getName().startsWith("encode-")&&m.getParameterTypes()[2]==message.getClass()).findFirst().orElseThrow();
         var buffer=Unpooled.buffer();
         try {
@@ -35,6 +35,13 @@ class RsprotInterfaceOracle {
         emit("IF_CLOSESUB","IfCloseSub",new IfCloseSub(UID));
         emit("IF_MOVESUB","IfMoveSub",new IfMoveSub(UID,0xabcdef12));
         emit("IF_SETTEXT","IfSetText",new IfSetText(UID,"Hi"));
+        emit("IF_SETNPCHEAD","IfSetNpcHead",new IfSetNpcHead(UID,1234));
+        emit("IF_SETNPCHEAD_ACTIVE","IfSetNpcHeadActive",new IfSetNpcHeadActive(UID,567));
+        emit("IF_SETPLAYERHEAD","IfSetPlayerHead",new IfSetPlayerHead(UID));
+        emit("IF_SETANIM","IfSetAnim",new IfSetAnim(UID,554));
+        emit("VARP_SMALL","varp.VarpSmall",new net.rsprot.protocol.game.outgoing.varp.VarpSmall(1234,-5));
+        emit("VARP_LARGE","varp.VarpLarge",new net.rsprot.protocol.game.outgoing.varp.VarpLarge(1234,-123456));
+        emit("RUNCLIENTSCRIPT","misc.player.RunClientScript",new net.rsprot.protocol.game.outgoing.misc.player.RunClientScript(600,List.of(1,1,16,UID)));
         emit("IF_SETHIDE","IfSetHide",new IfSetHide(UID,true));
         emit("IF_SETCOLOUR","IfSetColour",new IfSetColour(UID,0x7c1f));
         emit("IF_SETSCROLLPOS","IfSetScrollPos",new IfSetScrollPos(UID,300));
@@ -47,6 +54,7 @@ class RsprotInterfaceOracle {
         check(if3,"getCombinedId",UID);check(if3,"getSub",-1);check(if3,"getObj",-1);check(if3,"getOp",1);
         var if1=decode("buttons.If1ButtonDecoder",args[1]);check(if1,"getCombinedId",UID);
         var pause=decode("resumed.ResumePauseButtonDecoder",args[2]);check(pause,"getCombinedId",UID);check(pause,"getSub",-1);
+        var choice=decode("resumed.ResumePauseButtonDecoder",args[3]);check(choice,"getCombinedId",UID);check(choice,"getSub",3);
         System.out.println("INTERFACE_ORACLE_PASS");
     }
 }

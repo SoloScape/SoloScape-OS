@@ -25,11 +25,36 @@ class Reader extends ByteBuffer {
         if(start>end)throw new Error("Invalid interface event range");
         return {uid,start,end,flags,flags2};
     }
+    varint(){
+        let n=0;
+        for(let shift=0;shift<35;shift+=7){const b=this.readUnsignedByte();
+            if(shift===28&&(b&240))throw new Error("Invalid script varint");
+            n|=(b&127)<<shift;if(!(b&128))return n>>>0;}
+        throw new Error("Invalid script varint");
+    }
 }
 export function decodeInterfacePacket({name,payload}){
     if(!INTERFACE_PACKETS.has(name))return null;
     const r=new Reader(payload);let result;
     switch(name){
+        case "RUNCLIENTSCRIPT":{
+            const types=r.text(),args=new Array(types.length);
+            if(types.length>64)throw new Error("Script argument budget exceeded");
+            for(let i=types.length-1;i>=0;i--){
+                const type=types[i];
+                if(type==="W"||type==="X"){
+                    const count=r.varint();if(count>1024)throw new Error("Script array budget exceeded");
+                    args[i]=Array.from({length:count},()=>{if(type==="X")return r.text();const n=r.varint();return (n>>>1)^-(n&1);});
+                }else args[i]=type==="s"?r.text():type==="Ï"?(BigInt(r.readInt())<<32n)|BigInt(r.readInt()>>>0):r.readInt();
+            }
+            result={kind:"script",id:r.readInt(),args};break;
+        }
+        case "VARP_SMALL":result={kind:"varp",id:r.u16(2),value:(-r.readByte())<<24>>24};break;
+        case "VARP_LARGE":result={kind:"varp",id:r.u16(3),value:r.uid(1)|0};break;
+        case "IF_SETNPCHEAD":result={kind:"patch",uid:r.uid(2),patch:{modelKind:"npc",modelId:nil(r.u16(1))}};break;
+        case "IF_SETNPCHEAD_ACTIVE":result={kind:"patch",uid:r.uid(1),patch:{modelKind:"npc-active",modelId:nil(r.u16(3))}};break;
+        case "IF_SETPLAYERHEAD":result={kind:"patch",uid:r.uid(1),patch:{modelKind:"player",modelId:-1}};break;
+        case "IF_SETANIM":result={kind:"patch",uid:r.uid(),patch:{sequenceId:r.u16(2)<<16>>16}};break;
         case "IF_OPENTOP":result={kind:"top",groupId:nil(r.u16(3))};break;
         case "IF_OPENSUB":{
             const type=r.readUnsignedByte(),groupId=r.u16(3),uid=r.uid(3);
@@ -76,9 +101,10 @@ export function decodeInterfacePacket({name,payload}){
     return result;
 }
 export const INTERFACE_PACKETS=new Set(["IF_OPENTOP","IF_OPENSUB","IF_CLOSESUB","IF_MOVESUB","IF_RESYNC_V2",
-    "IF_SETTEXT","IF_SETHIDE","IF_SETCOLOUR","IF_SETSCROLLPOS","IF_SETPOSITION","IF_SETEVENTS_V2"]);
+    "IF_SETTEXT","IF_SETHIDE","IF_SETCOLOUR","IF_SETSCROLLPOS","IF_SETPOSITION","IF_SETEVENTS_V2",
+    "RUNCLIENTSCRIPT","IF_SETNPCHEAD","IF_SETNPCHEAD_ACTIVE","IF_SETPLAYERHEAD","IF_SETANIM","VARP_SMALL","VARP_LARGE"]);
 
-export function encodeInterfaceButton(widget,{op=1,sub=-1}={}){
+export function encodeInterfaceButton(widget,{op=1,sub=widget.childIndex??-1}={}){
     const uid=widget.uid;
     if(!Number.isInteger(uid)||uid<0||uid>0xffffffff||!Number.isInteger(sub)||sub< -1||sub>65534)
         throw new Error("Invalid interface button");
@@ -89,6 +115,7 @@ export function encodeInterfaceButton(widget,{op=1,sub=-1}={}){
         if(widget.buttonType===6)return {opcode:82,payload:Uint8Array.from([...id,sub+128,sub>>>8])};
         return null;
     }
+    if((widget.flags??0)&1)return {opcode:82,payload:Uint8Array.from([...id,sub+128,sub>>>8])};
     if(!Number.isInteger(op)||op<1||op>10||!widget.actions?.[op-1]||!((widget.flags??0)&(1<<op)))return null;
     return {opcode:1,payload:Uint8Array.from([...id,sub>>>8,sub,255,255,op])};
 }

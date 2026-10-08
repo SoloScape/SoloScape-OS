@@ -6,7 +6,7 @@ import {join} from "node:path";
 import {decodeInterfacePacket,encodeInterfaceButton} from "../browser/interface-protocol.mjs";
 const jars=process.env.SOLOSCAPE_RSPROT_LIB_DIR??fileURLToPath(new URL("../../Server/server/app/build/install/app/lib/",import.meta.url));
 const uid=0x12345678,widget={uid,isIf3:true,flags:2,actions:["Use"]};
-const buttons=[widget,{uid,isIf3:false,buttonType:1},{uid,isIf3:false,buttonType:6}]
+const buttons=[widget,{uid,isIf3:false,buttonType:1},{uid,isIf3:false,buttonType:6},{uid,isIf3:true,flags:1,childIndex:3}]
     .map(w=>Buffer.from(encodeInterfaceButton(w).payload).toString("hex"));
 const result=spawnSync(process.env.JAVA_BIN??"java",["-cp",join(jars,"*"),
     fileURLToPath(new URL("../tests/fixtures/RsprotInterfaceOracle.java",import.meta.url)),...buttons],
@@ -20,6 +20,13 @@ const expected=new Map([
     ["IF_CLOSESUB",{kind:"close",uid}],
     ["IF_MOVESUB",{kind:"move",source:uid,destination:0xabcdef12}],
     ["IF_SETTEXT",{kind:"patch",uid,patch:{text:"Hi"}}],
+    ["IF_SETNPCHEAD",{kind:"patch",uid,patch:{modelKind:"npc",modelId:1234}}],
+    ["IF_SETNPCHEAD_ACTIVE",{kind:"patch",uid,patch:{modelKind:"npc-active",modelId:567}}],
+    ["IF_SETPLAYERHEAD",{kind:"patch",uid,patch:{modelKind:"player",modelId:-1}}],
+    ["IF_SETANIM",{kind:"patch",uid,patch:{sequenceId:554}}],
+    ["VARP_SMALL",{kind:"varp",id:1234,value:-5}],
+    ["VARP_LARGE",{kind:"varp",id:1234,value:-123456}],
+    ["RUNCLIENTSCRIPT",{kind:"script",id:600,args:[1,1,16,uid]}],
     ["IF_SETHIDE",{kind:"patch",uid,patch:{hidden:true}}],
     ["IF_SETCOLOUR",{kind:"patch",uid,patch:{color:0xf800f8}}],
     ["IF_SETSCROLLPOS",{kind:"patch",uid,patch:{scrollY:300}}],
@@ -29,7 +36,7 @@ const expected=new Map([
 ]);
 let count=0;
 for(const line of result.stdout.trim().split(/\r?\n/)){
-    const match=line.match(/^(IF_\w+) ([0-9a-f]+)$/);if(!match)continue;
+    const match=line.match(/^(IF_\w+|VARP_\w+|RUNCLIENTSCRIPT) ([0-9a-f]+)$/);if(!match)continue;
     const [,name,hex]=match;
     assert.deepEqual(decodeInterfacePacket({name,payload:new Uint8Array(Buffer.from(hex,"hex"))}),expected.get(name),name);
     count++;

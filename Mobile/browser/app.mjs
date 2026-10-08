@@ -12,6 +12,7 @@ import {NativeGameplay} from "./native-gameplay.mjs";
 import {NativeChooseOptionMenu} from "./native-menu.mjs";
 import {NativeInterfaceCanvas} from "./interface-canvas.mjs";
 import {ServerInterfaces} from "./server-interfaces.mjs";
+import {NativeDialogueModels} from "./dialogue-models.mjs";
 
 const byId=id=>document.getElementById(id);
 const details=byId("loading-detail"),loading=byId("loading"),status=byId("map-status");
@@ -251,6 +252,8 @@ loginForm.addEventListener("submit",async event=>{
                 sceneryStatus.textContent="Loading scenery around your server location…";
             },
         });
+        serverInterfaces.view.portraits=new NativeDialogueModels(gameplay.models,{
+            appearance:()=>gameplay.sync?.local?.appearance,npc:index=>gameplay.npcs.npcs.get(index)});
         const pending=gameSession.login(credentials,{...loginConfig,crcs,
             width:Math.max(1,Math.min(65535,byId("world-canvas").clientWidth)),
             height:Math.max(1,Math.min(65535,byId("world-canvas").clientHeight))});

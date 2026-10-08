@@ -101,7 +101,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
             "/texture-cache.mjs","/texture-mapper.mjs","/scene-planes.mjs",
             "/login-crypto.mjs","/login-protocol.mjs","/login-pow.mjs","/native-login.mjs","/game-protocol.mjs",
             "/player-sync.mjs","/player-models.mjs","/native-gameplay.mjs","/npc-sync.mjs","/npc-models.mjs","/npc-interactions.mjs","/npc-pointer.mjs","/native-menu.mjs","/native-interfaces.mjs","/interface-canvas.mjs",
-            "/interface-protocol.mjs","/server-interfaces.mjs",
+            "/interface-protocol.mjs","/server-interfaces.mjs","/native-scripts.mjs","/dialogue-models.mjs",
         ];
         for(const path of modules){
             const response=await fetch(root+path);
@@ -228,6 +228,22 @@ try{
         {bubbles:true,cancelable:true,pointerId:1,button:0,clientX:bounds.left+12,clientY:bounds.top+12}));
     if(sent.length!==1||sent[0][0]!==1||sent[0][1].join()!=="0,10,0,1,255,255,255,255,1")
         throw new Error("Interface click did not send native IF_BUTTONX");
+    // Dialogue heads inherit their parent's clipping, rather than the small
+    // model widget's nominal box. Exercise actual raster-to-canvas compositing.
+    const head={uid:base+2,groupId:10,type:6,isIf3:true,parentUid:base,rawX:32,rawY:32,
+        rawWidth:32,rawHeight:32,modelKind:"npc",modelId:0,modelZoom:796,sequenceId:-1};
+    const model={verticesCount:3,faceCount:1,verticesX:Int32Array.from([-64,64,0]),
+        verticesY:Int32Array.from([-64,-64,64]),verticesZ:Int32Array.from([0,0,0]),
+        indices1:Int32Array.of(0),indices2:Int32Array.of(1),indices3:Int32Array.of(2),faceColors:Uint16Array.of(2000)};
+    const headGroup={groupId:10,widgets:new Map([[base,root],[base+2,head]]),roots:[root],children:new Map([[base,[head]]])};
+    view.portraits={load:async()=>({model}),pose:async s=>s};
+    await view.showGroup(headGroup);
+    if(!view.canvas.getContext("2d").getImageData(Math.floor(48*ratio),Math.floor(90*ratio),1,1).data[3])
+        throw new Error("Chathead was clipped to nominal widget box");
+    let release;view.portraits.load=()=>new Promise(resolve=>release=resolve);
+    const lateHead=view.showGroup(headGroup);view.close();release({model});
+    await lateHead;
+    if(!canvas.hidden||view.active||view.assets.heads.size)throw new Error("Late portrait revived a closed dialogue");
     interfaces.handle({name:"IF_RESYNC_V2",payload:Uint8Array.of(255,255,0,0)});
     await interfaces.pending;
     if(!canvas.hidden)throw new Error("Server resync did not close interface");

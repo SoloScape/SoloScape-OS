@@ -89,6 +89,8 @@ jobs:
           node --check Mobile/browser/interface-canvas.mjs
           node --check Mobile/browser/interface-protocol.mjs
           node --check Mobile/browser/server-interfaces.mjs
+          node --check Mobile/browser/native-scripts.mjs
+          node --check Mobile/browser/dialogue-models.mjs
           node --check Mobile/browser/player-protocol.mjs
           node --check Mobile/browser/player-sync.mjs
           node --check Mobile/browser/player-config.mjs
