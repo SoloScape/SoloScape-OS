@@ -86,6 +86,43 @@ available during this change. GitHub Actions tests provide deterministic
 protocol coverage but cannot certify live UI correspondence.
 
 
+## Cache-native mobile frame (reference: xrsps)
+
+The mobile UI artwork loader now uses the actual revision-240 mobile root
+archive-3 interface **601** (`toplevel_osm`). It attaches the matching
+archive-3 mobile interface groups **892** (hotkeys) at `601:40`,
+**160** (minimap/orbs) at `601:22`, and **728** (popout) at `601:134`.
+These are drawn as original archive-8 sprite images at their cached
+widget positions rather than being reimplemented as SVG icon paths.
+
+The mapping is cross-checked against
+[xrsps/xrsps-typescript](https://github.com/xrsps/xrsps-typescript)
+[`server/src/widgets/viewport/mobile.ts`](https://github.com/xrsps/xrsps-typescript/blob/main/server/src/widgets/viewport/mobile.ts).
+The reference is BSD 2-Clause licensed and was used to identify interface
+destinations and cache loading behavior; its source and image assets were
+not copied into the SoloScape bundle.
+
+IF3 widget sprite IDs are now resolved as **(sprite group, file)** when
+packed; the previous group-only lookup could silently fail even when
+original sprites were present. Sprite sheet offsets are retained in
+normalized canvas images. At bootstrap, the browser verifies that usable
+mobile-root sprite data actually exists before switching off its SVG/CSS
+fallback; caches without the mobile root keep the existing controls. The
+cache images are decorative while the original HTML buttons remain
+functional hit targets.
+
+In mobile root **601**, server-opened interface groups are now selected by
+destination child `116–129` (combat through music), rather than assuming
+that a historic tab group ID identifies its destination. In other roots
+the guarded historic candidates still act as a compatibility fallback.
+
+**Known limitation:** this provides authentic static cache sprite artwork,
+not full OSRS mobile CS2/widget execution. Some layout/hidden state needs
+Jagex client scripts and live server varbits; actual pixel-perfect behavior,
+all button hit regions and all mobile HUD state transitions must still be
+checked on an authentic rev-240 cache/server. It has not been verified in a
+live browser session here.
+
 ## Current game-login flow
 
 Game login uses a second WebSocket/TCP connection after JS5 bootstrap:
