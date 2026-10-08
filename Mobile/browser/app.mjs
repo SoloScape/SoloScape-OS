@@ -218,6 +218,7 @@ async function prepareLogin(){
 }
 loginForm.addEventListener("submit",async event=>{
     event.preventDefault();if(loginBusy||gameSession?.connected||!loginConfig)return;
+    if(!title.validateCredentials())return;
     const sequence=++sessionAttempt;loginBusy=true;loginButton.disabled=true;disconnect.hidden=false;
     interfacePreview.close();lockInterfacePreview(true);
     examineResult.hidden=true;

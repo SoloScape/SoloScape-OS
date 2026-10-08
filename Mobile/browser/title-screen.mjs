@@ -48,6 +48,7 @@ function spriteCanvas(frame){
 export class NativeTitleScreen{
     constructor({canvas,stage,form,status,onCancel=()=>{}}){
         this.canvas=canvas;this.stage=stage;this.form=form;this.status=status;this.onCancel=onCancel;
+        this.form.noValidate=true;
         this.mode="loading";this.percent=0;this.message="Connecting to update server";this.assets={sprites:new Map()};this.visible=true;
         this.newAccount=document.getElementById("title-new-account");this.login=document.getElementById("title-login");
         this.back=document.getElementById("title-cancel");this.mute=document.getElementById("title-mute");
@@ -112,6 +113,15 @@ export class NativeTitleScreen{
         this.music?.show();this.syncControls();this.restart();document.getElementById("login-username").focus();
     }
     enterGame(){this.visible=false;document.body.classList.add("in-game");cancelAnimationFrame(this.animation);this.music?.hide();this.syncControls();}
+    validateCredentials(){
+        for(const [id,label] of [["login-username","username/email"],["login-password","password"]]){
+            const input=document.getElementById(id);
+            if(!(id==="login-username"?input.value.trim():input.value)){
+                this.status.textContent="Please enter your "+label+".";input.focus();this.paint();return false;
+            }
+        }
+        return true;
+    }
     restart(){cancelAnimationFrame(this.animation);if(this.visible)this.frame();}
     syncControls(){
         this.newAccount.hidden=this.login.hidden=this.mode!=="welcome";

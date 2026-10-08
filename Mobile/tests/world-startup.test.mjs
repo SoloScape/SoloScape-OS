@@ -268,6 +268,10 @@ try{
     if(screen.querySelector("form").hidden||screen.querySelector("p").textContent!=="Enter your username/email & password.")throw new Error("Existing User did not open OSRS login form");
     for(const label of ["Welcome to RuneScape","New User","Existing User","Login:","Password:"])if(!titleText.includes(label))throw new Error("Missing OSRS title label: "+label);
     if(titleText.includes("Code:")||screen.querySelector("#login-otp"))throw new Error("Authenticator field remains on ordinary login");
+    if(!screen.querySelector("form").noValidate||title.validateCredentials()||screen.querySelector("p").textContent!=="Please enter your username/email.")throw new Error("Missing login must use the title message instead of browser validation");
+    screen.querySelector("#login-username").value="Alice";
+    if(title.validateCredentials()||screen.querySelector("p").textContent!=="Please enter your password.")throw new Error("Missing password did not produce the title message");
+    screen.querySelector("#login-password").value="synthetic";if(!title.validateCredentials())throw new Error("Complete login was blocked");
     const titleInput=screen.querySelector("#login-username");titleInput.value="Alice";titleInput.focus();titleInput.setSelectionRange(1,4);title.paint();
     const titlePixels=screen.querySelector("canvas").getContext("2d").getImageData(0,0,screen.querySelector("canvas").width,screen.querySelector("canvas").height).data;
     let highlighted=false;for(let i=0;i<titlePixels.length;i+=4)if(titlePixels[i]===49&&titlePixels[i+1]===106&&titlePixels[i+2]===197){highlighted=true;break;}
