@@ -75,3 +75,40 @@ test('downloads only requested cache interface group 3:id and retains sparse fil
   assert.deepEqual(calls, [[3, 149]]);
   await assert.rejects(store.load(150), /No cache interface group/);
 });
+
+test('reads cache IF3 rectangle fill colour and transparency', () => {
+  const component = decodeCacheInterfaceComponent(72, 1, new Uint8Array([
+    0xff, 3, 0, 0, 0, 0, 0, 0, 0, 40, 0, 20,
+    0, 0, 0, 0, 0xff, 0xff, 0,
+    0, 0x80, 0x40, 0x20, 1, 128,
+  ]));
+  assert.equal(component.type, 3);
+  assert.equal(component.colour, 0x804020);
+  assert.equal(component.filled, true);
+  assert.equal(component.opacity, 128);
+});
+
+test('reads real IF3 container scrolling bounds', () => {
+  const component = decodeCacheInterfaceComponent(149, 0, new Uint8Array([
+    0xff, 0, 0, 0, 0, 0, 0, 0, 0, 190, 1, 5,
+    0, 0, 0, 0, 0xff, 0xff, 0,
+    0, 190, 1, 80,
+  ]));
+  assert.equal(component.scrollWidth, 190);
+  assert.equal(component.scrollHeight, 336);
+  assert.equal(component.hidden, false);
+});
+
+test('legacy inventory layout derives its real grid size and padding from cache', () => {
+  const component = decodeCacheInterfaceComponent(149, 2, new Uint8Array([
+    2, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 7,
+    0, 0xff, 0xff, 0xff, 0xff,
+    0, 0, 0, 0, 0, 0, 2, 3,
+  ]));
+  assert.equal(component.format, 'if1');
+  assert.equal(component.type, 2);
+  assert.equal(component.width, 4);
+  assert.equal(component.height, 7);
+  assert.equal(component.gridPaddingX, 2);
+  assert.equal(component.gridPaddingY, 3);
+});
