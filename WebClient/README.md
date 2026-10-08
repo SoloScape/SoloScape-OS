@@ -24,15 +24,15 @@ edge-to-edge game HUD modelled on the November 2024 OSRS mobile redesign:
 - Camera compass and zoom controls, collapsible top-left chat/keyboard,
   a bottom-left hidden/compact/full popout, and a connection-backed logout.
 
-This is the **OSRS mobile layout shell**, not pixel-perfect Jagex UI artwork
-or a complete game interface implementation. HUD icons are provisional
-vectors. Inventory items, actual skill levels, prayer points, hitpoints,
-special energy, chat sending, item actions and popout content need their
-relevant game-packet decoders/handlers before they can be functional. These
-unsynchronised values are deliberately shown as empty/unknown rather than
-pretending to contain live game data. Tap-to-drop/run toggles currently affect
-the UI only. The cache-backed title/login screen remains unchanged and the
-HUD is shown only after successfully entering the world.
+This is an OSRS mobile *layout shell* with **cache-driven archive-3 game
+panels** rather than fabricated inventory, skills, equipment, prayer and
+spell grids. Widget sprites and text are drawn from the validated cache where
+the supported widget types allow it. HUD chrome and certain icons are still
+provisional. Actual inventory items, skill levels, prayer points, hitpoints,
+special energy, chat, item actions and popout data require the corresponding
+server-packet handlers. Tap-to-drop/run toggles currently affect only the
+UI. The cache-backed title/login screen remains unchanged, and the HUD
+appears only after entering the world.
 
 ## Cache-backed game UI assets
 
@@ -48,13 +48,28 @@ an on-demand, validated API. For debugging after connecting:
 
     const widgets = await window.soloscapeCacheInterfaces.load(149)
 
-The decoder currently reads IF1 layout headers and IF3 layout plus
-text/sprite references; it retains raw component bytes for later parsing.
-This is not a full widget renderer, nor are hardcoded group numbers assumed
-to be the active server-open interfaces. UI-open/game packet handlers,
-additional widget types and script/interaction handling must be connected
-before the hardcoded placeholder panels can be removed. A missing cache
-sprite pack is logged and does not block login.
+The decoder supports IF1 component headers and inventory-grid dimensions,
+and IF3 container, rectangle, bitmap text, sprite and line properties.
+`CacheInterfaceRenderer` builds a parent/child widget tree, retains original
+cache positions and widget sizes (scaled to the mobile side panel), and
+resolves sprites and matching archive-13 font metrics on demand. Unsupported
+widget types retain raw cache bytes rather than invented substitute artwork.
+Old handcrafted inventory, skills, equipment, prayer, magic and combat grids
+have been deleted.
+
+The default tab-to-interface IDs are **classic OSRS candidate mappings**:
+inventory 149, equipment 387, prayer 541, spellbook 218, skills 320, etc.
+Each target is checked against the actual connected archive-3 reference
+table before loading. A group missing in the current cache displays an
+explicit error instead of a fake panel. These historic IDs have not been
+verified live against SoloScape's revision-240 instance; routing by
+server IF_OPENSUB/IF_RESYNC packets is the remaining correct binding step.
+Item containers and dynamic widget state are likewise not synchronized
+until the UPDATE_INV_*/IF_SET*/VARP/UPDATE_STAT packet decoders are wired.
+
+The sideicons group is optional: missing artwork is reported but does not
+prevent archive-3 game interfaces from loading.
+
 
 ## Current game-login flow
 
