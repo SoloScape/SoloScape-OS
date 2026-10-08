@@ -171,12 +171,13 @@ export class CacheMenuFont{
         return pen;
     }
 }
-export async function loadCacheMenuFont(cache){
+export async function loadCacheMenuFont(cache,fontId=MENU_FONT_ID){
     if(!cache||typeof cache.loadGroup!=="function")throw new Error("Revision-240 JS5 cache required for menu font");
+    if(!Number.isInteger(fontId)||fontId<0||fontId>65535)throw new Error("Invalid cache font id");
     const load=async index=>{
-        const catalog=await verifiedCatalog(cache,index),fileIds=catalog.fileIdsForGroup.get(MENU_FONT_ID);
+        const catalog=await verifiedCatalog(cache,index),fileIds=catalog.fileIdsForGroup.get(fontId);
         if(!fileIds?.includes(0))throw new Error("Cache b12_full font file missing at "+index+":"+MENU_FONT_ID);
-        const payload=await decodeGroup(await cache.loadGroup(index,MENU_FONT_ID));
+        const payload=await decodeGroup(await cache.loadGroup(index,fontId));
         const files=unpackArchiveFiles(payload,fileIds,new Set([0]));
         const result=files.get(0);if(!result)throw new Error("Cache font group missing its verified file");
         return result;

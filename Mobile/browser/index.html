@@ -17,6 +17,7 @@
   <div class="coordinates"><label for="map-x">Region X<input id="map-x" type="number" min="0" max="255" value="50"></label><label for="map-y">Region Y<input id="map-y" type="number" min="0" max="255" value="50"></label><button id="load-world" type="button">Travel</button></div>
  </div>
  <canvas id="osrs-menu-canvas" aria-label="Cache-backed game interaction menu" hidden></canvas>
+ <canvas id="native-interface-canvas" aria-label="Cached game interface preview" hidden></canvas>
  <p class="npc-examine-result" id="npc-examine-result" role="status" aria-live="polite" hidden></p>
  <div class="loading" id="loading" aria-live="polite"><div class="loading-ring"></div><strong>Opening SoloScape world</strong><span id="loading-detail">Loading revision-240 terrain from your local server…</span></div>
  <div class="controls-note">Tap / left-click NPC for default action · Right-click / hold for options · Drag to orbit</div>
@@ -44,6 +45,12 @@
  <label class="floor-view"><input id="run-movement" type="checkbox"> Run when moving</label>
  <p id="login-status" role="status" aria-live="polite">Checking native login configuration…</p>
  <p class="disclaimer">Development build. Terrain and static models use verified SoloScape cache data and client HSL colours. Full scene rendering and playable sessions remain in development.</p>
+ <form id="interface-preview-form" class="interface-dev">
+  <label for="interface-group">Verified cache interface group</label>
+  <input id="interface-group" type="number" min="0" max="65535" placeholder="Group ID" required>
+  <div><button type="submit">Preview interface</button><button id="interface-preview-close" type="button">Close</button></div>
+  <p id="interface-preview-status" role="status">Developer preview only · server-driven interface packets come next.</p>
+ </form>
  <a href="/diagnostics" class="diag">Developer cache inspector</a>
 </aside>
 </div>

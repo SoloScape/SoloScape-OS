@@ -10,6 +10,7 @@ import {NativeGameSession} from "./native-login.mjs";
 import {loginCacheCrcs} from "./login-protocol.mjs";
 import {NativeGameplay} from "./native-gameplay.mjs";
 import {NativeChooseOptionMenu} from "./native-menu.mjs";
+import {NativeInterfaceCanvas} from "./interface-canvas.mjs";
 
 const byId=id=>document.getElementById(id);
 const details=byId("loading-detail"),loading=byId("loading"),status=byId("map-status");
@@ -20,6 +21,22 @@ const sceneryStatus=byId("scenery-status");
 const levelSelector=byId("scene-level");
 const cache=new NativeJs5Cache({revision:240});
 let renderer=null,attempt=0;
+const interfacePreview=new NativeInterfaceCanvas(byId("native-interface-canvas"),cache);
+const interfaceStatus=byId("interface-preview-status"),interfaceForm=byId("interface-preview-form");
+interfaceForm.addEventListener("submit",async event=>{
+    event.preventDefault();
+    const group=Number(byId("interface-group").value);
+    if(!Number.isInteger(group)||group<0||group>65535)return;
+    interfacePreview.close();interfaceStatus.textContent=`Loading CRC-verified interface ${group}…`;
+    try{
+        const result=await interfacePreview.show(group);
+        if(result)interfaceStatus.textContent=`Cache ${result.groupId}: ${result.components} components, ${result.rendered} visible, ${result.unsupported} unsupported models/items, ${result.missingAssets} missing sprites/fonts.`;
+    }catch(error){interfacePreview.close();interfaceStatus.textContent="Cache interface unavailable: "+error.message;}
+});
+byId("interface-preview-close").addEventListener("click",()=>{
+    interfacePreview.close();interfaceStatus.textContent="Cache interface preview closed.";
+});
+window.addEventListener("resize",()=>{if(interfacePreview.active)interfacePreview.paint();});
 
 function showFailure(error){
     const message=error?.message||String(error);
@@ -230,6 +247,6 @@ disconnect.addEventListener("click",()=>{
     button.disabled=false;levelSelector.disabled=false;loading.hidden=true;
     loginButton.disabled=!loginConfig;disconnect.hidden=true;loginStatus.textContent="Disconnected";
 });
-window.addEventListener("pagehide",()=>{sessionAttempt++;clearTimeout(examineTimer);menuUi.dispose();gameplay?.close();gameSession?.close();renderer?.dispose();},{once:true});
+window.addEventListener("pagehide",()=>{sessionAttempt++;interfacePreview.close();clearTimeout(examineTimer);menuUi.dispose();gameplay?.close();gameSession?.close();renderer?.dispose();},{once:true});
 void prepareLogin();
 enterWorld(true);

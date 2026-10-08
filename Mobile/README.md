@@ -74,6 +74,29 @@ incomplete; NPC interaction packets still need live server verification.
 Do not ask users
 for credentials before trusted TLS and a reviewed native login path.
 
+### Cache-backed native interface renderer (developer preview)
+
+The native browser now decodes verified **revision-240 cache index 3**
+interface groups (IF1 and IF3) from their real widget files. It preserves
+the original widget hierarchy, cached sizing/position alignment, clipping
+and scroll offsets. A read-only canvas renderer draws supported components
+(containers, filled/outlined rectangles, text, sprites and lines) using
+real sprite images from cache index 8 and bitmap fonts/metrics from
+indices 8/13. It never fabricates absent assets or interface graphics.
+A developer-only **Verified cache interface group** selector in the
+sidebar lets you inspect any group that actually exists in the cache;
+select a group number and click **Preview interface**. **Close** restores
+the unobstructed world. The interface preview is not a new RuneScape
+dialogue and does not simulate server behaviour.
+
+Model, inventory/item and CS2-driven interface content are currently
+decoded or tracked as unsupported, not drawn. CS1/CS2 listeners remain
+inert; clicks in this read-only preview do not send packets.
+**The following milestone** is server-driven interface lifecycle and
+component-update packets, followed by real NPC dialogue and the chatbox.
+The preview supports the renderer integration but is not a claim that
+every OSRS widget is implemented.
+
 ### Native NPC V6 synchronization and rendering
 
 The authenticated native scene consumes `SET_NPC_UPDATE_ORIGIN` and

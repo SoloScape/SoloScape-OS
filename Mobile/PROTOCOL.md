@@ -2,6 +2,18 @@
 
 Status: **native revision-240 browser login and native player/NPC update decoding implemented; TSPS protocol remains incompatible**. Synthetic account login is verified against the installed rsprot decoder and gateway. A real local authentication and game packet stream were previously observed, and the NPC renderer has now been confirmed working in a live local client. Native OPNPC_V2 primary interactions and OPNPC6 Examine are implemented and fixture-tested, with live interaction still awaiting confirmation. The HTML mock menu was replaced with canvas menu rendering based on the pinned client Choose Option code; it loads original b12_full glyphs and metrics from revision-240 cache indices 8 and 13, group 496. The full TSPS interface menu system is not yet ported.
 
+## Native interface rendering scope
+
+The native browser can fetch and decode real IF1/IF3 component groups from
+revision-240 interface cache index 3, including parent linkage, alignment and
+static text/sprite/rectangle/line widgets. Sprites are verified index-8 assets,
+and typography is drawn from the cache's original index-8/13 bitmap fonts.
+The developer interface-group preview is read-only; it does not open a
+server-owned interface or execute CS2. Unsupported inventories, item models,
+3D component models and dynamic script state are omitted and counted rather
+than replaced with invented visuals. Server-driven IF_OPENTOP/IF_OPENSUB,
+component mutations, dialogue and chat remain separate future work.
+
 ## Audited versions
 
 - TSPS pinned at [`b9ca431be440174fce5adf0efbb7afa992358916`](https://github.com/RSPSApp/tsps/commit/b9ca431be440174fce5adf0efbb7afa992358916). Its `server/target.txt` is `osrs-241_2026-09-30`.
