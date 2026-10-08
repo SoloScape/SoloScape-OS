@@ -23,16 +23,23 @@ export async function loadCacheGameUiAssets(
   fonts: Pick<CacheGameUiAssets, 'plain12' | 'bold12'>,
   log?: (line: string) => void,
 ): Promise<CacheGameUiAssets> {
-  const icons = resolveNamedGroup(js5, GAME_SPRITE_ARCHIVE, ['sideicons']);
-  const group = await js5.downloadGroup(GAME_SPRITE_ARCHIVE, icons.group);
-  const file = group.files.get(0) ?? group.files.values().next().value;
-  if (!file) throw new Error('Cache sideicons group contains no sprite file.');
-  const sideIcons = decodeCacheSpriteGroup(file);
-  if (!sideIcons.length) throw new Error('Cache sideicons group contains no frames.');
   const interfaces = new CacheInterfaceStore(js5);
-  const source = GAME_SPRITE_ARCHIVE + ':' + icons.group + ' (' + icons.name + ')';
-  log?.('Loaded ' + sideIcons.length + ' original side-icon sprites from ' + source +
-    '; fonts are the original archive 8/13 bitmap fonts; archive 3 interfaces available on demand.');
+  let sideIcons: readonly CacheSpriteFrame[] = [];
+  let source = 'no sideicons group';
+  try {
+    const icons = resolveNamedGroup(js5, GAME_SPRITE_ARCHIVE, ['sideicons']);
+    const group = await js5.downloadGroup(GAME_SPRITE_ARCHIVE, icons.group);
+    const file = group.files.get(0) ?? group.files.values().next().value;
+    if (!file) throw new Error('Empty cache sideicons group.');
+    sideIcons = decodeCacheSpriteGroup(file);
+    source = GAME_SPRITE_ARCHIVE + ':' + icons.group + ' (' + icons.name + ')';
+  } catch (error: unknown) {
+    log?.('Original side icons not available: ' +
+      (error instanceof Error ? error.message : String(error)));
+  }
+  log?.('Cache game UI ready: ' + sideIcons.length + ' original side icons; ' +
+    'archive-8/13 bitmap fonts; ' + interfaces.availableGroupIds.length +
+    ' archive-3 interface groups available for on-demand rendering.');
   return { sideIcons, plain12: fonts.plain12, bold12: fonts.bold12, interfaces, source };
 }
 
