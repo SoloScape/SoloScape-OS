@@ -88,6 +88,10 @@ class BotPopulation @Inject constructor(
     private val bots = LinkedHashMap<Player, WorldBot>()
     private val profiles = BotProfileStore()
     private val random = Random.Default
+    private data class PlayerTeamInvitation(val player: Player, val expiresAt: Int)
+    private val playerTeamInvitations = LinkedHashMap<Player, PlayerTeamInvitation>()
+    private val nextPlayerTeamOffer = HashMap<Player, Int>()
+    private val nextOfferToPlayer = HashMap<Player, Int>()
     private var nextIdentity = 1
     private var nextPvpPopulationIndex = 1
     private val configured = Properties().apply {
@@ -104,6 +108,71 @@ class BotPopulation @Inject constructor(
     fun players(): List<Player> = bots.keys.toList()
     fun isBot(player: Player): Boolean = player in bots
     fun isPvpBot(player: Player): Boolean = bots[player]?.mode?.isPvp == true
+
+    /**
+     * Only the specific player offered a Wilderness team can accept or reject it.
+     * An unrelated chat "yes" or "no" does not join anyone.
+     */
+    fun hearPlayerTeamReply(player: Player, message: String, cycle: Int): Boolean {
+        val answer = message.trim().lowercase()
+        if (answer != "yes" && answer != "no") return false
+        val invitation = playerTeamInvitations.entries.firstOrNull {
+            it.value.player === player
+        } ?: return false
+        val bot = invitation.key
+        playerTeamInvitations.remove(bot)
+        if (answer == "no") {
+            bot.say("No worries.")
+            nextPlayerTeamOffer[bot] = cycle + PLAYER_TEAM_DECLINE_COOLDOWN
+            nextOfferToPlayer[player] = cycle + PLAYER_TEAM_DECLINE_COOLDOWN
+            return true
+        }
+        val valid = cycle <= invitation.value.expiresAt &&
+            pvpCombat.inWilderness(player) && player.coords.level == bot.coords.level &&
+            player.coords.chebyshevDistance(bot.coords) <= PLAYER_TEAM_INVITE_DISTANCE
+        if (valid && pvpCombat.joinPlayerTeam(bot, player)) {
+            bot.say("Okay, I'll follow you!")
+        } else {
+            bot.say("Maybe another time.")
+        }
+        return true
+    }
+
+    private fun expirePlayerTeamInvitations(cycle: Int) {
+        playerTeamInvitations.entries.removeAll { (bot, invite) ->
+            cycle > invite.expiresAt ||
+                !pvpCombat.canOfferPlayerTeam(bot) ||
+                !pvpCombat.inWilderness(invite.player) ||
+                invite.player.coords.level != bot.coords.level ||
+                invite.player.coords.chebyshevDistance(bot.coords) > PLAYER_TEAM_INVITE_DISTANCE
+        }
+        nextPlayerTeamOffer.keys.removeIf { !it.isSlotAssigned }
+        nextOfferToPlayer.keys.removeIf { !it.isSlotAssigned }
+    }
+
+    private fun offerWildernessTeam(bot: Player, cycle: Int) {
+        if (bot in playerTeamInvitations || !pvpCombat.canOfferPlayerTeam(bot) ||
+            cycle < (nextPlayerTeamOffer[bot] ?: 0)
+        ) return
+        nextPlayerTeamOffer[bot] = cycle + PLAYER_TEAM_OFFER_INTERVAL
+        val chance = configured.getProperty("pvp.player-team.chance", "0.15")
+            .toDoubleOrNull()?.coerceIn(0.0, 1.0) ?: 0.15
+        if (random.nextDouble() >= chance) return
+        val candidate = registry.playerList.mapNotNull { it }.filter { player ->
+            player !in bots && pvpCombat.inWilderness(player) &&
+                !pvpCombat.hasPlayerFollower(player) &&
+                playerTeamInvitations.values.none { it.player === player } &&
+                cycle >= (nextOfferToPlayer[player] ?: 0) &&
+                player.coords.level == bot.coords.level &&
+                player.coords.chebyshevDistance(bot.coords) <= PLAYER_TEAM_INVITE_DISTANCE
+        }.minByOrNull { it.coords.chebyshevDistance(bot.coords) } ?: return
+        playerTeamInvitations[bot] = PlayerTeamInvitation(
+            candidate, cycle + PLAYER_TEAM_INVITE_DURATION,
+        )
+        nextOfferToPlayer[candidate] = cycle + PLAYER_TEAM_OFFER_INTERVAL
+        bot.clearPendingAction(events)
+        bot.say("Team?")
+    }
 
     fun startup() {
         if (!configured.getProperty("enabled", "false").toBoolean()) return
@@ -334,6 +403,7 @@ class BotPopulation @Inject constructor(
     }
 
     fun tick(cycle: Int) {
+        expirePlayerTeamInvitations(cycle)
         for (bot in bots.values.toList()) {
             val player = bot.player
             if (!player.isSlotAssigned) {
@@ -341,6 +411,7 @@ class BotPopulation @Inject constructor(
                 continue
             }
             if (bot.mode.isPvp) {
+                if (bot.mode == BotMode.Wilderness) offerWildernessTeam(player, cycle)
                 pvp(bot)
                 continue
             }
@@ -399,6 +470,7 @@ class BotPopulation @Inject constructor(
             opponents,
             wilderness,
             bot.patrol ?: CoordGrid(3224, 3682),
+            waitingForTeamReply = player in playerTeamInvitations,
         )
         bot.status = status
         if (wilderness) watchPvpStall(bot, status)
@@ -544,6 +616,9 @@ class BotPopulation @Inject constructor(
 
     fun removeAll() {
         bots.keys.toList().forEach(::remove)
+        playerTeamInvitations.clear()
+        nextPlayerTeamOffer.clear()
+        nextOfferToPlayer.clear()
         minigames.removeAll()
         debugMap.stop()
     }
@@ -566,6 +641,7 @@ class BotPopulation @Inject constructor(
 
     private fun remove(player: Player) {
         val bot = bots.remove(player)
+        playerTeamInvitations.remove(player)
         if (bot?.mode == BotMode.Progressive) save(bot)
         pvpCombat.remove(player)
         social.remove(player)
@@ -580,5 +656,11 @@ class BotPopulation @Inject constructor(
         catch (error: Exception) { logger.error(error) { "Could not save bot ${bot.player.username}" } }
     }
 
-    companion object { const val MAX_BOTS = 1990 }
+    companion object {
+        const val MAX_BOTS = 1990
+        private const val PLAYER_TEAM_INVITE_DISTANCE = 10
+        private const val PLAYER_TEAM_INVITE_DURATION = 30
+        private const val PLAYER_TEAM_OFFER_INTERVAL = 80
+        private const val PLAYER_TEAM_DECLINE_COOLDOWN = 300
+    }
 }
