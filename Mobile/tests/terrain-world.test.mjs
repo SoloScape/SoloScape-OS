@@ -64,8 +64,8 @@ test("map index 5 resolves named m50_50 from actual TSPS DJB2 hash",()=>{
 test("reference-map parser rejects invalid file totals and trailing metadata",()=>{
     const b=refTable(97,djb2("m50_50"));
     assert.throws(()=>mapRegionCatalog(Buffer.concat([b,Buffer.from([0])])),/trailing/);
-    const dup=Buffer.from(b);dup[8]=255;dup[9]=255;
-    assert.throws(()=>getTerrainGroup(mapRegionCatalog(dup),50,50),/No single-file/);
+    const other=Buffer.from(b);other[8]=0;other[9]=98;
+    assert.throws(()=>getTerrainGroup(mapRegionCatalog(other),50,50),/No single-file/);
 });
 
 test("terrain u16 tile decoder reads all four levels and real floor data",()=>{
