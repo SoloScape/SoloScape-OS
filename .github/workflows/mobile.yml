@@ -1,0 +1,37 @@
+name: Mobile integration checks
+
+on:
+  push:
+    branches: [feature/mobile]
+    paths:
+      - 'Mobile/**'
+      - '.gitmodules'
+      - '.github/workflows/mobile.yml'
+  pull_request:
+    paths:
+      - 'Mobile/**'
+      - '.gitmodules'
+      - '.github/workflows/mobile.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  config-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (no upstream download needed for config tests)
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run integration config tests
+        run: npm test --prefix Mobile
+      - name: Syntax check integration scripts
+        run: |
+          node --check Mobile/scripts/config.mjs
+          node --check Mobile/scripts/run-client.mjs
