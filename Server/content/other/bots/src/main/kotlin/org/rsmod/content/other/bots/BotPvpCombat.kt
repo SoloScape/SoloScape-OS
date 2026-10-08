@@ -57,7 +57,7 @@ class BotPvpCombat @Inject constructor(
         hotspot: BotPvpHotspot,
         multiwayOnly: Boolean = false,
     ): CoordGrid =
-        reachablePoint(source, hotspot, maxDistance = 54, attempts = 64, multiwayOnly)
+        reachablePoint(source, hotspot, maxDistance = 54, attempts = 64, multiwayOnly = multiwayOnly)
             ?: source
 
     /** Choose a reachable multi-combat tile before forming a Wilderness squad. */
@@ -186,7 +186,7 @@ class BotPvpCombat @Inject constructor(
         val squad = squads.remove(player) ?: return
         squad.members.remove(player)
         if (squad.members.size < 2) {
-            squad.members.forEach(squads::remove)
+            squad.members.forEach { squads.remove(it) }
         } else if (squad.leader === player) {
             squad.leader = squad.members.first()
         }
@@ -194,7 +194,7 @@ class BotPvpCombat @Inject constructor(
 
     private fun activeLeader(squad: WildernessSquad): Player? {
         if (squad.leader.isValidTarget()) return squad.leader
-        val replacement = squad.members.firstOrNull(Player::isValidTarget) ?: return null
+        val replacement = squad.members.firstOrNull { it.isValidTarget() } ?: return null
         squad.leader = replacement
         return replacement
     }
@@ -358,7 +358,7 @@ class BotPvpCombat @Inject constructor(
             }.toSet()
             // Any attack on a squadmate takes priority; otherwise adopt the leader's
             // target so followers never pick unrelated fights in multi-combat.
-            val sharedThreat = squad?.members?.asSequence()?.filter(Player::isValidTarget)
+            val sharedThreat = squad?.members?.asSequence()?.filter { it.isValidTarget() }
                 ?.flatMap { member ->
                     eligible.asSequence().filter { isAttacking(member, it) }
                 }?.firstOrNull()
