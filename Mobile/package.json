@@ -20,6 +20,7 @@
     "probe:cache:verify": "node gateway/js5-reference-cli.mjs",
     "probe:asset": "node gateway/js5-asset-cli.mjs",
     "dev:native": "node browser/dev-server.mjs",
+    "dev:lan": "node scripts/run-lan.mjs",
     "dev:tsps": "node scripts/run-client.mjs dev"
   },
   "dependencies": {

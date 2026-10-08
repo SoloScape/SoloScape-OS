@@ -1,10 +1,12 @@
-// Loopback-only native WebGL world client; exposes only public login configuration.
+// Native WebGL preview: loopback HTTP or explicitly configured TLS for LAN.
 import { createServer } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizeRegionKeys } from "./region-keys.mjs";
 import {loadPublicLoginConfig} from "../scripts/native-login-config.mjs";
+import {previewEnvironment} from "../scripts/tls-config.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const routes = new Map([
@@ -26,6 +28,7 @@ const routes = new Map([
     ["/texture-mapper.mjs", ["texture-mapper.mjs", "text/javascript; charset=utf-8"]],
     ["/scene-planes.mjs", ["scene-planes.mjs", "text/javascript; charset=utf-8"]],
     ["/app.mjs", ["app.mjs", "text/javascript; charset=utf-8"]],
+    ["/connection-config.mjs", ["connection-config.mjs", "text/javascript; charset=utf-8"]],
     ["/native-js5.mjs", ["native-js5.mjs", "text/javascript; charset=utf-8"]],
     ["/tsps-cache-store.mjs", ["tsps-cache-store.mjs", "text/javascript; charset=utf-8"]],
     ["/sprite-preview.mjs", ["sprite-preview.mjs", "text/javascript; charset=utf-8"]],
@@ -37,15 +40,15 @@ const routes = new Map([
 ]);
 for(const name of ["title-screen.mjs","title-music.mjs","title-fire.mjs","title-music-worklet.mjs",...(await readdir(root)).filter(name=>/^title-audio-[a-z0-9-]+\.mjs$/.test(name))])
     routes.set("/"+name,[name,"text/javascript; charset=utf-8"]);
-// An ephemeral loopback port is allowed solely for CI route smoke tests.
-const port = process.env.SOLOSCAPE_PREVIEW_PORT === "0" ? 0 : 3001;
+const {host, port, tls} = previewEnvironment(process.env);
 const keyPath=process.env.SOLOSCAPE_XTEA_FILE;
 let regionKeys={};
 let loginConfig;
 try{
     loginConfig=await loadPublicLoginConfig({keyPath:process.env.SOLOSCAPE_RSA_PUBLIC_KEY_FILE,
         gatewayUrl:process.env.SOLOSCAPE_NATIVE_GATEWAY_URL});
-}catch{
+}catch(error){
+    if(tls) throw error;
     loginConfig={unavailable:true,message:"Native login needs the server's generated public client.key. Set SOLOSCAPE_RSA_PUBLIC_KEY_FILE and restart the preview."};
 }
 if(keyPath){
@@ -53,7 +56,7 @@ if(keyPath){
     if(keyBytes.length>16*1024*1024)throw new Error("Local region key file exceeds limit");
     regionKeys=normalizeRegionKeys(JSON.parse(keyBytes.toString("utf8")));
 }
-const server = createServer(async (req, res) => {
+const handler = async (req, res) => {
     if(req.method==="GET"&&req.url==="/login-config.json"){
         res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});
         res.end(JSON.stringify(loginConfig));return;
@@ -74,7 +77,7 @@ const server = createServer(async (req, res) => {
             "Content-Type": route[1],
             "Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff",
-            "Content-Security-Policy": `default-src 'none'; script-src 'self'; worker-src 'self'; img-src 'self' blob:; style-src 'self'; connect-src 'self' ws://127.0.0.1:43595 ${loginConfig.gatewayUrl?new URL(loginConfig.gatewayUrl).origin:""}; base-uri 'none'; form-action 'none'`,
+            "Content-Security-Policy": `default-src 'none'; script-src 'self'; worker-src 'self'; img-src 'self' blob:; style-src 'self'; connect-src 'self' ${!tls ? "ws://127.0.0.1:43595" : ""} ${loginConfig.gatewayUrl?new URL(loginConfig.gatewayUrl).origin:""}; base-uri 'none'; form-action 'none'`,
         });
         res.end(bytes);
     } catch (error) {
@@ -82,7 +85,8 @@ const server = createServer(async (req, res) => {
         res.writeHead(500, { "Content-Type": "text/plain" });
         res.end("Preview unavailable");
     }
-});
-server.listen(port, "127.0.0.1", () => {
-    console.log(`[native-client] Visit http://localhost:${server.address().port}/ (requires running JS5 gateway at ws://127.0.0.1:43595/)`);
+};
+const server = tls ? createHttpsServer(tls, handler) : createServer(handler);
+server.listen(port, host, () => {
+    console.log(`[native-client] Visit ${tls ? "https" : "http"}://${host === "127.0.0.1" ? "localhost" : host}:${server.address().port}/ (gateway: ${loginConfig.gatewayUrl ?? "unavailable"})`);
 });

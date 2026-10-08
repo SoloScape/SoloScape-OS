@@ -1,4 +1,5 @@
 import { isIP } from "node:net";
+import { loadTlsEnvironment } from "../scripts/tls-config.mjs";
 
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "::1"]);
 
@@ -49,6 +50,7 @@ export function parseGatewayEnvironment(env) {
         throw new Error("Non-loopback bind requires SOLOSCAPE_GATEWAY_ALLOW_LAN=1 and a trusted LAN or TLS reverse proxy");
     }
     return {
+        tls: loadTlsEnvironment(env),
         listenHost,
         listenPort: port(env.SOLOSCAPE_GATEWAY_PORT, "SOLOSCAPE_GATEWAY_PORT", 43595),
         tcpHost,

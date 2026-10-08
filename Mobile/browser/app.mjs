@@ -1,5 +1,6 @@
 // Cache-backed native world viewport and revision-240 account login.
 import { NativeJs5Cache } from "./native-js5.mjs";
+import { connectionConfig } from "./connection-config.mjs";
 import { loadNativeTerrain, loadTerrainNeighbours } from "./terrain-world.mjs";
 import { NativeTerrainViewport } from "./world-webgl.mjs";
 import { loadFloorMaterials } from "./floor-materials.mjs";
@@ -22,7 +23,7 @@ const network=byId("network"),dot=byId("network-dot");
 const worldLabel=byId("world-label");
 const sceneryStatus=byId("scenery-status");
 const levelSelector=byId("scene-level");
-const cache=new NativeJs5Cache({revision:240});
+const cache=new NativeJs5Cache({revision:240,url:(await connectionConfig).gatewayUrl});
 let renderer=null,attempt=0;
 const interfacePreview=new NativeInterfaceCanvas(byId("native-interface-canvas"),cache);
 let serverInterfaces=null;
@@ -208,9 +209,7 @@ const menuUi=new NativeChooseOptionMenu(byId("osrs-menu-canvas"),{
 function showNpcMenu(info){menuUi.open(info);}
 async function prepareLogin(){
     try{
-        const response=await fetch("/login-config.json");
-        if(!response.ok)throw new Error("Native login configuration unavailable");
-        const config=await response.json();
+        const config=await connectionConfig;
         if(config.unavailable)throw new Error(config.message);
         loginConfig=config;loginButton.disabled=false;loginButton.textContent="Log in";
         loginStatus.textContent="Log in to load your player and server location. Tap NPCs for actions or ground to move.";

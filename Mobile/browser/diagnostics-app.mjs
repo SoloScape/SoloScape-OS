@@ -1,8 +1,9 @@
 import { NativeJs5Cache } from "./native-js5.mjs";
 import { TspsCacheStoreAdapter } from "./tsps-cache-store.mjs";
 import { drawIndexedSprite, loadFirstSprite } from "./sprite-preview.mjs";
+import { connectionConfig } from "./connection-config.mjs";
 
-const cache = new NativeJs5Cache();
+const cache = new NativeJs5Cache({url:(await connectionConfig).gatewayUrl});
 const store = new TspsCacheStoreAdapter(cache);
 const el = id => document.getElementById(id);
 const indexInput = el("archive");

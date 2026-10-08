@@ -9,7 +9,7 @@ try {
         process.exitCode = 1;
     });
     httpServer.listen(config.listenPort, config.listenHost, () => {
-        console.log(`[gateway] Native OSRS raw TCP bridge listening on ws://${config.listenHost}:${config.listenPort}/`);
+        console.log(`[gateway] Native OSRS raw TCP bridge listening on ${config.tls ? "wss" : "ws"}://${config.listenHost}:${config.listenPort}/`);
         console.log(`[gateway] Fixed upstream: ${config.tcpHost}:${config.tcpPort}`);
         console.log("[gateway] TSPS custom protocol is deliberately REJECTED. An adapter is still required.");
     });

@@ -1,4 +1,5 @@
 import { createServer as createHttpServer } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import { createConnection } from "node:net";
 import { WebSocket, WebSocketServer } from "ws";
 
@@ -14,7 +15,7 @@ function forbidden(socket, status, message) {
     socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: ${Buffer.byteLength(message)}\r\n\r\n${message}`);
 }
 
-export function createGateway({ tcpHost, tcpPort, allowedOrigins }) {
+export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls }) {
     if (!tcpHost || !Number.isInteger(tcpPort) || tcpPort < 1 || tcpPort > 65535) {
         throw new Error("A fixed TCP host and valid port are required");
     }
@@ -22,10 +23,11 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins }) {
         throw new Error("An explicit origin allowlist is required");
     }
 
-    const httpServer = createHttpServer((_request, response) => {
+    const handler = (_request, response) => {
         response.writeHead(426, { "Content-Type": "text/plain", "Cache-Control": "no-store" });
         response.end("This endpoint accepts authorised WebSocket game streams only.\n");
-    });
+    };
+    const httpServer = tls ? createHttpsServer(tls, handler) : createHttpServer(handler);
     const wss = new WebSocketServer({
         noServer: true,
         clientTracking: true,
