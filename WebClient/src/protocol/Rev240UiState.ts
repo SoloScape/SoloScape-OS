@@ -32,6 +32,7 @@ export interface UiWidgetChange {
   y?: number;
   objectId?: number;
   objectCount?: number;
+  modelId?: number;
 }
 
 const EMPTY_ITEM: UiInventoryItem = Object.freeze({ id: -1, count: 0 });
@@ -65,7 +66,8 @@ export class Rev240UiState {
     if (value === undefined) return null;
     const width = definition.endBit - definition.startBit;
     if (width < 0 || width > 31) return null;
-    return (value >>> definition.startBit) & (width === 31 ? 0x7fffffff : (1 << (width + 1)) - 1);
+    const mask = width === 31 ? 0xffffffff : (1 << (width + 1)) - 1;
+    return ((value >>> definition.startBit) & mask) >>> 0;
   }
 
   reset(): void {
@@ -87,8 +89,9 @@ export class Rev240UiState {
       case 'IF_OPENTOP': {
         const groupId = r.u16alt3();
         r.done();
-        this.topLevelInterface = groupId;
+        this.topLevelInterface = groupId === 0xffff ? null : groupId;
         this.subInterfaces.clear();
+        this.widgetChanges.clear();
         break;
       }
       case 'IF_OPENSUB': {
@@ -119,8 +122,9 @@ export class Rev240UiState {
           list.push(event);
           events.set(widget, list);
         }
-        this.topLevelInterface = top;
+        this.topLevelInterface = top === 0xffff ? null : top;
         this.subInterfaces.clear();
+        this.widgetChanges.clear();
         for (const [key, value] of next) this.subInterfaces.set(key, value);
         this.interfaceEvents.clear();
         for (const [key, value] of events) this.interfaceEvents.set(key, value);
@@ -184,6 +188,13 @@ export class Rev240UiState {
         const id = r.u32alt3();
         r.done();
         this.updateWidget(id, { objectId: objectId === 0xffff ? -1 : objectId, objectCount });
+        break;
+      }
+      case 'IF_SETMODEL_V2': {
+        const modelId = r.u32alt1();
+        const id = r.u32alt1();
+        r.done();
+        this.updateWidget(id, { modelId: modelId === 0xffffffff ? -1 : modelId });
         break;
       }
       case 'IF_CLEARINV': {
