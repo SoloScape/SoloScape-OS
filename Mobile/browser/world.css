@@ -9,6 +9,13 @@
 .title-button{position:absolute;width:147px;height:41px;padding:0;border:0;background:transparent;color:transparent;cursor:pointer;pointer-events:auto;font-size:0}
 .title-button:focus-visible,#title-mute:focus-visible{outline:2px solid #ffff00;outline-offset:2px}.title-button:disabled{cursor:default}
 .welcome-new{left:228.5px;top:270.5px}.welcome-login{left:388.5px;top:270.5px}.form-login{left:228.5px;top:300.5px}.form-cancel{left:388.5px;top:300.5px}
+/* Native OSRS title option art/text are painted on the cache canvas; these
+   accessible hit targets follow the same 765x503 title-space coordinates. */
+.title-option,.title-help{position:absolute;padding:0;border:0;background:transparent;color:transparent;font-size:0;cursor:default;pointer-events:auto}
+#title-remember{left:273px;top:275px;width:151px;height:22px}
+#title-hide-username{left:427px;top:275px;width:126px;height:22px}
+#title-login-help{left:284px;top:337px;width:196px;height:24px}
+.title-option:focus-visible,.title-help:focus-visible{outline:2px solid #ffff00;outline-offset:1px}
 #login-form{position:absolute;inset:0;pointer-events:none}
 #login-form input{position:absolute;width:192px;height:15px;margin:0;padding:0;border:0;border-radius:0;background:transparent;color:transparent;caret-color:transparent;font-size:16px;pointer-events:auto;outline:none}
 #login-form input::selection{background:transparent;color:transparent}

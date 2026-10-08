@@ -1204,3 +1204,34 @@ Regression checks are in \`tests/world-mouse-parity.test.mjs\`,
 menu ordering, packets, mouse modes, cache actions and cross animation. A live
 authenticated device/browser session is still needed to verify the interaction
 look and feel against RuneLite.
+
+### Main in-game RuneScape title screen (OpenOSRS revision 240)
+
+The active title screen matches the **RuneScape in-game welcome/login views**
+that OpenOSRS normally leaves rendered by the original game client (OpenOSRS
+LoginScreenPlugin defaults to no background override). Text constants were
+cross-checked against the locally installed, pinned rev-240 OpenOSRS game
+client. The artwork, logo, title box, title buttons, music, rune-fire and mute
+remain actual SoloScape CRC-verified rev-240 cache assets.
+
+The welcome panel uses "Welcome to RuneScape", "New User", and "Existing User".
+The login panel uses the original username/password prompt and labels,
+"Remember username", "Hide username" and "Can't login? Click here.".
+Text is painted with actual cache b12_full (496), and the smaller help line
+uses p11_full (494); checkbox art comes from options_radio_buttons (with a
+safe draw fallback if that decorative asset is unavailable). Loading text
+uses the original rev-240 game strings for update, title, sprite and font
+progress. Canvas size stays 765 by 503.
+
+Remember username is **opt-in**: only the username and remembered flag are
+stored locally, never the password; deselecting it purges saved values.
+Hide username masks the painted field without changing submitted credentials.
+The help label provides a local explanation rather than incorrectly directing
+SoloScape accounts to Jagex account recovery. The "New User" action remains
+unavailable until SoloScape has a real account-creation destination.
+
+Tests in tests/title-screen.test.mjs check the text, cache font IDs, mask,
+username persistence and controls. Jagex account login, authenticator, world
+selection and recovery screens are not implemented. Pixel-exact parity still
+requires a live reference screenshot because OpenOSRS's original game renderer
+comes from a separately distributed injected game client.

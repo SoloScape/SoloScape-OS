@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {titleLayout,titleFieldLayout} from "../browser/title-screen.mjs";
+import {NativeTitleScreen,titleLayout,titleFieldLayout,OSRS_TITLE_COPY,OSRS_TITLE_FONT_IDS} from "../browser/title-screen.mjs";
 import {NativeAudioCache,retryOnMissingGroup} from "../browser/title-audio-cache.mjs";
 import {NativeTitleMusic} from "../browser/title-music.mjs";
 import {RealtimeMidiSynth} from "../browser/title-audio-realtime-midi-synth.mjs";
@@ -68,4 +68,89 @@ test("leaving title while music loads never starts stale playback",async()=>{
         assert.equal(played,0);assert.equal(disposed,1);assert.equal(music.loaded,false);assert.equal(music.synth,null);
         music.dispose();
     }finally{for(const [name,fn] of saved)RealtimeMidiSynth.prototype[name]=fn;}
+});
+
+test("OpenOSRS rev-240 in-game title uses cache b12_full, p11_full and original strings",()=>{
+    assert.deepEqual(OSRS_TITLE_FONT_IDS,{bold12:496,plain11:494});
+    assert.deepEqual(OSRS_TITLE_COPY,{
+        loading:"RuneScape is loading - please wait...",
+        welcome:"Welcome to RuneScape",newUser:"New User",existingUser:"Existing User",
+        loginPrompt:"Enter your username/email & password.",
+        loginLabel:"Login:",passwordLabel:"Password:",
+        remember:"Remember username",hide:"Hide username",
+        help:"Can't login? Click here.",login:"Login",cancel:"Cancel",
+    });
+});
+test("title form draws original cache labels and works with optional remembered/hidden username",()=>{
+    const saved=Object.fromEntries(["document","window","localStorage","requestAnimationFrame","cancelAnimationFrame"]
+        .map(k=>[k,globalThis[k]]));
+    const stored=new Map(),drawn=[],elements=new Map();
+    const el=id=>{
+        const node={id,style:{},hidden:false,value:"",selectionStart:0,selectionEnd:0,
+            handlers:{},attributes:new Map(),
+            addEventListener(type,fn){this.handlers[type]=fn;},
+            removeEventListener(type){delete this.handlers[type];},
+            setAttribute(k,v){this.attributes.set(k,v);},
+            getBoundingClientRect:()=>({left:0,width:192}),
+            setSelectionRange(a,b){this.selectionStart=a;this.selectionEnd=b;},
+            focus(){globalThis.document.activeElement=this;},
+            click(){this.handlers.click?.();}};
+        elements.set(id,node);return node;
+    };
+    const ids=["title-new-account","title-login","title-cancel","title-mute",
+        "title-remember","title-hide-username","title-login-help","login-username",
+        "login-password","login-submit"];
+    for(const id of ids)el(id);
+    const ctx={setTransform(){},fillRect(){},strokeRect(){},drawImage(){},
+        save(){},restore(){},translate(){},scale(){},fillText(){}};
+    const canvas={width:0,height:0,getContext:()=>ctx,
+        parentElement:{hidden:false,getBoundingClientRect:()=>({width:765,height:503})}};
+    const stage={style:{}},form={hidden:true},status={textContent:""};
+    try{
+        globalThis.document={
+            activeElement:null,body:{classList:{add(){},remove(){}}},
+            getElementById:id=>elements.get(id)??null,
+            addEventListener(){},removeEventListener(){},
+        };
+        globalThis.window={devicePixelRatio:1,addEventListener(){},removeEventListener(){}};
+        globalThis.localStorage={
+            getItem:k=>stored.get(k)??null,setItem:(k,v)=>stored.set(k,v),
+            removeItem:k=>stored.delete(k),
+        };
+        globalThis.requestAnimationFrame=()=>11;
+        globalThis.cancelAnimationFrame=()=>{};
+        const title=new NativeTitleScreen({canvas,stage,form,status});
+        const font={measure:s=>s.length*6,draw:(_ctx,str)=>drawn.push(str)};
+        title.assets.font=font;title.assets.small=font;
+        title.showWelcome();
+        assert.ok(drawn.includes(OSRS_TITLE_COPY.welcome));
+        drawn.length=0;
+        elements.get("title-login").click();
+        assert.equal(status.textContent,OSRS_TITLE_COPY.loginPrompt);
+        for(const str of ["Login:","Password:","Remember username","Hide username",
+            "Can't login? Click here.","Login","Cancel"])
+            assert.ok(drawn.includes(str),"missing authentic title text "+str);
+        const user=elements.get("login-username"),pass=elements.get("login-password");
+        user.value="PlayerOne";user.selectionEnd=9;pass.value="sensitive password";
+        user.handlers.input();
+        assert.equal(stored.size,0,"username retention must require opt-in");
+        elements.get("title-remember").click();
+        assert.equal(stored.get("soloscape:title:username"),"PlayerOne");
+        assert.equal(stored.get("soloscape:title:remember"),"true");
+        assert.ok(![...stored.values()].some(v=>v.includes("sensitive")));
+        drawn.length=0;
+        elements.get("title-hide-username").click();
+        assert.equal(elements.get("title-hide-username").attributes.get("aria-checked"),"true");
+        assert.ok(drawn.includes("*********"),"visual username must be masked");
+        elements.get("title-remember").click();
+        assert.equal(stored.size,0,"unchecking remember purges stored username");
+        elements.get("title-login-help").click();
+        assert.match(status.textContent,/SoloScape server/);
+        title.dispose();
+    }finally{
+        for(const [key,value] of Object.entries(saved)){
+            if(value===undefined)delete globalThis[key];
+            else globalThis[key]=value;
+        }
+    }
 });

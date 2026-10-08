@@ -1,4 +1,5 @@
-// Classic title coordinates and loading bar follow TSPS's login renderer.
+// Revision-240 in-game RuneScape title, cross-checked against the local OpenOSRS
+// injected game client (kk.class string constants) and verified JS5 assets.
 // Every image/font is fetched by name from SoloScape's verified 240 cache.
 import {verifiedCatalog,decodeGroup} from "./location-cache.mjs";
 import {unpackArchiveFiles} from "./floor-materials.mjs";
@@ -8,6 +9,16 @@ import {djb2} from "./terrain-world.mjs";
 import {LoginScreenAnimation} from "./title-fire.mjs";
 import {NativeTitleMusic} from "./title-music.mjs";
 
+// Wording confirmed against rev-240 OpenOSRS injected game class kk.
+export const OSRS_TITLE_FONT_IDS=Object.freeze({bold12:496,plain11:494});
+export const OSRS_TITLE_COPY=Object.freeze({
+    loading:"RuneScape is loading - please wait...",
+    welcome:"Welcome to RuneScape",newUser:"New User",existingUser:"Existing User",
+    loginPrompt:"Enter your username/email & password.",
+    loginLabel:"Login:",passwordLabel:"Password:",
+    remember:"Remember username",hide:"Hide username",
+    help:"Can't login? Click here.",login:"Login",cancel:"Cancel",
+});
 export function titleLayout(width,height){
     const scale=Math.min(width/765,height/503,1);
     const x=(width-765*scale)/2,y=(height-503*scale)/2;
@@ -52,6 +63,17 @@ export class NativeTitleScreen{
         this.mode="loading";this.percent=0;this.message="Connecting to update server";this.assets={sprites:new Map()};this.visible=true;
         this.newAccount=document.getElementById("title-new-account");this.login=document.getElementById("title-login");
         this.back=document.getElementById("title-cancel");this.mute=document.getElementById("title-mute");
+        this.remember=document.getElementById("title-remember");
+        this.hideUsername=document.getElementById("title-hide-username");
+        this.help=document.getElementById("title-login-help");
+        this.remembered=false;this.usernameHidden=false;
+        this.optionHover={remember:false,hide:false,help:false};
+        try{
+            this.remembered=localStorage.getItem("soloscape:title:remember") === "true";
+            if(this.remembered)document.getElementById("login-username").value=
+                localStorage.getItem("soloscape:title:username")??"";
+        }catch{}
+        this.remember?.setAttribute("aria-checked",String(this.remembered));
         this.fieldLayouts=new Map();this.fieldListeners=[];
         for(const input of [document.getElementById("login-username"),document.getElementById("login-password")]){
             const collapse=()=>{const end=input.selectionEnd??input.value.length;if(input.selectionStart!==end)input.setSelectionRange(end,end);};
@@ -71,7 +93,27 @@ export class NativeTitleScreen{
                 input.addEventListener(type,handler);this.fieldListeners.push([input,type,handler]);
             }
         }
-        this.login.addEventListener("click",()=>this.showLogin("Enter your username/email & password."));
+        this.login.addEventListener("click",()=>this.showLogin(OSRS_TITLE_COPY.loginPrompt));
+        for(const [node,key] of [[this.remember,"remember"],[this.hideUsername,"hide"],[this.help,"help"]]){
+            node?.addEventListener("pointerenter",()=>{this.optionHover[key]=true;this.paint();});
+            node?.addEventListener("pointerleave",()=>{this.optionHover[key]=false;this.paint();});
+        }
+        this.remember?.addEventListener("click",()=>{
+            this.remembered=!this.remembered;
+            this.remember.setAttribute("aria-checked",String(this.remembered));
+            this.persistRememberedUsername();this.paint();
+        });
+        this.hideUsername?.addEventListener("click",()=>{
+            this.usernameHidden=!this.usernameHidden;
+            this.hideUsername.setAttribute("aria-checked",String(this.usernameHidden));this.paint();
+        });
+        this.help?.addEventListener("click",()=>{
+            // The OSRS recovery page does not manage SoloScape server accounts.
+            this.status.textContent="Account recovery is managed by the SoloScape server.";
+            this.paint();
+        });
+        this.usernameInput= document.getElementById("login-username");
+        this.usernameInput.addEventListener("input",this.saveUsername=()=>this.persistRememberedUsername());
         this.back.addEventListener("click",()=>{this.onCancel();this.showWelcome();});
         this.mute.addEventListener("click",()=>{this.music?.toggle();this.mute.setAttribute("aria-pressed",String(this.music?.muted??false));});
         this.gesture=()=>void this.music?.unlock();
@@ -83,14 +125,21 @@ export class NativeTitleScreen{
     async start(cache){
         this.music=new NativeTitleMusic(cache,{onStatus:m=>{this.status.textContent=m;}});
         const steps=[
-            ["Checking cache manifest",async()=>cache.loadMaster()],
-            ["Loading title background",async()=>{
+            ["Checking for updates - ",async()=>cache.loadMaster()],
+            ["Loading title screen - ",async()=>{
                 const bytes=await namedTitleFile(cache,10,"titlewide.jpg");
                 this.assets.background=await createImageBitmap(new Blob([bytes],{type:"image/jpeg"}));
                 if(this.assets.background.width!==545||this.assets.background.height!==671)throw new Error("Unexpected revision-240 wide title dimensions");
             }],
-            ...["logo","titlebox","titlebutton","runes","title_mute"].map(name=>["Loading "+name.replaceAll("_"," "),async()=>{
-                const frames=decodeIndexedSprites(await namedTitleFile(cache,8,name));
+            ...["logo","titlebox","titlebutton","runes","title_mute","options_radio_buttons"].map(name=>["Loading sprites - ",async()=>{
+                let frames;
+                try{frames=decodeIndexedSprites(await namedTitleFile(cache,8,name));}
+                catch(error){
+                    // The OSRS option sprite is decorative: use drawn radio boxes
+                    // if this optional archive is absent; never break login.
+                    if(name==="options_radio_buttons")return;
+                    throw error;
+                }
                 this.assets.sprites.set(name,frames.map(spriteCanvas));
                 if(name==="runes"){
                     const runes=frames.map(f=>({subWidth:f.width,subHeight:f.height,xOffset:f.x,yOffset:f.y,
@@ -98,13 +147,27 @@ export class NativeTitleScreen{
                     this.fire=new LoginScreenAnimation(runes);
                 }
             }]),
-            ["Loading fonts",async()=>{this.assets.font=await loadCacheMenuFont(cache,496);this.assets.small=await loadCacheMenuFont(cache,495);}],
-            ["Loading Scape Main",async()=>this.music.prepare()],
+            ["Loading fonts - ",async()=>{this.assets.font=await loadCacheMenuFont(cache,OSRS_TITLE_FONT_IDS.bold12);this.assets.small=await loadCacheMenuFont(cache,OSRS_TITLE_FONT_IDS.plain11);}],
+            ["Loaded title screen",async()=>this.music.prepare()],
         ];
         try{
-            for(let i=0;i<steps.length;i++){this.message=steps[i][0];this.paint();await steps[i][1]();this.percent=Math.round((i+1)*100/steps.length);}
+            for(let i=0;i<steps.length;i++){
+                this.message=steps[i][0]+(steps[i][0].endsWith(" - ")?`${this.percent}%`:"");
+                this.paint();await steps[i][1]();this.percent=Math.round((i+1)*100/steps.length);
+            }
             this.canvas.dataset.loaded="true";this.showWelcome();
         }catch(error){this.mode="error";this.message=error.message;this.status.textContent="Title cache unavailable: "+error.message;this.syncControls();}
+    }
+    persistRememberedUsername(){
+        try{
+            if(this.remembered){
+                localStorage.setItem("soloscape:title:remember","true");
+                localStorage.setItem("soloscape:title:username",this.usernameInput?.value??"");
+            }else{
+                localStorage.removeItem("soloscape:title:remember");
+                localStorage.removeItem("soloscape:title:username");
+            }
+        }catch{} // Storage might be unavailable in private browsing.
     }
     showWelcome(){this.mode="welcome";this.visible=true;document.body.classList.remove("in-game");this.status.textContent="";this.music?.show();this.syncControls();this.restart();}
     showLogin(message=""){
@@ -139,6 +202,19 @@ export class NativeTitleScreen{
         else{ctx.font="bold 13px Arial";ctx.textAlign="center";ctx.fillStyle=color;ctx.fillText(text,x,y);}
     }
     button(ctx,x,y,label){const sprite=this.assets.sprites.get("titlebutton")?.[0];if(sprite)ctx.drawImage(sprite,Math.floor(x-sprite.width/2),Math.floor(y-sprite.height/2));this.text(ctx,label,x,y+5);}
+    option(ctx,{x,label,checked,hovered=false}){
+        const font=this.assets.font;if(!font)return;
+        font.draw(ctx,label,x,290,"#ffff00",true);
+        const frames=this.assets.sprites.get("options_radio_buttons");
+        const sprite=frames?.[checked?(hovered?6:2):(hovered?4:0)];
+        const left=x+font.measure(label)+6;
+        if(sprite)ctx.drawImage(sprite,left,278);
+        else{
+            // Keep the option visible if an optional sprite fails to decode.
+            ctx.strokeStyle="#d6ad57";ctx.strokeRect(left+.5,278.5,12,12);
+            if(checked){ctx.fillStyle="#ffff00";ctx.fillRect(left+3,281,7,7);}
+        }
+    }
     paint(){
         if(!this.visible)return;
         const bounds=this.canvas.parentElement.getBoundingClientRect();
@@ -164,7 +240,7 @@ export class NativeTitleScreen{
         ctx.save();ctx.translate(l.x,l.y);ctx.scale(l.scale,l.scale);
         const logo=this.assets.sprites.get("logo")?.[0];if(logo)ctx.drawImage(logo,382-Math.floor(logo.width/2),18);
         if(this.mode==="loading"||this.mode==="error"){
-            this.text(ctx,this.mode==="error"?"Unable to load title screen":"RuneScape is loading - please wait...",382,237);
+            this.text(ctx,this.mode==="error"?"Unable to load title screen":OSRS_TITLE_COPY.loading,382,237);
             ctx.strokeStyle="#8c1111";ctx.strokeRect(230.5,245.5,303,33);ctx.strokeStyle="#000000";ctx.strokeRect(231.5,246.5,301,31);
             ctx.fillStyle="#000000";ctx.fillRect(232,247,300,30);ctx.fillStyle="#8c1111";ctx.fillRect(232,247,this.percent*3,30);
             this.text(ctx,this.mode==="error"?"Check your connection and reload":this.message,382,268);
@@ -172,17 +248,17 @@ export class NativeTitleScreen{
             ctx.translate(0,l.panelOffset);
             const box=this.assets.sprites.get("titlebox")?.[0];if(box)ctx.drawImage(box,202,170);
             if(this.mode==="welcome"){
-                this.text(ctx,"Welcome to RuneScape",382,251,"#ffff00");this.button(ctx,302,291,"New User");this.button(ctx,462,291,"Existing User");
+                this.text(ctx,OSRS_TITLE_COPY.welcome,382,251,"#ffff00");this.button(ctx,302,291,OSRS_TITLE_COPY.newUser);this.button(ctx,462,291,OSRS_TITLE_COPY.existingUser);
             }else if(this.mode==="login"||this.mode==="connecting"){
                 // Reflect actual cache/authentication/map stages instead of always claiming
                 // the TCP handshake is still in progress after it has succeeded.
                 const message=this.status.textContent||"Connecting to server...";
                 const words=message.split(" "),rows=[];let line="";
                 for(const word of words){const next=line?line+" "+word:word;if(line&&(this.assets.font?.measure(next)??next.length*7)>320){rows.push(line);line=word;}else line=next;}if(line)rows.push(line);
-                rows.slice(0,3).forEach((row,i)=>this.text(ctx,row,382,211+i*15,"#ffff00"));
-                const font=this.assets.font,fields=[["Login:","login-username",253,false],["Password:","login-password",268,true]];
+                rows.slice(0,3).forEach((row,i)=>this.text(ctx,row,382,201+i*15,"#ffff00"));
+                const font=this.assets.font,fields=[[OSRS_TITLE_COPY.loginLabel,"login-username",253,false],[OSRS_TITLE_COPY.passwordLabel,"login-password",268,true]];
                 for(const [label,id,y,masked] of fields){
-                    const input=document.getElementById(id),value=masked?"*".repeat(this.mode==="connecting"?this.connectingPasswordLength:input.value.length):input.value;
+                    const input=document.getElementById(id),value=masked||this.usernameHidden?"*".repeat(masked&&this.mode==="connecting"?this.connectingPasswordLength:input.value.length):input.value;
                     const active=this.mode==="login"&&document.activeElement===input,field=titleFieldLayout(font,value,input.selectionStart,input.selectionEnd,active);
                     this.fieldLayouts.set(input,field);
                     const x=274+font.measure(label);
@@ -191,7 +267,13 @@ export class NativeTitleScreen{
                     font.draw(ctx,field.text,x,y,"#ffffff",true);
                     if(active&&Math.floor(performance.now()/500)%2===0)font.draw(ctx,"|",x+field.caret,y,"#ffffff",true);
                 }
-                if(this.mode==="login"){this.button(ctx,302,321,document.getElementById("login-submit").disabled?"Please wait...":"Login");this.button(ctx,462,321,"Cancel");}
+                if(this.mode==="login"){
+                    this.option(ctx,{x:274,label:OSRS_TITLE_COPY.remember,checked:this.remembered,hovered:this.optionHover.remember});
+                    this.option(ctx,{x:430,label:OSRS_TITLE_COPY.hide,checked:this.usernameHidden,hovered:this.optionHover.hide});
+                    this.button(ctx,302,321,OSRS_TITLE_COPY.login);
+                    this.button(ctx,462,321,OSRS_TITLE_COPY.cancel);
+                    this.text(ctx,OSRS_TITLE_COPY.help,382,357,this.optionHover.help?"#ffff00":"#ffffff",true);
+                }
             }
         }
         ctx.restore();
@@ -201,5 +283,5 @@ export class NativeTitleScreen{
             const sprite=this.assets.sprites.get("title_mute")?.[this.music?.muted?1:0];if(sprite)ctx.drawImage(sprite,l.muteX,l.muteY);
         }
     }
-    dispose(){cancelAnimationFrame(this.animation);for(const [input,type,handler] of this.fieldListeners)input.removeEventListener(type,handler);window.removeEventListener("resize",this.resize);window.visualViewport?.removeEventListener("resize",this.resize);document.removeEventListener("pointerup",this.gesture,true);document.removeEventListener("keydown",this.gesture,true);this.fire?.destroy();this.music?.dispose();this.assets.background?.close();}
+    dispose(){this.usernameInput?.removeEventListener("input",this.saveUsername);cancelAnimationFrame(this.animation);for(const [input,type,handler] of this.fieldListeners)input.removeEventListener(type,handler);window.removeEventListener("resize",this.resize);window.visualViewport?.removeEventListener("resize",this.resize);document.removeEventListener("pointerup",this.gesture,true);document.removeEventListener("keydown",this.gesture,true);this.fire?.destroy();this.music?.dispose();this.assets.background?.close();}
 }
