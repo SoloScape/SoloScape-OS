@@ -7,6 +7,7 @@ import kotlin.random.Random
 import org.rsmod.api.area.checker.AreaChecker
 import org.rsmod.api.area.checker.wildernessLevel
 import org.rsmod.api.player.isInCombat
+import org.rsmod.api.player.isInPvpCombat
 import org.rsmod.api.player.protect.clearPendingAction
 import org.rsmod.api.player.stat.PlayerSkillXP
 import org.rsmod.api.player.stat.baseHitpointsLvl
