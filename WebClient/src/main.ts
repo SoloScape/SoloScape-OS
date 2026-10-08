@@ -175,6 +175,7 @@ let titleMode:
   | 'game-loading'
   | 'game' = 'bootstrap';
 let bootGeneration = 0;
+let validatedLoginCrcs: readonly number[] | null = null;
 let mapLoadGeneration = 0;
 let playerModelGeneration = 0;
 let framedGamePackets = 0;
@@ -663,7 +664,7 @@ async function beginGameLogin(): Promise<void> {
     !titleRenderer ||
     !titleAssets ||
     !startupAssets ||
-    js5.state !== 'ready'
+    !validatedLoginCrcs
   ) {
     renderLoginScreen('Please wait for the cache to finish loading.');
     return;
@@ -699,7 +700,7 @@ async function beginGameLogin(): Promise<void> {
       revision: OSRS_PROTOCOL_REVISION,
       username,
       password,
-      crcValues: js5.getLoginCrcs(),
+      crcValues: [...validatedLoginCrcs],
       width: CLIENT_VIEWPORT_WIDTH,
       height: CLIENT_VIEWPORT_HEIGHT,
       resizable: true,
@@ -725,6 +726,7 @@ async function connectJs5(): Promise<void> {
   titleRenderer = null;
   titleAssets = undefined;
   startupAssets = undefined;
+  validatedLoginCrcs = null;
   titleMode = 'bootstrap';
   clientUiCanvas.hidden = false;
   resetSceneDebug();
@@ -930,9 +932,12 @@ gameLogin.onGamePacket = (packet) => {
   try {
     if (uiState.apply(packet)) return;
   } catch (error: unknown) {
-    appendLog('UI packet ' + packet.name + ' decode failed: ' +
+    // UI support must not bring down the network framer/session. A cache
+    // rendering or unsupported UI packet cannot invalidate game transport.
+    appendLog('Ignored malformed UI packet ' + packet.name +
+      ' (opcode=' + packet.opcode + ', bytes=' + packet.payload.length + '): ' +
       (error instanceof Error ? error.message : String(error)));
-    throw error;
+    return;
   }
 
   if (packet.opcode === PLAYER_INFO_OPCODE) {
@@ -1249,6 +1254,7 @@ js5.onBootstrapComplete = (index) => {
       }
 
       startupAssets = loadedStartupAssets;
+      validatedLoginCrcs = js5.getLoginCrcs();
       uiState.setVarbitDefinitions(loadedStartupAssets.varbitDefinitions);
       (window as SoloScapeDebugWindow).soloscapeStartupAssets =
         loadedStartupAssets;
@@ -1310,6 +1316,7 @@ connectButton.addEventListener('click', () => {
     titleRenderer = null;
     titleAssets = undefined;
     startupAssets = undefined;
+    validatedLoginCrcs = null;
     titleMode = 'bootstrap';
     renderBootScreen(
       0,
