@@ -1144,7 +1144,7 @@ require it. The native orbit-camera pitch is *mapped* to RS pitch units rather
 than using a full RuneLite camera, so some camera-angle behavior may differ.
 
 The native WebGL1 fragment shaders now fade scene colours and textures into
-TSPS's 117HD default sky colour using its square/zero-rounded-corner OSRS
+the restored black sky using the pinned square/zero-rounded-corner OSRS
 fog-distance equation and smoothstep. The fog range comes from the generated
 TSPS `RenderDistancePolicy` and default HD auto-fog factor (0.85), with a
 25-tile render distance. The native fog is interpolated per pixel rather than

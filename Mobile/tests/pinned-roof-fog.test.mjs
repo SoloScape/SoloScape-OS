@@ -65,4 +65,6 @@ test("fog shader receives a player-centred TSPS 25-tile range",()=>{
     assert.deepEqual(calls.find(([key])=>key==="u_fogPlayer"),["u_fogPlayer",.5,.5]);
     assert.deepEqual(calls.find(([key])=>key==="u_fogEnd"),["u_fogEnd",25]);
     assert.deepEqual(calls.find(([key])=>key==="u_fogDepth"),["u_fogDepth",21.25]);
+    assert.deepEqual(calls.find(([key])=>key==="u_fogColor"),["u_fogColor",0,0,0],
+        "distance fog must blend into the black sky");
 });

@@ -551,8 +551,8 @@ export class NativeTerrainViewport {
         canvas.addEventListener("wheel",this.onWheel,{passive:false});
         window.addEventListener("keydown",this.onKey);
         gl.enable(gl.DEPTH_TEST);
-        // TSPS default HD sky tint; shared with the distance-fog blending.
-        gl.clearColor(185/255,214/255,1,1);
+        // Classic black void beyond the rendered scene (also used by distance fog).
+        gl.clearColor(0,0,0,1);
         this.frame=()=>{if(this.disposed)return;this.render();this.raf=requestAnimationFrame(this.frame);};
         this.raf=requestAnimationFrame(this.frame);
     }
@@ -625,7 +625,7 @@ export class NativeTerrainViewport {
             autoFogDepth:true,autoFogDepthFactor:HD_AUTO_FOG_DEPTH_FACTOR,manualFogDepth:24});
         gl.uniform1f(gl.getUniformLocation(program,"u_fogEnd"),fogEnd);
         gl.uniform1f(gl.getUniformLocation(program,"u_fogDepth"),fogDepth);
-        gl.uniform3f(gl.getUniformLocation(program,"u_fogColor"),185/255,214/255,1);
+        gl.uniform3f(gl.getUniformLocation(program,"u_fogColor"),0,0,0);
         gl.uniform1f(gl.getUniformLocation(program,"u_fogEnabled"),active?1:0);
     }
     replaceBatches(name,batches){
