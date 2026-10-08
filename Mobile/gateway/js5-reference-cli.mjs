@@ -1,5 +1,6 @@
 import { fetchJs5IndexGroup, fetchJs5MasterIndex } from "./js5-cache.mjs";
 import { verifyReferenceTableCrc } from "./js5-reference-verify.mjs";
+import { decodeReferenceTableHeader, verifyReferenceRevision } from "./js5-reference-header.mjs";
 
 function readRevision(value) {
     if (!/^\d+$/.test(String(value ?? "")) ||
@@ -19,7 +20,10 @@ try {
     const referenceTable = await fetchJs5IndexGroup({ ...options, index: 0 });
     const result = verifyReferenceTableCrc(master, referenceTable, 0);
     console.log(`[cache-verify] Archive ${result.archive} reference-table CRC32 verified: 0x${result.crc32.toString(16).padStart(8, "0")}, ${result.referenceTableBytes} bytes.`);
-    console.log(`[cache-verify] Master-index archive ${result.archive} version metadata: ${result.referenceTableVersion} (version not independently checked).`);
+    const header = decodeReferenceTableHeader(referenceTable);
+    verifyReferenceRevision(header, result.referenceTableVersion);
+    console.log(`[cache-verify] Reference-table format ${header.format}; archive 0 revision ${header.revision} verified against master index.`);
+    console.log(`[cache-verify] Archive 0 catalog header: ${header.archiveCount} archive groups (first ${header.firstArchiveId ?? "none"}, last ${header.lastArchiveId ?? "none"}), ${header.decodedBytes} decoded bytes.`);
     console.log("[cache-verify] No cache data saved. CRC32 integrity is not cryptographic authenticity; native login, assets and rendering NOT verified.");
 } catch (error) {
     console.error("[cache-verify]", error.message);

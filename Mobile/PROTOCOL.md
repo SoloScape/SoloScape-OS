@@ -86,6 +86,12 @@ In the [upstream OpenRune cache provider](https://github.com/OpenRune/OpenRune-S
 
 `Mobile/gateway/js5-reference-verify.mjs` validates group `255:0` (the first archive reference table) against the CRC32 stored in the freshly fetched master index. A separate `npm run probe:cache:verify` diagnostic performs the two bounded in-memory downloads and **exits with failure on mismatch**. Tests cover canonical CRC32, metadata pair layout, compressed containers, gateway forwarding, corruption, Origin rejection, and index bounds. The version field is printed but **not independently verified**. The live reference-table CRC result is **not yet known**.
 
+### Revision and reference-table header validation
+
+On 8 October 2026, the live `255:0` reference-table group was received through the WebSocket gateway (107,328 bytes), and its standard CRC32 (`0x05cf8665`) matched the master-index entry. The master-index revision field was `1790003854`, but **its independent verification is pending**.
+
+The upstream [OpenRune `ReadOnlyCache.archiveData`](https://github.com/OpenRune/OpenRune-FileStore/blob/main/filesystem/src/main/kotlin/dev/openrune/filesystem/ReadOnlyCache.kt) parses cache reference-table formats 5–7. Formats 6–7 include an embedded 32-bit revision after the format byte; v7 then encodes archive counts and delta IDs with big-smart integers. The new `Mobile/gateway/js5-reference-header.mjs` performs bounded gzip decompression (or accepts an uncompressed container), checks the declared length, parses only the header and archive-ID deltas, and lets the CLI **reject a mismatch** between embedded and master-index revision. It does not parse archive file manifests, perform cryptographic verification, persist cache bytes, or render game assets. Run the live probe again to validate this header/revision check.
+
 ## Required protocol adapter work (not implemented)
 
 1. **Choose a source-of-truth native client protocol.** Identify the exact SoloScape revision, RSA public modulus, current JS5/cache revision, ISAAC seeds, login block layout and inbound/outbound packet tables from the `rsprot` dependency and SoloScape generated files.

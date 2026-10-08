@@ -245,7 +245,9 @@ exit code** if the checksum differs, and it never saves or decompresses
 asset data. This validates a single **CRC32 integrity** relationship, not
 cryptographic authenticity, version equivalence, archive completeness,
 TSPS compatibility, native authentication, or playable mobile gameplay.
-The success of the live reference-table check is **pending**.
+**Live result (8 Oct 2026):** archive 0's `255:0` reference table arrived at 107,328 bytes and CRC32 matched the master index (`0x05cf8665`). The master-index archive-0 revision field was `1790003854`; that was not yet checked against the decompressed reference-table header.
+
+The probe now also decompresses **only** a bounded (16 MiB) uncompressed/gzip reference-table header, checks format 5–7 and the archive-ID deltas, and compares the table's embedded revision to the master-index revision. Gzip output and archive counts are bounded, bzip2 is not supported, and no asset files are written. This **header/revision comparison has not yet been run against the live server**: after pulling `feature/mobile`, rerun `npm run probe:cache:verify` with revision 240.
 
 ## Known incompatibilities / next engineering work
 
