@@ -31,6 +31,15 @@
 import { prepareFloorLighting, adjustFloorLight, HSL_PALETTE, sampleTerrain } from "./floor-lighting.mjs";
 import {terrainPlane,sceneLevel,validateSceneLevel} from "./scene-planes.mjs";
 import {NpcLongPress} from "./npc-pointer.mjs";
+// Native scene distances are tiles, unlike RuneLite's client zoom values.
+export const GAME_CAMERA_ZOOM=Object.freeze({default:12,min:6,max:24});
+
+export function cameraWheelDistance(distance,event){
+    if(event.ctrlKey)return GAME_CAMERA_ZOOM.default;
+    if(!Number.isFinite(event.deltaY))return distance;
+    const pixels=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?334:1);
+    return Math.max(GAME_CAMERA_ZOOM.min,Math.min(GAME_CAMERA_ZOOM.max,distance*Math.exp(pixels*.001)));
+}
 function shader(gl,type,source){
     const sh=gl.createShader(type);
     gl.shaderSource(sh,source);gl.compileShader(sh);
@@ -368,7 +377,7 @@ export class NativeTerrainViewport {
         gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
         gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,256,256,0,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
         this.count=0;
-        this.yaw=.8;this.pitch=.66;this.distance=100;
+        this.yaw=.8;this.pitch=.66;this.distance=GAME_CAMERA_ZOOM.default;
         this.target=[0,10,0];
         this.pointer=null;
         this.disposed=false;
@@ -443,7 +452,7 @@ export class NativeTerrainViewport {
                 onCancel:()=>this.onNpcCancel()
             });
         };
-        this.onWheel=e=>{e.preventDefault();this.distance=Math.max(18,Math.min(170,this.distance*Math.exp(e.deltaY*.001)));};
+        this.onWheel=e=>{e.preventDefault();this.distance=cameraWheelDistance(this.distance,e);};
         this.onKey=e=>{
             if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName||""))return;
             const step=3;

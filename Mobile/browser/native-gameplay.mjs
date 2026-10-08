@@ -6,7 +6,7 @@ import {decodeRebuild,encodeMoveDestination,encodeWindowStatus,MOVE_GAMECLICK,MA
 import {loadNativeTerrain} from "./terrain-world.mjs";
 import {loadFloorMaterials} from "./floor-materials.mjs";
 import {loadStaticScenery} from "./scenery-models.mjs";
-import {combineRegionMeshes} from "./world-webgl.mjs";
+import {combineRegionMeshes,GAME_CAMERA_ZOOM} from "./world-webgl.mjs";
 import {NativePlayerModels,buildPlayerMesh,playerGroundHeight} from "./player-models.mjs";
 import {SceneTextures} from "./texture-cache.mjs";
 
@@ -41,6 +41,7 @@ export class NativeGameplay {
     }
     authenticated(account){
         this.sync=new NativePlayerSync(account.playerIndex);
+        this.viewport.distance=GAME_CAMERA_ZOOM.default;this.viewport.pitch=.65;
         const c=this.viewport.canvas;
         this.session.sendGame(WINDOW_STATUS,encodeWindowStatus(Math.max(1,Math.min(65535,c.clientWidth)),Math.max(1,Math.min(65535,c.clientHeight))));
         this.timer=setInterval(()=>void this.drawActors(),50);
@@ -253,7 +254,6 @@ export class NativeGameplay {
                     add(buildPlayerMesh(posed,region,player,{textures:this.models.textures.textures}),region);
                     const ground=playerGroundHeight(region,player.x-region.mapX*64+.5,player.y-region.mapY*64+.5,player.plane);
                     this.viewport.target=[player.x-this.origin.mapX*64-31,-ground.height/128+1,player.y-this.origin.mapY*64-31];
-                    if(!this.cameraSet){this.viewport.distance=22;this.viewport.pitch=.65;this.cameraSet=true;}
                     this.modelReady=true;this.renderError=null;
                 }catch(error){this.modelReady=false;this.renderError=error.message;this.drawBlockedUntil=now+5000;}
             }

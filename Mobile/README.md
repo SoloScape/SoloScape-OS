@@ -79,6 +79,9 @@ No mock map or stand-in terrain is rendered.
 
 Touch/drag or mouse/drag rotates the camera; wheel zooms; WASD/arrows
 pan along map axes (W/up north, S/down south, A/left west, D/right east).
+The native camera starts 12 tiles from its target, with wheel zoom bounded
+between 6 and 24 tiles. Ctrl + wheel restores the default. Login resets the
+distance before player assets load; walking and map rebuilds preserve your zoom.
 The camera maps cache north to negative WebGL Z alongside upward height,
 preserving map handedness across terrain, scenery and textured batches.
 At yaw zero, north appears up and east right; orbiting changes the view.
