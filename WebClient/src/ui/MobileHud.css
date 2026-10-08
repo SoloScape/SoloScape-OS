@@ -530,3 +530,40 @@
   .hud-hotkey-rail { top: 95px; }
   .hud-chat-controls { top: 75px; }
 }
+
+/* Revision-240 authoritative server values beneath the original cache widget stage. */
+.hud-live-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px solid #2c2519;
+}
+.hud-live-skill {
+  flex: 1 1 80px;
+  padding: 2px 3px;
+  color: #e9d6a7;
+  font-size: 10px;
+}
+.hud-cache-unverified {
+  display: block;
+  color: #e1b45e;
+  font-size: 10px;
+}
+.hud-server-interface-select {
+  display: block;
+  width: 100%;
+  margin: 6px 0;
+  background: #29251d;
+  color: #f2db9d;
+}
+.cache-widget-item {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  font-size: 9px;
+  font-weight: bold;
+  color: #f9d77c;
+  text-shadow: 1px 1px #000;
+}
