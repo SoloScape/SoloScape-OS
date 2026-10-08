@@ -180,6 +180,49 @@ client fork/integration mechanism. Revision-240 asset metadata and
 decoders still need a compatibility review; do not assume the
 revision-241 client renders assets correctly.
 
+### First real graphical asset: revision-240 indexed sprite on Canvas
+
+After confirming the browser's native JS5 cache loader and synchronous
+TSPS-compatible `CacheStore` bridge against the running SoloScape server,
+the next integration step is a **visible, real cache-derived sprite**.
+`browser/sprite-preview.mjs` implements the pinned TSPS
+`SpriteLoader` indexed-palette format (row/column pixel layouts and optional
+alpha) with strict bounds and no external graphics dependencies.
+
+The new **Render verified SoloScape sprite** button in the existing
+`http://localhost:3001/` browser development page:
+
+1. Fetches the **sprite** cache index 8 reference table through native JS5,
+   checks its master-index CRC32/revision, and parses per-group file counts
+   using OpenRune format-7 reference metadata;
+2. Checks at most **eight single-file sprite groups** from the verified
+   catalog, fetching and CRC32-checking each before bounded gzip
+   decompression; and
+3. Converts the first supported indexed-sprite frame to RGBA and displays
+   it on HTML Canvas, **preserving offsets, transparency and alpha**.
+
+The renderer never writes assets to disk, sends credentials, downloads the
+whole cache, or substitutes an unrelated placeholder if decoding fails.
+If the initial candidates use an unsupported format, it reports an error
+rather than claiming a graphic was rendered. The tests use synthetic
+OSRS sprite data and a mocked cache transport; **actual sprite visibility
+against the live server remains unverified** until the page is refreshed.
+
+PowerShell from `Mobile/` (with the Java server and native WS gateway still
+running):
+
+```powershell
+git pull --ff-only origin feature/mobile
+# Stop the previous `npm run dev:native` with Ctrl+C first.
+npm run dev:native
+```
+
+Open `http://localhost:3001/` and click
+**Render verified SoloScape sprite**. No extra standalone probe required.
+This isolated Canvas preview **does not** yet invoke TSPS's WebGL scene
+renderer, nor does it implement map reconstruction, native game login,
+mobile gameplay or a playable SoloScape session.
+
 ## Native WebSocket-to-TCP gateway (transport foundation)
 
 The standalone `gateway/` is deliberately a **raw byte transport**, not a converter. Its purpose is to provide a browser-compatible transport for a future native-OSRS client encoder/decoder. Unlike a blanket TCP proxy, it validates the initial native login/JS5 handshake opcode before allowing TCP forwarding and refuses TSPS's proprietary HELLO (200) or LOGIN (204). **Do not point the unmodified TSPS client at it expecting to log in.**

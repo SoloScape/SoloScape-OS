@@ -10,6 +10,7 @@ const routes = new Map([
     ["/app.mjs", ["app.mjs", "text/javascript; charset=utf-8"]],
     ["/native-js5.mjs", ["native-js5.mjs", "text/javascript; charset=utf-8"]],
     ["/tsps-cache-store.mjs", ["tsps-cache-store.mjs", "text/javascript; charset=utf-8"]],
+    ["/sprite-preview.mjs", ["sprite-preview.mjs", "text/javascript; charset=utf-8"]],
     ["/style.css", ["style.css", "text/css; charset=utf-8"]],
 ]);
 const port = 3001;

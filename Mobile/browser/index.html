@@ -19,9 +19,16 @@
 <button id="load-group" type="button" disabled>Load verified group into memory</button>
 <div id="group-result" class="result" role="status">Load an archive catalog first.</div>
 </section>
+<section class="panel">
+<h2>Render an actual SoloScape sprite</h2>
+<p class="hint">Use the revision-240 sprite archive (index 8) to load an integrity-checked single-file sprite, decode its palette and pixels, and draw the first frame onto this Canvas.</p>
+<button id="render-sprite" type="button">Render verified SoloScape sprite</button>
+<div id="sprite-result" class="result" role="status">No sprite rendered yet.</div>
+<div class="sprite-stage"><canvas id="sprite-canvas" hidden aria-label="Decoded SoloScape sprite frame"></canvas></div>
+</section>
 <section class="panel muted"><h2>Implementation boundary</h2>
 <p>Live native JS5 via WebSocket · index and group CRC32 integrity · gzip reference metadata · on-demand in-memory groups · synchronous TSPS-compatible CacheStore bridge.</p>
-<p><strong>Not yet integrated:</strong> TSPS renderer, maps/models/sprites, native RSA/ISAAC login, or gameplay. No usernames, passwords or asset files are saved by this page.</p></section>
+<p><strong>Not yet integrated:</strong> full TSPS renderer, interactive maps, 3D models, native RSA/ISAAC login, or gameplay. No usernames, passwords or asset files are saved by this page.</p></section>
 <footer>Development-only · loopback connection · revision 240</footer>
 </main><script type="module" src="/app.mjs"></script>
 </body></html>

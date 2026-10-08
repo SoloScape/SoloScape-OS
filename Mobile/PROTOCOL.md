@@ -164,6 +164,25 @@ only valid for previously verified containers. This still needs
 integration into TSPS's actual loader and revision-240 decoder review,
 especially reference-table flags and asset format/version differences.
 
+### First graphical asset decoding (isolated Canvas preview)
+
+The upstream TSPS [`SpriteLoader.load()`](https://github.com/RSPSApp/tsps/blob/b9ca431be440174fce5adf0efbb7afa992358916/client/rs/sprite/SpriteLoader.ts)
+parses indexed sprites with a final sprite count, image dimensions,
+per-frame offsets, a 24-bit palette, row/column pixel order and optional
+alpha. `Mobile/browser/sprite-preview.mjs` provides a bounded compatible
+decoder and Canvas RGBA painter; the real sprite bytes come only from the
+CRC32-validated native JS5 revision-240 archive index 8. The cache
+reference-table parser also checks file counts/IDs and selects only
+**single-file** groups for this initial rendering path, avoiding
+assumptions about multi-file archive chunk packing.
+
+The browser UI offers `Render verified SoloScape sprite`, which retrieves
+up to 8 candidate groups from the verified sprite catalog, decodes the
+first supported frame, and draws the **actual game asset** as a bitmap
+(Canvas, not TSPS's WebGL scene renderer). There is no fallback fake
+graphic and no need for another standalone JS5 probe. The live
+sprite-rendering outcome is **pending**.
+
 ## Required protocol adapter work (not implemented)
 
 1. **Choose a source-of-truth native client protocol.** Identify the exact SoloScape revision, RSA public modulus, current JS5/cache revision, ISAAC seeds, login block layout and inbound/outbound packet tables from the `rsprot` dependency and SoloScape generated files.

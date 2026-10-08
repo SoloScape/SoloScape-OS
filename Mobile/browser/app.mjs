@@ -1,5 +1,6 @@
 import { NativeJs5Cache } from "./native-js5.mjs";
 import { TspsCacheStoreAdapter } from "./tsps-cache-store.mjs";
+import { drawIndexedSprite, loadFirstSprite } from "./sprite-preview.mjs";
 
 const cache = new NativeJs5Cache();
 const store = new TspsCacheStoreAdapter(cache);
@@ -61,4 +62,23 @@ groupButton.addEventListener("click", async () => {
 indexInput.addEventListener("input", () => {
     selectedIndex = null;
     groupButton.disabled = true;
+});
+
+const spriteButton = el("render-sprite");
+const spriteResult = el("sprite-result");
+const spriteCanvas = el("sprite-canvas");
+spriteButton.addEventListener("click", async () => {
+    spriteButton.disabled = true;
+    spriteResult.textContent = "Selecting an archive-8 single-file sprite from the verified SoloScape catalog…";
+    spriteCanvas.hidden = true;
+    try {
+        const graphic = await loadFirstSprite(cache, { maxAttempts: 8 });
+        drawIndexedSprite(spriteCanvas, graphic.frame);
+        spriteCanvas.hidden = false;
+        spriteResult.textContent = `Rendered real SoloScape sprite! Archive ${graphic.archive}, group ${graphic.group}, file ${graphic.fileId}. Frame 1/${graphic.frameCount}, ${graphic.frame.sheetWidth}×${graphic.frame.sheetHeight} sheet; ${graphic.decodedBytes.toLocaleString()} decoded bytes. This Canvas image is not yet the TSPS 3D game renderer.`;
+    } catch (error) {
+        spriteResult.textContent = "Sprite renderer: " + error.message;
+    } finally {
+        spriteButton.disabled = false;
+    }
 });
