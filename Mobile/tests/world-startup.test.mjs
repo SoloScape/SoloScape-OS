@@ -101,6 +101,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
             "/texture-cache.mjs","/texture-mapper.mjs","/scene-planes.mjs",
             "/login-crypto.mjs","/login-protocol.mjs","/login-pow.mjs","/native-login.mjs","/game-protocol.mjs",
             "/player-sync.mjs","/player-models.mjs","/native-gameplay.mjs","/npc-sync.mjs","/npc-models.mjs","/npc-interactions.mjs","/npc-pointer.mjs","/native-menu.mjs","/native-interfaces.mjs","/interface-canvas.mjs",
+            "/interface-protocol.mjs","/server-interfaces.mjs",
         ];
         for(const path of modules){
             const response=await fetch(root+path);
@@ -201,6 +202,36 @@ try{
     viewport.dispose();
     if(gl.isTexture(palette))throw new Error("Palette texture was not disposed");
     if(gl.isBuffer(sceneryBuffer))throw new Error("Scenery buffer was not disposed");
+    // Exercise the server interface path in a real browser/2D canvas, using
+    // explicit synthetic widget definitions (no live cache/account needed).
+    const {NativeInterfaceCanvas}=await import("/interface-canvas.mjs");
+    const {ServerInterfaces}=await import("/server-interfaces.mjs");
+    const host=document.createElement("div"),canvas=document.createElement("canvas");
+    host.style="position:relative;width:128px;height:128px";canvas.style="width:128px;height:128px";
+    host.append(canvas);document.body.append(host);
+    const base=10*65536,root={uid:base,type:0,isIf3:true,parentUid:-1,
+        rawX:0,rawY:0,rawWidth:128,rawHeight:128},button={uid:base+1,type:3,isIf3:true,parentUid:base,
+        rawX:8,rawY:8,rawWidth:64,rawHeight:32,color:255,filled:true,flags:2,actions:["Confirm"]};
+    const view=new NativeInterfaceCanvas(canvas,{});
+    view.interfaces.load=async()=>({groupId:10,widgets:new Map([[base,root],[base+1,button]]),
+        roots:[root],children:new Map([[base,[button]]])});
+    const sent=[],interfaces=new ServerInterfaces({view,session:{sendGame:(...args)=>sent.push(args)}});
+    interfaces.handle({name:"IF_OPENTOP",payload:Uint8Array.of(138,0)});
+    interfaces.handle({name:"IF_SETCOLOUR",payload:Uint8Array.of(128,124,1,0,10,0)});
+    await interfaces.pending;
+    const ratio=Math.min(3,window.devicePixelRatio||1);
+    const color=view.canvas.getContext("2d").getImageData(Math.floor(12*ratio),Math.floor(12*ratio),1,1).data;
+    if([248,0,0,255].some((n,i)=>n!==color[i]))throw new Error("Server widget colour did not paint: "+color);
+    host.setPointerCapture=()=>{};host.releasePointerCapture=()=>{};interfaces.bindInput(host);
+    const bounds=canvas.getBoundingClientRect();
+    for(const type of ["pointerdown","pointerup"])canvas.dispatchEvent(new PointerEvent(type,
+        {bubbles:true,cancelable:true,pointerId:1,button:0,clientX:bounds.left+12,clientY:bounds.top+12}));
+    if(sent.length!==1||sent[0][0]!==1||sent[0][1].join()!=="0,10,0,1,255,255,255,255,1")
+        throw new Error("Interface click did not send native IF_BUTTONX");
+    interfaces.handle({name:"IF_RESYNC_V2",payload:Uint8Array.of(255,255,0,0)});
+    await interfaces.pending;
+    if(!canvas.hidden)throw new Error("Server resync did not close interface");
+    interfaces.close();host.remove();
     document.body.dataset.result="webgl-hsl-pass";
 }catch(error){document.body.dataset.result="webgl-hsl-fail: "+error.message;}
 await fetch("/result?status="+encodeURIComponent(document.body.dataset.result));
@@ -212,7 +243,7 @@ await fetch("/result?status="+encodeURIComponent(document.body.dataset.result));
                 res.writeHead(200);res.end("received");
             }else if(req.url==="/"){
                 res.writeHead(200,{"Content-Type":"text/html"});res.end(html);
-            }else if(["/world-webgl.mjs","/floor-lighting.mjs","/scene-planes.mjs","/npc-pointer.mjs"].includes(req.url)){
+            }else if(/^\/[a-z][a-z0-9-]*\.mjs$/.test(req.url)){
                 res.writeHead(200,{"Content-Type":"text/javascript"});
                 res.end(await readFile(new URL(req.url.slice(1),browserRoot)));
             }else{res.writeHead(404);res.end();}

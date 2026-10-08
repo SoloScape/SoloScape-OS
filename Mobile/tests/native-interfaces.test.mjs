@@ -111,3 +111,9 @@ test("interface load rejects invalid or unavailable cache groups, without invent
     await assert.rejects(loader.load(12),/Offline verified cache/);
     assert.equal(loader.groups.size,0);
 });
+test("high interface group IDs preserve unsigned widget IDs and parent links",()=>{
+    const uid=40000*65536,root=decodeWidget(uid,if3({type:0,parent:-1})),child=decodeWidget(uid+1,if3({parent:0}));
+    assert.equal(child.parentUid,uid);assert.equal(child.groupId,40000);
+    const linked=linkInterfaceWidgets(new Map([[uid,root],[uid+1,child]]));
+    assert.deepEqual(linked.roots,[root]);assert.deepEqual(linked.children.get(uid),[child]);
+});

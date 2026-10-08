@@ -66,7 +66,7 @@ export function decodeWidget(uid,bytes){
         rawWidth=r.readUnsignedShort(),rawHeight=isIf3&&type===9?r.readShort():r.readUnsignedShort();
     const modes=isIf3?[r.readByte(),r.readByte(),r.readByte(),r.readByte()]:[0,0,0,0];
     let parentUid=nullable(r.readUnsignedShort());
-    if(parentUid!==-1)parentUid=(uid&~65535)|parentUid;
+    if(parentUid!==-1)parentUid=((uid&~65535)|parentUid)>>>0;
     const opacity=isIf3?0:null;
     const widget={uid,groupId,fileId,isIf3,type,buttonType,contentType,rawX,rawY,rawWidth,rawHeight,
         widthMode:modes[0],heightMode:modes[1],xPositionMode:modes[2],yPositionMode:modes[3],
@@ -151,7 +151,7 @@ export function linkInterfaceWidgets(widgets){
     for(const parent of widgets.values())if(!parent.isIf3&&parent.rawChildren){
         const links=[];
         for(const entry of parent.rawChildren){
-            const widget=widgets.get((parent.groupId<<16)|entry.fileId);
+            const widget=widgets.get(((parent.groupId<<16)|entry.fileId)>>>0);
             if(widget){widget.parentUid=parent.uid;widget.legacyX=entry.x;widget.legacyY=entry.y;
                 links.push(widget);}
         }
@@ -183,7 +183,7 @@ export class NativeInterfaces{
         const widgets=new Map();
         for(const id of ids){
             const bytes=files.get(id);if(!bytes)throw new Error("Missing interface component "+groupId+":"+id);
-            const uid=(groupId<<16)|id;
+            const uid=((groupId<<16)|id)>>>0;
             widgets.set(uid,decodeWidget(uid,bytes));
         }
         const tree=linkInterfaceWidgets(widgets);

@@ -25,7 +25,7 @@ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
 THE POSSIBILITY OF SUCH DAMAGE.
 */
-// Native read-only IF1/IF3 cache widget canvas renderer. Layout follows the
+// Native IF1/IF3 cache widget canvas renderer. Layout follows the
 // pinned TSPS widgets/layout/WidgetLayout.ts. Never executes CS1/CS2 or invents
 // missing sprites, player/item models, animation or server state.
 import {NativeInterfaces} from "./native-interfaces.mjs";
@@ -72,7 +72,8 @@ export function flattenInterface(group,width,height,{limit=2048}={}){
         if(widgetClip.r<=widgetClip.x||widgetClip.b<=widgetClip.y)return;
         nodes.push({widget,x,y,width:w,height:h,clip:widgetClip});
         if(![0,3,4,5,9].includes(widget.type))skipped.push({uid:widget.uid,type:widget.type});
-        const childX=x-(widget.scrollX??0),childY=y-(widget.scrollY??0),
+        const childX=x-Math.max(0,Math.min(widget.scrollX??0,Math.max(0,(widget.scrollWidth||w)-w))),
+            childY=y-Math.max(0,Math.min(widget.scrollY??0,Math.max(0,(widget.scrollHeight||h)-h))),
             childW=widget.scrollWidth||w,childH=widget.scrollHeight||h;
         for(const child of group.children.get(widget.uid)??[])visit(child,childX,childY,childW,childH,widgetClip,depth+1);
     }
@@ -183,6 +184,10 @@ export class NativeInterfaceCanvas{
         const token=++this.generation;
         const group=await this.interfaces.load(groupId);
         if(token!==this.generation)return null;
+        return this.showGroup(group);
+    }
+    async showGroup(group){
+        const token=++this.generation,groupId=group.groupId;
         const bounds=this.bounds(),layout=flattenInterface(group,bounds.width,bounds.height);
         const fonts=[...new Set(layout.nodes.filter(n=>n.widget.type===4&&n.widget.fontId>=0).map(n=>n.widget.fontId))];
         const sprites=[...new Set(layout.nodes.filter(n=>n.widget.type===5&&n.widget.spriteId>=0).map(n=>n.widget.spriteId))];

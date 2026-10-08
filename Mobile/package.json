@@ -11,6 +11,7 @@
     "build": "node scripts/run-client.mjs build",
     "test": "node --test tests/*.test.mjs",
     "test:rsprot": "node scripts/verify-native-login.mjs",
+    "test:interfaces:rsprot": "node scripts/verify-native-interfaces.mjs",
     "gateway": "node gateway/cli.mjs",
     "probe": "node gateway/probe-cli.mjs",
     "probe:game": "node gateway/game-probe-cli.mjs",

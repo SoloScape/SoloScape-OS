@@ -1,6 +1,25 @@
 # TSPS → SoloScape protocol interoperability
 
-Status: **native revision-240 browser login and native player/NPC update decoding implemented; TSPS protocol remains incompatible**. Synthetic account login is verified against the installed rsprot decoder and gateway. A real local authentication and game packet stream were previously observed, and the NPC renderer has now been confirmed working in a live local client. Native OPNPC_V2 primary interactions and OPNPC6 Examine are implemented and fixture-tested, with live interaction still awaiting confirmation. The HTML mock menu was replaced with canvas menu rendering based on the pinned client Choose Option code; it loads original b12_full glyphs and metrics from revision-240 cache indices 8 and 13, group 496. The full TSPS interface menu system is not yet ported.
+Status: **native revision-240 browser login, player/NPC updates and server-driven interface lifecycle implemented; TSPS protocol remains incompatible**. Synthetic account login is verified against the installed rsprot decoder and gateway. A real local authentication and game packet stream were previously observed, and the NPC renderer has now been confirmed working in a live local client. Native OPNPC_V2 primary interactions and OPNPC6 Examine are implemented and fixture-tested, with live interaction still awaiting confirmation. The HTML mock menu was replaced with canvas menu rendering based on the pinned client Choose Option code; it loads original b12_full glyphs and metrics from revision-240 cache indices 8 and 13, group 496. The full TSPS interface menu system is not yet ported.
+
+The authenticated packet dispatcher now consumes `IF_OPENTOP`, `IF_OPENSUB`,
+`IF_CLOSESUB`, `IF_MOVESUB`, `IF_RESYNC_V2`, `IF_SETTEXT`, `IF_SETHIDE`,
+`IF_SETCOLOUR`, `IF_SETSCROLLPOS`, `IF_SETPOSITION` and `IF_SETEVENTS_V2`.
+Their byte permutations match the installed revision-240 rsprot encoders.
+Resync mounts/events are decoded completely before replacing state. Update
+and mount counts are bounded; assets load asynchronously from verified index 3.
+Event ranges preserve the wire's `65535` = `-1` component sentinel; only
+the base widget's `-1` permissions are currently used (item slots are not drawn).
+
+Native IF1 buttons use opcode 11 with a big-endian combined widget ID;
+IF3 buttons use opcode 1 with ID, big-endian sub/item IDs and operation 1..10
+(nine bytes). Continue uses opcode 82 with a big-endian widget ID and
+`g2Alt3` sub ID; modal close uses opcode 98 with no payload. ISAAC framing
+belongs to `NativeGameSession`. Primary IF3 actions require a cache action
+label and the corresponding server event bit. CS1/CS2, script-created
+components and model/item widgets remain unsupported. Fixture, real-browser
+canvas and JVM interoperability tests pass; live account/phone interface
+behaviour has not yet been established.
 
 ## Native interface rendering scope
 

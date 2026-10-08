@@ -89,13 +89,34 @@ select a group number and click **Preview interface**. **Close** restores
 the unobstructed world. The interface preview is not a new RuneScape
 dialogue and does not simulate server behaviour.
 
+When authenticated, the native game stream now owns the interface canvas.
+`IF_OPENTOP`, `IF_OPENSUB`, `IF_CLOSESUB`, `IF_MOVESUB` and `IF_RESYNC_V2`
+open, attach, move, close and reconcile real cache groups. Mounted groups
+inherit their destination component's position and clipping. Server text,
+colour, visibility, position, scrolling and event-flag updates apply even
+when they arrive before cache loading completes. Cache definitions remain
+immutable; disconnect clears session state and cancels stale loads.
+
+Supported buttons send revision-240 `IF_BUTTON`, `IF_BUTTONX`,
+`RESUME_PAUSEBUTTON` or `CLOSE_MODAL` packets through the authenticated
+ISAAC stream. IF3 action permissions follow the server's event flags.
+Interface clicks do not also trigger world movement. The developer preview
+is disabled during login/gameplay and remains read-only outside a session.
+
 Model, inventory/item and CS2-driven interface content are currently
 decoded or tracked as unsupported, not drawn. CS1/CS2 listeners remain
-inert; clicks in this read-only preview do not send packets.
-**The following milestone** is server-driven interface lifecycle and
-component-update packets, followed by real NPC dialogue and the chatbox.
-The preview supports the renderer integration but is not a claim that
-every OSRS widget is implemented.
+inert, including script-created widgets, dialogue setup and local varp
+buttons. This connects the supported widget renderer to the server; it
+does not establish complete dialogue, inventory or chatbox behaviour.
+Live authenticated interface/phone validation remains outstanding.
+
+`npm test` covers wire vectors, nested mounts, updates, event permissions,
+button encoding, cancellation, pointer routing and real Chrome canvas
+painting. With Java 21+ and the installed server libraries available,
+`npm run test:interfaces:rsprot` checks all 11 supported incoming layouts
+against actual JVM encoders and sends synthetic IF1/IF3/Continue button
+payloads through the JVM decoders. Set `JAVA_BIN` if needed; no account
+credentials or captured cache/game data are used.
 
 ### Native NPC V6 synchronization and rendering
 

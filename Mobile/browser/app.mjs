@@ -11,6 +11,7 @@ import {loginCacheCrcs} from "./login-protocol.mjs";
 import {NativeGameplay} from "./native-gameplay.mjs";
 import {NativeChooseOptionMenu} from "./native-menu.mjs";
 import {NativeInterfaceCanvas} from "./interface-canvas.mjs";
+import {ServerInterfaces} from "./server-interfaces.mjs";
 
 const byId=id=>document.getElementById(id);
 const details=byId("loading-detail"),loading=byId("loading"),status=byId("map-status");
@@ -22,21 +23,34 @@ const levelSelector=byId("scene-level");
 const cache=new NativeJs5Cache({revision:240});
 let renderer=null,attempt=0;
 const interfacePreview=new NativeInterfaceCanvas(byId("native-interface-canvas"),cache);
+let serverInterfaces=null;
 const interfaceStatus=byId("interface-preview-status"),interfaceForm=byId("interface-preview-form");
+function lockInterfacePreview(locked){
+    for(const control of interfaceForm.elements)control.disabled=locked;
+    byId("interface-preview-close").disabled=locked;
+}
 interfaceForm.addEventListener("submit",async event=>{
     event.preventDefault();
+    if(loginBusy||gameSession?.connected)return;
+    const previewSession=sessionAttempt;
     const group=Number(byId("interface-group").value);
     if(!Number.isInteger(group)||group<0||group>65535)return;
     interfacePreview.close();interfaceStatus.textContent=`Loading CRC-verified interface ${group}…`;
     try{
         const result=await interfacePreview.show(group);
         if(result)interfaceStatus.textContent=`Cache ${result.groupId}: ${result.components} components, ${result.rendered} visible, ${result.unsupported} unsupported models/items, ${result.missingAssets} missing sprites/fonts.`;
-    }catch(error){interfacePreview.close();interfaceStatus.textContent="Cache interface unavailable: "+error.message;}
+    }catch(error){
+        if(previewSession!==sessionAttempt)return;
+        interfacePreview.close();interfaceStatus.textContent="Cache interface unavailable: "+error.message;
+    }
 });
 byId("interface-preview-close").addEventListener("click",()=>{
     interfacePreview.close();interfaceStatus.textContent="Cache interface preview closed.";
 });
-window.addEventListener("resize",()=>{if(interfacePreview.active)interfacePreview.paint();});
+window.addEventListener("resize",()=>{
+    const view=serverInterfaces?.view??interfacePreview;
+    if(view.active)view.paint();
+});
 
 function showFailure(error){
     const message=error?.message||String(error);
@@ -192,6 +206,7 @@ async function prepareLogin(){
 loginForm.addEventListener("submit",async event=>{
     event.preventDefault();if(loginBusy||gameSession?.connected||!loginConfig)return;
     const sequence=++sessionAttempt;loginBusy=true;loginButton.disabled=true;disconnect.hidden=false;
+    interfacePreview.close();lockInterfacePreview(true);
     examineResult.hidden=true;
     const credentials={username:byId("login-username").value,password:byId("login-password").value,otp:byId("login-otp").value};
     byId("login-password").value="";byId("login-otp").value="";
@@ -217,10 +232,15 @@ loginForm.addEventListener("submit",async event=>{
             onClose:message=>{
                 if(sequence!==sessionAttempt)return;
                 gameplay?.close();button.disabled=false;levelSelector.disabled=false;loading.hidden=true;
+                serverInterfaces=null;lockInterfacePreview(false);
                 loginStatus.textContent=message;loginButton.disabled=false;disconnect.hidden=true;
             },
         });
-        gameplay=new NativeGameplay({cache:loginCache,viewport:renderer,session:gameSession,onNpcMenu:showNpcMenu,onExamine:showExamine,
+        serverInterfaces=new ServerInterfaces({view:new NativeInterfaceCanvas(byId("native-interface-canvas"),loginCache),session:gameSession,
+            onStatus:message=>{if(sequence===sessionAttempt)interfaceStatus.textContent=message;}});
+        serverInterfaces.bindInput(byId("world-canvas").parentElement);
+        interfaceStatus.textContent="Interfaces are controlled by the SoloScape server.";
+        gameplay=new NativeGameplay({cache:loginCache,viewport:renderer,session:gameSession,interfaces:serverInterfaces,onNpcMenu:showNpcMenu,onExamine:showExamine,
             run:()=>byId("run-movement").checked,
             onStatus:message=>{if(sequence===sessionAttempt)loginStatus.textContent=message;},
             onRegion:region=>{
@@ -239,11 +259,12 @@ loginForm.addEventListener("submit",async event=>{
         if(sequence===sessionAttempt&&gameSession.connected&&!gameplay.sync?.initialized)
             loginStatus.textContent=`Authenticated · player slot ${result.playerIndex}. Waiting for your server location…`;
     }catch(error){
-        if(sequence===sessionAttempt){gameplay?.close();button.disabled=false;levelSelector.disabled=false;loginStatus.textContent=error.message;loginButton.disabled=false;disconnect.hidden=true;}
+        if(sequence===sessionAttempt){gameplay?.close();serverInterfaces=null;lockInterfacePreview(false);button.disabled=false;levelSelector.disabled=false;loginStatus.textContent=error.message;loginButton.disabled=false;disconnect.hidden=true;}
     }finally{credentials.password="";credentials.otp="";if(sequence===sessionAttempt)loginBusy=false;}
 });
 disconnect.addEventListener("click",()=>{
     sessionAttempt++;gameplay?.close();menuUi.close();clearTimeout(examineTimer);examineResult.hidden=true;gameSession?.close();gameSession=null;gameplay=null;loginBusy=false;
+    serverInterfaces=null;lockInterfacePreview(false);
     button.disabled=false;levelSelector.disabled=false;loading.hidden=true;
     loginButton.disabled=!loginConfig;disconnect.hidden=true;loginStatus.textContent="Disconnected";
 });
