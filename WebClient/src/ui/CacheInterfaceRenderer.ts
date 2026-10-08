@@ -260,6 +260,10 @@ export class CacheInterfaceRenderer {
           void this.drawText({ ...widget, text, colour }, node, this.generation);
         }
       }
+      if (change?.modelId !== undefined && change.modelId >= 0) {
+        node.dataset.modelId = String(change.modelId);
+        node.title = 'Server model ' + change.modelId;
+      }
       if (change?.objectId !== undefined && change.objectId >= 0) {
         node.dataset.objectId = String(change.objectId);
         node.title = 'Game object ' + change.objectId + ' × ' + (change.objectCount ?? 1);
