@@ -193,8 +193,13 @@ class BotPvpCombat @Inject constructor(
     }
 
     private fun activeLeader(squad: WildernessSquad): Player? {
-        if (squad.leader.isValidTarget()) return squad.leader
-        val replacement = squad.members.firstOrNull { it.isValidTarget() } ?: return null
+        fun available(member: Player): Boolean {
+            val state = states[member] ?: return false
+            return member.isValidTarget() && state.retreatStartedAt < 0 &&
+                state.restockAt < 0 && areas.inArea("area.multiway", member.coords)
+        }
+        if (available(squad.leader)) return squad.leader
+        val replacement = squad.members.firstOrNull(::available) ?: return null
         squad.leader = replacement
         return replacement
     }
