@@ -53,7 +53,6 @@ interface WidgetNode {
 export class CacheMobileHudArt {
   private readonly spriteUrls = new Map<number, Promise<string | null>>();
   private readonly mountedGroups = new Map<number, WidgetSet>();
-  private readonly layers = new Map<number, HTMLElement>();
   private readonly images = new Set<HTMLImageElement>();
   private readonly shells = new Map<number, WidgetNode>();
   private resizeObserver: ResizeObserver | null = null;
@@ -87,13 +86,27 @@ export class CacheMobileHudArt {
       }
     }));
     if (this.destroyed) return false;
+    // Check actual sprite bytes before hiding the usable fallback shell.
+    // The reference cache layout is not assumed to match every rev-240 cache.
+    const sample = [...this.mountedGroups.values()]
+      .flatMap((widgets) => [...widgets.values()])
+      .filter((widget) => !widget.hidden && widget.type === 5 &&
+        widget.spriteId !== null)
+      .map((widget) => widget.spriteId!)
+      .filter((value, index, array) => array.indexOf(value) === index)
+      .slice(0, 18);
+    if (sample.length < 3) return false;
+    const found = await Promise.all(sample.map((id) => this.resolveSprite(id)));
+    if (this.destroyed || found.filter((url) => url !== null).length < 3) {
+      return false;
+    }
     this.host.replaceChildren();
     this.host.classList.add('hud-cache-art');
     this.resizeObserver?.disconnect();
     this.resizeObserver = new ResizeObserver(() => this.render());
     this.resizeObserver.observe(this.root);
     await this.render();
-    return this.images.size > 0;
+    return true;
   }
 
   dispose(): void {
@@ -104,11 +117,12 @@ export class CacheMobileHudArt {
     this.host.replaceChildren();
     this.root.classList.remove('hud-cache-art-active');
     this.images.clear();
-    this.layers.clear();
     this.shells.clear();
   }
 
-  get visibleSpriteCount(): number { return this.images.size; }
+  get visibleSpriteCount(): number {
+    return [...this.images].filter((img) => Boolean(img.getAttribute('src'))).length;
+  }
   get groups(): readonly number[] { return [...this.mountedGroups.keys()]; }
 
   private async render(): Promise<void> {
@@ -161,6 +175,7 @@ export class CacheMobileHudArt {
       byParent.set(parent, list);
     }
     const drawn = new Set<number>();
+    let spriteLimit = 0;
     const walk = (parent: HTMLElement, parentId: number,
       pw: number, ph: number, depth: number): void => {
       if (depth > 32) return;
@@ -180,7 +195,9 @@ export class CacheMobileHudArt {
         parent.append(el);
         this.shells.set(widget.id, { element: el, component: widget, width: w, height: h });
 
-        if (widget.type === 5 && widget.spriteId !== null && w > 0 && h > 0) {
+        if (widget.type === 5 && widget.spriteId !== null &&
+          w > 0 && h > 0 && spriteLimit < 180) {
+          spriteLimit++;
           const image = document.createElement('img');
           image.className = 'hud-cache-art-sprite';
           image.alt = '';
