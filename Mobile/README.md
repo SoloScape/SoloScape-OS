@@ -1095,3 +1095,38 @@ migration to the pinned TSPS scene construction/animation/light/fog pipeline,
 including dynamic loc morphs and instanced regions. The pinned TSPS WebGL
 renderer is not drop-in compatible with this standalone revision-240 mobile
 viewport. This readiness fix does not claim that renderer migration is done.
+
+### Pinned TSPS scene-renderer migration (stage 1: cache floor topology)
+
+The native revision-240 WebGL client now imports the original pinned TSPS
+`SceneTileModel` and `ColorUtil` as generated ES modules. **Cache-backed
+untextured underlay and overlay tiles and textured overlay tiles** use that
+upstream class for OSRS shape vertices, rotations, face winding, visible/hidden
+faces, integer-lit HSL and texture coordinates, instead of duplicating the
+floor topology calculation in `world-webgl.mjs`. The GPU palette also uses
+the original TSPS HSL table (with the final 0xffff entry retained from the
+native 65536-element palette, since the pinned table has only 65535 entries).
+The local `buildTileGeometry` remains for pre-cache preview/wireframe and
+textured underlay fallback.
+
+Regenerate the pinned, **unmodified** source modules from the checked-out
+TSPS submodule with:
+
+```powershell
+cd Mobile
+npm run generate:tsps-scene
+node --test tests/pinned-scene.test.mjs
+npm test
+```
+
+The parity tests exercise all 13 shapes/four rotations and directly compare
+the assembled ground and textured overlay vertices to pinned TSPS face
+outputs. The native renderer retains the same WebGL buffers, camera, texture
+upload, clicking and NPC/player integration. This is the first **actual
+upstream scene-component integration**, not a wholesale replacement of
+`WebGLOsrsRenderer`. That renderer depends on TSPS's workers, GL libraries,
+material loaders, scene buffers, dynamic-var managers and render passes.
+Animated and transformed objects, instanced scenes, water and exact fog/roof
+shaders are still outside this migration. Do not claim pixel-identical
+RuneLite/OSRS graphics until those subsystems are integrated and compared
+against reference frames.

@@ -28,6 +28,7 @@
  */
 // Colour conversion adapted from pinned TSPS ColorUtil; integer terrain lighting
 // and blending cross-checked against the deobfuscated Java OSRS client.
+import {HSL_RGB_MAP} from "./tsps-runtime/rs-util-ColorUtil.mjs";
 const HUE_OFFSET=0.0078125;
 const SATURATION_OFFSET=0.0625;
 
@@ -320,4 +321,11 @@ export function prepareFloorLighting(terrain,materials){
     return {underlays,overlays,lights,lightSide};
 }
 
-export const HSL_PALETTE=buildPalette(0.8,0,512);
+// Render with the exact pinned TSPS packed-HSL palette. TSPS allocates
+// 0xffff entries, so retain the native final entry for the valid 0xffff index.
+export const HSL_PALETTE=(()=>{
+    const out=new Int32Array(65536);
+    out.set(HSL_RGB_MAP);
+    out[65535]=buildPalette(0.8,0,512)[65535];
+    return out;
+})();

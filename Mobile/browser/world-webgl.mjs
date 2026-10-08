@@ -29,6 +29,7 @@
 // Tile topology adapted from RSPSApp/tsps b9ca431 SceneTileModel (BSD-2-Clause).
 // Cache geometry and packed-HSL vertex colours use the client terrain pipeline.
 import { prepareFloorLighting, adjustFloorLight, HSL_PALETTE, sampleTerrain } from "./floor-lighting.mjs";
+import {SceneTileModel} from "./tsps-runtime/rs-scene-SceneTileModel.mjs";
 import {terrainPlane,sceneLevel,validateSceneLevel} from "./scene-planes.mjs";
 import {NpcLongPress} from "./npc-pointer.mjs";
 // Native scene distances are tiles, unlike RuneLite's client zoom values.
@@ -223,6 +224,23 @@ export function buildTileGeometry(shape,rotation,heights,cornerColors) {
     return faces;
 }
 
+/** Emit triangles from the pinned TSPS SceneTileModel class rather than
+ * reproducing tile shape and rotation math a second time. Native mesh vertex
+ * units are tiles; the pinned model uses 128 units per tile. */
+export function buildTspsFloorTile({shape,rotation,heights,lights,underlayHsl,overlayHsl,overlayTexture=-1}){
+    if(!Number.isInteger(shape)||shape<0||shape>12||
+        !Number.isInteger(rotation)||rotation<0||rotation>3||
+        heights?.length!==4||lights?.length!==4)
+        throw new Error("Invalid pinned TSPS floor tile input");
+    const tile=new SceneTileModel(shape,rotation,overlayTexture,0,0,
+        heights[0],heights[1],heights[2],heights[3],
+        lights[0],lights[1],lights[2],lights[3],
+        underlayHsl,underlayHsl,underlayHsl,underlayHsl,
+        overlayHsl,overlayHsl,-1,-1);
+    return tile.faces.map(face=>({isOverlay:face.isOverlay,
+        vertices:face.vertices.map(v=>[v.x/128,v.z/128,v.y,v.hsl])}));
+}
+
 function buildPlaneMesh(terrain){
     if(!terrain||terrain.side!==64||terrain.heights?.length!==4096||
         terrain.underlays?.length!==4096||terrain.overlays?.length!==4096||
@@ -250,7 +268,13 @@ function buildPlaneMesh(terrain){
             overlay:cornerIndices.map(c=>overlayTex>=0?Math.max(2,Math.min(126,lighting.lights[c])):adjustFloorLight(overlayHsl,lighting.lights[c])),
         }:undefined;
         const level=sceneLevel(terrain.baseTerrain??terrain,terrain.plane??0,x,y);
-        for(const face of buildTileGeometry(shape,rotation,heights,colors)){
+        // Pinned TSPS tile faces replace the local reconstruction for cache floors.
+        // Textured underlays still use the legacy mesh pending the TSPS material adapter.
+        const faces=lighting&&underlayTex<0?buildTspsFloorTile({shape,rotation,heights,
+            lights:cornerIndices.map(c=>lighting.lights[c]),underlayHsl:underlay,
+            overlayHsl:overlayTex>=0?-1:overlayHsl<0?-2:overlayHsl,
+            overlayTexture:overlayTex}):buildTileGeometry(shape,rotation,heights,colors);
+        for(const face of faces){
             const texture=face.isOverlay?overlayTex:underlayTex;
             let numbers=levels[level];
             if(lighting&&texture>=0){
