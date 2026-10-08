@@ -40,6 +40,8 @@ class BotPvpCombat @Inject constructor(
 
     private val states = LinkedHashMap<Player, BotPvpState>()
     private val squads = LinkedHashMap<Player, WildernessSquad>()
+    /** Opt-in human-led teams are separate from bot-only Wilderness squads. */
+    private val playerLeaders = LinkedHashMap<Player, Player>()
     private val random = Random.Default
     private val routeFinding = RouteFinding(collision)
 
@@ -181,7 +183,41 @@ class BotPvpCombat @Inject constructor(
         for (member in members) squads[member] = squad
     }
 
+    fun inWilderness(player: Player): Boolean =
+        player.isValidTarget() && player.coords.wildernessLevel(areas) > 0
+
+    fun hasPlayerFollower(leader: Player): Boolean = playerLeaders.containsValue(leader)
+
+    fun canOfferPlayerTeam(bot: Player): Boolean {
+        val state = states[bot] ?: return false
+        return bot !in squads && bot !in playerLeaders && inWilderness(bot) &&
+            !bot.isInCombat() && !bot.isDelayed && !bot.isAccessProtected &&
+            state.target == null && !state.dead && !state.returning &&
+            state.retreatStartedAt < 0 && state.restockAt < 0
+    }
+
+    fun joinPlayerTeam(bot: Player, leader: Player): Boolean {
+        if (!canOfferPlayerTeam(bot) || !inWilderness(leader) ||
+            hasPlayerFollower(leader) || bot === leader
+        ) return false
+        val state = states.getValue(bot)
+        disengage(bot, state)
+        state.returning = false
+        playerLeaders[bot] = leader
+        // Native auto-retaliation must not override the player's chosen target or attack the
+        // leader by mistake. The bot controller still retaliates through legal PvP attacks.
+        VarPlayerIntMapSetter.set(bot, "varp.option_nodef", 1)
+        return true
+    }
+
+    fun leavePlayerTeam(bot: Player) {
+        if (playerLeaders.remove(bot) == null) return
+        states[bot]?.let { disengage(bot, it) }
+        VarPlayerIntMapSetter.set(bot, "varp.option_nodef", 0)
+    }
+
     fun remove(player: Player) {
+        leavePlayerTeam(player)
         states.remove(player)
         val squad = squads.remove(player) ?: return
         squad.members.remove(player)
@@ -209,7 +245,8 @@ class BotPvpCombat @Inject constructor(
             (it.hotspotId?.let { hotspot -> "@$hotspot" } ?: "") +
             (squads[player]?.let { squad ->
                 " [squad ${squad.members.size} ${if (activeLeader(squad) === player) "leader" else "member"}]"
-            } ?: "")
+            } ?: "") +
+            (playerLeaders[player]?.let { " [following ${it.displayName}]" } ?: "")
     } ?: ""
 
     fun riskTier(player: Player): BotPvpRiskTier? = states[player]?.risk?.tier
@@ -239,9 +276,16 @@ class BotPvpCombat @Inject constructor(
         opponents: List<Player>,
         wilderness: Boolean,
         patrol: CoordGrid,
+        waitingForTeamReply: Boolean = false,
     ): String {
         val state = states[player] ?: return "unconfigured"
         val cycle = player.currentMapClock
+        val previousLeader = playerLeaders[player]
+        if (previousLeader != null &&
+            (!inWilderness(previousLeader) || !inWilderness(player))
+        ) {
+            leavePlayerTeam(player)
+        }
         if (player.hitpoints <= 0) {
             state.dead = true
             disengage(player, state)
@@ -321,8 +365,13 @@ class BotPvpCombat @Inject constructor(
         }
         val squad = if (wilderness) squads[player] else null
         val leader = squad?.let(::activeLeader)
-        val returnTo = if (leader != null && leader !== player &&
-            areas.inArea("area.multiway", leader.coords)) leader.coords else squad?.home ?: patrol
+        val playerLeader = if (wilderness) playerLeaders[player] else null
+        val returnTo = when {
+            playerLeader != null -> playerLeader.coords
+            leader != null && leader !== player &&
+                areas.inArea("area.multiway", leader.coords) -> leader.coords
+            else -> squad?.home ?: patrol
+        }
         if (state.returning) {
             if (player.coords.chebyshevDistance(returnTo) <= 7) state.returning = false
             else {
@@ -339,9 +388,16 @@ class BotPvpCombat @Inject constructor(
             val committed = state.target === opponent
             val range = BotPvpPolicy.engagementRange(
                 state.profile.chaseDistanceTiles,
-                retaliating || committed || squad != null,
+                retaliating || committed || squad != null || playerLeader != null,
             )
-            opponent !== player && !teams.allied(player, opponent) &&
+            val defendingLeader = playerLeader != null &&
+                isAttacking(playerLeader, opponent)
+            val supportingLeader = playerLeader != null &&
+                isAttacking(opponent, playerLeader)
+            opponent !== player && opponent !== playerLeader &&
+                !teams.allied(player, opponent) &&
+                (playerLeader == null || defendingLeader || supportingLeader || retaliating) &&
+                (!waitingForTeamReply || retaliating) &&
                 BotPvpPolicy.canSquadEngage(
                     hasSquad = squad != null,
                     squadmate = squad?.members?.contains(opponent) == true,
@@ -356,7 +412,8 @@ class BotPvpCombat @Inject constructor(
         }
         val current = state.target
         if (current != null && current !in eligible) disengage(player, state)
-        if (cycle >= state.nextTargetReview || state.target == null || squad != null) {
+        if (cycle >= state.nextTargetReview || state.target == null ||
+            squad != null || playerLeader != null) {
             val indices = eligible.indices.toList()
             val retaliation = eligible.indices.filter {
                 isAttacking(player, eligible[it])
@@ -372,16 +429,27 @@ class BotPvpCombat @Inject constructor(
                     .mapNotNull { states[it]?.target }
                     .firstOrNull { it in eligible }
             }
-            val selected = sharedThreat ?: groupFocus ?: BotPvpPolicy.chooseTarget(
-                indices, eligible.indexOf(state.target).takeIf { it >= 0 }, retaliation,
-                { player.coords.chebyshevDistance(eligible[it].coords) },
-                { targetIndex -> states.values.count { it.target === eligible[targetIndex] } },
-                { targetIndex ->
-                    if (state.risk.preferUnskulled &&
-                        eligible[targetIndex].skullIcon != null
-                    ) 12 else 0
-                },
-            )?.let { eligible[it] }
+            val humanTeamTarget = playerLeader?.let { human ->
+                eligible.firstOrNull { isAttacking(human, it) }
+                    ?: eligible.firstOrNull { isAttacking(it, human) }
+                    ?: eligible.firstOrNull { isAttacking(player, it) }
+            }
+            val selected = if (playerLeader != null) {
+                humanTeamTarget
+            } else if (waitingForTeamReply) {
+                eligible.firstOrNull { isAttacking(player, it) }
+            } else {
+                sharedThreat ?: groupFocus ?: BotPvpPolicy.chooseTarget(
+                    indices, eligible.indexOf(state.target).takeIf { it >= 0 }, retaliation,
+                    { player.coords.chebyshevDistance(eligible[it].coords) },
+                    { targetIndex -> states.values.count { it.target === eligible[targetIndex] } },
+                    { targetIndex ->
+                        if (state.risk.preferUnskulled &&
+                            eligible[targetIndex].skullIcon != null
+                        ) 12 else 0
+                    },
+                )?.let { eligible[it] }
+            }
             if (selected !== state.target) {
                 state.target = selected
                 state.reaction.reset()
@@ -392,6 +460,15 @@ class BotPvpCombat @Inject constructor(
         val target = state.target
         if (target == null) {
             native.clearPrayers(player)
+            if (playerLeader != null) {
+                if (player.coords.chebyshevDistance(playerLeader.coords) > 2 &&
+                    cycle >= state.nextMove && !player.frozen) {
+                    walkTowards(player, playerLeader.coords)
+                    state.nextMove = cycle + 2
+                }
+                return "following ${playerLeader.displayName}"
+            }
+            if (waitingForTeamReply) return "awaiting team reply"
             if (leader != null && leader !== player) {
                 if (player.coords.chebyshevDistance(leader.coords) > 3 &&
                     cycle >= state.nextMove && !player.frozen) {
