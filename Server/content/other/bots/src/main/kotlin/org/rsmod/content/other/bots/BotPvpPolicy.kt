@@ -61,6 +61,13 @@ internal object BotPvpPolicy {
         return 2 + sizeRoll.coerceIn(0, minOf(2, remaining - 2))
     }
 
+    fun canSquadEngage(
+        hasSquad: Boolean,
+        squadmate: Boolean,
+        attackerInMultiway: Boolean,
+        targetInMultiway: Boolean,
+    ): Boolean = !squadmate && (!hasSquad || (attackerInMultiway && targetInMultiway))
+
     fun engagementRange(chaseDistance: Int, retaliatingOrCommitted: Boolean): Int =
         if (retaliatingOrCommitted) maxOf(chaseDistance, 32) else chaseDistance
 
