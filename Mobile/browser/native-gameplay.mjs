@@ -34,6 +34,7 @@ export class NativeGameplay {
         this.npcs=new NativeNpcSync();this.npcModels=new NativeNpcModels(models);this.npcMotions=new Map();this.npcDrawn=0;this.selectionToken=0;this.selectedNpc=null;
         this.viewport.onDestination=tile=>this.move(tile);
         this.viewport.onNpc=hit=>void this.selectNpc(hit);
+        this.viewport.onGroundMenu=hit=>this.showGroundMenu(hit);
         this.viewport.onNpcCancel=()=>this.clearNpcMenu();
     }
     authenticated(account){
@@ -128,6 +129,14 @@ export class NativeGameplay {
         this.viewport.setTerrain({...center,regions},{resetCamera:false});
         this.session.sendGame(MAP_BUILD_COMPLETE);this.loading=false;this.unavailable=unavailable;
         this.report();await this.drawActors();
+    }
+    showGroundMenu({tile,x,y,run=false}){
+        this.clearNpcMenu();
+        if(this.closed||this.loading||!this.sync?.local||!this.origin)return;
+        const worldX=this.origin.mapX*64+tile.x,worldY=this.origin.mapY*64+tile.y;
+        if(worldX<0||worldX>16383||worldY<0||worldY>16383||
+            !this.regions.has(`${worldX>>>6},${worldY>>>6}`))return;
+        this.onNpcMenu({kind:"ground",name:"Ground",tile,x,y,run});
     }
     clearNpcMenu(){
         this.selectionToken++;this.selectedNpc=null;this.onNpcMenu(null);
@@ -278,5 +287,5 @@ export class NativeGameplay {
             (this.unavailable?.length?` · ${this.unavailable.length} map edges unavailable`:""));
     }
     fail(error){if(!this.closed){this.onStatus("Native scene failed: "+error.message);this.session.close();}}
-    close(){this.closed=true;this.generation++;clearInterval(this.timer);this.clearNpcMenu();this.viewport.setActors(null);this.viewport.onDestination=()=>{};this.viewport.onNpc=()=>{};this.viewport.onNpcCancel=()=>{};}
+    close(){this.closed=true;this.generation++;clearInterval(this.timer);this.clearNpcMenu();this.viewport.setActors(null);this.viewport.onDestination=()=>{};this.viewport.onNpc=()=>{};this.viewport.onNpcCancel=()=>{};this.viewport.onGroundMenu=()=>{};}
 }

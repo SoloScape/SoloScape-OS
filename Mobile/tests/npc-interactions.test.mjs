@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {test} from "node:test";
 import {NPC_OPCODES,encodeNpcInteraction,encodeNpcExamine,npcActionOptions} from "../browser/npc-interactions.mjs";
 import {NpcLongPress,NPC_HOLD_DELAY_MS} from "../browser/npc-pointer.mjs";
-import {pickNpcTriangles} from "../browser/world-webgl.mjs";
+import {pickNpcTriangles,dispatchWorldContextMenu} from "../browser/world-webgl.mjs";
 import {NativeGameplay} from "../browser/native-gameplay.mjs";
 
 test("all five OPNPC_V2 packets agree with rsprot revision-240 decoder permutations",()=>{
@@ -150,4 +150,42 @@ test("long-press opens options only after a stationary hold; release does not cl
     press.start(4,10,20,{index:7});press.cancel();
     assert.equal(callbacks.size,0);
     assert.deepEqual(events,[{index:5}]);
+});
+
+test("right-click always suppresses the browser image menu and routes NPC, ground, empty hits",()=>{
+    const calls=[],options={
+        pickNpc:()=>({index:8,x:20,y:25}),
+        pickGround:()=>({tile:{x:14,y:15},x:20,y:25}),
+        onNpc:hit=>calls.push(["npc",hit]),
+        onGround:hit=>calls.push(["ground",hit]),
+        onCancel:()=>calls.push(["cancel"])
+    };
+    const event=()=>({clientX:20,clientY:25,shiftKey:false,prevented:0,
+        preventDefault(){this.prevented++;}});
+    const npcEvent=event();
+    assert.equal(dispatchWorldContextMenu(npcEvent,options),"npc");
+    assert.equal(npcEvent.prevented,1);
+    assert.deepEqual(calls.at(-1),["npc",{index:8,x:20,y:25,mode:"menu",run:false}]);
+    const groundEvent=event();
+    assert.equal(dispatchWorldContextMenu(groundEvent,{...options,pickNpc:()=>null}),"ground");
+    assert.equal(groundEvent.prevented,1);
+    assert.deepEqual(calls.at(-1),["ground",{tile:{x:14,y:15},x:20,y:25,run:false}]);
+    const blankEvent=event();
+    assert.equal(dispatchWorldContextMenu(blankEvent,{...options,pickNpc:()=>null,pickGround:()=>null}),"empty");
+    assert.equal(blankEvent.prevented,1);
+    assert.deepEqual(calls.at(-1),["cancel"]);
+});
+test("ground context menu is authenticated and does not send movement before Walk here",()=>{
+    const menu=[],sent=[],vp={onNpc:null,onNpcCancel:null,onDestination:null,onGroundMenu:null,setActors(){}};
+    const game=new NativeGameplay({cache:{},viewport:vp,session:{sendGame(...args){sent.push(args);}},
+        onNpcMenu:info=>menu.push(info)});
+    game.sync={local:{x:3202,y:3202,plane:0}};
+    game.origin={mapX:50,mapY:50};game.regions.set("50,50",{mapX:50,mapY:50});
+    game.showGroundMenu({tile:{x:10,y:20},x:75,y:105});
+    assert.deepEqual(menu.at(-1),{kind:"ground",name:"Ground",tile:{x:10,y:20},x:75,y:105,run:false});
+    assert.equal(sent.length,0);
+    game.clearNpcMenu();assert.equal(menu.at(-1),null);
+    game.showGroundMenu({tile:{x:100,y:20},x:75,y:105});
+    assert.equal(menu.at(-1),null); // outside all loaded regions
+    game.close();
 });

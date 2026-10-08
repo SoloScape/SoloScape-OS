@@ -156,23 +156,33 @@ function hideNpcMenu(){npcMenu.hidden=true;npcMenuActions.replaceChildren();}
 function showNpcMenu(info){
     hideNpcMenu();if(!info)return;
     npcMenuTitle.textContent=`Choose Option — ${info.name}`;
-    for(const {slot,label} of info.actions){
-        const button=document.createElement("button");button.type="button";
-        button.textContent=label;
-        if(label.trim().toLowerCase()==="attack")button.classList.add("npc-option--attack");
-        button.addEventListener("click",()=>{
-            try{gameplay?.interactNpc(info.index,slot,{run:info.run});}
-            catch(error){loginStatus.textContent="NPC interaction unavailable: "+error.message;}
+    if(info.kind==="ground"){
+        const walk=document.createElement("button");walk.type="button";
+        walk.textContent="Walk here";
+        walk.addEventListener("click",()=>{
+            gameplay?.move({...info.tile,run:info.run});
+            gameplay?.clearNpcMenu();
         });
-        npcMenuActions.append(button);
+        npcMenuActions.append(walk);
+    }else{
+        for(const {slot,label} of info.actions){
+            const button=document.createElement("button");button.type="button";
+            button.textContent=label;
+            if(label.trim().toLowerCase()==="attack")button.classList.add("npc-option--attack");
+            button.addEventListener("click",()=>{
+                try{gameplay?.interactNpc(info.index,slot,{run:info.run});}
+                catch(error){loginStatus.textContent="NPC interaction unavailable: "+error.message;}
+            });
+            npcMenuActions.append(button);
+        }
+        const examine=document.createElement("button");examine.type="button";
+        examine.className="npc-menu-examine";examine.textContent=`Examine ${info.name}`;
+        examine.addEventListener("click",()=>{
+            try{gameplay?.examineNpc(info.index);}
+            catch(error){loginStatus.textContent="Examine unavailable: "+error.message;}
+        });
+        npcMenuActions.append(examine);
     }
-    const examine=document.createElement("button");examine.type="button";
-    examine.className="npc-menu-examine";examine.textContent=`Examine ${info.name}`;
-    examine.addEventListener("click",()=>{
-        try{gameplay?.examineNpc(info.index);}
-        catch(error){loginStatus.textContent="Examine unavailable: "+error.message;}
-    });
-    npcMenuActions.append(examine);
     npcMenu.hidden=false;
     const world=npcMenu.parentElement,limitX=world.clientWidth-npcMenu.offsetWidth-8,
         limitY=world.clientHeight-npcMenu.offsetHeight-8;

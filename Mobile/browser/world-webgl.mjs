@@ -317,6 +317,17 @@ export function pickNpcTriangles(meshes,matrix,nx,ny){
     return best;
 }
 
+// Browser context menus are never appropriate over the game canvas.
+// Keep hit routing independently testable from WebGL and browser startup.
+export function dispatchWorldContextMenu(event,{pickNpc,pickGround,onNpc,onGround,onCancel}){
+    event.preventDefault();
+    const npc=pickNpc(event.clientX,event.clientY);
+    if(npc){onNpc({...npc,mode:"menu",run:Boolean(event.shiftKey)});return "npc";}
+    const ground=pickGround(event.clientX,event.clientY);
+    if(ground){onGround({...ground,run:Boolean(event.shiftKey)});return "ground";}
+    onCancel();return "empty";
+}
+
 export function terrainWireframe(vertices){
     if(!(vertices instanceof Float32Array)||vertices.length%18) {
         throw new Error("Invalid triangle mesh");
@@ -343,7 +354,7 @@ export class NativeTerrainViewport {
         this.buf=gl.createBuffer();
         this.sceneryBuf=gl.createBuffer();this.sceneryCount=0;
         this.actorBuf=gl.createBuffer();this.actorCount=0;this.actorBatches=[];this.actorPickMeshes=[];this.onDestination=onDestination;
-        this.onNpc=()=>{};this.onNpcCancel=()=>{};
+        this.onNpc=()=>{};this.onNpcCancel=()=>{};this.onGroundMenu=()=>{};
         this.palette=gl.createTexture();
         const pixels=new Uint8Array(65536*4);
         for(let i=0;i<HSL_PALETTE.length;i++){
@@ -410,14 +421,27 @@ export class NativeTerrainViewport {
             if(tile)this.onDestination({...tile,run:e.shiftKey});
         };
         this.onContextMenu=e=>{
-            const npc=this.pickNpcAt(e.clientX,e.clientY);
-            if(!npc)return;
+            // Suppress the native "Save image as..." canvas menu even when no NPC
+            // triangle is directly under the pointer.
             e.preventDefault();
             // Mobile OSes may synthesise contextmenu before or after our hold.
             if(e.pointerType==="touch"||e.sourceCapabilities?.firesTouchEvents||
                 this.pointer?.pointerType==="touch"||performance.now()-this.lastNpcHold<800)return;
             this.longPress.cancel();
-            this.onNpc({...npc,mode:"menu",run:e.shiftKey});
+            const rect=canvas.getBoundingClientRect();
+            const pickGround=(clientX,clientY)=>{
+                if(!this.pickVertices||!rect.width||!rect.height)return null;
+                const nx=2*(clientX-rect.left)/rect.width-1,ny=1-2*(clientY-rect.top)/rect.height;
+                const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,rect.width/rect.height);
+                const count=this.pickLevelCounts.slice(0,this.visibleLevel+1).reduce((a,b)=>a+b,0)*6;
+                const tile=pickTerrainTile(this.pickVertices.subarray(0,count),matrix,nx,ny);
+                return tile?{tile,x:clientX-rect.left,y:clientY-rect.top}:null;
+            };
+            dispatchWorldContextMenu(e,{
+                pickNpc:(x,y)=>this.pickNpcAt(x,y),pickGround,
+                onNpc:hit=>this.onNpc(hit),onGround:hit=>this.onGroundMenu(hit),
+                onCancel:()=>this.onNpcCancel()
+            });
         };
         this.onWheel=e=>{e.preventDefault();this.distance=Math.max(18,Math.min(170,this.distance*Math.exp(e.deltaY*.001)));};
         this.onKey=e=>{
