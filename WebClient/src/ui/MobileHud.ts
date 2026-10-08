@@ -6,6 +6,7 @@ import { cacheSpriteCanvas } from '../cache/CacheGameUiAssets';
 import { CacheBitmapFont } from './CacheBitmapFont';
 import type { Js5Client } from '../cache/Js5Client';
 import { CacheInterfaceRenderer } from './CacheInterfaceRenderer';
+import type { Rev240UiState } from '../protocol/Rev240UiState';
 
 type TabId =
   | 'combat' | 'inventory' | 'equipment' | 'prayer' | 'magic'
@@ -136,6 +137,8 @@ export class MobileHud {
   private readonly mapSquares = new Map<number, LoadedMapSquare>();
   private cacheFont: CacheBitmapFont | null = null;
   private interfaceRenderer: CacheInterfaceRenderer | null = null;
+  private serverUi: Rev240UiState | null = null;
+  private activePanelGroup: number | null = null;
   private interfaceGroupIds = new Set<number>();
   private cachedIconUrls = new Map<string, string>();
   private selectedTab: TabId | null = null;
@@ -239,7 +242,7 @@ export class MobileHud {
   setCacheAssets(assets: CacheGameUiAssets, js5: Js5Client): void {
     this.interfaceRenderer?.cancel();
     this.interfaceRenderer = new CacheInterfaceRenderer(
-      js5, assets.interfaces, assets.bold12,
+      js5, assets.interfaces, assets.bold12, this.serverUi ?? new Rev240UiState(),
     );
     this.interfaceGroupIds = new Set(assets.interfaces.availableGroupIds);
     this.cacheFont = new CacheBitmapFont(assets.bold12);
@@ -254,6 +257,64 @@ export class MobileHud {
       this.renderPanelHeading(STONES.find((stone) => stone.id === this.selectedTab)?.name ??
         this.selectedTab);
       this.renderCachedPanel(this.selectedTab);
+    }
+  }
+
+  setServerUi(server: Rev240UiState): void {
+    this.serverUi = server;
+  }
+
+  refreshServerUi(): void {
+    const energy = this.serverUi?.runEnergy;
+    const orb = this.require<HTMLElement>('#hud-run-orb');
+    const label = orb.querySelector('span');
+    if (label) {
+      label.textContent = energy === null || energy === undefined
+        ? '—' : String(Math.min(100, Math.floor(energy / 100))) + '%';
+      orb.title = energy === null || energy === undefined
+        ? 'Run energy unavailable' : 'Run energy ' + energy + ' / 10000';
+    }
+    this.interfaceRenderer?.refreshServerState();
+    if (this.selectedTab === 'skills') this.renderLiveSkills();
+    if (this.selectedTab && this.serverUi) {
+      const hinted = CACHE_TAB_GROUPS[this.selectedTab];
+      const group = hinted !== undefined &&
+        [...this.serverUi.subInterfaces.values()].some((s) => s.groupId === hinted)
+        ? hinted : null;
+      if (group !== null && group !== this.activePanelGroup) {
+        this.renderCachedPanel(this.selectedTab);
+      }
+    }
+  }
+
+  private renderLiveSkills(): void {
+    if (this.selectedTab !== 'skills') return;
+    let view = this.panelBody.querySelector<HTMLElement>('.hud-live-skills');
+    if (!view) {
+      view = document.createElement('div');
+      view.className = 'hud-live-skills';
+      this.panelBody.append(view);
+    }
+    const skills = this.serverUi?.skills;
+    view.replaceChildren();
+    if (!skills?.size) {
+      view.textContent = 'Waiting for UPDATE_STAT_V2 packets.';
+      return;
+    }
+    const names = [
+      'Attack', 'Defence', 'Strength', 'Hitpoints', 'Ranged', 'Prayer',
+      'Magic', 'Cooking', 'Woodcutting', 'Fletching', 'Fishing',
+      'Firemaking', 'Crafting', 'Smithing', 'Mining', 'Herblore',
+      'Agility', 'Thieving', 'Slayer', 'Farming', 'Runecraft',
+      'Hunter', 'Construction', 'Sailing',
+    ];
+    view.setAttribute('aria-label', 'Live server skill levels');
+    for (const [id, stat] of [...skills].sort((a, b) => a[0] - b[0])) {
+      const cell = document.createElement('span');
+      cell.className = 'hud-live-skill';
+      cell.textContent = (names[id] ?? 'Skill ' + id) + ': ' +
+        stat.currentLevel + ' (' + stat.experience.toLocaleString('en-GB') + ' XP)';
+      view.append(cell);
     }
   }
 
@@ -435,6 +496,7 @@ export class MobileHud {
 
   private closePanel(): void {
     this.interfaceRenderer?.cancel();
+    this.activePanelGroup = null;
     this.selectedTab = null;
     this.panel.hidden = true;
     this.updateActiveTab();
@@ -454,21 +516,67 @@ export class MobileHud {
    * inventory / prayer / skills slots are fabricated when it is missing.
    */
   private renderCachedPanel(tab: TabId): void {
-    const groupId = CACHE_TAB_GROUPS[tab];
-    if (groupId === undefined) {
-      this.panelBody.textContent = 'No cache interface is mapped to this tab.';
-      return;
-    }
+    const hintedId = CACHE_TAB_GROUPS[tab];
+    const open = [...(this.serverUi?.subInterfaces.values() ?? [])]
+      .filter((value) => this.interfaceGroupIds.has(value.groupId));
+    const matchingOpen = open.find((value) => value.groupId === hintedId);
+    const groupId = matchingOpen?.groupId ??
+      (hintedId !== undefined && this.interfaceGroupIds.has(hintedId)
+        ? hintedId : null);
+    this.activePanelGroup = groupId;
+
     if (!this.interfaceRenderer) {
       this.panelBody.textContent = 'Loading original game interfaces from cache...';
       return;
     }
-    if (!this.interfaceGroupIds.has(groupId)) {
-      this.panelBody.textContent = 'Cache interface 3:' + groupId +
-        ' is not present in this revision. No placeholder panel will be drawn.';
+    if (groupId === null) {
+      this.panelBody.replaceChildren();
+      const notice = document.createElement('p');
+      notice.textContent = 'No confirmed cache group for this tab.';
+      this.panelBody.append(notice);
+      this.offerAttachedInterfaceChoices(open);
       return;
     }
-    void this.interfaceRenderer.show(groupId, this.panelBody);
+    const renderer = this.interfaceRenderer;
+    void renderer.show(groupId, this.panelBody).then(() => {
+      if (this.selectedTab !== tab || this.activePanelGroup !== groupId) return;
+      if (!matchingOpen) {
+        const status = document.createElement('small');
+        status.className = 'hud-cache-unverified';
+        status.textContent = 'Historic interface ' + groupId +
+          ' — not yet confirmed by server interface binding.';
+        this.panelBody.prepend(status);
+        this.offerAttachedInterfaceChoices(open);
+      }
+      if (tab === 'skills') this.renderLiveSkills();
+    });
+  }
+
+  private offerAttachedInterfaceChoices(open: ReadonlyArray<{groupId: number; destination: number}>): void {
+    const groups = [...new Set(open.map((value) => value.groupId))];
+    if (!groups.length) return;
+    const select = document.createElement('select');
+    select.className = 'hud-server-interface-select';
+    select.setAttribute('aria-label', 'Choose server-opened interface');
+    const heading = document.createElement('option');
+    heading.value = '';
+    heading.textContent = 'Server-opened interfaces…';
+    select.append(heading);
+    for (const group of groups) {
+      const option = document.createElement('option');
+      option.value = String(group);
+      option.textContent = 'Interface ' + group + ' (from server)';
+      select.append(option);
+    }
+    select.addEventListener('change', () => {
+      const id = Number(select.value);
+      if (!Number.isInteger(id) || !this.interfaceGroupIds.has(id)) return;
+      this.activePanelGroup = id;
+      void this.interfaceRenderer?.show(id, this.panelBody).then(() => {
+        if (this.selectedTab === 'skills') this.renderLiveSkills();
+      });
+    });
+    this.panelBody.append(select);
   }
 
   /**
