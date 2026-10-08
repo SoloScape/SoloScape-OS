@@ -121,18 +121,32 @@ export class NativePlayerModels {
             if(this.appearances.size>=16)this.appearances.delete(this.appearances.keys().next().value);
             const pending=(async()=>{
                 if(appearance.transformedNpcId!==-1)throw new Error("NPC-transformed player models are unavailable");
-                const parts=[];
-                for(let slot=0;slot<12;slot++){
-                    const code=appearance.equipment[slot];if(code<256)continue;
-                    const item=code>=2048;
-                    const d=await this.config(item?10:3,code-(item?2048:256),item?ObjType:IdkType);
-                    const prefix=appearance.gender===1?"female":"male";
-                    const primary=appearance.customisations?.[slot]?.wearModels?.[appearance.gender===1?1:0]??d[prefix+"Model"];
-                    const ids=item?[primary,d[prefix+"Model1"],d[prefix+"Model2"]].filter(id=>id>=0&&id<0x7fffffff):d.modelIds??[];
-                    for(const id of ids)parts.push(recolourPlayerModel(await this.model(id),d,appearance,appearance.customisations?.[slot]));
+                // Equipment slots are independent JS5 downloads. Fetch a few
+                // concurrently but flatten in the original slot/model order:
+                // welding and recolours remain bit-for-bit deterministic.
+                const partSlots=[];
+                for(let start=0;start<12;start+=3){
+                    const slots=Array.from({length:Math.min(3,12-start)},(_,i)=>start+i);
+                    const loaded=await Promise.all(slots.map(async slot=>{
+                        const code=appearance.equipment[slot];if(code<256)return [];
+                        const item=code>=2048;
+                        const d=await this.config(item?10:3,code-(item?2048:256),item?ObjType:IdkType);
+                        const prefix=appearance.gender===1?"female":"male";
+                        const primary=appearance.customisations?.[slot]?.wearModels?.[appearance.gender===1?1:0]??d[prefix+"Model"];
+                        const ids=item?[primary,d[prefix+"Model1"],d[prefix+"Model2"]].filter(id=>id>=0&&id<0x7fffffff):d.modelIds??[];
+                        const models=await Promise.all(ids.map(id=>this.model(id)));
+                        return models.map(model=>recolourPlayerModel(model,d,appearance,appearance.customisations?.[slot]));
+                    }));
+                    partSlots.push(...loaded);
                 }
-                const model=mergePlayerModels(parts);
-                for(const id of new Set(model.faceTextures))if(id>=0)await this.textures.load(id);
+                const model=mergePlayerModels(partSlots.flat());
+                const textures=[...new Set(model.faceTextures)].filter(id=>id>=0);
+                for(let i=0;i<textures.length;i+=4){
+                    const batch=textures.slice(i,i+4);
+                    const loaded=await Promise.all(batch.map(id=>this.textures.load(id)));
+                    for(let j=0;j<batch.length;j++)if(!loaded[j])
+                        throw new Error("Player model texture "+batch[j]+" unavailable");
+                }
                 return model;
             })();
             this.appearances.set(key,pending);pending.catch(()=>this.appearances.delete(key));

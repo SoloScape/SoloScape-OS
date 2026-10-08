@@ -82,34 +82,45 @@ test("normal rebuild loads around the rebuild zone even before teleport PLAYER_I
     const gameplay=new NativeGameplay({cache:{},viewport:vp,session,now:()=>1000,
         onRegion:()=>assert.equal(ready,false),onReady:()=>{assert.equal(gameplay.loading,false);assert.equal(session.sent[0],27);ready=true;},
         loadTerrain:async(_cache,mapX,mapY)=>{loaded.push([mapX,mapY]);return terrain(mapX,mapY);},
-        loadMaterials:async()=>({underlays:new Map(),overlays:new Map()}),loadScenery:async()=>null});
+        loadMaterials:async()=>({underlays:new Map(),overlays:new Map()}),loadScenery:async()=>({vertices:new Float32Array(),levelCounts:[0,0,0,0],texturedBatches:[],errors:[]})});
     const sync=new NativePlayerSync(1);sync.initialized=true;sync.players[1]={x:100,y:100,plane:0,appearance:null,moving:false};gameplay.sync=sync;
     await gameplay.loadRebuild({zoneX:400,zoneY:400});
     assert.ok(loaded.some(([x,y])=>x===50&&y===50));
     assert.equal(session.sent[0],27);
+    assert.equal(ready,false,"world readiness waits for verified local appearance");
+    assert.equal(gameplay.scenePrepared,true);
+    assert.equal(gameplay.maybeReady(),false);
+    sync.players[1].appearance={};gameplay.modelReady=true;
+    assert.equal(gameplay.maybeReady(),true);
     assert.equal(ready,true);
     gameplay.close();
 });
 
-test("authenticated world becomes ready before optional floor and scenery assets",async()=>{
+test("login acknowledges verified terrain but waits for floor and scenery before scene readiness",async()=>{
     let finishFloor,seenScenery=0,ready=false,ack=false;
     const floorWait=new Promise(resolve=>{finishFloor=resolve;});
     const vp=viewport(),session={sendGame(op){if(op===27)ack=true;}};
     const game=new NativeGameplay({cache:{},viewport:vp,session,now:()=>1000,
         onReady:()=>{ready=true;},loadTerrain:async(_c,x,y)=>terrain(x,y),
         loadMaterials:()=>floorWait,
-        loadScenery:async()=>{seenScenery++;return null;}});
+        loadScenery:async()=>{seenScenery++;return {vertices:new Float32Array(),levelCounts:[0,0,0,0],texturedBatches:[],errors:[]};}});
     const sync=new NativePlayerSync(1);sync.initialized=true;
     sync.players[1]={x:3200,y:3200,plane:0,appearance:null};
     game.sync=sync;
-    await game.loadRebuild({zoneX:400,zoneY:400});
-    assert.equal(ack,true,"client must acknowledge valid terrain");
-    assert.equal(ready,true,"login transition cannot wait for floor textures");
-    assert.equal(game.loading,false);
+    const pending=game.loadRebuild({zoneX:400,zoneY:400});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(ack,true,"send map-complete when verified terrain is received");
+    assert.equal(ready,false,"scene is not ready with floor material still pending");
+    assert.equal(game.loading,true);
     assert.equal(seenScenery,0);
     finishFloor({underlays:new Map(),overlays:new Map()});
-    await game.backgroundLoad;
-    assert.ok(seenScenery>0,"scenery continues after login");
+    await pending;
+    assert.ok(seenScenery>0,"verified scenery is attempted before visible readiness");
+    assert.equal(game.scenePrepared,true);
+    assert.equal(ready,false,"player has no rendered appearance");
+    sync.players[1].appearance={};game.modelReady=true;
+    assert.equal(game.maybeReady(),true);
+    assert.equal(ready,true);
     game.close();
 });
 
@@ -122,10 +133,95 @@ test("obsolete optional world loads never paint after disconnect",async()=>{
         loadScenery:async()=>{throw new Error("stale scenery should not run");}});
     const sync=new NativePlayerSync(1);sync.initialized=true;
     sync.players[1]={x:3200,y:3200,plane:0,appearance:null};game.sync=sync;
-    await game.loadRebuild({zoneX:400,zoneY:400});
+    const pending=game.loadRebuild({zoneX:400,zoneY:400});
+    await new Promise(resolve=>setImmediate(resolve));
     const before=painted;
     game.close();
     finishFloor({underlays:new Map(),overlays:new Map()});
-    await game.backgroundLoad;
+    await pending;
     assert.equal(painted,before);
+});
+
+test("missing verified floor texture fails scene readiness instead of rendering holes",async()=>{
+    let ready=false,ack=false,sceneryCalls=0;
+    const game=new NativeGameplay({cache:{},viewport:viewport(),
+        session:{sendGame(op){if(op===27)ack=true;}},onReady:()=>{ready=true;},
+        loadTerrain:async(_c,x,y)=>terrain(x,y),
+        loadMaterials:async()=>({underlays:new Map([[0,{textureId:91}]]),overlays:new Map()}),
+        loadScenery:async()=>{sceneryCalls++;return null;}});
+    const sync=new NativePlayerSync(1);sync.initialized=true;
+    sync.players[1]={x:3200,y:3200,plane:0,appearance:null};game.sync=sync;
+    try{
+        await assert.rejects(game.loadRebuild({zoneX:400,zoneY:400}),
+            /Missing required floor textures: 91/);
+        assert.equal(ack,true,"terrain acknowledgement is separate from scene readiness");
+        assert.equal(ready,false);
+        assert.equal(game.scenePrepared,false);
+        assert.equal(sceneryCalls,0,"do not publish scenery over incomplete floor textures");
+    }finally{game.close();}
+});
+
+test("missing spawn-region scenery cannot advertise a playable map",async()=>{
+    let ready=false;
+    const game=new NativeGameplay({cache:{},viewport:viewport(),
+        session:{sendGame(){}},onReady:()=>{ready=true;},
+        loadTerrain:async(_c,x,y)=>terrain(x,y),
+        loadMaterials:async()=>({underlays:new Map(),overlays:new Map()}),
+        loadScenery:async()=>null});
+    const sync=new NativePlayerSync(1);sync.initialized=true;
+    sync.players[1]={x:3200,y:3200,plane:0,appearance:null};game.sync=sync;
+    try{
+        await assert.rejects(game.loadRebuild({zoneX:400,zoneY:400}),
+            /Spawn-region scenery did not produce a scene/);
+        assert.equal(ready,false);
+        assert.equal(game.scenePrepared,false);
+    }finally{game.close();}
+});
+
+test("world readiness requires scene, appearance and a successfully uploaded local player",()=>{
+    let called=0;
+    const game=new NativeGameplay({cache:{},viewport:viewport(),
+        session:{sendGame(){}},onReady:()=>{called++;}});
+    const sync=new NativePlayerSync(1);sync.initialized=true;
+    sync.players[1]={x:3200,y:3200,plane:0,appearance:{hidden:false}};
+    game.sync=sync;
+    try{
+        assert.equal(game.maybeReady(),false,"scene has not completed");
+        game.scenePrepared=true;game.loading=false;
+        assert.equal(game.maybeReady(),false,"scene alone is not enough");
+        game.renderError="model fetch failed";
+        assert.equal(game.maybeReady(),false,"model failure cannot dismiss loading overlay");
+        game.renderError=null;game.modelReady=true;
+        assert.equal(game.maybeReady(),true);
+        assert.equal(game.maybeReady(),false,"onReady must fire only once");
+        assert.equal(called,1);
+    }finally{game.close();}
+});
+
+test("the local character is uploaded and becomes ready even if its idle sequence is unavailable",async()=>{
+    let ready=0,uploaded=0;
+    const vp={...viewport(),setActors(scene){if(scene?.vertices.length)uploaded++;}};
+    const model={verticesCount:3,faceCount:1,
+        verticesX:Int32Array.of(0,128,0),verticesY:Int32Array.of(0,0,128),
+        verticesZ:Int32Array.of(0,0,0),indices1:Int32Array.of(0),
+        indices2:Int32Array.of(1),indices3:Int32Array.of(2),
+        faceColors:Uint16Array.of(2000)};
+    const models={composition:async()=>model,textures:{textures:new Map()},
+        animations:{sequence:async()=>({frameIds:[0],frameLengths:[1]}),
+            poseFrame:async()=>{throw new Error("unsupported skeletal sequence");}}};
+    const game=new NativeGameplay({cache:{},viewport:vp,models,
+        session:{sendGame(){}},now:()=>1000,onReady:()=>{ready++;}});
+    try{
+        game.authenticated({playerIndex:1});
+        game.origin={mapX:50,mapY:50};game.regions.set("50,50",terrain(50,50));
+        game.scenePrepared=true;game.loading=false;
+        const local={x:3201,y:3201,plane:0,orientation:0,
+            appearance:{hidden:false,animations:{idle:10}}};
+        game.sync.players[1]=local;game.updateMotion(local);
+        await game.drawActors();
+        assert.equal(uploaded,1,JSON.stringify({renderError:game.renderError,modelReady:game.modelReady,player:game.playerController.sample(1)}));
+        assert.equal(ready,1);
+        assert.equal(game.modelReady,true);
+        assert.equal(game.animationRenderError,"unsupported skeletal sequence");
+    }finally{game.close();}
 });

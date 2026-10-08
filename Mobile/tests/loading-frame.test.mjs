@@ -24,7 +24,9 @@ test("map loading frame callback waits for completed nonempty WebGL terrain draw
         let confirmed=0;
         vp.onSceneFrame=()=>{confirmed++;};
         vp.render();assert.equal(confirmed,0,"cleared background is not a world frame");
-        vp.count=3;vp.render();
+        vp.count=3;vp.drawMode=gl.LINES;vp.render();
+        assert.equal(confirmed,0,"wireframe terrain must not count as a world-ready map");
+        vp.drawMode=gl.TRIANGLES;vp.render();
         assert.equal(confirmed,1);assert.ok(draw.length>=1);
         vp.render();assert.equal(confirmed,1,"map readiness fires once");
     }finally{

@@ -614,7 +614,10 @@ export class NativeTerrainViewport {
             gl.drawArrays(gl.TRIANGLES,0,batch.count);
         }
         // Notify the loading tracker only after actual WebGL draw calls.
-        if(this.onSceneFrame){const done=this.onSceneFrame;this.onSceneFrame=null;done();}
+        // Wireframe and actor-only frames are not a fully constructed map.
+        const groundReady=this.drawMode===gl.TRIANGLES&&
+            (this.count>0||this.terrainBatches.some(batch=>batch.count>0));
+        if(groundReady&&this.onSceneFrame){const done=this.onSceneFrame;this.onSceneFrame=null;done();}
     }
     dispose(){
         this.disposed=true;this.onSceneFrame=null;this.longPress.cancel();cancelAnimationFrame(this.raf);

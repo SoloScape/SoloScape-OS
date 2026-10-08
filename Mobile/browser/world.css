@@ -37,4 +37,4 @@ body:not(.in-game),#title-screen,#title-screen *{cursor:default!important;user-s
 .loading.game-loading.map-fading::before{animation:map-fog-in 1000ms ease-out forwards}
 @keyframes map-fog-in{from{opacity:1}to{opacity:0}}
 .loading.game-loading strong{position:absolute;top:6px;left:6px;z-index:1;background:#000;border:1px solid #ddd;padding:3px 5px;font:12px Arial,sans-serif}
-.loading.game-loading span{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden;white-space:nowrap}
+.loading.game-loading span{position:absolute;top:37px;left:6px;z-index:1;max-width:min(460px,calc(100vw - 12px));padding:5px 7px;background:#000c;color:#e7d7a2;font:12px Arial,sans-serif;white-space:normal}

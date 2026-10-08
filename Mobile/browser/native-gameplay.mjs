@@ -44,6 +44,7 @@ export class NativeGameplay {
         this.onReady=onReady;this.onLoading=onLoading;
         this.loadTerrain=loadTerrain;this.loadMaterials=loadMaterials;this.loadScenery=loadScenery;this.models=models;this.now=now;
         this.generation=0;this.closed=false;this.regions=new Map();this.packetCount=0;this.animationStarted=now();
+        this.scenePrepared=false;this.ready=false;
         this.playerController=new NativeTspsPlayerController(this.models.animations,now);
         this.localServerId=0;this.movementFrames={};this.sequenceStarted=this.animationStarted;
         this.npcs=new NativeNpcSync();this.npcModels=new NativeNpcModels(models);this.npcMotions=new Map();this.npcDrawn=0;this.selectionToken=0;this.selectedNpc=null;
@@ -100,7 +101,7 @@ export class NativeGameplay {
     async loadRebuild(rebuild){
         const generation=++this.generation,current=()=>!this.closed&&generation===this.generation;
         this.clearNpcMenu();this.npcs.reset();this.npcMotions.clear();this.npcDrawn=0;
-        this.loading=true;this.modelReady=false;this.renderError=null;this.regions=new Map();this.viewport.setActors(null);this.viewport.setScenery(null);
+        this.loading=true;this.scenePrepared=false;this.ready=false;this.modelReady=false;this.renderError=null;this.sceneWarnings=[];this.regions=new Map();this.viewport.setActors(null);this.viewport.setScenery(null);
         const started=this.now();
         this.onLoading();
         this.onStatus("Loading server map data…");
@@ -144,63 +145,101 @@ export class NativeGameplay {
                 if(other!==region&&Math.abs(other.mapX-region.mapX)<=1&&Math.abs(other.mapY-region.mapY)<=1)
                     region.neighbours.set(`${other.mapX-region.mapX},${other.mapY-region.mapY}`,other);
         }
-        this.viewport.setTerrain({...center,regions},{resetCamera:false});
-        // Classic client gates login on required map data, not optional every-object
-        // artwork. Texture, floor and scenery assets continue to stream afterwards.
+        // Terrain alone is a wireframe: it is NOT a map-ready frame.
+        // Wait for floor colours/textures and location meshes before allowing the
+        // TSPS loading tracker to fade away the cover over the world.
+        // Acknowledge the validated terrain grid promptly; the acknowledgement
+        // is protocol state, not permission to remove the visual loading screen.
         this.session.sendGame(MAP_BUILD_COMPLETE);
-        this.loading=false;this.unavailable=unavailable;
+        this.onStatus("Loading floor materials and world scenery…");
+        await this.loadRebuildScenery({regions,center,origin,unavailable,current});
+        if(!current())return;
+        // Never declare the scene ready if floor-building produced no visible ground.
+        if(typeof this.viewport.count==="number"&&this.viewport.count===0&&
+            !this.viewport.terrainBatches?.some(batch=>batch.count>0))
+            throw new Error("Spawn map has no renderable floor geometry");
+        this.loading=false;this.scenePrepared=true;this.unavailable=unavailable;
         this.report();
         await this.drawActors();
         if(!current())return;
-        this.onReady();
-        this.onStatus(`World ready in ${Math.round(this.now()-started)} ms; scenery streaming…`);
-        this.backgroundLoad=this.loadRebuildScenery({regions,center,origin,unavailable,current})
-            .catch(error=>{if(current())this.onStatus("Optional scenery unavailable: "+error.message);});
+        this.maybeReady();
+        if(!this.ready)this.onStatus("Map ready; waiting for the local player model…");
+        else this.onStatus(`World scene ready in ${Math.round(this.now()-started)} ms`);
     }
     async loadRebuildScenery({regions,center,origin,unavailable,current}){
         const textureSource=new SceneTextures(this.cache,{isCurrent:current});
-        // Optional floor and texture work never hold the authenticated login screen.
-        for(const region of regions){
+        // Load all required floor definitions together: repeated JS5 requests
+        // coalesce, and no wireframe region is considered game-ready.
+        await Promise.all(regions.map(async region=>{
             if(!current())return;
-            try{
-                region.floorMaterials=await this.loadMaterials(this.cache,region);
+            try{region.floorMaterials=await this.loadMaterials(this.cache,region);}
+            catch(error){
                 if(!current())return;
-                for(const def of [...region.floorMaterials.underlays.values(),...region.floorMaterials.overlays.values()])
-                    if(def.textureId>=0){await textureSource.load(def.textureId);if(!current())return;}
-                region.textures=textureSource.textures;
-                this.viewport.addTextures(textureSource.textures);
-                this.viewport.setTerrain({...center,regions},{resetCamera:false});
-            }catch(error){
-                if(!current())return;
-                unavailable.push(`floors ${region.mapX},${region.mapY}`);
+                throw new Error(`Floor definitions for map ${region.mapX},${region.mapY} unavailable: ${error.message}`,{cause:error});
             }
+        }));
+        if(!current())return;
+        this.onStatus("Loading verified floor textures…");
+        const textureIds=new Set();
+        for(const region of regions)
+            for(const def of [...region.floorMaterials.underlays.values(),...region.floorMaterials.overlays.values()])
+                if(def.textureId>=0)textureIds.add(def.textureId);
+        // Bound outstanding gateway streams instead of fetching each texture
+        // serially (or spawning hundreds of simultaneous sockets).
+        const ids=[...textureIds];
+        for(let i=0;i<ids.length;i+=4){
+            const values=await Promise.all(ids.slice(i,i+4).map(id=>textureSource.load(id)));
+            if(!current())return;
+            const missing=ids.slice(i,i+4).filter((_,index)=>!values[index]);
+            if(missing.length)throw new Error(`Missing required floor textures: ${missing.join(", ")}`);
         }
-        const scenes=[],textures=new Map();
+        for(const region of regions)region.textures=textureSource.textures;
+        this.viewport.addTextures(textureSource.textures);
+        this.viewport.setTerrain({...center,regions},{resetCamera:false});
+        if(!current())return;
+        this.onStatus("Loading verified location models…");
         let keys={};
         try{const response=await fetch("/region-keys.json");if(response.ok)keys=await response.json();}catch{}
-        for(const region of regions){
-            if(!current())return;
-            let scene;
-            try{
-                scene=await this.loadScenery(this.cache,region,{
-                    key:keys[region.mapX<<8|region.mapY],isCurrent:current,textureSource,
-                });
-            }catch(error){
+        // Process independent region scenery in small parallel batches. No
+        // incomplete scene is published as a finished map.
+        const scenes=[];
+        for(let i=0;i<regions.length;i+=2){
+            await Promise.all(regions.slice(i,i+2).map(async region=>{
                 if(!current())return;
-                unavailable.push(`scenery ${region.mapX},${region.mapY}`);
-                continue;
-            }
+                let scene;
+                try{
+                    scene=await this.loadScenery(this.cache,region,{
+                        key:keys[region.mapX<<8|region.mapY],isCurrent:current,textureSource,
+                    });
+                }catch(error){
+                    if(!current())return;
+                    if(region===center)throw new Error(`Spawn-region scenery unavailable: ${error.message}`,{cause:error});
+                    unavailable.push(`scenery ${region.mapX},${region.mapY}`);
+                    return;
+                }
+                if(!current())return;
+                if(!scene){
+                    if(region===center)throw new Error("Spawn-region scenery did not produce a scene");
+                    unavailable.push(`scenery ${region.mapX},${region.mapY}`);
+                    return;
+                }
+                if(scene.errors?.length){
+                    this.sceneWarnings??=[];
+                    this.sceneWarnings.push({region:`${region.mapX},${region.mapY}`,count:scene.errors.length});
+                }
+                region.scenery=scene;region.textures=textureSource.textures;
+                scenes.push({scene,dx:(region.mapX-origin.mapX)*64,dy:(region.mapY-origin.mapY)*64});
+            }));
             if(!current())return;
-            if(!scene)continue;
-            region.scenery=scene;region.textures=scene.textures;
-            scenes.push({scene,dx:(region.mapX-origin.mapX)*64,dy:(region.mapY-origin.mapY)*64});
-            for(const [id,data] of scene.textures)textures.set(id,data);
-            this.viewport.addTextures(textureSource.textures);
-            this.viewport.setScenery({...combineRegionMeshes(scenes),textures});
         }
+        this.viewport.addTextures(textureSource.textures);
+        // Keep the GPU's scene textures even when a scenery region has no meshes.
+        this.viewport.setScenery({
+            ...combineRegionMeshes(scenes),
+            textures:textureSource.textures,
+        });
         if(!current())return;
         this.unavailable=unavailable;
-        this.report();
     }
     showGroundMenu({tile,x,y,run=false}){
         this.clearNpcMenu();
@@ -285,6 +324,13 @@ export class NativeGameplay {
                 sequenceStarted:!previous||sequenceChanged?now:previous.sequenceStarted});
         }
     }
+    maybeReady(){
+        if(this.closed||this.loading||!this.scenePrepared||this.ready||!this.modelReady||
+            !this.sync?.local?.appearance)return false;
+        this.ready=true;
+        this.onReady();
+        return true;
+    }
     async drawActors(){
         if(this.closed||this.loading||this.drawing||!this.origin)return;
         const generation=this.generation,now=this.now(),meshes=[],npcPickMeshes=[];
@@ -305,12 +351,25 @@ export class NativeGameplay {
                     const action=player.actionId>=0;
                     const id=action?player.actionId:locomotion;
                     const frame=action?player.actionFrame:player.locomotionFrame;
-                    const posed=id>=0?await this.models.animations.poseFrame(model,id,frame):model;
-                    add(buildPlayerMesh(posed,region,player,{textures:this.models.textures.textures}),region);
+                    // If a movement sequence is unavailable, keep the cached
+                    // appearance visible in bind pose rather than hiding the
+                    // entire character behind an animation fetch failure.
+                    let posed=model;
+                    if(id>=0)try{posed=await this.models.animations.poseFrame(model,id,frame);}
+                    catch(error){this.animationRenderError=error.message;}
+                    const mesh=buildPlayerMesh(posed,region,player,{textures:this.models.textures.textures});
+                    if(!mesh.vertices.length&&!mesh.texturedBatches.some(batch=>batch.vertices.length))
+                        throw new Error("Local player model produced no visible triangles");
+                    add(mesh,region);
                     const ground=playerGroundHeight(region,player.x-region.mapX*64+.5,player.y-region.mapY*64+.5,player.plane);
                     this.viewport.target=[player.x-this.origin.mapX*64-31,-ground.height/128+1,player.y-this.origin.mapY*64-31];
                     this.modelReady=true;this.renderError=null;
-                }catch(error){this.modelReady=false;this.renderError=error.message;this.drawBlockedUntil=now+5000;}
+                }catch(error){
+                    this.modelReady=false;this.renderError=error.message;
+                    this.drawBlockedUntil=now+5000;
+                    if(this.scenePrepared&&!this.ready)
+                        this.onStatus("Player appearance unavailable: "+error.message);
+                }
             }
             let drawn=0,missing=0;
             const nearby=[...this.npcMotions.values()].filter(m=>
@@ -335,6 +394,7 @@ export class NativeGameplay {
             let offset=0;for(const mesh of meshes){vertices.set(mesh.vertices,offset);offset+=mesh.vertices.length;}
             this.viewport.setActors({vertices,texturedBatches:meshes.flatMap(m=>m.texturedBatches),
                 textures:this.models.textures.textures,npcPickMeshes});
+            this.maybeReady();
             if(this.npcDrawn!==drawn||this.npcMissing!==missing){this.npcDrawn=drawn;this.npcMissing=missing;this.report();}
         }catch(error){
             if(!this.closed&&generation===this.generation)this.onStatus("Actor drawing unavailable: "+error.message);
@@ -347,9 +407,18 @@ export class NativeGameplay {
             (this.renderError?" · Player rendering unavailable: "+this.renderError:this.modelReady?" · Click/tap ground to move":" · Loading player appearance…")+
             ` · NPCs ${this.npcDrawn}/${this.npcs.npcs.size} rendered`+
             (this.npcMissing?` (${this.npcMissing} models pending/unavailable)`:"")+
+            (this.sceneWarnings?.length?` · ${this.sceneWarnings.length} scenery areas contain missing/unsupported objects`:"")+
             (this.destination?` · Destination ${this.destination.x}, ${this.destination.y}`:"")+
             (this.unavailable?.length?` · ${this.unavailable.length} map edges unavailable`:""));
     }
-    fail(error){if(!this.closed){this.onStatus("Native scene failed: "+error.message);this.session.close();}}
+    fail(error){
+        if(this.closed)return;
+        const message="Native scene failed: "+error.message;
+        this.onStatus(message);
+        // Preserve the actual cache/model failure on the title screen instead
+        // of replacing it with the generic "Disconnected" close message.
+        if(typeof this.session.stop==="function")this.session.stop(new Error(message));
+        else this.session.close();
+    }
     close(){this.closed=true;this.generation++;clearInterval(this.timer);this.playerController.clear();this.interfaces?.close();this.clearNpcMenu();this.viewport.setActors(null);this.viewport.onDestination=()=>{};this.viewport.onNpc=()=>{};this.viewport.onNpcCancel=()=>{};this.viewport.onGroundMenu=()=>{};}
 }

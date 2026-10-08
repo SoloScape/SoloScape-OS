@@ -1020,13 +1020,14 @@ physical device before claiming full OSRS movement parity.
 ### Authenticated login-to-world loading (revised)
 
 The native revision-240 login keeps the classic title until authentication. The
-world loading overlay remains until the **required, CRC-verified four-plane terrain** finishes. The
+world loading overlay stays visible until verified terrain, floor materials,
+textures, initial scenery and the local player model have loaded. The
 world is now acknowledged with `MAP_BUILD_COMPLETE` once its terrain grid
 is available; the first actor pass and WebGL frame precede the fog fade.
-Optional underlay/overlay material upgrades, texture sprites and location
-models load **after** that transition, rendering progressively; they do not
-hold the login screen. Pending work cannot paint a replaced region or a
-closed session. Missing optional scenery is reported without inventing data.
+Floor materials, required floor textures and initial scenery are prerequisites
+for ending the loading overlay, not assets that begin loading after the
+transition. The loader keeps the title hidden after authentication and holds
+the world overlay while building the scene. Stale loads cannot paint a closed session.
 
 The pinned TSPS client tracks handshake and map-data readiness separately,
 and streams map squares. It also has a 500 ms minimum loading-overlay display.
@@ -1053,19 +1054,44 @@ It uses the *pinned TSPS* `GameStateMachine`, `GameState` and
 `LoadingTracker`, which are regenerated unchanged from TypeScript with
 `npm run generate:tsps-loading`.
 
-Map readiness is signalled only after the native renderer draws the first
-nonempty terrain frame. As in pinned TSPS, the map fog/fade interval lasts
+Map readiness is signalled after the local player model is uploaded and the first
+nonempty **filled** terrain frame is drawn. The TSPS-style fade interval lasts
 1000 ms, while `LOADING_GAME` is displayed for at least 500 ms total (not an
 additional 500 ms after the fade). Browser CSS provides
 the fade and is not Jagex's original 3D fog shader. Later server rebuilds
 reenter `LOADING_GAME`; disconnects cancel pending callbacks and return
 to the login screen. Existing authenticated movement, server map-complete
-packet and background texture/scenery loading are preserved.
+packet handling and 20 ms player movement are preserved.
 
 RuneLite supplies game-state hooks around the real Jagex gamepack, rather
 than its own independent renderer. Full binary/pixel parity therefore also
-requires cache persistence, exact scene reconstruction, login protocol
-differences and official fog/shader behavior; this commit matches the
-observable lifecycle and pinned TSPS timing, **not** the proprietary
+requires persistent cache streaming, exact object transformation/animation,
+rendering, lighting, and official fog/shader behavior. This revision improves
+the readiness checks and pinned TSPS timing, **not** the proprietary
 official client's complete internals. Browser/device play-testing remains
 required; automated tests do not measure a real account's login speed.
+
+### Scene readiness and first-character regression guard
+
+Native loading now acknowledges verified terrain separately from the **visible**
+world-ready state. It keeps the loading overlay until all four-plane floor
+definitions, required floor textures and initial map-square location meshes
+are processed, the local player appearance has arrived, the player model has
+successfully uploaded to WebGL, and a non-wireframe terrain frame has been
+drawn. A missing floor texture or spawn scene reports an error instead of
+silently accepting holes. Other map-square object decode problems are counted
+as diagnostics; the client cannot yet draw every animated/varbit-transformed
+object. The native renderer remains the current SoloScape WebGL implementation.
+
+Wearable composition requests up to three independent equipment slots at
+once while retaining the original slot/mesh order, and checks all required
+player textures. Unsupported sequence poses fall back to the verified unposed
+body mesh, which keeps a valid player model visible but is **not** equivalent
+to OSRS skeletal animation. Connection errors now show the specific failing
+asset instead of only a generic disconnection.
+
+For truly identical RuneLite/OSRS visuals, the remaining work is a renderer
+migration to the pinned TSPS scene construction/animation/light/fog pipeline,
+including dynamic loc morphs and instanced regions. The pinned TSPS WebGL
+renderer is not drop-in compatible with this standalone revision-240 mobile
+viewport. This readiness fix does not claim that renderer migration is done.
