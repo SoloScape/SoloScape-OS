@@ -1,6 +1,9 @@
 import './MobileHud.css';
 import type { LoadedMapSquare } from '../cache/MapSquareLoader';
 import { mapTerrainTileIndex } from '../cache/MapTerrainDecoder';
+import type { CacheGameUiAssets } from '../cache/CacheGameUiAssets';
+import { cacheSpriteCanvas } from '../cache/CacheGameUiAssets';
+import { CacheBitmapFont } from './CacheBitmapFont';
 
 type TabId =
   | 'combat' | 'inventory' | 'equipment' | 'prayer' | 'magic'
@@ -33,6 +36,14 @@ const EXTRA_STONES: readonly HudAction[] = [
   { id: 'account', name: 'Account', icon: 'shield' },
 ];
 const STONES = [...MAIN_STONES, ...EXTRA_STONES];
+
+// Indices of the classic cache-8 sideicons sprite sheet. Only use a sprite
+// when the downloaded sheet contains that frame; leave other actions alone.
+const CACHE_SIDE_ICON: Readonly<Record<string, number>> = {
+  combat: 0, skills: 1, quests: 2, inventory: 3, equipment: 4,
+  prayer: 5, magic: 6, clan: 7, friends: 8, settings: 11,
+  emotes: 12, music: 13,
+};
 
 const HOTKEY_PROFILES: readonly { name: string; keys: readonly HotkeyId[] }[] = [
   { name: 'PvM', keys: ['run', 'special', 'prayer', 'magic', 'inventory'] },
@@ -109,6 +120,8 @@ export class MobileHud {
   private readonly extraStones: HTMLElement;
   private readonly playerMarker: HTMLElement;
   private readonly mapSquares = new Map<number, LoadedMapSquare>();
+  private cacheFont: CacheBitmapFont | null = null;
+  private cachedIconUrls = new Map<string, string>();
   private selectedTab: TabId | null = null;
   private activeProfile = 0;
   private secondaryOpen = true;
@@ -203,6 +216,63 @@ export class MobileHud {
     this.drawMinimap();
   }
 
+  /**
+   * Replace vector placeholders with original JS5 archive-8 sprite frames.
+   * Use the original cached b12 bitmap font for panel headings.
+   */
+  setCacheAssets(assets: CacheGameUiAssets): void {
+    this.cacheFont = new CacheBitmapFont(assets.bold12);
+    this.cachedIconUrls.clear();
+    for (const [tab, index] of Object.entries(CACHE_SIDE_ICON)) {
+      const sprite = assets.sideIcons[index];
+      if (!sprite) continue;
+      this.cachedIconUrls.set(tab, cacheSpriteCanvas(sprite).toDataURL('image/png'));
+    }
+    this.applyCacheIcons();
+    if (this.selectedTab) {
+      this.renderPanelHeading(STONES.find((stone) => stone.id === this.selectedTab)?.name ??
+        this.selectedTab);
+    }
+  }
+
+  private applyCacheIcons(): void {
+    if (!this.cachedIconUrls.size) return;
+    for (const control of this.root.querySelectorAll<HTMLButtonElement>(
+      '[data-action^="tab:"], [data-action^="hotkey:"]',
+    )) {
+      const key = control.dataset.action?.split(':')[1] ?? '';
+      const url = this.cachedIconUrls.get(key);
+      if (!url) continue;
+      const previous = control.querySelector('svg');
+      if (!previous) continue;
+      const image = document.createElement('img');
+      image.className = 'cache-hud-icon';
+      image.alt = '';
+      image.src = url;
+      previous.replaceWith(image);
+    }
+  }
+
+  private renderPanelHeading(label: string): void {
+    if (!this.cacheFont) {
+      this.panelHeading.textContent = label;
+      return;
+    }
+    const font = this.cacheFont;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, font.measure(label) + 2);
+    canvas.height = 23;
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', label);
+    const context = canvas.getContext('2d');
+    if (!context) {
+      this.panelHeading.textContent = label;
+      return;
+    }
+    font.draw(context, label, 1, 18, 0xe6b761);
+    this.panelHeading.replaceChildren(canvas);
+  }
+
   setVisible(visible: boolean): void {
     this.root.hidden = !visible;
     this.root.parentElement?.classList.toggle('in-game', visible);
@@ -255,6 +325,7 @@ export class MobileHud {
         'hud-hotkey' + (pressed ? ' is-active' : ''));
     }).join('');
     this.updateActiveTab();
+    this.applyCacheIcons();
   }
 
   private handleAction(action: string): void {
@@ -335,7 +406,7 @@ export class MobileHud {
     }
     this.selectedTab = tab;
     this.panel.hidden = false;
-    this.panelHeading.textContent = STONES.find((entry) => entry.id === tab)?.name ?? tab;
+    this.renderPanelHeading(STONES.find((entry) => entry.id === tab)?.name ?? tab);
     this.panelBody.innerHTML = this.buildPanel(tab);
     this.updateActiveTab();
   }
