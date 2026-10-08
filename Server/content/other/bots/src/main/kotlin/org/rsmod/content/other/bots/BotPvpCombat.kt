@@ -364,6 +364,9 @@ class BotPvpCombat @Inject constructor(
         if (wilderness && (state.retreatStartedAt >= 0 ||
                 BotPvpPolicy.shouldRetreat(player.hitpoints, player.baseHitpointsLvl,
                     food, state.profile))) {
+            // A bot running out of food leaves its voluntary team instead of keeping
+            // the player reserved as a leader while retreating to restock.
+            leavePlayerTeam(player)
             return retreat(player, state, cycle)
         }
         val squad = if (wilderness) squads[player] else null
