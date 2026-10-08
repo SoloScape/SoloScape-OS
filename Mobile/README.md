@@ -89,8 +89,13 @@ rendered NPC counts.
 NPC rendering was confirmed working in a live local client on 8 October
 2026; newly implemented NPC interactions still need a live server check.
 Right-click an NPC on desktop, or hold a finger on an NPC for 475 ms
-on mobile, to open its full RuneScape-style action menu (Talk-to, Trade,
-Attack, etc. when available), followed by Examine and Cancel.
+on mobile, to open its native, canvas-rendered Choose Option menu
+(Talk-to, Trade, Attack, etc. when available), followed by Examine and
+Cancel. The former HTML/CSS mock menu has been removed. Native cache index
+8 (font glyphs) and 13 (font metrics), group 496 (b12_full), provide
+the original game bitmap font. Layout, dimensions, colours, shadow and
+hover behaviour are ported from the pinned TSPS Choose Option renderer,
+rather than approximated with browser CSS buttons.
 Left-click or short-tap performs the first visible primary action; if
 none exists, it opens the menu with Examine. Holding while dragging
 cancels the menu gesture, preserving camera orbit controls. The
@@ -103,7 +108,11 @@ and available action scripts.
 Tapping ground or Cancel dismisses the menu; no action is sent for an
 NPC that despawned or changed type. Dynamic varbit/varp-driven NPC morphs,
 specialised model customisation, skeletal sequences, effects, and NPCs
-in instanced worlds are not yet supported. Missing/unsupported models
+in instanced worlds are not yet supported. The full TSPS MenuEngine
+(including its interface, object, player, and ground-item entries) has not
+yet been integrated; the native menu currently covers grounded walking
+and NPC actions with revision-240 packet encoding. Live cache-font
+display and touch interaction still require an authenticated browser check. Missing/unsupported models
 are skipped, never replaced with fabricated geometry. Run
 `npm test` from `Mobile/` for fixture and gateway integration checks;
 set `CHROME_BIN` to an accessible Chrome executable to enable the

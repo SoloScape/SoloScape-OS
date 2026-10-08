@@ -88,7 +88,10 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         const root=`http://127.0.0.1:${port}`;
         const html=await fetch(root+"/");
         assert.equal(html.status,200);
-        assert.match(await html.text(),/src="\/app\.mjs"/);
+        const htmlText=await html.text();
+        assert.match(htmlText,/src="\/app\.mjs"/);
+        assert.match(htmlText,/id="osrs-menu-canvas"/);
+        assert.doesNotMatch(htmlText,/class="npc-menu"/);
         // Regression: absent floor-materials.mjs used to leave the static
         // loading spinner displayed forever because the import graph failed.
         const modules=[
@@ -97,7 +100,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
             "/cache-reader.mjs","/model-codec.mjs","/object-definitions.mjs","/location-cache.mjs","/scenery-models.mjs",
             "/texture-cache.mjs","/texture-mapper.mjs","/scene-planes.mjs",
             "/login-crypto.mjs","/login-protocol.mjs","/login-pow.mjs","/native-login.mjs","/game-protocol.mjs",
-            "/player-sync.mjs","/player-models.mjs","/native-gameplay.mjs","/npc-sync.mjs","/npc-models.mjs","/npc-interactions.mjs","/npc-pointer.mjs",
+            "/player-sync.mjs","/player-models.mjs","/native-gameplay.mjs","/npc-sync.mjs","/npc-models.mjs","/npc-interactions.mjs","/npc-pointer.mjs","/native-menu.mjs",
         ];
         for(const path of modules){
             const response=await fetch(root+path);

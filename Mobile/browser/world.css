@@ -3,27 +3,11 @@
 .floor-view{display:block;font-size:12px;color:#acd3c2;margin:0 0 20px}.floor-view select{display:block;width:100%;margin-top:7px;padding:8px;background:#09181a;color:#fff;border:1px solid #406355;border-radius:6px}
 .login-form{width:100%}.login-form label{display:block;font-size:12px;color:#acd3c2;margin:12px 0}.login-form input{display:block;width:100%;margin-top:6px;padding:9px;background:#09181a;color:#fff;border:1px solid #406355;border-radius:6px}.sidebar .login-form .login{display:block;font-size:13px;cursor:pointer;background:#81e2bb;color:#09221a}.sidebar .login-form .login:disabled{opacity:.5;cursor:not-allowed}.sidebar .login-form .login[hidden]{display:none}#login-status{font-size:12px;line-height:1.5;color:#acd3c2;width:100%}@media(max-width:780px){.sidebar{max-height:40dvh}.login-form{flex-basis:100%}}
 
-/* Cache-defined NPC actions; canvas picking owns selection, DOM buttons own input. */
-.npc-menu{position:absolute;z-index:5;width:220px;max-height:60%;overflow-y:auto;padding:12px;border:1px solid #70ad95;border-radius:12px;background:#092326f0;box-shadow:0 12px 32px #0009;color:#eaf2eb}
-.npc-menu[hidden]{display:none}
-.npc-menu strong{display:block;font-size:14px;margin-bottom:8px;overflow-wrap:anywhere}
-.npc-menu-actions{display:grid;gap:5px}
-.npc-menu button{width:100%;min-height:37px;border:1px solid #335b50;border-radius:7px;background:#1b3b36;color:#eaf7ed;text-align:left;padding:8px 12px;font:inherit;font-size:13px;cursor:pointer;touch-action:manipulation}
-.npc-menu button:hover,.npc-menu button:focus-visible{outline:2px solid #86e0ba;outline-offset:1px;background:#275247}
-.npc-menu #npc-menu-cancel{margin-top:8px;background:#172c30;color:#b3c7c2;text-align:center}
-.npc-menu-empty{font-size:12px;color:#b5c6bb;padding:10px 4px}
-@media(max-width:780px){.npc-menu{left:8px!important;right:8px;top:auto!important;bottom:54px;width:auto;max-height:42%;}}
-
-/* RuneScape-style NPC choices: compact desktop menu, finger-sized mobile targets. */
-.npc-menu{background:#151d1cf5;border:1px solid #bda77c;box-shadow:0 3px 0 #06110c,0 14px 32px #000c;padding:8px;min-width:230px;width:max-content;max-width:min(92%,320px)}
-.npc-menu strong{color:#e8d6aa;padding:5px 8px;border-bottom:1px solid #6d6552;margin:0 0 4px}
-.npc-menu button{background:transparent;border:0;border-radius:3px;min-height:32px;color:#e2e8db;font-weight:600;padding:6px 10px}
-.npc-menu button:hover,.npc-menu button:focus-visible{background:#32453e;outline:1px solid #c7ac72;outline-offset:0}
-.npc-menu button.npc-option--attack{color:#e7a2a2}
-.npc-menu button.npc-menu-examine{color:#dbc692;border-top:1px solid #464c40;border-radius:0;margin-top:4px}
-.npc-menu #npc-menu-cancel{margin-top:5px;border-top:1px solid #464c40;border-radius:0}
-.npc-examine-result{position:absolute;z-index:4;bottom:105px;left:20px;max-width:min(620px,calc(100% - 40px));border:1px solid #847451;background:#161e18e8;color:#f0dfb2;border-radius:8px;padding:10px 14px;font-size:13px;line-height:1.5;pointer-events:none}
+/* OSRS menu is drawn with real b12_full cache glyphs on this transparent canvas. */
+#osrs-menu-canvas{position:absolute;inset:0;width:100%;height:100%;z-index:6;touch-action:none;image-rendering:pixelated}
+#osrs-menu-canvas[hidden]{display:none}
+/* The native client has no chatbox yet; this temporary examine transcript is explicitly separate from the OSRS menu renderer. */
+.npc-examine-result{position:absolute;z-index:4;bottom:105px;left:20px;max-width:min(620px,calc(100% - 40px));background:#161e18e8;color:#f0dfb2;border-radius:5px;padding:8px 12px;font-size:13px;pointer-events:none}
 .npc-examine-result[hidden]{display:none}
-@media(max-width:780px){.npc-menu{min-width:0;max-width:none;width:auto}.npc-menu button{min-height:46px;font-size:15px}.npc-examine-result{left:8px;bottom:85px;max-width:calc(100% - 16px)}}
-
+@media(max-width:780px){.npc-examine-result{left:8px;bottom:85px;max-width:calc(100% - 16px)}}
 #world-canvas{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}

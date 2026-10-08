@@ -9,6 +9,7 @@ import {SceneTextures} from "./texture-cache.mjs";
 import {NativeGameSession} from "./native-login.mjs";
 import {loginCacheCrcs} from "./login-protocol.mjs";
 import {NativeGameplay} from "./native-gameplay.mjs";
+import {NativeChooseOptionMenu} from "./native-menu.mjs";
 
 const byId=id=>document.getElementById(id);
 const details=byId("loading-detail"),loading=byId("loading"),status=byId("map-status");
@@ -144,7 +145,6 @@ button.addEventListener("click",()=>enterWorld(false));
 levelSelector.addEventListener("change",()=>renderer?.setSceneLevel(Number(levelSelector.value)));
 const loginForm=byId("login-form"),loginButton=byId("login-submit"),disconnect=byId("login-disconnect"),loginStatus=byId("login-status");
 let loginConfig=null,gameSession=null,gameplay=null,loginBusy=false,sessionAttempt=0;
-const npcMenu=byId("npc-menu"),npcMenuTitle=byId("npc-menu-title"),npcMenuActions=byId("npc-menu-actions");
 const examineResult=byId("npc-examine-result");
 let examineTimer=null;
 function showExamine({name,description}){
@@ -152,48 +152,16 @@ function showExamine({name,description}){
     examineResult.textContent=`${name}: ${description}`;examineResult.hidden=false;
     examineTimer=setTimeout(()=>{examineResult.hidden=true;},9000);
 }
-function hideNpcMenu(){npcMenu.hidden=true;npcMenuActions.replaceChildren();}
-function showNpcMenu(info){
-    hideNpcMenu();if(!info)return;
-    npcMenuTitle.textContent=`Choose Option — ${info.name}`;
-    if(info.kind==="ground"){
-        const walk=document.createElement("button");walk.type="button";
-        walk.textContent="Walk here";
-        walk.addEventListener("click",()=>{
-            gameplay?.move({...info.tile,run:info.run});
-            gameplay?.clearNpcMenu();
-        });
-        npcMenuActions.append(walk);
-    }else{
-        for(const {slot,label} of info.actions){
-            const button=document.createElement("button");button.type="button";
-            button.textContent=label;
-            if(label.trim().toLowerCase()==="attack")button.classList.add("npc-option--attack");
-            button.addEventListener("click",()=>{
-                try{gameplay?.interactNpc(info.index,slot,{run:info.run});}
-                catch(error){loginStatus.textContent="NPC interaction unavailable: "+error.message;}
-            });
-            npcMenuActions.append(button);
-        }
-        const examine=document.createElement("button");examine.type="button";
-        examine.className="npc-menu-examine";examine.textContent=`Examine ${info.name}`;
-        examine.addEventListener("click",()=>{
-            try{gameplay?.examineNpc(info.index);}
-            catch(error){loginStatus.textContent="Examine unavailable: "+error.message;}
-        });
-        npcMenuActions.append(examine);
+const menuUi=new NativeChooseOptionMenu(byId("osrs-menu-canvas"),{
+    onEntry:(entry,info)=>{
+        try{
+            if(entry.kind==="walk")gameplay?.move({...info.tile,run:info.run});
+            else if(entry.kind==="npc")gameplay?.interactNpc(info.index,entry.slot,{run:info.run});
+            else if(entry.kind==="examine")gameplay?.examineNpc(info.index);
+        }catch(error){loginStatus.textContent="Menu action unavailable: "+error.message;}
     }
-    npcMenu.hidden=false;
-    const world=npcMenu.parentElement,limitX=world.clientWidth-npcMenu.offsetWidth-8,
-        limitY=world.clientHeight-npcMenu.offsetHeight-8;
-    npcMenu.style.left=Math.max(8,Math.min(info.x,limitX))+"px";
-    npcMenu.style.top=Math.max(8,Math.min(info.y,limitY))+"px";
-    npcMenuActions.querySelector("button")?.focus({preventScroll:true});
-}
-byId("npc-menu-cancel").addEventListener("click",()=>gameplay?.clearNpcMenu());
-document.addEventListener("keydown",event=>{
-    if(event.key==="Escape"&&!npcMenu.hidden){event.preventDefault();gameplay?.clearNpcMenu();}
 });
+function showNpcMenu(info){menuUi.open(info);}
 async function prepareLogin(){
     try{
         const response=await fetch("/login-config.json");
@@ -215,6 +183,9 @@ loginForm.addEventListener("submit",async event=>{
         // This must be the manifest from the same gateway/server as the account connection.
         const loginCache=loginConfig.gatewayUrl===cache.url?cache:new NativeJs5Cache({url:loginConfig.gatewayUrl,revision:240});
         const crcs=loginCacheCrcs(await loginCache.loadMaster());
+        void menuUi.load(loginCache).catch(error=>{
+            if(sequence===sessionAttempt)loginStatus.textContent="Native cache font unavailable: "+error.message;
+        });
         if(sequence!==sessionAttempt)return;
         // Cancel every preview continuation before authenticated scene ownership begins.
         attempt++;if(!renderer)renderer=new NativeTerrainViewport(byId("world-canvas"));
@@ -255,10 +226,10 @@ loginForm.addEventListener("submit",async event=>{
     }finally{credentials.password="";credentials.otp="";if(sequence===sessionAttempt)loginBusy=false;}
 });
 disconnect.addEventListener("click",()=>{
-    sessionAttempt++;gameplay?.close();hideNpcMenu();clearTimeout(examineTimer);examineResult.hidden=true;gameSession?.close();gameSession=null;gameplay=null;loginBusy=false;
+    sessionAttempt++;gameplay?.close();menuUi.close();clearTimeout(examineTimer);examineResult.hidden=true;gameSession?.close();gameSession=null;gameplay=null;loginBusy=false;
     button.disabled=false;levelSelector.disabled=false;loading.hidden=true;
     loginButton.disabled=!loginConfig;disconnect.hidden=true;loginStatus.textContent="Disconnected";
 });
-window.addEventListener("pagehide",()=>{sessionAttempt++;clearTimeout(examineTimer);gameplay?.close();gameSession?.close();renderer?.dispose();},{once:true});
+window.addEventListener("pagehide",()=>{sessionAttempt++;clearTimeout(examineTimer);menuUi.dispose();gameplay?.close();gameSession?.close();renderer?.dispose();},{once:true});
 void prepareLogin();
 enterWorld(true);

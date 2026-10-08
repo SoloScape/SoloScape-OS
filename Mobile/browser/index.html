@@ -16,11 +16,7 @@
   <div class="scene-heading">World preview <small>3D terrain • cache-backed</small></div>
   <div class="coordinates"><label for="map-x">Region X<input id="map-x" type="number" min="0" max="255" value="50"></label><label for="map-y">Region Y<input id="map-y" type="number" min="0" max="255" value="50"></label><button id="load-world" type="button">Travel</button></div>
  </div>
- <section class="npc-menu" id="npc-menu" aria-label="NPC actions" hidden>
-  <strong id="npc-menu-title"></strong>
-  <div id="npc-menu-actions" class="npc-menu-actions"></div>
-  <button id="npc-menu-cancel" type="button">Cancel</button>
- </section>
+ <canvas id="osrs-menu-canvas" aria-label="Cache-backed game interaction menu" hidden></canvas>
  <p class="npc-examine-result" id="npc-examine-result" role="status" aria-live="polite" hidden></p>
  <div class="loading" id="loading" aria-live="polite"><div class="loading-ring"></div><strong>Opening SoloScape world</strong><span id="loading-detail">Loading revision-240 terrain from your local server…</span></div>
  <div class="controls-note">Tap / left-click NPC for default action · Right-click / hold for options · Drag to orbit</div>
