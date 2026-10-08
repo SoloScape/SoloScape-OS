@@ -8,6 +8,7 @@ import {
 } from '../cache/CacheGameUiAssets';
 import type { CacheFontAsset } from '../cache/TitleScreenAssets';
 import { CacheBitmapFont } from './CacheBitmapFont';
+import { interpolateCacheText } from './CacheWidgetCs1';
 import type { Rev240UiState } from '../protocol/Rev240UiState';
 
 /**
@@ -125,8 +126,9 @@ export class CacheInterfaceRenderer {
             element.style.overflow = 'hidden';
           }
           break;
-        case 2: {
-          // IF1 type-2 is an inventory container. The cache defines its
+        case 2:
+        case 7: {
+          // IF1 type-2/type-7 are inventory containers; cache defines their
           // dimensions and spacing; item contents come from server packets.
           element.classList.add('cache-widget-items');
           element.style.setProperty('--item-columns', String(Math.max(1, widget.width)));
@@ -155,12 +157,27 @@ export class CacheInterfaceRenderer {
           }
           break;
         case 4:
-          if (widget.text) void this.drawText(widget, element, generation);
+          if (widget.text) {
+            const text = interpolateCacheText(widget, this.server);
+            element.dataset.currentText = text;
+            void this.drawText({ ...widget, text }, element, generation);
+          }
           break;
         case 5:
           if (widget.spriteId !== null) {
             void this.drawSprite(widget, element, generation);
           }
+          break;
+        case 6:
+          // Cache widgets specify a 3D model, not a 2D archive-8 sprite.
+          // Retain its true model id until a widget-sized model renderer exists.
+          if (widget.modelId !== null) {
+            element.dataset.modelId = String(widget.modelId);
+            element.title = 'Cache model ' + widget.modelId;
+          }
+          break;
+        case 8:
+          if (widget.text) element.title = widget.text;
           break;
         case 9:
           if (widget.colour !== null) {
@@ -232,12 +249,16 @@ export class CacheInterfaceRenderer {
           slot.title = live ? 'Item id ' + item!.id + ' × ' + item!.count : '';
         }
       }
-      if (widget.type === 4 && change?.text !== undefined &&
-        node.dataset.currentText !== change.text) {
-        node.dataset.currentText = change.text;
-        node.querySelector(':scope > canvas.cache-widget-text')?.remove();
-        void this.drawText({ ...widget, text: change.text,
-          colour: change.colour ?? widget.colour }, node, this.generation);
+      if (widget.type === 4) {
+        const text = change?.text ?? interpolateCacheText(widget, this.server);
+        const colour = change?.colour ?? widget.colour;
+        if (text && (node.dataset.currentText !== text ||
+          node.dataset.currentColour !== String(colour))) {
+          node.dataset.currentText = text;
+          node.dataset.currentColour = String(colour);
+          node.querySelector(':scope > canvas.cache-widget-text')?.remove();
+          void this.drawText({ ...widget, text, colour }, node, this.generation);
+        }
       }
       if (change?.objectId !== undefined && change.objectId >= 0) {
         node.dataset.objectId = String(change.objectId);
@@ -289,7 +310,8 @@ export class CacheInterfaceRenderer {
         this.fontPromises.delete(widget.fontId);
       }
     }
-    if (generation !== this.generation || !host.isConnected) return;
+    if (generation !== this.generation || !host.isConnected ||
+      host.dataset.currentText !== widget.text) return;
     const canvas = document.createElement('canvas');
     canvas.className = 'cache-widget-text';
     const width = Math.max(1, widget.width);
