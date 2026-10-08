@@ -4,7 +4,7 @@ import { crc32, gzipSync } from "node:zlib";
 import { NativeJs5Cache } from "../browser/native-js5.mjs";
 import {
     baseTileHeight, decodeTerrainRegion, djb2, getTerrainGroup, loadNativeTerrain,
-    mapRegionCatalog,
+    mapRegionCatalog, resolveTerrainRegion, extractTerrainFile,
 } from "../browser/terrain-world.mjs";
 import { buildTerrainMesh } from "../browser/world-webgl.mjs";
 
@@ -56,7 +56,7 @@ test("map index 5 resolves named m50_50 from actual TSPS DJB2 hash",()=>{
     assert.equal(catalog.revision,90871);
     assert.equal(catalog.format,7);
     assert.equal(getTerrainGroup(catalog,50,50),97);
-    assert.throws(()=>getTerrainGroup(catalog,51,50),/No single-file/);
+    assert.throws(()=>getTerrainGroup(catalog,51,50),/not present as a supported map archive/);
     assert.throws(()=>getTerrainGroup(catalog,-1,50),/0..255/);
     assert.equal(getTerrainGroup({names:new Map(),fileIdForGroup:new Map([[12850,0]])},50,50),12850);
 });
@@ -65,7 +65,7 @@ test("reference-map parser rejects invalid file totals and trailing metadata",()
     const b=refTable(97,djb2("m50_50"));
     assert.throws(()=>mapRegionCatalog(Buffer.concat([b,Buffer.from([0])])),/trailing/);
     const other=Buffer.from(b);other.writeInt32BE(djb2("m51_50"),10);
-    assert.throws(()=>getTerrainGroup(mapRegionCatalog(other),50,50),/No single-file/);
+    assert.throws(()=>getTerrainGroup(mapRegionCatalog(other),50,50),/not present as a supported map archive/);
 });
 
 test("terrain u16 tile decoder reads all four levels and real floor data",()=>{
@@ -125,4 +125,85 @@ test("native client loads CRC-checked m50_50 map terrain through cache API",asyn
     assert.deepEqual(requests,["255:255","255:5","5:97"]);
     await loadNativeTerrain(native,50,50);
     assert.deepEqual(requests,["255:255","255:5","5:97"]);
+});
+
+function mapReferenceWithFiles(groupId, regionName, fileIds) {
+    const header=Buffer.alloc(8);
+    header[0]=7;header.writeUInt32BE(90871,1);header[5]=1;
+    header.writeUInt16BE(1,6);
+    const gid=Buffer.alloc(2);gid.writeUInt16BE(groupId);
+    const hash=Buffer.alloc(4);hash.writeInt32BE(djb2(regionName));
+    const count=Buffer.alloc(2);count.writeUInt16BE(fileIds.length);
+    let last=0;
+    const deltas=fileIds.map(id=>{
+        const b=Buffer.alloc(2);b.writeUInt16BE(id-last);last=id;return b;
+    });
+    return Buffer.concat([header,gid,hash,Buffer.alloc(8),count,...deltas,Buffer.alloc(fileIds.length*4)]);
+}
+function packFilePair(a,b) {
+    const chunk=Buffer.alloc(8);
+    chunk.writeInt32BE(a.length,0);
+    chunk.writeInt32BE(b.length-a.length,4);
+    return Buffer.concat([a,b,chunk,Buffer.from([1])]);
+}
+
+test("native OSRS terrain can be in a multi-file map group",()=>{
+    const catalog=mapRegionCatalog(mapReferenceWithFiles(143,"m50_50",[0,1]));
+    assert.deepEqual(catalog.fileIdsForGroup.get(143),[0,1]);
+    assert.equal(getTerrainGroup(catalog,50,50),143);
+    const terrain=terrainBytes();
+    const packed=packFilePair(terrain,Buffer.from([1,2,3,4,5]));
+    assert.deepEqual(Buffer.from(extractTerrainFile(packed,[0,1])),terrain);
+    assert.equal(decodeTerrainRegion(extractTerrainFile(packed,[0,1]),50,50).heights[0],-80);
+    assert.throws(()=>extractTerrainFile(packed,[2,3]),/no file ID 0/);
+    const corrupted=Buffer.from(packed);corrupted[corrupted.length-1]=255;
+    assert.throws(()=>extractTerrainFile(corrupted,[0,1]),/Invalid|Truncated/);
+});
+
+test("OSRS multi-chunk map archives reconstruct terrain file ID 0",()=>{
+    const terrain=Buffer.from([1,2,3,4,5,6,7,8]);
+    const objects=Buffer.from([9,10,11,12]);
+    const table=Buffer.alloc(16);
+    table.writeInt32BE(3,0);table.writeInt32BE(-2,4);
+    table.writeInt32BE(5,8);table.writeInt32BE(-2,12);
+    const packed=Buffer.concat([terrain.subarray(0,3),objects.subarray(0,1),
+        terrain.subarray(3),objects.subarray(1),table,Buffer.from([2])]);
+    assert.deepEqual(Buffer.from(extractTerrainFile(packed,[0,1])),terrain);
+});
+
+test("initial world picks the nearest real named region, manual travel remains exact",()=>{
+    const catalog=mapRegionCatalog(mapReferenceWithFiles(143,"m49_50",[0,1]));
+    assert.throws(()=>getTerrainGroup(catalog,50,50),/not present as a supported map archive/);
+    assert.deepEqual(resolveTerrainRegion(catalog,50,50,{allowFallback:true}),{
+        mapX:49,mapY:50,group:143,fallback:true,
+    });
+    assert.deepEqual(resolveTerrainRegion(catalog,49,50),{
+        mapX:49,mapY:50,group:143,fallback:false,
+    });
+    assert.throws(()=>resolveTerrainRegion(catalog,50,50),/not present as a supported map archive/);
+});
+
+test("native cache service loads CRC-validated packed terrain from a fallback region",async()=>{
+    const regionTerrain=terrainBytes();
+    const compressed=cacheContainer(packFilePair(regionTerrain,Buffer.from([1,3,5])));
+    const indexData=mapReferenceWithFiles(143,"m49_50",[0,1]);
+    indexData.writeUInt32BE(crc32(compressed),14);
+    const indexGroup=cacheContainer(indexData);
+    const master=Buffer.alloc(6*8);
+    master.writeUInt32BE(crc32(indexGroup),5*8);
+    master.writeUInt32BE(90871,5*8+4);
+    const masterGroup=cacheContainer(master,0);
+    const native=new NativeJs5Cache({WebSocketClass:class Fake {}});
+    const fetched=[];
+    native.fetchRawGroup=async(a,g)=>{
+        fetched.push(a+":"+g);
+        if(a===255&&g===255)return result(a,g,masterGroup);
+        if(a===255&&g===5)return result(a,g,indexGroup);
+        if(a===5&&g===143)return result(a,g,compressed);
+        throw new Error("Unexpected native cache group");
+    };
+    const world=await loadNativeTerrain(native,50,50,{allowFallback:true});
+    assert.deepEqual([world.mapX,world.mapY,world.group,world.fallback],[49,50,143,true]);
+    assert.equal(world.heights[0],-80);
+    assert.deepEqual(fetched,["255:255","255:5","5:143"]);
 });

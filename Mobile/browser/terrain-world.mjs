@@ -77,33 +77,146 @@ export function mapRegionCatalog(data) {
         counts.push(c);
     }
     const fileIdForGroup = new Map();
+    const fileIdsForGroup = new Map();
     for (let i = 0; i < count; i++) {
         let fileId = 0;
+        const fileIds = [];
         for (let f = 0; f < counts[i]; f++) {
             const delta = smart(format);
             if (f && !delta) throw new Error("Duplicate file ID");
             fileId += delta;
             if (fileId > 0x7fffffff) throw new Error("Map archive file ID overflow");
+            fileIds.push(fileId);
         }
-        if (counts[i] === 1) fileIdForGroup.set(ids[i], fileId);
+        if (fileIds.length > 0) fileIdsForGroup.set(ids[i], fileIds);
+        if (fileIds.length === 1) fileIdForGroup.set(ids[i], fileIds[0]);
     }
     if (flags & 1) need(totalFiles * 4);
     if (at !== data.length) throw new Error("Unsupported trailing map reference metadata");
-    return { format, revision, ids, names, fileIdForGroup };
+    return { format, revision, ids, names, fileIdForGroup, fileIdsForGroup };
 }
 
-export function getTerrainGroup(catalog, mapX, mapY) {
+function validateRegion(mapX, mapY) {
     if (!Number.isInteger(mapX) || !Number.isInteger(mapY) ||
         mapX < 0 || mapX > 255 || mapY < 0 || mapY > 255) {
         throw new RangeError("Map region coordinates must be 0..255");
     }
-    const requested = `m${mapX}_${mapY}`;
+}
+
+function terrainFileIds(catalog, group) {
+    const ids = catalog.fileIdsForGroup?.get(group);
+    if (ids) return ids.length === 1 || ids.includes(0) ? ids : null;
+    // Compatibility with the original one-file metadata parser.
+    const one = catalog.fileIdForGroup?.get(group);
+    return one === undefined ? null : [one];
+}
+
+function terrainGroupFor(catalog, mapX, mapY) {
     const group = catalog.names.size ?
-        catalog.names.get(djb2(requested)) : ((mapX << 8) | mapY);
-    if (group === undefined || !catalog.fileIdForGroup.has(group)) {
-        throw new Error(`No single-file terrain map group for region ${mapX},${mapY}`);
+        catalog.names.get(djb2(`m${mapX}_${mapY}`)) : ((mapX << 8) | mapY);
+    return group === undefined || !terrainFileIds(catalog, group) ? undefined : group;
+}
+
+export function getTerrainGroup(catalog, mapX, mapY) {
+    validateRegion(mapX, mapY);
+    const group = terrainGroupFor(catalog, mapX, mapY);
+    if (group === undefined) {
+        throw new Error(`Terrain region m${mapX}_${mapY} is not present as a supported map archive in the verified cache`);
     }
     return group;
+}
+
+/**
+ * Start at the selected map if it exists. For the INITIAL world view only,
+ * locate the closest actual named mX_Y group instead of assuming Lumbridge
+ * m50_50 exists in every custom cache. Never fabricate a region or group.
+ */
+export function resolveTerrainRegion(catalog, mapX, mapY, { allowFallback = false } = {}) {
+    validateRegion(mapX, mapY);
+    const direct = terrainGroupFor(catalog, mapX, mapY);
+    if (direct !== undefined) {
+        return { mapX, mapY, group: direct, fallback: false };
+    }
+    if (!allowFallback) return { mapX, mapY, group: getTerrainGroup(catalog, mapX, mapY), fallback: false };
+
+    let chosen = null;
+    const consider = (x, y, group) => {
+        if (!terrainFileIds(catalog, group)) return;
+        const distance = Math.abs(x - mapX) + Math.abs(y - mapY);
+        if (!chosen || distance < chosen.distance) {
+            chosen = { mapX: x, mapY: y, group, fallback: true, distance };
+        }
+    };
+    if (catalog.names.size) {
+        for (let x = 0; x < 256; x++) {
+            for (let y = 0; y < 256; y++) {
+                const group = catalog.names.get(djb2(`m${x}_${y}`));
+                if (group !== undefined) consider(x, y, group);
+            }
+        }
+    } else {
+        for (const group of catalog.ids) consider(group >>> 8, group & 255, group);
+    }
+    if (!chosen) {
+        throw new Error("Cache map index 5 has no supported, named terrain regions; the world cannot be rendered from this cache");
+    }
+    const { distance: _distance, ...result } = chosen;
+    return result;
+}
+
+/** Extract terrain file 0 from a multi-file native JS5 archive container.
+ * The end-of-archive chunk table is the same format used by TSPS
+ * Archive.decode() and OpenRune ReadOnlyCache.readArchive().
+ */
+export function extractTerrainFile(data, fileIds) {
+    if (!(data instanceof Uint8Array) || data.length > 16 * 1024 * 1024 ||
+        !Array.isArray(fileIds) || fileIds.length < 1 || fileIds.length > 64) {
+        throw new Error("Unsupported terrain archive file layout");
+    }
+    if (fileIds.length === 1) return data;
+    const wanted = fileIds.indexOf(0);
+    if (wanted < 0) throw new Error("Multi-file terrain archive has no file ID 0");
+    requireBytes(data, data.length - 1, 1);
+    const chunks = data[data.length - 1];
+    const n = fileIds.length;
+    if (chunks === 0 || chunks > 128) throw new Error("Invalid terrain archive chunk count");
+    const tableStart = data.length - 1 - chunks * n * 4;
+    if (tableStart < 0) throw new Error("Truncated terrain archive chunk table");
+    const sizes = new Uint32Array(n);
+    let offset = tableStart;
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    for (let chunk = 0; chunk < chunks; chunk++) {
+        let partSize = 0;
+        for (let file = 0; file < n; file++) {
+            partSize += view.getInt32(offset, false);
+            offset += 4;
+            if (!Number.isSafeInteger(partSize) || partSize < 0 || partSize > tableStart) {
+                throw new Error("Invalid terrain archive chunk length");
+            }
+            sizes[file] += partSize;
+            if (sizes[file] > tableStart) throw new Error("Terrain archive file is too large");
+        }
+    }
+    const target = new Uint8Array(sizes[wanted]);
+    offset = tableStart;
+    let sourceOffset = 0, targetOffset = 0;
+    for (let chunk = 0; chunk < chunks; chunk++) {
+        let partSize = 0;
+        for (let file = 0; file < n; file++) {
+            partSize += view.getInt32(offset, false);
+            offset += 4;
+            if (sourceOffset + partSize > tableStart) throw new Error("Terrain archive chunk overflow");
+            if (file === wanted) {
+                target.set(data.subarray(sourceOffset, sourceOffset + partSize), targetOffset);
+                targetOffset += partSize;
+            }
+            sourceOffset += partSize;
+        }
+    }
+    if (sourceOffset !== tableStart || targetOffset !== target.length) {
+        throw new Error("Terrain archive chunk boundaries are inconsistent");
+    }
+    return target;
 }
 
 const cosine = new Int32Array(2048);
@@ -183,7 +296,7 @@ export function decodeTerrainRegion(data,mapX,mapY) {
 }
 
 /** One selected unencrypted map tile group; no object/loc/XTEA download. */
-export async function loadNativeTerrain(cache,mapX=50,mapY=50) {
+export async function loadNativeTerrain(cache,mapX=50,mapY=50,{allowFallback=false}={}) {
     const index=await cache.loadIndex(5);
     const reference=cache.referenceContainers.get(5);
     if(!(reference instanceof Uint8Array))throw new Error("Verified map reference table missing");
@@ -193,12 +306,14 @@ export async function loadNativeTerrain(cache,mapX=50,mapY=50) {
     });
     const catalog=mapRegionCatalog(meta);
     if(catalog.revision!==index.revision)throw new Error("Map reference revision mismatch");
-    const group=getTerrainGroup(catalog,mapX,mapY);
-    const container=await cache.loadGroup(5,group); // CRC-verified by native client
+    const selected=resolveTerrainRegion(catalog,mapX,mapY,{allowFallback});
+    const container=await cache.loadGroup(5,selected.group); // CRC-verified by native client
     const payload=await decodeCacheContainer({
         container,
         uncompressedBytes:container[0]===0?readU32(container,1):readU32(container,5),
     });
-    const terrain=decodeTerrainRegion(payload,mapX,mapY);
-    return {...terrain,group,containerBytes:container.length};
+    const terrainBytes=extractTerrainFile(payload,terrainFileIds(catalog,selected.group));
+    const terrain=decodeTerrainRegion(terrainBytes,selected.mapX,selected.mapY);
+    return {...terrain,group:selected.group,containerBytes:container.length,
+        requestedMapX:mapX,requestedMapY:mapY,fallback:selected.fallback};
 }

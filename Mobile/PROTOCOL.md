@@ -207,6 +207,20 @@ revision-240 server, while CI validates synthetic map and mesh
 fixtures. This work is client construction, not a new stand-alone
 network probe.
 
+### Map index availability and packed multi-file group support
+
+The initial live native WebGL client failed with `No single-file
+terrain map group for region 50,50`. This happens after loading
+native index-5 reference metadata; it must not be presented as a
+WebSocket or game-server outage. OSRS map archives can have more than
+one file. The map reference parser now retains the group file IDs;
+the terrain loader supports the native single/multi-chunk archive
+table, extracts only unencrypted terrain file ID 0, and verifies
+bounded lengths. On initial startup it can choose the closest
+actually catalogued named `mX_Y` terrain region when the default
+m50_50 is missing; manual travel remains exact. No additional
+standalone probes and no fabricated region data.
+
 ## Required protocol adapter work (not implemented)
 
 1. **Choose a source-of-truth native client protocol.** Identify the exact SoloScape revision, RSA public modulus, current JS5/cache revision, ISAAC seeds, login block layout and inbound/outbound packet tables from the `rsprot` dependency and SoloScape generated files.

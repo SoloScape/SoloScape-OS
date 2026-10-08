@@ -37,6 +37,17 @@ npm run dev
 
 `http://localhost:3001/` should start loading map region `50,50`
 automatically. Change X/Y and press **Travel** to view other regions.
+The first live m50_50 attempt failed to find a **single-file**
+terrain group; that is a map reference/index lookup failure, not proof
+that the native gateway or server is offline. The client now supports
+**multi-file native map groups**, extracting the terrain file with ID
+0 using the OSRS archive chunk table. On initial startup only, if
+m50_50 is unavailable, it chooses the nearest available **real,
+named map terrain group** from the verified index-5 catalog, displays
+the actual coordinates, and updates the region controls. Manually
+requested regions remain exact, with a clear failure if absent.
+No mock map or stand-in terrain is rendered.
+
 Touch/drag or mouse/drag rotates the camera; wheel zooms; WASD/arrows
 pan. If cache geometry is not available, the page displays the actual
 network/format error and leaves the viewport empty. The renderer needs
