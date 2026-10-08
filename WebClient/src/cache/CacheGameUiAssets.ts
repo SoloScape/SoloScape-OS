@@ -69,3 +69,34 @@ export async function loadInterfaceSprite(
   if (!file) throw new Error('Empty sprite group 8:' + spriteId);
   return decodeCacheSpriteGroup(file);
 }
+
+/**
+ * Widget font ids refer to archive-8 glyph sprite groups. Archive-13 metrics
+ * are matched by reference-table name hash where available.
+ */
+export async function loadInterfaceFont(
+  js5: Js5Client,
+  fontId: number,
+): Promise<CacheFontAsset> {
+  const spritesTable = js5.getArchiveReferenceTable(8);
+  const metricsTable = js5.getArchiveReferenceTable(13);
+  const entry = spritesTable?.groups.find((group) => group.id === fontId);
+  if (!entry || !metricsTable) {
+    throw new Error('Missing cached widget font sprites/metrics ' + fontId);
+  }
+  const metrics = entry.nameHash === null
+    ? metricsTable.groups.find((group) => group.id === fontId)
+    : metricsTable.groups.find((group) => group.nameHash === entry.nameHash);
+  if (!metrics) throw new Error('Missing metrics for cached widget font ' + fontId);
+  const [glyphGroup, metricGroup] = await Promise.all([
+    js5.downloadGroup(8, fontId), js5.downloadGroup(13, metrics.id),
+  ]);
+  const glyphBytes = glyphGroup.files.get(0) ?? glyphGroup.files.values().next().value;
+  const metricsBytes = metricGroup.files.get(0) ?? metricGroup.files.values().next().value;
+  if (!glyphBytes || !metricsBytes) throw new Error('Empty widget font ' + fontId);
+  return {
+    name: 'cache-font-' + fontId,
+    glyphs: decodeCacheSpriteGroup(glyphBytes),
+    metrics: metricsBytes,
+  };
+}
