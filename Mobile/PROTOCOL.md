@@ -1,7 +1,7 @@
 # TSPS → SoloScape protocol interoperability
 
 The browser now starts on a cache-backed title screen instead of a terrain
-preview/development dashboard. Revision-240 cache index 10 supplies `title.jpg`;
+preview/development dashboard. Revision-240 cache index 10 supplies `titlewide.jpg`;
 index 8 supplies the logo/title buttons/runes/mute sprites; indices 8/13 supply
 bitmap fonts. The original TSPS fire and MIDI/Vorbis/legacy sample code is
 adapted reproducibly with retained BSD attribution. `scape main` is resolved

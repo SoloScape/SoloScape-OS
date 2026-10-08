@@ -11,8 +11,15 @@ test("title controls fit desktop, portrait and landscape without resizing the ga
         const l=titleLayout(w,h);
         for(const x of [202,562])assert.ok(l.x+x*l.scale>=0&&l.x+x*l.scale<=w);
         for(const y of [18,370])assert.ok(l.y+y*l.scale>=0&&l.y+y*l.scale<=h);
-        assert.ok(l.bx<=0&&l.by<=0);assert.ok(765*l.backgroundScale>=w&&503*l.backgroundScale>=h);
+        assert.ok(l.bx<=0&&l.by<=0);assert.ok(1089*l.backgroundScale>=w&&671*l.backgroundScale>=h);
     }
+});
+
+test("OSRS reference keeps native title controls top-aligned over the wide cache background",()=>{
+    const l=titleLayout(1089,671);
+    assert.equal(l.scale,1);assert.equal(l.y,0);assert.equal(l.x,162.5);
+    assert.equal(l.backgroundScale,1);assert.equal(l.bx,0);assert.equal(l.by,0);
+    assert.equal(titleLayout(1920,1080).scale,1);
 });
 
 test("music cache bridge waits for one verified group and preserves decoded bytes",async()=>{

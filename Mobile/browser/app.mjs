@@ -221,8 +221,8 @@ loginForm.addEventListener("submit",async event=>{
     const sequence=++sessionAttempt;loginBusy=true;loginButton.disabled=true;disconnect.hidden=false;
     interfacePreview.close();lockInterfacePreview(true);
     examineResult.hidden=true;
-    const credentials={username:byId("login-username").value,password:byId("login-password").value,otp:byId("login-otp").value};
-    byId("login-password").value="";byId("login-otp").value="";
+    const credentials={username:byId("login-username").value,password:byId("login-password").value,otp:""};
+    byId("login-password").value="";
     loginStatus.textContent="Checking the login cache manifest…";
     try{
         // This must be the manifest from the same gateway/server as the account connection.

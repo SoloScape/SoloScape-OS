@@ -46,12 +46,11 @@
 <section id="title-screen" aria-label="SoloScape title screen">
  <canvas id="title-canvas" aria-label="Revision-240 cache title background, logo and animated fire"></canvas>
  <div id="title-controls">
-  <button id="title-new-account" class="title-button welcome-new" type="button" hidden>New account</button>
-  <button id="title-login" class="title-button welcome-login" type="button" hidden>Login</button>
+  <button id="title-new-account" class="title-button welcome-new" type="button" aria-disabled="true" hidden>New User</button>
+  <button id="title-login" class="title-button welcome-login" type="button" hidden>Existing User</button>
   <form id="login-form" hidden>
-   <label class="sr-only" for="login-username">Username</label><input id="login-username" name="username" autocomplete="username" maxlength="320" spellcheck="false" autocapitalize="none" required>
+   <label class="sr-only" for="login-username">Login</label><input id="login-username" name="username" autocomplete="username" maxlength="320" spellcheck="false" autocapitalize="none" required>
    <label class="sr-only" for="login-password">Password</label><input id="login-password" name="password" type="password" autocomplete="current-password" maxlength="80" required>
-   <label class="sr-only" for="login-otp">Authenticator code (optional)</label><input id="login-otp" name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6">
    <button id="login-submit" class="title-button form-login" type="submit" disabled>Login</button>
   </form>
   <button id="title-cancel" class="title-button form-cancel" type="button" hidden>Cancel</button>

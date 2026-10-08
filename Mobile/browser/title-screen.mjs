@@ -9,10 +9,10 @@ import {LoginScreenAnimation} from "./title-fire.mjs";
 import {NativeTitleMusic} from "./title-music.mjs";
 
 export function titleLayout(width,height){
-    const scale=Math.min(width/(width<600?400:765),height/503,1.5);
-    const backgroundScale=Math.max(width/765,height/503);
-    return {scale,x:width/2-382*scale,y:(height-503*scale)/2,
-        backgroundScale,bx:(width-765*backgroundScale)/2,by:(height-503*backgroundScale)/2};
+    const scale=Math.min(width/(width<600?400:765),height/503,1);
+    const backgroundScale=Math.max(width/1089,height/671);
+    return {scale,x:width/2-382*scale,y:0,
+        backgroundScale,bx:(width-1089*backgroundScale)/2,by:(height-671*backgroundScale)/2};
 }
 export async function namedTitleFile(cache,index,name){
     const catalog=await verifiedCatalog(cache,index),group=catalog.names.get(djb2(name));
@@ -33,8 +33,7 @@ export class NativeTitleScreen{
         this.mode="loading";this.percent=0;this.message="Connecting to update server";this.assets={sprites:new Map()};this.visible=true;
         this.newAccount=document.getElementById("title-new-account");this.login=document.getElementById("title-login");
         this.back=document.getElementById("title-cancel");this.mute=document.getElementById("title-mute");
-        this.newAccount.addEventListener("click",()=>this.showLogin("Choose a new username and password. Your account is created on first login.",true));
-        this.login.addEventListener("click",()=>this.showLogin("Enter your username and password."));
+        this.login.addEventListener("click",()=>this.showLogin("Enter your username/email & password."));
         this.back.addEventListener("click",()=>{this.onCancel();this.showWelcome();});
         this.mute.addEventListener("click",()=>{this.music?.toggle();this.mute.setAttribute("aria-pressed",String(this.music?.muted??false));});
         this.gesture=()=>void this.music?.unlock();
@@ -48,9 +47,9 @@ export class NativeTitleScreen{
         const steps=[
             ["Checking cache manifest",async()=>cache.loadMaster()],
             ["Loading title background",async()=>{
-                const bytes=await namedTitleFile(cache,10,"title.jpg");
+                const bytes=await namedTitleFile(cache,10,"titlewide.jpg");
                 this.assets.background=await createImageBitmap(new Blob([bytes],{type:"image/jpeg"}));
-                if(this.assets.background.width!==383||this.assets.background.height!==503)throw new Error("Unexpected revision-240 title dimensions");
+                if(this.assets.background.width!==545||this.assets.background.height!==671)throw new Error("Unexpected revision-240 wide title dimensions");
             }],
             ...["logo","titlebox","titlebutton","runes","title_mute"].map(name=>["Loading "+name.replaceAll("_"," "),async()=>{
                 const frames=decodeIndexedSprites(await namedTitleFile(cache,8,name));
@@ -70,10 +69,9 @@ export class NativeTitleScreen{
         }catch(error){this.mode="error";this.message=error.message;this.status.textContent="Title cache unavailable: "+error.message;this.syncControls();}
     }
     showWelcome(){this.mode="welcome";this.visible=true;document.body.classList.remove("in-game");this.status.textContent="";this.music?.show();this.syncControls();this.restart();}
-    showLogin(message="",newAccount=false){
+    showLogin(message=""){
         this.mode="login";this.visible=true;document.body.classList.remove("in-game");this.status.textContent=message;
-        document.getElementById("login-password").value="";document.getElementById("login-otp").value="";
-        document.getElementById("login-password").autocomplete=newAccount?"new-password":"current-password";
+        document.getElementById("login-password").value="";
         this.music?.show();this.syncControls();this.restart();document.getElementById("login-username").focus();
     }
     enterGame(){this.visible=false;document.body.classList.add("in-game");cancelAnimationFrame(this.animation);this.music?.hide();this.syncControls();}
@@ -98,14 +96,14 @@ export class NativeTitleScreen{
         const l=titleLayout(width,height),{background}=this.assets;
         if(background){
             ctx.save();ctx.translate(l.bx,l.by);ctx.scale(l.backgroundScale,l.backgroundScale);
-            ctx.drawImage(background,0,0);ctx.translate(765,0);ctx.scale(-1,1);ctx.drawImage(background,0,0);ctx.restore();
+            ctx.drawImage(background,0,0);ctx.translate(1089,0);ctx.scale(-1,1);ctx.drawImage(background,0,0);ctx.restore();
         }
         if(this.fire&&this.mode!=="loading"){
             const fire=this.fire.updateAndGetCanvas(0);
             if(fire){
-                const fw=128*l.scale,fh=264*l.scale;
-                ctx.drawImage(fire,Math.max(0,l.x-22*l.scale),Math.max(0,l.y),fw,fh);
-                ctx.drawImage(fire,Math.min(width-fw,l.x+659*l.scale),Math.max(0,l.y),fw,fh);
+                const fw=128*l.backgroundScale,fh=264*l.backgroundScale;
+                ctx.drawImage(fire,l.bx+140*l.backgroundScale,l.by,fw,fh);
+                ctx.drawImage(fire,l.bx+821*l.backgroundScale,l.by,fw,fh);
             }
         }
         this.stage.style.transform=`translate(${l.x}px,${l.y}px) scale(${l.scale})`;
@@ -119,23 +117,29 @@ export class NativeTitleScreen{
         }else{
             const box=this.assets.sprites.get("titlebox")?.[0];if(box)ctx.drawImage(box,202,170);
             if(this.mode==="welcome"){
-                this.text(ctx,"Welcome to SoloScape",382,251,"#ffff00");this.button(ctx,302,291,"New account");this.button(ctx,462,291,"Login");
+                this.text(ctx,"Welcome to RuneScape",382,251,"#ffff00");this.button(ctx,302,291,"New User");this.button(ctx,462,291,"Existing User");
             }else if(this.mode==="login"){
                 const message=this.status.textContent;
                 const words=message.split(" "),rows=[];let line="";
                 for(const word of words){const next=line?line+" "+word:word;if(line&&(this.assets.font?.measure(next)??next.length*7)>320){rows.push(line);line=word;}else line=next;}if(line)rows.push(line);
-                rows.slice(0,3).forEach((row,i)=>this.text(ctx,row,382,200+i*15,"#ffff00"));
-                const font=this.assets.font,fields=[["Username:","login-username",251,false],["Password:","login-password",271,true],["Code:","login-otp",291,false]];
+                rows.slice(0,3).forEach((row,i)=>this.text(ctx,row,382,211+i*15,"#ffff00"));
+                const font=this.assets.small,fields=[["Login:","login-username",253,false],["Password:","login-password",268,true]];
                 for(const [label,id,y,masked] of fields){
                     const input=document.getElementById(id),value=masked?"*".repeat(input.value.length):input.value;
                     let display=value;while(display.length&&font.measure(display)>185)display=display.slice(1);
-                    font.draw(ctx,label,274,y,"#ffffff");font.draw(ctx,display+(document.activeElement===input&&Math.floor(performance.now()/500)%2===0?"|":""),346,y,"#ffffff");
+                    const x=274+font.measure(label);
+                    input.style.left=x+"px";
+                    font.draw(ctx,label,274,y,"#ffffff",true);font.draw(ctx,display+(document.activeElement===input&&Math.floor(performance.now()/500)%2===0?"|":""),x,y,"#ffffff",true);
                 }
-                this.button(ctx,302,326,document.getElementById("login-submit").disabled?"Please wait...":"Login");this.button(ctx,462,326,"Cancel");
+                this.button(ctx,302,321,document.getElementById("login-submit").disabled?"Please wait...":"Login");this.button(ctx,462,321,"Cancel");
             }
         }
         ctx.restore();
-        if(!this.mute.hidden){const sprite=this.assets.sprites.get("title_mute")?.[this.music?.muted?1:0];if(sprite)ctx.drawImage(sprite,width-46,height-46);}
+        if(!this.mute.hidden){
+            const mx=Math.max(0,Math.min(width-40,l.x+725*l.scale)),my=463*l.scale;
+            this.mute.style.left=mx+"px";this.mute.style.top=my+"px";
+            const sprite=this.assets.sprites.get("title_mute")?.[this.music?.muted?1:0];if(sprite)ctx.drawImage(sprite,mx,my,36*l.scale,36*l.scale);
+        }
     }
     dispose(){cancelAnimationFrame(this.animation);window.removeEventListener("resize",this.resize);window.visualViewport?.removeEventListener("resize",this.resize);document.removeEventListener("pointerup",this.gesture,true);document.removeEventListener("keydown",this.gesture,true);this.fire?.destroy();this.music?.dispose();this.assets.background?.close();}
 }

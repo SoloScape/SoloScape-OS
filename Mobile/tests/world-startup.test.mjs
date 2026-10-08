@@ -254,15 +254,20 @@ try{
     // visible form. No development shell or terrain preview starts on boot.
     const {NativeTitleScreen}=await import("/title-screen.mjs");
     const screen=document.createElement("section");
-    screen.innerHTML='<canvas id="title-canvas"></canvas><div id="title-controls"><button id="title-new-account">New account</button><button id="title-login">Login</button><form id="login-form"><input id="login-username"><input id="login-password" type="password"><input id="login-otp"><button id="login-submit">Login</button></form><button id="title-cancel">Cancel</button><p id="login-status"></p></div><button id="title-mute"></button>';
+    screen.innerHTML='<canvas id="title-canvas"></canvas><div id="title-controls"><button id="title-new-account">New User</button><button id="title-login">Existing User</button><form id="login-form"><input id="login-username"><input id="login-password" type="password"><button id="login-submit">Login</button></form><button id="title-cancel">Cancel</button><p id="login-status"></p></div><button id="title-mute"></button>';
     document.body.append(screen);
     const title=new NativeTitleScreen({canvas:screen.querySelector("canvas"),stage:screen.querySelector("#title-controls"),
         form:screen.querySelector("form"),status:screen.querySelector("p")});
-    title.assets.font={measure:s=>s.length*5,draw(){}};
+    const titleText=[];
+    title.assets.font=title.assets.small={measure:s=>s.length*5,draw(ctx,text){titleText.push(text);}};
     title.showWelcome();
     if(!screen.querySelector("form").hidden||screen.querySelector("#title-login").hidden)throw new Error("Welcome shows login form too early");
     screen.querySelector("#title-new-account").click();
-    if(screen.querySelector("form").hidden||screen.querySelector("#login-password").autocomplete!=="new-password")throw new Error("New account did not open creation flow");
+    if(title.mode!=="welcome"||!screen.querySelector("form").hidden)throw new Error("New User must remain inactive");
+    screen.querySelector("#title-login").click();
+    if(screen.querySelector("form").hidden||screen.querySelector("p").textContent!=="Enter your username/email & password.")throw new Error("Existing User did not open OSRS login form");
+    for(const label of ["Welcome to RuneScape","New User","Existing User","Login:","Password:"])if(!titleText.includes(label))throw new Error("Missing OSRS title label: "+label);
+    if(titleText.includes("Code:")||screen.querySelector("#login-otp"))throw new Error("Authenticator field remains on ordinary login");
     screen.querySelector("#login-password").value="synthetic";title.enterGame();
     if(!screen.hidden||!document.body.classList.contains("in-game"))throw new Error("Title remained over authenticated game");
     title.showLogin("Disconnected");

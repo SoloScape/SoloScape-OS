@@ -10,12 +10,12 @@ This directory integrates the pinned upstream browser client as a Git submodule 
 starts **SoloScape's own WebGL world client** at
 `http://localhost:3001/`, not the collection of JS5 diagnostic buttons.
 The landing page is now the classic title screen. It uses the server's
-**revision-240 `title.jpg` from cache index 10**, mirrored at the original
-765×503 coordinates, plus the cache logo, title box, buttons and fonts.
+**revision-240 `titlewide.jpg` from cache index 10**, mirrored into the full
+1089×671 background, plus the cache logo, title box, buttons and fonts.
 The red loading bar advances as those verified assets and music metadata
-finish loading. **New account** opens the creation form; SoloScape creates
-the account on first password login. **Login** opens the existing login form,
-including an optional authenticator code. Original TSPS rune-fire code drives
+finish loading. **New User** is intentionally inactive. **Existing User** opens
+the ordinary login/password form; the authenticator field is removed from this
+screen. Original TSPS rune-fire code drives
 the animation. **Scape Main** comes from cache index 6 and plays through the
 ported TSPS MIDI synthesizer with index-15 patches and index-4/14 samples.
 Browser autoplay rules require the first click/tap/key before music starts;
@@ -25,7 +25,8 @@ Login switches to a full-viewport game; disconnect returns to the title.
 The top bar, sidebar and development overlays are hidden in ordinary play.
 **F10** opens the developer panel with region travel, floor controls,
 disconnect, cache-interface preview and diagnostics. No terrain preview
-starts automatically before login. The title scales for desktop and phone
+starts automatically before login. Title controls remain at native size and
+top-aligned on desktop, scaling down to fit phone
 viewports; no cache artwork or music captures are committed. Reproduce the
 original fire/music modules with `node scripts/adapt-title-runtime.mjs` after
 initializing the pinned TSPS submodule. No additional npm dependency is needed.
