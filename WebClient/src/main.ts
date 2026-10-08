@@ -1248,6 +1248,7 @@ js5.onBootstrapComplete = (index) => {
       }
 
       startupAssets = loadedStartupAssets;
+      uiState.setVarbitDefinitions(loadedStartupAssets.varbitDefinitions);
       (window as SoloScapeDebugWindow).soloscapeStartupAssets =
         loadedStartupAssets;
 
