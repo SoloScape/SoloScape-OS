@@ -258,6 +258,24 @@ grid at **60,238 consumed bytes** and one trailing uninterpreted byte.
 The real floor-colour decoder has synthetic CI coverage, but its
 live browser result has not been confirmed.
 
+### Nonblocking scene startup and module graph integrity
+
+The floor RGB feature introduced a missing static route for
+`floor-materials.mjs`; this prevented the browser's ES module
+graph from evaluating and left the initial loading screen up.
+The preview server now serves that route. A CI test starts the
+actual dev server on a randomly allocated local TCP port and
+verifies the app's critical module URLs return JavaScript.
+
+Optional floor materials must never gate the **first real WebGL
+terrain paint**. `world-startup.mjs` shows verified revision-240
+terrain immediately after cache decoding and only then starts
+async index-2 colour loads. Material failures retain the visible
+world and are shown in the status line, and responses from earlier
+regions cannot overwrite a later Travel. Recolouring does not
+reset the user's camera target. This does not change the existing
+CRC/revision verification or make native RSA/ISAAC login available.
+
 ## Required protocol adapter work (not implemented)
 
 1. **Choose a source-of-truth native client protocol.** Identify the exact SoloScape revision, RSA public modulus, current JS5/cache revision, ISAAC seeds, login block layout and inbound/outbound packet tables from the `rsprot` dependency and SoloScape generated files.

@@ -149,13 +149,13 @@ export class NativeTerrainViewport {
         this.frame=()=>{if(this.disposed)return;this.render();this.raf=requestAnimationFrame(this.frame);};
         this.raf=requestAnimationFrame(this.frame);
     }
-    setTerrain(terrain){
+    setTerrain(terrain,{resetCamera=true}={}){
         const gl=this.gl;
         const vertices=buildTerrainMesh(terrain);
         gl.bindBuffer(gl.ARRAY_BUFFER,this.buf);
         gl.bufferData(gl.ARRAY_BUFFER,vertices,gl.STATIC_DRAW);
         this.count=vertices.length/6;
-        this.target=[0,8,0];
+        if(resetCamera)this.target=[0,8,0];
     }
     render(){
         const gl=this.gl,canvas=this.canvas;

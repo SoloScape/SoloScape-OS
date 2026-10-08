@@ -114,6 +114,38 @@ Keep the Java server and gateway running, from `Mobile/` run
 then hard-refresh `http://localhost:3001/`. The visual colour
 result against the real server remains **pending live confirmation**.
 
+### World startup must not block on optional floor materials
+
+A real browser screenshot showed the static **Opening SoloScape world**
+overlay and **Connecting to local cache** status after adding floor
+colours. Two distinct implementation bugs were identified:
+
+1. The loopback preview server did not serve
+   `/floor-materials.mjs`, even though `app.mjs` imported it.
+   A failed ECMAScript import prevented the entire app from executing,
+   leaving the static loading overlay indefinitely visible.
+2. The world loader awaited optional index-2 underlay/overlay
+   definitions **before** making the already CRC-verified terrain
+   visible. Slow or unsupported materials were therefore blocking
+   an otherwise functional world.
+
+The preview server now serves the complete module graph. A CI
+test launches it on an ephemeral **loopback** port and requests the
+main app and all its native modules, including the floor decoder.
+The client now draws verified terrain and clears its initial
+loading overlay **before** issuing any optional floor requests.
+Colours are applied asynchronously to that scene if available;
+failure leaves the terrain visible with a clear fallback message.
+Stale floor responses cannot overwrite a newer Travel destination,
+and recolouring does not reset the camera.
+
+To run the updated client, stop the existing `npm run dev`,
+`git pull --ff-only origin feature/mobile`, restart
+`npm run dev`, and hard-refresh
+`http://localhost:3001/` (Ctrl+Shift+R). The new code still
+requires the native revision-240 Java server and origin-restricted
+loopback WebSocket gateway; it adds no credentials or probes.
+
 ## Source baseline
 
 - Upstream project: `RSPSApp/tsps`, pinned as the `Mobile/tsps-upstream/` Git submodule (initialise it when cloning).
