@@ -368,7 +368,7 @@ export class MobileHud {
         'Attack', 'Hitpoints', 'Mining', 'Strength', 'Agility', 'Smithing',
         'Defence', 'Herblore', 'Fishing', 'Ranged', 'Thieving', 'Cooking',
         'Prayer', 'Crafting', 'Firemaking', 'Magic', 'Fletching', 'Woodcutting',
-        'Runecraft', 'Slayer', 'Farming', 'Construction', 'Hunter', 'Summoning',
+        'Runecraft', 'Slayer', 'Farming', 'Construction', 'Hunter', 'Sailing',
       ];
       return '<div class="hud-skills-grid">' +
         skills.map((skill) => '<div class="hud-skill" title="' + skill +
