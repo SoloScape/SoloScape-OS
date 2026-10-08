@@ -44,37 +44,60 @@ export async function loadCacheGameUiAssets(
 }
 
 /** Convert a decoded palette/alpha cache sprite into browser canvas pixels. */
-export function cacheSpriteCanvas(frame: CacheSpriteFrame): HTMLCanvasElement {
+export function cacheSpriteCanvas(
+  frame: CacheSpriteFrame, normalize = false,
+): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, frame.width);
-  canvas.height = Math.max(1, frame.height);
+  // Widget sprites retain their original sheet dimensions and pixel offsets.
+  canvas.width = Math.max(1, normalize ? frame.sheetWidth : frame.width);
+  canvas.height = Math.max(1, normalize ? frame.sheetHeight : frame.height);
   const context = canvas.getContext('2d');
   if (!context) throw new Error('2D canvas unavailable for game cache sprite.');
   const pixels = context.createImageData(frame.width, frame.height);
   pixels.data.set(cacheSpriteToRgba(frame));
-  context.putImageData(pixels, 0, 0);
+  context.putImageData(pixels, normalize ? frame.xOffset : 0,
+    normalize ? frame.yOffset : 0);
   return canvas;
 }
 
 /**
- * Sprite ids in IF3 widgets refer to JS5 archive-8 group ids, not web assets.
- * Load the exact group on demand, validating it via Js5Client.
+ * IF3 widget sprite ids can be packed as (group << 16) | file, unlike
+ * named title sprites that normally use archive-8 group/file 0.
+ *
+ * See xrsps/xrsps-typescript client/rs/sprite/SpriteLoader.ts:
+ * it tries the packed archive/file pair before the (id, 0) form.
  */
+export function widgetSpriteCandidates(spriteId: number): ReadonlyArray<{
+  groupId: number; fileId: number;
+}> {
+  if (!Number.isSafeInteger(spriteId) || spriteId < 0 || spriteId > 0x7fffffff) {
+    return [];
+  }
+  const groupId = (spriteId >>> 16) & 0xffff;
+  const fileId = spriteId & 0xffff;
+  const packed = groupId > 0 ? [{ groupId, fileId }] : [];
+  if (spriteId <= 0xffff && !(groupId === spriteId && fileId === 0)) {
+    packed.push({ groupId: spriteId, fileId: 0 });
+  }
+  return packed;
+}
+
 export async function loadInterfaceSprite(
   js5: Js5Client,
   spriteId: number,
 ): Promise<readonly CacheSpriteFrame[]> {
-  if (!Number.isSafeInteger(spriteId) || spriteId < 0) {
+  const candidates = widgetSpriteCandidates(spriteId);
+  if (!candidates.length) {
     throw new Error('Invalid cache sprite id ' + spriteId);
   }
   const table = js5.getArchiveReferenceTable(GAME_SPRITE_ARCHIVE);
-  if (!table?.groups.some((group) => group.id === spriteId)) {
-    throw new Error('No cache sprite group 8:' + spriteId);
+  for (const candidate of candidates) {
+    if (!table?.groups.some((group) => group.id === candidate.groupId)) continue;
+    const group = await js5.downloadGroup(GAME_SPRITE_ARCHIVE, candidate.groupId);
+    const file = group.files.get(candidate.fileId);
+    if (file) return decodeCacheSpriteGroup(file);
   }
-  const group = await js5.downloadGroup(GAME_SPRITE_ARCHIVE, spriteId);
-  const file = group.files.get(0) ?? group.files.values().next().value;
-  if (!file) throw new Error('Empty sprite group 8:' + spriteId);
-  return decodeCacheSpriteGroup(file);
+  throw new Error('Missing archive-8 sprite id ' + spriteId);
 }
 
 /**
