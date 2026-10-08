@@ -1019,10 +1019,10 @@ physical device before claiming full OSRS movement parity.
 
 ### Authenticated login-to-world loading (revised)
 
-The native revision-240 login keeps the classic loading screen while the login
-challenge and the **required, CRC-verified four-plane terrain** finish. The
+The native revision-240 login keeps the classic title until authentication. The
+world loading overlay remains until the **required, CRC-verified four-plane terrain** finishes. The
 world is now acknowledged with `MAP_BUILD_COMPLETE` once its terrain grid
-is available, and the first actor pass runs before revealing gameplay.
+is available; the first actor pass and WebGL frame precede the fog fade.
 Optional underlay/overlay material upgrades, texture sprites and location
 models load **after** that transition, rendering progressively; they do not
 hold the login screen. Pending work cannot paint a replaced region or a
@@ -1041,3 +1041,31 @@ the browser cache service currently keeps verified groups only in memory and
 each distinct group uses its own authenticated native JS5 gateway connection.
 A persistent, multiplexed cache stream and disk caching remain future work;
 no specific live-account speedup is claimed without a measured walkthrough.
+
+### Pinned TSPS/RuneLite-style login state lifecycle
+
+The title UI uses CONNECTING only while the native revision-240 login is
+pending. Successful server authentication enters `LOADING_GAME` (25)
+immediately: the login form disappears and a small `Loading - please wait.`
+label overlays the WebGL world. `LOGGED_IN` (30) starts only after the
+auth handshake requirement and the map-ready requirement both complete.
+It uses the *pinned TSPS* `GameStateMachine`, `GameState` and
+`LoadingTracker`, which are regenerated unchanged from TypeScript with
+`npm run generate:tsps-loading`.
+
+Map readiness is signalled only after the native renderer draws the first
+nonempty terrain frame. As in pinned TSPS, the map fog/fade interval lasts
+1000 ms, while `LOADING_GAME` is displayed for at least 500 ms total (not an
+additional 500 ms after the fade). Browser CSS provides
+the fade and is not Jagex's original 3D fog shader. Later server rebuilds
+reenter `LOADING_GAME`; disconnects cancel pending callbacks and return
+to the login screen. Existing authenticated movement, server map-complete
+packet and background texture/scenery loading are preserved.
+
+RuneLite supplies game-state hooks around the real Jagex gamepack, rather
+than its own independent renderer. Full binary/pixel parity therefore also
+requires cache persistence, exact scene reconstruction, login protocol
+differences and official fog/shader behavior; this commit matches the
+observable lifecycle and pinned TSPS timing, **not** the proprietary
+official client's complete internals. Browser/device play-testing remains
+required; automated tests do not measure a real account's login speed.

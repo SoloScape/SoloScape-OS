@@ -613,9 +613,11 @@ export class NativeTerrainViewport {
             gl.vertexAttribPointer(ta,3,gl.FLOAT,false,24,0);gl.vertexAttribPointer(tc,3,gl.FLOAT,false,24,12);
             gl.drawArrays(gl.TRIANGLES,0,batch.count);
         }
+        // Notify the loading tracker only after actual WebGL draw calls.
+        if(this.onSceneFrame){const done=this.onSceneFrame;this.onSceneFrame=null;done();}
     }
     dispose(){
-        this.disposed=true;this.longPress.cancel();cancelAnimationFrame(this.raf);
+        this.disposed=true;this.onSceneFrame=null;this.longPress.cancel();cancelAnimationFrame(this.raf);
         for(const [name,fn] of [["pointerdown",this.onPointerDown],["pointermove",this.onPointerMove],
             ["pointerup",this.onPointerUp],["pointercancel",this.onPointerUp],["contextmenu",this.onContextMenu],["wheel",this.onWheel]]) {
             this.canvas.removeEventListener(name,fn);

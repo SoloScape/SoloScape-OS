@@ -337,7 +337,7 @@ try{
     titleInput.dispatchEvent(new Event("select"));if(titleInput.selectionStart!==titleInput.selectionEnd)throw new Error("Login text selection was not collapsed");
     screen.querySelector("#login-password").value="synthetic";title.beginConnecting();screen.querySelector("#login-password").value="";title.paint();
     if(screen.hidden||document.body.classList.contains("in-game")||!screen.querySelector("form").hidden)throw new Error("Connecting must retain title artwork and hide login controls");
-    if(!titleText.includes("Loading - Please wait.")||!titleText.includes("Connecting to server...")||!titleText.includes("*********"))throw new Error("Connecting title missed loading badge or masked password");
+    if(titleText.includes("Loading - Please wait.")||!titleText.includes("Connecting to server...")||!titleText.includes("*********"))throw new Error("The connecting screen must show the pending login, not a post-auth loading badge");
     title.enterGame();
     if(!screen.hidden||!document.body.classList.contains("in-game"))throw new Error("Title remained over authenticated game");
     title.showLogin("Disconnected");

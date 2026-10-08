@@ -36,12 +36,12 @@ export function interpolatePlayer(motion,now){
 }
 
 export class NativeGameplay {
-    constructor({cache,viewport,session,interfaces=null,onStatus=()=>{},onRegion=()=>{},onReady=()=>{},onNpcMenu=()=>{},onExamine=()=>{},run=()=>false,
+    constructor({cache,viewport,session,interfaces=null,onStatus=()=>{},onRegion=()=>{},onLoading=()=>{},onReady=()=>{},onNpcMenu=()=>{},onExamine=()=>{},run=()=>false,
         loadTerrain=loadNativeTerrain,loadMaterials=loadFloorMaterials,loadScenery=loadStaticScenery,
         models=new NativePlayerModels(cache),now=()=>performance.now()}={}){
         this.cache=cache;this.viewport=viewport;this.session=session;this.onStatus=onStatus;this.onRegion=onRegion;this.onNpcMenu=onNpcMenu;this.onExamine=onExamine;this.run=run;
         this.interfaces=interfaces;
-        this.onReady=onReady;
+        this.onReady=onReady;this.onLoading=onLoading;
         this.loadTerrain=loadTerrain;this.loadMaterials=loadMaterials;this.loadScenery=loadScenery;this.models=models;this.now=now;
         this.generation=0;this.closed=false;this.regions=new Map();this.packetCount=0;this.animationStarted=now();
         this.playerController=new NativeTspsPlayerController(this.models.animations,now);
@@ -102,6 +102,7 @@ export class NativeGameplay {
         this.clearNpcMenu();this.npcs.reset();this.npcMotions.clear();this.npcDrawn=0;
         this.loading=true;this.modelReady=false;this.renderError=null;this.regions=new Map();this.viewport.setActors(null);this.viewport.setScenery(null);
         const started=this.now();
+        this.onLoading();
         this.onStatus("Loading server map data…");
         // The rebuild packet can arrive before the follow-up player position update.
         const player=this.sync.local,origin={mapX:rebuild.zoneX>>>3,mapY:rebuild.zoneY>>>3};

@@ -8,6 +8,7 @@ import { displayTerrainProgressively } from "./world-startup.mjs";
 import { loadStaticScenery } from "./scenery-models.mjs";
 import {SceneTextures} from "./texture-cache.mjs";
 import {NativeGameSession} from "./native-login.mjs";
+import {NativeOsrsLoadingLifecycle,GameState} from "./native-loading-lifecycle.mjs";
 import {loginCacheCrcs} from "./login-protocol.mjs";
 import {NativeGameplay} from "./native-gameplay.mjs";
 import {NativeChooseOptionMenu} from "./native-menu.mjs";
@@ -178,9 +179,10 @@ async function enterWorld(allowFallback=false){
 button.addEventListener("click",()=>{title.enterGame();void enterWorld(false);});
 levelSelector.addEventListener("change",()=>renderer?.setSceneLevel(Number(levelSelector.value)));
 const loginForm=byId("login-form"),loginButton=byId("login-submit"),disconnect=byId("login-disconnect"),loginStatus=byId("login-status");
-let loginConfig=null,gameSession=null,gameplay=null,loginBusy=false,sessionAttempt=0;
+let loginConfig=null,gameSession=null,gameplay=null,gameLoading=null,loginBusy=false,sessionAttempt=0;
 function cancelLogin(){
-    sessionAttempt++;gameplay?.close();gameSession?.close();gameSession=null;gameplay=null;loginBusy=false;
+    sessionAttempt++;gameLoading?.dispose();gameLoading=null;gameplay?.close();gameSession?.close();gameSession=null;gameplay=null;loginBusy=false;
+    loading.hidden=true;loading.classList.remove("game-loading","map-fading");
     serverInterfaces=null;lockInterfacePreview(false);loginButton.disabled=!loginConfig;disconnect.hidden=true;
 }
 const title=new NativeTitleScreen({canvas:byId("title-canvas"),stage:byId("title-controls"),form:loginForm,status:loginStatus,onCancel:cancelLogin});
@@ -219,10 +221,25 @@ loginForm.addEventListener("submit",async event=>{
     event.preventDefault();if(loginBusy||gameSession?.connected||!loginConfig)return;
     if(!title.validateCredentials())return;
     const sequence=++sessionAttempt,loginStarted=performance.now();loginBusy=true;loginButton.disabled=true;disconnect.hidden=false;
+    gameLoading?.dispose();
+    gameLoading=new NativeOsrsLoadingLifecycle({onState:({to})=>{
+        if(sequence!==sessionAttempt)return;
+        if(to===GameState.LOADING_GAME){
+            title.enterGame();
+            loading.classList.remove("map-fading");
+            loading.classList.add("game-loading");loading.hidden=false;
+            details.textContent="Waiting for the first valid map frame";
+        }else if(to===GameState.LOGGED_IN){
+            loading.hidden=true;loading.classList.remove("game-loading","map-fading");
+            console.info(`[native-login] First playable map in ${Math.round(performance.now()-loginStarted)} ms`);
+        }else if(to===GameState.LOGIN_SCREEN){
+            loading.hidden=true;loading.classList.remove("game-loading","map-fading");
+        }
+    }});
     interfacePreview.close();lockInterfacePreview(true);
     examineResult.hidden=true;
     const credentials={username:byId("login-username").value,password:byId("login-password").value,otp:""};
-    title.beginConnecting();
+    title.beginConnecting();gameLoading.begin();
     byId("login-password").value="";
     loginStatus.textContent="Checking the login cache manifest…";
     try{
@@ -240,6 +257,7 @@ loginForm.addEventListener("submit",async event=>{
             onStatus:message=>{if(sequence===sessionAttempt)loginStatus.textContent=message;},
             onAuthenticated:account=>{
                 console.info(`[native-login] Authenticated in ${Math.round(performance.now()-loginStarted)} ms`);
+                gameLoading?.authenticated();
                 gameplay.authenticated(account);
             },
             onPacket:packet=>{
@@ -248,7 +266,7 @@ loginForm.addEventListener("submit",async event=>{
             },
             onClose:message=>{
                 if(sequence!==sessionAttempt)return;
-                gameplay?.close();button.disabled=false;levelSelector.disabled=false;loading.hidden=true;
+                gameLoading?.reset();gameplay?.close();button.disabled=false;levelSelector.disabled=false;loading.hidden=true;
                 serverInterfaces=null;lockInterfacePreview(false);
                 title.showLogin(message);loginButton.disabled=false;disconnect.hidden=true;
             },
@@ -259,16 +277,27 @@ loginForm.addEventListener("submit",async event=>{
         interfaceStatus.textContent="Interfaces are controlled by the SoloScape server.";
         gameplay=new NativeGameplay({cache:loginCache,viewport:renderer,session:gameSession,interfaces:serverInterfaces,onNpcMenu:showNpcMenu,onExamine:showExamine,
             run:()=>byId("run-movement").checked,
+            onLoading:()=>{if(sequence===sessionAttempt)gameLoading?.beginRegionLoad();},
             onReady:()=>{
-                if(sequence===sessionAttempt&&title.mode==="connecting"){
-                    console.info(`[native-login] First playable map in ${Math.round(performance.now()-loginStarted)} ms`);
-                    title.enterGame();
-                }
+                if(sequence!==sessionAttempt)return;
+                // TSPS requires a valid map frame before the fog completion timer.
+                // Wait for the WebGL renderer to finish drawing actual terrain.
+                const active=gameLoading;
+                renderer.onSceneFrame=()=>{
+                    if(sequence!==sessionAttempt||gameLoading!==active)return;
+                    loading.classList.add("map-fading");
+                    active.mapFrameReady();
+                };
             },
-            onStatus:message=>{if(sequence===sessionAttempt)loginStatus.textContent=message;},
+            onStatus:message=>{
+                if(sequence!==sessionAttempt)return;
+                loginStatus.textContent=message;
+                if(gameLoading?.state===GameState.LOADING_GAME)details.textContent=message;
+            },
             onRegion:region=>{
                 if(sequence!==sessionAttempt)return;
-                loading.hidden=true;x.value=String(region.mapX);y.value=String(region.mapY);
+                if(!loading.classList.contains("game-loading"))loading.hidden=true;
+                x.value=String(region.mapX);y.value=String(region.mapY);
                 worldLabel.textContent=`Region ${region.mapX}, ${region.mapY}`;
                 status.textContent="Your player location and movement are supplied by the SoloScape server.";
                 sceneryStatus.textContent="Loading scenery around your server location…";
@@ -284,16 +313,16 @@ loginForm.addEventListener("submit",async event=>{
         if(sequence===sessionAttempt&&gameSession.connected&&!gameplay.sync?.initialized)
             loginStatus.textContent=`Authenticated · player slot ${result.playerIndex}. Waiting for your server location…`;
     }catch(error){
-        if(sequence===sessionAttempt){gameplay?.close();serverInterfaces=null;lockInterfacePreview(false);button.disabled=false;levelSelector.disabled=false;title.showLogin(error.message);loginButton.disabled=false;disconnect.hidden=true;loading.hidden=true;}
+        if(sequence===sessionAttempt){gameLoading?.reset();gameplay?.close();serverInterfaces=null;lockInterfacePreview(false);button.disabled=false;levelSelector.disabled=false;title.showLogin(error.message);loginButton.disabled=false;disconnect.hidden=true;loading.hidden=true;}
     }finally{credentials.password="";credentials.otp="";if(sequence===sessionAttempt)loginBusy=false;}
 });
 disconnect.addEventListener("click",()=>{
-    sessionAttempt++;gameplay?.close();menuUi.close();clearTimeout(examineTimer);examineResult.hidden=true;gameSession?.close();gameSession=null;gameplay=null;loginBusy=false;
+    sessionAttempt++;gameLoading?.dispose();gameLoading=null;gameplay?.close();menuUi.close();clearTimeout(examineTimer);examineResult.hidden=true;gameSession?.close();gameSession=null;gameplay=null;loginBusy=false;
     serverInterfaces=null;lockInterfacePreview(false);
     button.disabled=false;levelSelector.disabled=false;loading.hidden=true;
     loginButton.disabled=!loginConfig;disconnect.hidden=true;title.showLogin("Disconnected");
 });
-window.addEventListener("pagehide",()=>{sessionAttempt++;title.dispose();interfacePreview.close();clearTimeout(examineTimer);menuUi.dispose();gameplay?.close();gameSession?.close();renderer?.dispose();},{once:true});
+window.addEventListener("pagehide",()=>{sessionAttempt++;gameLoading?.dispose();title.dispose();interfacePreview.close();clearTimeout(examineTimer);menuUi.dispose();gameplay?.close();gameSession?.close();renderer?.dispose();},{once:true});
 void (async()=>{
     await prepareLogin();
     const titleCache=loginConfig?.gatewayUrl&&loginConfig.gatewayUrl!==cache.url?new NativeJs5Cache({url:loginConfig.gatewayUrl,revision:240}):cache;

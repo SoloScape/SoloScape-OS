@@ -29,3 +29,12 @@
 
 /* Classic client pointer stays an arrow over fields, buttons and title art. */
 body:not(.in-game),#title-screen,#title-screen *{cursor:default!important;user-select:none;-webkit-user-select:none}
+
+/* Post-auth GameState.LOADING_GAME: world is visible while map fog fades in.
+   Only the small classic loading label overlays the 3D viewport. */
+.loading.game-loading{display:block;background:transparent;pointer-events:none}
+.loading.game-loading::before{content:"";position:absolute;inset:0;background:#000;opacity:1;pointer-events:none}
+.loading.game-loading.map-fading::before{animation:map-fog-in 1000ms ease-out forwards}
+@keyframes map-fog-in{from{opacity:1}to{opacity:0}}
+.loading.game-loading strong{position:absolute;top:6px;left:6px;z-index:1;background:#000;border:1px solid #ddd;padding:3px 5px;font:12px Arial,sans-serif}
+.loading.game-loading span{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden;white-space:nowrap}

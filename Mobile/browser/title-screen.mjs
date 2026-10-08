@@ -195,11 +195,6 @@ export class NativeTitleScreen{
             }
         }
         ctx.restore();
-        if(this.mode==="connecting"){
-            const message="Loading - Please wait.",font=this.assets.small,w=font.measure(message)+8;
-            ctx.fillStyle="#000000";ctx.fillRect(6,6,w,21);ctx.strokeStyle="#ffffff";ctx.lineWidth=1;ctx.strokeRect(6.5,6.5,w-1,20);
-            font.draw(ctx,message,10,21,"#ffffff");
-        }
         if(!this.mute.hidden){
             this.mute.style.left=controls.muteX+"px";this.mute.style.top=controls.muteY+"px";
             this.mute.style.width=this.mute.style.height=36*controls.scale+"px";
