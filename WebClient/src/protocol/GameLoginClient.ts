@@ -156,6 +156,11 @@ export class GameLoginClient {
     this.transport.onError = () => {
       this.onLog?.('Game WebSocket transport error.');
     };
+    this.transport.onClose = (code, reason) => {
+      this.onLog?.('Game WebSocket closed: code=' + code +
+        (reason ? ' reason=' + reason : ' (no reason supplied)') +
+        ' phase=' + this.phase + '.');
+    };
     this.transport.onStateChange = (state) => {
       if (
         state === 'closed' &&
