@@ -3,6 +3,10 @@ import { test } from "node:test";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
+import { createServer } from "node:http";
+import { access, readFile, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { displayTerrainProgressively } from "../browser/world-startup.mjs";
 
 test("first WebGL terrain render does not await optional materials", async () => {
@@ -102,5 +106,73 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
     } finally {
         child.kill("SIGTERM");
         if(child.exitCode===null&&child.signalCode===null)await once(child,"exit");
+    }
+});
+
+test("real WebGL shader renders client HSL palette pixels and releases palette texture",
+    {timeout:45000,skip:process.platform!=="linux"},async()=>{
+    const chrome=process.env.CHROME_BIN||"/usr/bin/google-chrome";
+    await access(chrome);
+    const browserRoot=new URL("../browser/",import.meta.url);
+    const html=`<!doctype html><html><body><canvas id="scene" style="width:128px;height:128px"></canvas>
+<script type="module">
+import {NativeTerrainViewport} from "/world-webgl.mjs";
+import {HSL_PALETTE} from "/floor-lighting.mjs";
+try{
+    const viewport=new NativeTerrainViewport(document.getElementById("scene"));
+    const terrain={side:64,heights:new Int32Array(4096),
+        underlays:new Uint16Array(4096).fill(1),overlays:new Int16Array(4096),
+        floorMaterials:{underlays:new Map([[0,{rgb:0xff0000,textureId:-1}]]),overlays:new Map()}};
+    viewport.setTerrain(terrain);
+    viewport.target=[0,0,0];viewport.pitch=1.3;viewport.yaw=0;viewport.distance=50;
+    viewport.render();
+    const gl=viewport.gl;
+    const pixel=new Uint8Array(4);
+    gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),
+        1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    const rgb=HSL_PALETTE[937];
+    const expected=[rgb>>>16&255,rgb>>>8&255,rgb&255,255];
+    if(expected.some((v,i)=>v!==pixel[i]))throw new Error("Pixel "+pixel+" expected "+expected);
+    if(gl.getError()!==gl.NO_ERROR)throw new Error("WebGL error");
+    const palette=viewport.palette;
+    viewport.dispose();
+    if(gl.isTexture(palette))throw new Error("Palette texture was not disposed");
+    document.body.dataset.result="webgl-hsl-pass";
+}catch(error){document.body.dataset.result="webgl-hsl-fail: "+error.message;}
+</script></body></html>`;
+    const server=createServer(async(req,res)=>{
+        try{
+            if(req.url==="/"){
+                res.writeHead(200,{"Content-Type":"text/html"});res.end(html);
+            }else if(["/world-webgl.mjs","/floor-lighting.mjs"].includes(req.url)){
+                res.writeHead(200,{"Content-Type":"text/javascript"});
+                res.end(await readFile(new URL(req.url.slice(1),browserRoot)));
+            }else{res.writeHead(404);res.end();}
+        }catch(error){res.writeHead(500);res.end(error.message);}
+    });
+    await new Promise((resolve,reject)=>{
+        server.once("error",reject);server.listen(0,"127.0.0.1",resolve);
+    });
+    const profile=await mkdtemp(join(tmpdir(),"soloscape-webgl-"));
+    let child;
+    try{
+        const url="http://127.0.0.1:"+server.address().port+"/";
+        child=spawn(chrome,["--headless","--no-sandbox","--disable-dev-shm-usage",
+            "--use-angle=swiftshader","--enable-unsafe-swiftshader",
+            "--user-data-dir="+profile,"--virtual-time-budget=10000","--dump-dom",url],
+            {stdio:["ignore","pipe","pipe"]});
+        let output="",errors="";
+        child.stdout.on("data",data=>output+=data);
+        child.stderr.on("data",data=>errors+=data);
+        const timer=setTimeout(()=>child.kill("SIGKILL"),30000);
+        const code=await new Promise((resolve,reject)=>{
+            child.once("error",reject);child.once("exit",resolve);
+        }).finally(()=>clearTimeout(timer));
+        assert.equal(code,0,errors.slice(-2000));
+        assert.match(output,/data-result="webgl-hsl-pass"/,output+"\n"+errors.slice(-2000));
+    }finally{
+        if(child&&child.exitCode===null&&child.signalCode===null)child.kill("SIGKILL");
+        await new Promise(resolve=>server.close(resolve));
+        await rm(profile,{recursive:true,force:true});
     }
 });
