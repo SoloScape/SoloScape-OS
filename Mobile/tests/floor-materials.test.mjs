@@ -142,6 +142,14 @@ test("configuration index 2 supplies verified underlay and overlay RGB to native
     assert.equal(baseMesh[3],adjustFloorLight(light.underlays[0],light.lights[64]));
     await loadFloorMaterials(cache,terrain);
     assert.deepEqual(fetches,["255:255","255:2","2:1","2:4"]);
+    terrain.underlays.fill(1);
+    const neighbour={underlays:new Uint16Array(4096)};
+    neighbour.underlays[0]=2;
+    neighbour.underlays[32*64+32]=500; // irrelevant neighbour interior
+    terrain.neighbours=new Map([["1,0",neighbour]]);
+    const haloMaterials=await loadFloorMaterials(cache,terrain);
+    assert.equal(haloMaterials.loadedUnderlays,2,"Decode definition used only across the border");
+    assert.equal(haloMaterials.selectedUnderlays,2,"Do not select irrelevant interior definitions");
 });
 
 test("unknown floor tile ids do not trigger arbitrary extra group downloads",async()=>{

@@ -631,9 +631,19 @@ and [OverlayDefinition](https://github.com/runelite/runelite/blob/master/cache/s
 The Java reference is historical desktop client evidence, not proof of current
 official mobile pixel parity.
 
-The current single-region scene has no surrounding region heights or floor IDs.
-Border normals remain unset as in the client array initialization, and blend
-windows contain only loaded data, so edge shading/blending is incomplete.
+The selected region now loads a verified eight-region halo asynchronously.
+Neighbour heights complete its final north/east tile row and column, including
+the diagonal corner. Height normals use the surrounding samples, and underlay
+blend windows include neighbouring floor IDs at offsets -4 through +5. Only
+definitions used in that border band are decoded. First geometry and floor
+rendering do not await the halo; enrichment preserves the camera and discards
+results after Travel selects a different region.
+
+Absent or corrupt neighbours are reported and never replaced with copied or
+generated heights. Tiles without all four height corners stay omitted; normals
+without surrounding heights remain unset, and blend windows use only available
+data. The status shows the number of neighbours loaded, so partial edges remain
+explicitly incomplete. A fully available halo renders all 64 by 64 ground tiles.
 Missing in-region floor definitions suppress affected blends rather than adding
 guessed colours. Object shadows remain absent until locations/models supply
 occlusion data; the existing client occlusion calculation is supported but no
@@ -647,3 +657,8 @@ The existing CI floor tests cover RGB-to-HSL golden vectors, saturation threshol
 lightness clamps, Java integer-lighting values, occlusion weights, blend-window
 removal boundaries, missing-definition handling, per-vertex mesh HSL and rotated
 midpoint averaging. The preview-server test also requests the new lighting module.
+Region-edge fixtures compare adjacent meshes in world coordinates, shared border
+normals, and weighted blends against an independent radius-five reference. They
+also verify CRC rejection, missing neighbours, diagonal corners, cancellation and
+late material responses. Live visual confirmation of this edge implementation
+against the running SoloScape server is still required.

@@ -373,3 +373,25 @@ export async function loadNativeTerrain(cache,mapX=50,mapY=50,{allowFallback=fal
     return {...terrain,group:selected.group,containerBytes:container.length,
         requestedMapX:mapX,requestedMapY:mapY,fallback:selected.fallback};
 }
+
+/** Load the eight surrounding regions without substituting absent/corrupt data.
+ * The selected region is already visible; optional failures stay local to an edge.
+ */
+export async function loadTerrainNeighbours(cache,terrain,{isCurrent=()=>true}={}) {
+    const neighbours=new Map(), unavailable=[];
+    for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){
+        if(!dx&&!dy)continue;
+        if(!isCurrent())return null;
+        const mapX=terrain.mapX+dx,mapY=terrain.mapY+dy;
+        if(mapX<0||mapX>255||mapY<0||mapY>255){
+            unavailable.push({mapX,mapY,reason:"Outside map coordinate range"});continue;
+        }
+        try{
+            const region=await loadNativeTerrain(cache,mapX,mapY);
+            neighbours.set(`${dx},${dy}`,region);
+        }catch(error){
+            unavailable.push({mapX,mapY,reason:error?.message??String(error)});
+        }
+    }
+    return isCurrent()?{...terrain,neighbours,unavailableNeighbours:unavailable}:null;
+}

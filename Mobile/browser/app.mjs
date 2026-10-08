@@ -1,6 +1,6 @@
 // Actual native world viewport: no diagnostic buttons, mock logins or assets.
 import { NativeJs5Cache } from "./native-js5.mjs";
-import { loadNativeTerrain } from "./terrain-world.mjs";
+import { loadNativeTerrain, loadTerrainNeighbours } from "./terrain-world.mjs";
 import { NativeTerrainViewport } from "./world-webgl.mjs";
 import { loadFloorMaterials } from "./floor-materials.mjs";
 import { displayTerrainProgressively } from "./world-startup.mjs";
@@ -59,7 +59,17 @@ async function enterWorld(allowFallback=false){
                 }
                 worldLabel.textContent=`Region ${scene.mapX}, ${scene.mapY}`;
                 status.textContent=sceneDescription+
-                    "Cache geometry wireframe displayed. Loading floor definitions. No objects or players yet.";
+                    "Cache geometry wireframe displayed. Loading floor definitions and neighbouring terrain. No objects or players yet.";
+            },
+            fetchNeighbours:scene=>loadTerrainNeighbours(cache,scene,{isCurrent:()=>sequence===attempt}),
+            applyNeighbours:scene=>{
+                renderer.setTerrain(scene,{resetCamera:false});
+                status.textContent=sceneDescription+
+                    `${scene.neighbours.size}/8 neighbouring regions loaded. Updating edge floor colours. `+
+                    (scene.unavailableNeighbours.length?"Unavailable neighbours leave incomplete edges. ":"");
+            },
+            onNeighbourError:error=>{
+                status.textContent=sceneDescription+"Neighbouring terrain unavailable: "+error.message;
             },
             fetchMaterials:scene=>loadFloorMaterials(cache,scene),
             applyMaterials:(scene,floors)=>{
@@ -68,12 +78,15 @@ async function enterWorld(allowFallback=false){
                 status.textContent=sceneDescription+
                     `Cache-defined tiles with blended HSL and vertex lighting: ${floors.loadedUnderlays}/${floors.selectedUnderlays} underlays, `+
                     `${floors.loadedOverlays}/${floors.selectedOverlays} overlays. `+
-                    "Missing, textured and transparent floor faces are not drawn. Region-edge lighting/blending and object shadows remain incomplete. Textures, objects and players are not implemented.";
+                    (scene.neighbours?`${scene.neighbours.size}/8 neighbouring regions supply edge heights, normals and blend colours. `:
+                        "Neighbouring terrain is still loading. ")+
+                    (scene.unavailableNeighbours?.length?"Unavailable neighbours leave incomplete edges. ":"")+
+                    "Missing, textured and transparent floor faces are not drawn. Object shadows, textures, objects and players are not implemented.";
             },
             onMaterialError:error=>{
                 status.textContent=sceneDescription+
-                    "Cache geometry wireframe displayed. Floor configuration unavailable ("+
-                    (error?.message??String(error))+"); wireframe remains. No objects or players yet.";
+                    "Verified terrain remains displayed. Floor configuration unavailable ("+
+                    (error?.message??String(error))+"). No objects or players yet.";
             },
         });
     }catch(error){

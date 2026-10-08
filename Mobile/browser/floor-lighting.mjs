@@ -231,26 +231,37 @@ function requireTerrain(terrain){
         terrain.underlays?.length!==4096)throw new Error("Invalid terrain lighting data");
 }
 
-export function calculateVertexLights(terrain){
+/** Region-local coordinates may cross into the verified one-region halo. */
+export function sampleTerrain(terrain,field,x,y){
+    const dx=Math.floor(x/64),dy=Math.floor(y/64);
+    const region=dx===0&&dy===0?terrain:terrain.neighbours?.get(`${dx},${dy}`);
+    return region?.[field]?.[(x-dx*64)*64+y-dy*64];
+}
+
+export function calculateVertexLights(terrain,side=64){
     requireTerrain(terrain);
-    const lights=new Int32Array(4096);
+    if(side!==64&&side!==65)throw new Error("Invalid terrain lighting grid size");
+    const lights=new Int32Array(side*side);
     const occlusion=terrain.lightOcclusions;
     if(occlusion&&(!(occlusion instanceof Uint8Array)||occlusion.length!==4096)) {
         throw new Error("Invalid terrain light occlusions");
     }
     const intensity=(Math.trunc(Math.sqrt(5100))*768)>>8;
-    for(let x=1;x<63;x++)for(let y=1;y<63;y++){
-        const i=x*64+y;
-        const dx=terrain.heights[i+64]-terrain.heights[i-64];
-        const dy=terrain.heights[i+1]-terrain.heights[i-1];
+    for(let x=0;x<side;x++)for(let y=0;y<side;y++){
+        const heights=[[x+1,y],[x-1,y],[x,y+1],[x,y-1]]
+            .map(([vx,vy])=>sampleTerrain(terrain,"heights",vx,vy));
+        if(heights.some(h=>h===undefined))continue;
+        const dx=heights[0]-heights[1];
+        const dy=heights[2]-heights[3];
         const length=Math.trunc(Math.sqrt(dx*dx+dy*dy+65536));
         const nx=Math.trunc((dx<<8)/length);
         const ny=Math.trunc(65536/length);
         const nz=Math.trunc((dy<<8)/length);
         const sunlight=Math.trunc((-50*nx-10*ny-50*nz)/intensity)+96;
-        const shadow=occlusion?(occlusion[i-64]>>2)+(occlusion[i-1]>>2)+
-            (occlusion[i+64]>>3)+(occlusion[i+1]>>3)+(occlusion[i]>>1):0;
-        lights[i]=sunlight-shadow;
+        const shadowAt=(vx,vy)=>sampleTerrain(terrain,"lightOcclusions",vx,vy)??0;
+        const shadow=(shadowAt(x-1,y)>>2)+(shadowAt(x,y-1)>>2)+
+            (shadowAt(x+1,y)>>3)+(shadowAt(x,y+1)>>3)+(shadowAt(x,y)>>1);
+        lights[x*side+y]=sunlight-shadow;
     }
     return lights;
 }
@@ -265,28 +276,29 @@ export function blendUnderlayHsl(terrain,materials){
         }
     }
     const colors=new Int32Array(4096).fill(-1);
-    const columns=Array.from({length:6},()=>new Int32Array(64));
+    const columns=Array.from({length:6},()=>new Int32Array(73));
     function column(x,sign){
-        if(x<0||x>=64)return;
-        for(let y=0;y<64;y++){
-            const id=terrain.underlays[x*64+y];
+        if(x < -4 || x > 68)return;
+        for(let y=-4;y<=68;y++){
+            const id=sampleTerrain(terrain,"underlays",x,y);
             if(!id)continue;
             const def=definitions.get(id-1);
-            if(!def){columns[5][y]+=sign;continue;}
+            if(!def){columns[5][y+4]+=sign;continue;}
             const values=[def.hue,def.saturation,def.lightness,def.hueMultiplier,1];
-            for(let k=0;k<5;k++)columns[k][y]+=sign*values[k];
+            for(let k=0;k<5;k++)columns[k][y+4]+=sign*values[k];
         }
     }
-    for(let x=-5;x<64;x++){
+    for(let x=-4;x<=4;x++)column(x,1);
+    for(let x=0;x<64;x++){
         column(x+5,1);column(x-5,-1);
-        if(x<0)continue;
         const sum=new Int32Array(6);
-        for(let y=-5;y<64;y++){
+        for(let y=-4;y<=4;y++)for(let k=0;k<6;k++)sum[k]+=columns[k][y+4];
+        for(let y=0;y<64;y++){
             for(let k=0;k<6;k++){
-                if(y+5<64)sum[k]+=columns[k][y+5];
-                if(y-5>=0)sum[k]-=columns[k][y-5];
+                sum[k]+=columns[k][y+9];
+                if(y>=1)sum[k]-=columns[k][y-1];
             }
-            if(y<0||!terrain.underlays[x*64+y]||sum[5]||!sum[4])continue;
+            if(!terrain.underlays[x*64+y]||sum[5]||!sum[4])continue;
             colors[x*64+y]=packHsl(Math.trunc(sum[0]*256/sum[3]),
                 Math.trunc(sum[1]/sum[4]),Math.trunc(sum[2]/sum[4]));
         }
@@ -296,7 +308,8 @@ export function blendUnderlayHsl(terrain,materials){
 
 export function prepareFloorLighting(terrain,materials){
     const underlays=blendUnderlayHsl(terrain,materials);
-    const lights=calculateVertexLights(terrain);
+    const lightSide=terrain.neighbours?65:64;
+    const lights=calculateVertexLights(terrain,lightSide);
     const overlays=new Map();
     for(const [id,definition] of materials.overlays){
         if(definition.textureId>=0||definition.rgb===0xff00ff)continue;
@@ -304,7 +317,7 @@ export function prepareFloorLighting(terrain,materials){
         const hsl=calculateFloorHsl(definition.rgb);
         overlays.set(id,packHsl(hsl.overlayHue,hsl.saturation,hsl.lightness));
     }
-    return {underlays,overlays,lights};
+    return {underlays,overlays,lights,lightSide};
 }
 
 export const HSL_PALETTE=buildPalette(0.8,0,512);

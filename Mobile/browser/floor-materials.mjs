@@ -4,6 +4,7 @@
 // This is not blended floor lighting, texture UVs, or 3D world models.
 import { decodeCacheContainer } from "./native-js5.mjs";
 import { mapRegionCatalog } from "./terrain-world.mjs";
+import { sampleTerrain } from "./floor-lighting.mjs";
 
 const MAX_FILES=4096;
 const MAX_DATA=16*1024*1024;
@@ -138,6 +139,12 @@ export async function loadFloorMaterials(cache,terrain) {
         throw new Error("Invalid terrain floor tile IDs");
     }
     const u=terrainIds(terrain.underlays),o=terrainIds(terrain.overlays,true);
+    // Neighbour underlays contribute to the selected region's blend windows.
+    for(let x=-4;x<=68;x++)for(let y=-4;y<=68;y++){
+        if(x>=0&&x<64&&y>=0&&y<64)continue;
+        const id=sampleTerrain(terrain,"underlays",x,y);
+        if(id>0)u.add(id-1);
+    }
     const index=await cache.loadIndex(2);
     const ref=cache.referenceContainers.get(2);
     if(!ref)throw new Error("Floor configuration reference table is missing");

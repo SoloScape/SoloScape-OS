@@ -28,7 +28,7 @@
  */
 // Tile topology adapted from RSPSApp/tsps b9ca431 SceneTileModel (BSD-2-Clause).
 // Cache geometry and packed-HSL vertex colours use the client terrain pipeline.
-import { prepareFloorLighting, adjustFloorLight, HSL_PALETTE } from "./floor-lighting.mjs";
+import { prepareFloorLighting, adjustFloorLight, HSL_PALETTE, sampleTerrain } from "./floor-lighting.mjs";
 function shader(gl,type,source){
     const sh=gl.createShader(type);
     gl.shaderSource(sh,source);gl.compileShader(sh);
@@ -177,13 +177,14 @@ export function buildTerrainMesh(terrain){
     const numbers=[];
     const materials=terrain.floorMaterials;
     const lighting=materials?prepareFloorLighting(terrain,materials):null;
-    for(let x=0;x<63;x++)for(let y=0;y<63;y++){
+    for(let x=0;x<64;x++)for(let y=0;y<64;y++){
         const i=x*64+y,overlay=terrain.overlays[i]&0x7fff;
         const shape=overlay?(terrain.overlayShapes?.[i]??0)+1:0;
         const rotation=overlay?(terrain.overlayRotations?.[i]??0):0;
-        const heights=[terrain.heights[i],terrain.heights[i+64],
-            terrain.heights[i+65],terrain.heights[i+1]];
-        const cornerIndices=[i,i+64,i+65,i+1];
+        const corners=[[x,y],[x+1,y],[x+1,y+1],[x,y+1]];
+        const heights=corners.map(([vx,vy])=>sampleTerrain(terrain,"heights",vx,vy));
+        if(heights.some(h=>h===undefined))continue;
+        const cornerIndices=corners.map(([vx,vy])=>vx*(lighting?.lightSide??64)+vy);
         const underlayDef=materials?.underlays?.get(terrain.underlays[i]-1);
         const underlay=underlayDef?.textureId>=0?-1:(lighting?.underlays[i]??-1);
         const overlayHsl=lighting?.overlays.get(overlay-1)??-1;
