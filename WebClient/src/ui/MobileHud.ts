@@ -68,8 +68,8 @@ export interface MobileHudOptions {
 }
 
 /**
- * OSRS mobile's 2024 side-stone/hotkey layout. This is deliberately a UI shell:
- * server-driven inventory, skill, chat and orb packets are not yet decoded.
+ * Cache-native game HUD: only transparent interactive targets and
+ * verified original JS5 interface sprites may be shown.
  */
 export class MobileHud {
   private readonly minimap: HTMLCanvasElement;
@@ -169,10 +169,7 @@ export class MobileHud {
     this.clearMinimap();
   }
 
-  /**
-   * Replace vector placeholders with original JS5 archive-8 sprite frames.
-   * Use the original cached b12 bitmap font for panel headings.
-   */
+  /** Attach decoded cache widgets and original archive-8 sprites. */
   setCacheAssets(assets: CacheGameUiAssets, js5: Js5Client): void {
     this.interfaceRenderer?.cancel();
     this.cacheHudArt?.dispose();
@@ -195,8 +192,8 @@ export class MobileHud {
         ? 'Cache-native mobile art enabled (archive-3 groups ' +
           art.groups.join(',') + '; sprites=' + art.visibleSpriteCount +
           '). Mobile widget actions/CS2 still require implementation.'
-        : 'Cache-native mobile frame 601 or usable sprite files unavailable; ' +
-          'keeping the interactive fallback HUD.');
+        : 'Cache-native mobile sprites unavailable; ' +
+          'keeping transparent accessible controls only.');
     }).catch((error: unknown) => {
       if (this.cacheHudArt !== art) return;
       const message = error instanceof Error ? error.message : String(error);
