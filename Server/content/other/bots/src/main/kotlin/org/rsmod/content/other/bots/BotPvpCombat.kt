@@ -337,9 +337,12 @@ class BotPvpCombat @Inject constructor(
                 retaliating || committed || squad != null,
             )
             opponent !== player && !teams.allied(player, opponent) &&
-                squad?.members?.contains(opponent) != true &&
-                (squad == null || (areas.inArea("area.multiway", player.coords) &&
-                    areas.inArea("area.multiway", opponent.coords))) &&
+                BotPvpPolicy.canSquadEngage(
+                    hasSquad = squad != null,
+                    squadmate = squad?.members?.contains(opponent) == true,
+                    attackerInMultiway = areas.inArea("area.multiway", player.coords),
+                    targetInMultiway = areas.inArea("area.multiway", opponent.coords),
+                ) &&
                 native.validTarget(player, opponent) &&
                 player.coords.chebyshevDistance(opponent.coords) <= range &&
                 (opponent in states || retaliating || squad != null ||
