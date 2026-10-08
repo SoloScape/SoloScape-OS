@@ -4,6 +4,56 @@
 
 This directory integrates the pinned upstream browser client as a Git submodule at `tsps-upstream/`, based on [RSPSApp/tsps](https://github.com/RSPSApp/tsps), which provides a React/TypeScript/WebGL OSRS-style game client. Track the work in [issue #32](https://github.com/SoloScape/SoloScape-OS/issues/32).
 
+## The actual native WebGL client (current active development)
+
+**Starting 8 October 2026**, `npm run dev` (also `npm run dev:native`)
+starts **SoloScape's own WebGL world client** at
+`http://localhost:3001/`, not the collection of JS5 diagnostic buttons.
+This uses the already live-tested browser-native revision-240 JS5 cache
+loader and renders a **real map-region terrain height mesh** (default:
+Lumbridge region `m50_50`) in WebGL with touch/mouse camera orbiting,
+mouse-wheel zoom and WASD/arrow camera panning.
+
+The implementation lives in `Mobile/browser/terrain-world.mjs`,
+`world-webgl.mjs` and the main `app.mjs`. Terrain region names are
+resolved using TSPS's 31x DJB2 map name hash from the **CRC-verified**
+index-5 reference table. Map-height opcodes are decoded in the **OSRS
+revision-240 (u16) tile format**, following the pinned TSPS
+`SceneBuilder` logic, including four planes and procedural base heights.
+All group data is CRC-validated before parsing; only one selected
+**unencrypted terrain** group is downloaded into memory. Provisional
+floor tints make the geometry visible pending true underlay/overlay
+materials. No fabricated terrain fallback is used if a region is absent.
+
+**Run locally** with native Kotlin server running on `127.0.0.1:43594`
+and native WS gateway at `127.0.0.1:43595`, Origin allowlist
+`http://localhost:3001`:
+
+```powershell
+cd Mobile
+git pull --ff-only origin feature/mobile
+npm run dev
+```
+
+`http://localhost:3001/` should start loading map region `50,50`
+automatically. Change X/Y and press **Travel** to view other regions.
+Touch/drag or mouse/drag rotates the camera; wheel zooms; WASD/arrows
+pan. If cache geometry is not available, the page displays the actual
+network/format error and leaves the viewport empty. The renderer needs
+a real browser/live-server verification; GitHub CI uses synthetic map
+fixtures and validates mesh generation.
+
+**Important scope:** This is **real client/world renderer development**,
+not a playable native OSRS session: no loc models, floor textures,
+player entities, auth or native game packets yet. Native RSA/ISAAC and
+revision-240 packet mapping are later dedicated work. Do not ask users
+for credentials before trusted TLS and a reviewed native login path.
+The upstream TSPS revision-241 React/WebGL application is still
+available separately via `npm run dev:tsps` (requires its submodule
+setup), but does **not** speak SoloScape's native protocol and is
+not the main development entry point. The old cache diagnostics are
+available only under `http://localhost:3001/diagnostics`.
+
 ## Source baseline
 
 - Upstream project: `RSPSApp/tsps`, pinned as the `Mobile/tsps-upstream/` Git submodule (initialise it when cloning).

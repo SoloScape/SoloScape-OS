@@ -1,84 +1,51 @@
+// Actual native world viewport: no diagnostic buttons, mock logins or assets.
 import { NativeJs5Cache } from "./native-js5.mjs";
-import { TspsCacheStoreAdapter } from "./tsps-cache-store.mjs";
-import { drawIndexedSprite, loadFirstSprite } from "./sprite-preview.mjs";
+import { loadNativeTerrain } from "./terrain-world.mjs";
+import { NativeTerrainViewport } from "./world-webgl.mjs";
 
-const cache = new NativeJs5Cache();
-const store = new TspsCacheStoreAdapter(cache);
-const el = id => document.getElementById(id);
-const indexInput = el("archive");
-const groupInput = el("group");
-const indexButton = el("load-index");
-const groupButton = el("load-group");
-const result = el("catalog");
-const groupResult = el("group-result");
-let selectedIndex = null;
+const byId=id=>document.getElementById(id);
+const details=byId("loading-detail"),loading=byId("loading"),status=byId("map-status");
+const button=byId("load-world"),x=byId("map-x"),y=byId("map-y");
+const network=byId("network"),dot=byId("network-dot");
+const worldLabel=byId("world-label");
+const cache=new NativeJs5Cache({revision:240});
+let renderer=null,attempt=0;
 
-const setBusy = busy => {
-    indexButton.disabled = busy;
-    groupButton.disabled = busy || selectedIndex === null;
-};
-const summary = (catalog) => {
-    const ids = [...catalog.groups.keys()];
-    return `Connected to revision ${cache.revision} JS5 cache.
-Index ${catalog.index}: reference revision ${catalog.revision}.
-${ids.length.toLocaleString()} groups in catalog; first ${ids[0]}, last ${ids.at(-1)}.
-Master index contains ${cache.master.length} archives.
-Group bytes are loaded only on demand.`;
-};
-indexButton.addEventListener("click", async () => {
-    selectedIndex = null;
-    setBusy(true);
-    result.textContent = "Opening native JS5 connection and validating archive metadata…";
-    groupResult.textContent = "Load a catalog first.";
-    try {
-        const archive = Number(indexInput.value);
-        await store.preloadIndex(archive);
-        const catalog = cache.indices.get(archive);
-        const referenceBytes = store.read(255, archive);
-        selectedIndex = archive;
-        groupInput.value = String(catalog.groups.keys().next().value);
-        result.textContent = summary(catalog) +
-            `\nTSPS CacheStore.read(255, ${archive}): ${referenceBytes.length.toLocaleString()} signed bytes prepared.`;
-    } catch (error) {
-        result.textContent = "Cache loading failed: " + error.message;
-    } finally {
-        setBusy(false);
+function showFailure(error){
+    status.textContent="World load failed: "+(error?.message||String(error))+". Check that the Java server and local WebSocket gateway are running.";
+    network.textContent="World cache unavailable";
+    dot.classList.remove("ready");dot.classList.add("failed");
+}
+async function enterWorld(){
+    const sequence=++attempt;
+    button.disabled=true;
+    loading.hidden=false;
+    details.textContent="Loading a real revision-240 map from SoloScape…";
+    status.textContent="";
+    dot.classList.remove("failed","ready");
+    try{
+        const mapX=Number(x.value),mapY=Number(y.value);
+        // Refuse invalid/unsupported map coordinates, never fake a region.
+        if(!Number.isInteger(mapX)||!Number.isInteger(mapY)||mapX<0||mapX>255||mapY<0||mapY>255){
+            throw new Error("Region coordinates must be integers from 0 to 255");
+        }
+        if(!renderer)renderer=new NativeTerrainViewport(byId("world-canvas"));
+        const region=await loadNativeTerrain(cache,mapX,mapY);
+        if(sequence!==attempt)return;
+        renderer.setTerrain(region);
+        loading.hidden=true;
+        network.textContent="Verified SoloScape cache online";
+        dot.classList.add("ready");
+        worldLabel.textContent=`Region ${mapX}, ${mapY}`;
+        status.textContent=`Native world terrain: m${mapX}_${mapY} (JS5 5:${region.group}). ${region.sourceBytes.toLocaleString()} decoded bytes, ${region.containerBytes.toLocaleString()} CRC-verified container bytes. Ground geometry from real SoloScape data; provisional floor colours, no objects or players yet.`;
+    }catch(error){
+        if(sequence===attempt){
+            loading.hidden=true;showFailure(error);
+        }
+    }finally{
+        if(sequence===attempt)button.disabled=false;
     }
-});
-groupButton.addEventListener("click", async () => {
-    setBusy(true);
-    groupResult.textContent = "Fetching and verifying native cache group…";
-    try {
-        const id = Number(groupInput.value);
-        await store.preloadGroup(selectedIndex, id);
-        const bytes = store.read(selectedIndex, id);
-        groupResult.textContent = `Archive ${selectedIndex}, group ${id}: ${bytes.length.toLocaleString()} verified container bytes now available as Int8Array via TSPS-compatible CacheStore.read(${selectedIndex}, ${id}). No renderer is attached yet.`;
-    } catch (error) {
-        groupResult.textContent = "Group loading failed: " + error.message;
-    } finally {
-        setBusy(false);
-    }
-});
-indexInput.addEventListener("input", () => {
-    selectedIndex = null;
-    groupButton.disabled = true;
-});
-
-const spriteButton = el("render-sprite");
-const spriteResult = el("sprite-result");
-const spriteCanvas = el("sprite-canvas");
-spriteButton.addEventListener("click", async () => {
-    spriteButton.disabled = true;
-    spriteResult.textContent = "Selecting an archive-8 single-file sprite from the verified SoloScape catalog…";
-    spriteCanvas.hidden = true;
-    try {
-        const graphic = await loadFirstSprite(cache, { maxAttempts: 8 });
-        drawIndexedSprite(spriteCanvas, graphic.frame);
-        spriteCanvas.hidden = false;
-        spriteResult.textContent = `Rendered real SoloScape sprite! Archive ${graphic.archive}, group ${graphic.group}, file ${graphic.fileId}. Frame 1/${graphic.frameCount}, ${graphic.frame.sheetWidth}×${graphic.frame.sheetHeight} sheet; ${graphic.decodedBytes.toLocaleString()} decoded bytes. This Canvas image is not yet the TSPS 3D game renderer.`;
-    } catch (error) {
-        spriteResult.textContent = "Sprite renderer: " + error.message;
-    } finally {
-        spriteButton.disabled = false;
-    }
-});
+}
+button.addEventListener("click",enterWorld);
+window.addEventListener("pagehide",()=>renderer?.dispose(),{once:true});
+enterWorld();

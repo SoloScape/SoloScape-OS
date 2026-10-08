@@ -1,4 +1,4 @@
-// Deliberately loopback-only local browser preview. Does not proxy game data.
+// Loopback-only native WebGL world client. Does not proxy game data or handle login.
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -7,6 +7,11 @@ import { fileURLToPath } from "node:url";
 const root = dirname(fileURLToPath(import.meta.url));
 const routes = new Map([
     ["/", ["index.html", "text/html; charset=utf-8"]],
+    ["/diagnostics", ["diagnostics.html", "text/html; charset=utf-8"]],
+    ["/diagnostics-app.mjs", ["diagnostics-app.mjs", "text/javascript; charset=utf-8"]],
+    ["/world.css", ["world.css", "text/css; charset=utf-8"]],
+    ["/terrain-world.mjs", ["terrain-world.mjs", "text/javascript; charset=utf-8"]],
+    ["/world-webgl.mjs", ["world-webgl.mjs", "text/javascript; charset=utf-8"]],
     ["/app.mjs", ["app.mjs", "text/javascript; charset=utf-8"]],
     ["/native-js5.mjs", ["native-js5.mjs", "text/javascript; charset=utf-8"]],
     ["/tsps-cache-store.mjs", ["tsps-cache-store.mjs", "text/javascript; charset=utf-8"]],
@@ -37,5 +42,5 @@ const server = createServer(async (req, res) => {
     }
 });
 server.listen(port, "127.0.0.1", () => {
-    console.log(`[native-browser] Visit http://localhost:${port}/ (requires running JS5 gateway at ws://127.0.0.1:43595/)`);
+    console.log(`[native-client] Visit http://localhost:${port}/ (requires running JS5 gateway at ws://127.0.0.1:43595/)`);
 });

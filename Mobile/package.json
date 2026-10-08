@@ -7,7 +7,7 @@
     "node": ">=22.16.0"
   },
   "scripts": {
-    "dev": "node scripts/run-client.mjs dev",
+    "dev": "node browser/dev-server.mjs",
     "build": "node scripts/run-client.mjs build",
     "test": "node --test",
     "gateway": "node gateway/cli.mjs",
@@ -17,7 +17,8 @@
     "probe:cache": "node gateway/js5-cache-cli.mjs",
     "probe:cache:verify": "node gateway/js5-reference-cli.mjs",
     "probe:asset": "node gateway/js5-asset-cli.mjs",
-    "dev:native": "node browser/dev-server.mjs"
+    "dev:native": "node browser/dev-server.mjs",
+    "dev:tsps": "node scripts/run-client.mjs dev"
   },
   "dependencies": {
     "ws": "8.22.0"

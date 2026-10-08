@@ -183,6 +183,30 @@ first supported frame, and draws the **actual game asset** as a bitmap
 graphic and no need for another standalone JS5 probe. The live
 sprite-rendering outcome is **pending**.
 
+### Native browser scene renderer implementation
+
+`Mobile/browser/terrain-world.mjs` implements the actual
+revision-240 OSRS map terrain decoding path (not a probe): it resolves
+`mX_Y` through the signed 31x DJB2 name hash of archive/index 5,
+fetches the CRC-verified terrain group, uses the 16-bit terrain opcodes
+of TSPS `SceneBuilder.newTerrainFormat` (rev 209+), and reconstructs
+four planes of height/underlay/overlay metadata. Base tile heights use
+the same noise/interpolation algorithm as pinned TSPS `HeightCalc`.
+The first native WebGL viewport draws real geometry with orbiting and
+camera panning and provisional material tints. Index reference-table
+CRC and revision, plus terrain group CRC, are checked by
+`NativeJs5Cache` before decoding. No map objects, region player
+state, ISAAC/RSA login or TSPS proprietary protocol are sent.
+
+As of this implementation `npm run dev` starts the new native WebGL
+client; the diagnostic UI is moved to `/diagnostics`.
+`npm run dev:tsps` retains the incompatible original TSPS launcher for
+reference, not for playable SoloScape authentication. Live WebGL
+terrain visualization still needs confirmation on the user's
+revision-240 server, while CI validates synthetic map and mesh
+fixtures. This work is client construction, not a new stand-alone
+network probe.
+
 ## Required protocol adapter work (not implemented)
 
 1. **Choose a source-of-truth native client protocol.** Identify the exact SoloScape revision, RSA public modulus, current JS5/cache revision, ISAAC seeds, login block layout and inbound/outbound packet tables from the `rsprot` dependency and SoloScape generated files.
