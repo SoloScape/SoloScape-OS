@@ -114,14 +114,13 @@ class BotPopulation @Inject constructor(
      * An unrelated chat "yes" or "no" does not join anyone.
      */
     fun hearPlayerTeamReply(player: Player, message: String, cycle: Int): Boolean {
-        val answer = message.trim().lowercase()
-        if (answer != "yes" && answer != "no") return false
+        val accepted = BotPvpPolicy.playerTeamReply(message) ?: return false
         val invitation = playerTeamInvitations.entries.firstOrNull {
             it.value.player === player
         } ?: return false
         val bot = invitation.key
         playerTeamInvitations.remove(bot)
-        if (answer == "no") {
+        if (!accepted) {
             bot.say("No worries.")
             nextPlayerTeamOffer[bot] = cycle + PLAYER_TEAM_DECLINE_COOLDOWN
             nextOfferToPlayer[player] = cycle + PLAYER_TEAM_DECLINE_COOLDOWN
