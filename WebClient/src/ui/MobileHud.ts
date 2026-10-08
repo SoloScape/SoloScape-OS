@@ -6,7 +6,7 @@ import { cacheSpriteCanvas } from '../cache/CacheGameUiAssets';
 import { CacheBitmapFont } from './CacheBitmapFont';
 import type { Js5Client } from '../cache/Js5Client';
 import { CacheInterfaceRenderer } from './CacheInterfaceRenderer';
-import type { Rev240UiState } from '../protocol/Rev240UiState';
+import { Rev240UiState } from '../protocol/Rev240UiState';
 
 type TabId =
   | 'combat' | 'inventory' | 'equipment' | 'prayer' | 'magic'
