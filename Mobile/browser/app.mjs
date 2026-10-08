@@ -1,6 +1,8 @@
 import { NativeJs5Cache } from "./native-js5.mjs";
+import { TspsCacheStoreAdapter } from "./tsps-cache-store.mjs";
 
 const cache = new NativeJs5Cache();
+const store = new TspsCacheStoreAdapter(cache);
 const el = id => document.getElementById(id);
 const indexInput = el("archive");
 const groupInput = el("group");
@@ -29,10 +31,13 @@ indexButton.addEventListener("click", async () => {
     groupResult.textContent = "Load a catalog first.";
     try {
         const archive = Number(indexInput.value);
-        const catalog = await cache.loadIndex(archive);
+        await store.preloadIndex(archive);
+        const catalog = cache.indices.get(archive);
+        const referenceBytes = store.read(255, archive);
         selectedIndex = archive;
         groupInput.value = String(catalog.groups.keys().next().value);
-        result.textContent = summary(catalog);
+        result.textContent = summary(catalog) +
+            `\nTSPS CacheStore.read(255, ${archive}): ${referenceBytes.length.toLocaleString()} signed bytes prepared.`;
     } catch (error) {
         result.textContent = "Cache loading failed: " + error.message;
     } finally {
@@ -44,8 +49,9 @@ groupButton.addEventListener("click", async () => {
     groupResult.textContent = "Fetching and verifying native cache group…";
     try {
         const id = Number(groupInput.value);
-        const bytes = await cache.loadGroup(selectedIndex, id);
-        groupResult.textContent = `Archive ${selectedIndex}, group ${id}: ${bytes.length.toLocaleString()} verified container bytes are now available in the browser's in-memory cache. Ready for decoder/renderer integration.`;
+        await store.preloadGroup(selectedIndex, id);
+        const bytes = store.read(selectedIndex, id);
+        groupResult.textContent = `Archive ${selectedIndex}, group ${id}: ${bytes.length.toLocaleString()} verified container bytes now available as Int8Array via TSPS-compatible CacheStore.read(${selectedIndex}, ${id}). No renderer is attached yet.`;
     } catch (error) {
         groupResult.textContent = "Group loading failed: " + error.message;
     } finally {

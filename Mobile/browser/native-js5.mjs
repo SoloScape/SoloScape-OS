@@ -238,6 +238,9 @@ export class NativeJs5Cache {
         this.timeoutMs = timeoutMs;
         this.master = null;
         this.indices = new Map();
+        // Full validated index-255 reference table cache containers for TSPS's
+        // CacheIndexDat2.fromStore() -> store.read(255, indexId) path.
+        this.referenceContainers = new Map();
         this.groups = new Map();
     }
 
@@ -303,6 +306,7 @@ export class NativeJs5Cache {
         const catalog = decodeReferenceCatalog(data);
         if (catalog.revision !== entry.revision) throw new Error("Reference-table revision mismatch");
         const result = { index, revision: catalog.revision, groups: catalog.groups };
+        this.referenceContainers.set(index, ref.container.slice());
         this.indices.set(index, result);
         return result;
     }

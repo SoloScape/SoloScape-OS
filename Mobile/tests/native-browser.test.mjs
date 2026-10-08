@@ -4,6 +4,7 @@ import { createServer as createTcpServer } from "node:net";
 import { test } from "node:test";
 import { crc32 as nodeCrc32, gzipSync } from "node:zlib";
 import WebSocket from "ws";
+import { TspsCacheStoreAdapter } from "../browser/tsps-cache-store.mjs";
 import { createGateway } from "../gateway/server.mjs";
 import {
     crc32, decodeMasterIndex, decodeReferenceCatalog, decodeCacheContainer,
@@ -178,6 +179,63 @@ test("browser cache service refuses corrupted JS5 group even when metadata is va
         const cache = new NativeJs5Cache({ url: world.url, WebSocketClass: world.BrowserTestWebSocket });
         await assert.rejects(() => cache.loadGroup(0, 0), /CRC mismatch/);
         assert.equal(cache.groups.size, 0);
+        assert.deepEqual(world.received, ["255:255", "255:0", "0:0"]);
+    } finally {
+        await world.close();
+    }
+});
+
+test("TSPS structural CacheStore preloads index and group; read returns signed Int8Array copies", { timeout: 12000 }, async () => {
+    const world = await startMockWorld();
+    try {
+        const native = new NativeJs5Cache({ url: world.url, WebSocketClass: world.BrowserTestWebSocket });
+        const store = new TspsCacheStoreAdapter(native);
+        assert.throws(() => store.read(255, 0), /preload verified container/);
+        assert.throws(() => store.read(0, 0), /preload verified container/);
+        await store.preloadIndex(0);
+        assert.deepEqual(Buffer.from(store.read(255, 0)), reference);
+        assert.equal(native.referenceContainers.size, 1);
+        assert.throws(() => store.read(0, 0), /preload verified container/);
+        await store.preloadGroup(0, 0);
+        assert.deepEqual(Buffer.from(store.read(0, 0)), asset);
+        assert.ok(store.read(0, 0) instanceof Int8Array);
+        assert.equal(store.read(0, 0).length, asset.length);
+        const groupRead = store.read(0, 0);
+        groupRead[0] = -1;
+        const indexRead = store.read(255, 0);
+        indexRead[0] = -1;
+        assert.deepEqual(Buffer.from(store.read(0, 0)), asset);
+        assert.deepEqual(Buffer.from(store.read(255, 0)), reference);
+        await store.preloadIndex(0);
+        await store.preloadGroup(0, 0);
+        assert.deepEqual(world.received, ["255:255", "255:0", "0:0"]);
+        assert.throws(() => store.read(255, 255), /preload verified container/);
+    } finally {
+        await world.close();
+    }
+});
+
+test("TSPS structural CacheStore strictly validates addresses, cache class, and missing groups", async () => {
+    assert.throws(() => new TspsCacheStoreAdapter({}), /NativeJs5Cache/);
+    const native = new NativeJs5Cache({
+        WebSocketClass: class WebSocketMock {},
+    });
+    const store = new TspsCacheStoreAdapter(native);
+    for (const [index, archive] of [[-1, 0], [256, 0], [0, -1], [0, 65536], [1.5, 3]]) {
+        assert.throws(() => store.read(index, archive), /out of range/);
+    }
+    assert.throws(() => store.read(255, 0), /preload verified container/);
+    assert.throws(() => store.read(0, 0), /preload verified container/);
+});
+
+test("TSPS-compatible store refuses a corrupted archive group and never exposes its contents", { timeout: 12000 }, async () => {
+    const world = await startMockWorld({ corruptAsset: true });
+    try {
+        const native = new NativeJs5Cache({ url: world.url, WebSocketClass: world.BrowserTestWebSocket });
+        const store = new TspsCacheStoreAdapter(native);
+        await store.preloadIndex(0);
+        await assert.rejects(() => store.preloadGroup(0, 0), /CRC mismatch/);
+        assert.throws(() => store.read(0, 0), /preload verified container/);
         assert.deepEqual(world.received, ["255:255", "255:0", "0:0"]);
     } finally {
         await world.close();

@@ -59,4 +59,5 @@ jobs:
           node --check Mobile/gateway/js5-asset-cli.mjs
           node --check Mobile/browser/dev-server.mjs
           node --check Mobile/browser/native-js5.mjs
+          node --check Mobile/browser/tsps-cache-store.mjs
           node --check Mobile/browser/app.mjs

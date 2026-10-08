@@ -141,6 +141,29 @@ game server URL to the raw WS gateway will not work. TSPS proprietary
 HELLO/LOGIN remain blocked. **Do not send login credentials** to this
 browser shell or gateway in its current development-only configuration.
 
+### Typed-array cache store bridge for TSPS decoder integration
+
+Live browser user confirmation (8 Oct 2026): revision-240 master index,
+archive-0 reference catalog (10,948 groups) and archive group `0:0`
+(196 bytes) were successfully downloaded and validated in a **real
+browser**, not only in Node integration tests.
+
+The pinned TSPS `client/rs/cache/CacheIndex.ts` defines
+`CacheIndexDat2.fromStore(id, store)`, which calls
+`store.read(255, id)` synchronously to decode a reference table.
+`CacheStore.read(indexId, archiveId)` returns an `Int8Array` of the
+**complete compressed container**, and subsequent archive-group decode
+calls `store.read(id, archiveId)`. The new isolated
+`browser/TspsCacheStoreAdapter` implements this exact structural
+read contract with preloaded verified native JS5 groups. It maintains
+full reference-table containers separately from group containers,
+rejects missing groups without implicit network or data substitution,
+and returns defensive `Int8Array` copies for compatibility with TSPS
+ByteBuffer. Preloading remains asynchronous; the synchronous method is
+only valid for previously verified containers. This still needs
+integration into TSPS's actual loader and revision-240 decoder review,
+especially reference-table flags and asset format/version differences.
+
 ## Required protocol adapter work (not implemented)
 
 1. **Choose a source-of-truth native client protocol.** Identify the exact SoloScape revision, RSA public modulus, current JS5/cache revision, ISAAC seeds, login block layout and inbound/outbound packet tables from the `rsprot` dependency and SoloScape generated files.

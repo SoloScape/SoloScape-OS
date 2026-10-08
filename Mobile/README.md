@@ -138,6 +138,48 @@ integration will adapt this native JS5 service to TSPS's `CacheStore` /
 before attempting rendering. Neither TSPS login nor native game login
 has been implemented. This is **not yet a playable client**.
 
+### Bridging verified JS5 containers into TSPS's CacheStore interface
+
+**Live browser verification (8 Oct 2026):** the browser itself loaded
+25 master-index archives, parsed archive 0's 10,948-group catalog with
+reference revision `1790003854`, then downloaded and CRC32-verified the
+196-byte group `0:0`. These are real in-browser results, not just Node
+mock tests. Rendering, login, and gameplay are not yet implemented.
+
+`browser/tsps-cache-store.mjs` now provides `TspsCacheStoreAdapter`,
+which structurally matches the synchronous `CacheStore<ApiType.SYNC>`
+interface in the pinned TSPS sources. The TSPS `CacheIndexDat2` class
+synchronously requests the index table with `read(255, indexId)` and
+group containers with `read(indexId, groupId)`. Because the native JS5
+transport is asynchronous, our adapter **requires explicit preload** of
+each verified reference table or group before a synchronous read:
+
+```javascript
+import { NativeJs5Cache } from "./native-js5.mjs";
+import { TspsCacheStoreAdapter } from "./tsps-cache-store.mjs";
+
+const native = new NativeJs5Cache();
+const store = new TspsCacheStoreAdapter(native);
+await store.preloadIndex(0);
+const referenceContainer = store.read(255, 0); // Int8Array, full JS5 container
+await store.preloadGroup(0, 0);
+const groupContainer = store.read(0, 0);        // Int8Array, full JS5 container
+```
+
+The adapter is **fail-closed**: a synchronous read for an unpreloaded
+group throws rather than making a network request or serving unverified
+bytes. Every read returns a **defensive copy** so TSPS's mutable
+ByteBuffer/Container/XTEA decoding cannot corrupt the CRC-verified bytes.
+The browser dev shell now exercises this interface and reports the
+prepared signed-byte buffer sizes in its existing catalog/group UI.
+
+**Important:** This is not yet wired into TSPS's actual React/WebGL
+runtime. Its `CacheIndexDat2.fromStore()` is a potential integration
+point once the pinned submodule is adapted through a separately reviewed
+client fork/integration mechanism. Revision-240 asset metadata and
+decoders still need a compatibility review; do not assume the
+revision-241 client renders assets correctly.
+
 ## Native WebSocket-to-TCP gateway (transport foundation)
 
 The standalone `gateway/` is deliberately a **raw byte transport**, not a converter. Its purpose is to provide a browser-compatible transport for a future native-OSRS client encoder/decoder. Unlike a blanket TCP proxy, it validates the initial native login/JS5 handshake opcode before allowing TCP forwarding and refuses TSPS's proprietary HELLO (200) or LOGIN (204). **Do not point the unmodified TSPS client at it expecting to log in.**
