@@ -4,11 +4,13 @@
 
 These instructions apply to the entire repository and to every agent or delegated sub-agent working on it.
 
-- Make all repository edits exclusively through the GitHub plugin's tools. This includes creating, updating, deleting, or renaming source files, documentation, configuration, assets, and agent instructions.
-- Never edit files in a local checkout or worktree. Do not use local editors, `apply_patch`, shell writes, scripts, formatters, code generators, or other tools that modify repository files locally, even as an intermediate step before uploading changes.
-- Use the GitHub plugin for branches, commits, and pull requests associated with edits. Do not use local Git writes, `git push`, the GitHub CLI, direct HTTP API calls, or browser editing as a substitute for the plugin.
-- Read the target file and its current SHA through the GitHub plugin before updating it. Preserve unrelated content, write to the intended branch, and verify the resulting change through the plugin.
-- Local inspection is allowed only when it is read-only. Run builds, tests, formatting, and code generation through remote CI when they would write local files.
-- If the GitHub plugin is unavailable or cannot perform a required edit, stop that edit and report the blocker. Never fall back to editing locally.
+- Make repository edits in the local checkout or worktree. Local editors, `apply_patch`, scripts, formatters, and code generators are allowed for source files, documentation, configuration, assets, and agent instructions.
+- Read the applicable instructions and target files before editing. Preserve unrelated content and existing user changes.
+- Use local Git for branches, commits, and pushes. Inspect the current branch and working tree before making changes, and use `feature/` as the prefix when creating a new branch unless the user specifies another name.
+- Run relevant builds, tests, formatting, and code generation locally as needed. Review the resulting diff and complete appropriate checks before committing.
+- After every completed implementation, create a commit with a concise, descriptive title explaining the change, then push it to the corresponding remote branch. Include only files belonging to that implementation; do not commit unrelated user changes, generated dependencies, or secrets.
+- Verify that the push succeeded and report the commit title, commit SHA, branch, and relevant validation results. If a commit or push is blocked, report the blocker and do not claim the implementation has been pushed.
+- Never force-push, rewrite shared history, or discard user changes unless explicitly authorized.
+- The GitHub plugin may be used for remote inspection, pull requests, and other GitHub operations, but it is not required for local edits, commits, or pushes.
 
 Directory-specific `AGENTS.md` files supply additional guidance and must follow this editing workflow.
