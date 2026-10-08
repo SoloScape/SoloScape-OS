@@ -1,7 +1,10 @@
 import './MobileHud.css';
 import type { LoadedMapSquare } from '../cache/MapSquareLoader';
 import type { SceneFloorMaterials } from '../cache/SceneMaterialLoader';
-import { paintCacheTerrainMinimap } from './CacheTerrainMinimap';
+import type { AssembledScene } from '../scene/SceneAssembler';
+import {
+  rasterizeCacheSceneMinimap, paintCacheSceneMinimap,
+} from './SceneTerrainMinimap';
 import type { CacheGameUiAssets } from '../cache/CacheGameUiAssets';
 import { cacheSpriteCanvas, loadNamedHudSprite } from '../cache/CacheGameUiAssets';
 import { CacheBitmapFont } from './CacheBitmapFont';
@@ -79,6 +82,8 @@ export class MobileHud {
   private readonly minimap: HTMLCanvasElement;
   private readonly mapSquares = new Map<number, LoadedMapSquare>();
   private floorMaterials: SceneFloorMaterials | null = null;
+  private worldScene: AssembledScene | null = null;
+  private cacheTerrainCanvas: HTMLCanvasElement | null = null;
   private mapPlayer: {x: number; z: number; level: number; yaw: number} | null = null;
   private minimapRenderKey = '';
   private readonly panel: HTMLElement;
@@ -256,6 +261,8 @@ export class MobileHud {
     orb.setAttribute('aria-label', orb.title);
     this.renderCachedOrbValue('health', this.serverUi?.skills.get(3)?.currentLevel);
     this.renderCachedOrbValue('prayer', this.serverUi?.skills.get(5)?.currentLevel);
+    this.renderCachedOrbValue('run', energy === null || energy === undefined
+      ? undefined : Math.max(0, Math.min(100, Math.round(energy / 100))));
     this.cacheHudArt?.refreshServerVisibility();
     this.interfaceRenderer?.refreshServerState();
     if (this.selectedTab && this.serverUi) {
@@ -267,23 +274,26 @@ export class MobileHud {
     }
   }
 
-  private renderCachedOrbValue(name: 'health' | 'prayer', value: number | undefined): void {
+  private renderCachedOrbValue(name: 'health' | 'prayer' | 'run', value: number | undefined): void {
     const orb = this.require<HTMLElement>('.hud-orb-' + name);
-    const label = name === 'health' ? 'Hitpoints' : 'Prayer';
+    const label = name === 'health' ? 'Hitpoints' :
+      name === 'prayer' ? 'Prayer' : 'Run energy';
     orb.setAttribute('aria-label', label +
       (value === undefined ? ' awaiting server stat update' : ': ' + value));
     orb.title = orb.getAttribute('aria-label') ?? label;
     orb.replaceChildren();
     if (value === undefined || !this.cacheFont) return;
     const font = this.cacheFont;
-    const text = String(value);
+    const text = String(value) + (name === 'run' ? '%' : '');
     const canvas = document.createElement('canvas');
     canvas.className = 'hud-cache-orb-value';
-    canvas.width = Math.max(16, font.measure(text) + 3);
-    canvas.height = 16;
+    const scale = 1.5;
+    canvas.width = Math.max(24, Math.ceil((font.measure(text) + 3) * scale));
+    canvas.height = Math.ceil(16 * scale);
     const context = canvas.getContext('2d');
     if (!context) return;
-    font.draw(context, text, 1, 14, 0xffffff);
+    context.scale(scale, scale);
+    font.draw(context, text, 1, 13, 0xffffff);
     orb.append(canvas);
   }
 
@@ -325,12 +335,24 @@ export class MobileHud {
     this.mapSquares.clear();
     for (const map of maps) this.mapSquares.set(map.mapSquare.id, map);
     this.floorMaterials = null;
+    this.worldScene = null;
+    this.cacheTerrainCanvas = null;
     this.minimapRenderKey = '';
     this.clearMinimap();
   }
 
   setFloorMaterials(materials: SceneFloorMaterials | null): void {
     this.floorMaterials = materials;
+    this.minimapRenderKey = '';
+    this.renderMinimap();
+  }
+
+  /** Uses the exact terrain triangles and lit cache colours of the 3D world. */
+  setScene(scene: AssembledScene | null): void {
+    this.worldScene = scene;
+    this.cacheTerrainCanvas = scene && this.floorMaterials
+      ? rasterizeCacheSceneMinimap(scene, this.floorMaterials)
+      : null;
     this.minimapRenderKey = '';
     this.renderMinimap();
   }
@@ -346,12 +368,8 @@ export class MobileHud {
   }
 
   private renderMinimap(): void {
-    if (!this.floorMaterials) {
-      this.clearMinimap();
-      return;
-    }
-    paintCacheTerrainMinimap(this.minimap, this.mapSquares, this.floorMaterials,
-      this.mapPlayer);
+    paintCacheSceneMinimap(this.minimap, this.cacheTerrainCanvas,
+      this.worldScene, this.mapPlayer);
   }
 
   private require<T extends Element>(selector: string): T {
