@@ -117,6 +117,17 @@ The gateway checks origin and path at upgrade, uses binary-only WebSocket frames
 
 `npm test` includes a TCP echo integration test that verifies native bytes are carried intact, TSPS HELLO is rejected, and cross-origin requests fail. This does **not** validate native client gameplay, rsprot login or TSPS integration.
 
+### Credential-free cache protocol check
+
+Before implementing native login, you can probe a **running local** SoloScape TCP server's JS5 response without sending account credentials:
+
+```bash
+cd Mobile
+SOLOSCAPE_GAME_TCP_PORT=43594 SOLOSCAPE_NATIVE_REVISION=240 npm run probe
+```
+
+Use the actual `gamePort` and native cache **major revision** from your running SoloScape configuration. The example `240` follows the documented `240.2` version; do not assume it matches a deployed server. The probe sends exactly the standard JS5 start opcode (15) and a four-byte big-endian revision. A response code 0 means the initial JS5 handshake was accepted, **not** that assets can be loaded or a player can log in. The Node integration tests run against mock TCP endpoints; the real SoloScape service has not been probed yet.
+
 See [protocol compatibility notes](PROTOCOL.md) for the packet differences and further work.
 
 ## Known incompatibilities / next engineering work
