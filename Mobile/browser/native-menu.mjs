@@ -194,6 +194,13 @@ export function buildNativeMenuEntries(info){
         {option:"Walk here",target:"",kind:"walk",opcode:23},
         {option:"Cancel",target:"",kind:"cancel",opcode:1006}
     ];
+    if(info.kind==="object")return [
+        ...(info.actions??[]).map(({slot,label})=>({
+            option:label,target:info.name,kind:"object",slot,opcode:slot===4?1001:3+slot,
+        })),
+        {option:"Examine",target:info.name,kind:"examine-object",opcode:1002},
+        {option:"Cancel",target:"",kind:"cancel",opcode:1006},
+    ];
     const normal=[],low=[];
     for(const {slot,label} of info.actions??[]){
         const item={option:label,target:info.name,kind:"npc",slot,opcode:9+slot};
@@ -221,11 +228,25 @@ export function menuIndexAt(rect,x,y,count){
     for(let i=0;i<count;i++)if(row>18+i*15&&row<34+i*15)return i;
     return -1;
 }
+// Fast fallback makes menus usable while the CRC-verified b12_full font
+// is downloading or if it is absent. Replace it with the exact cache font
+// when available; never block NPC/object actions on cosmetic fonts.
+export function fallbackMenuFont(){
+    return {
+        measure:text=>text.length*7,
+        draw:(ctx,text,x,y,color,shadow=false)=>{
+            ctx.font="12px Arial";ctx.textBaseline="alphabetic";
+            if(shadow){ctx.fillStyle="#000";ctx.fillText(text,x+1,y+1);}
+            ctx.fillStyle=color;ctx.fillText(text,x,y);
+            return x+ctx.measureText(text).width;
+        }
+    };
+}
 export class NativeChooseOptionMenu{
     constructor(canvas,{onEntry=()=>{}}={}){
         this.canvas=canvas;this.context=canvas.getContext("2d");
         if(!this.context)throw new Error("Native menu requires 2D canvas");
-        this.font=null;this.pending=null;this.active=null;this.hover=-1;
+        this.font=fallbackMenuFont();this.pending=null;this.active=null;this.hover=-1;
         this.onEntry=onEntry;this.generation=0;
         this.onPointerMove=e=>{if(!this.active)return;this.hover=this.hit(e);this.render();};
         this.onPointerDown=e=>{
@@ -242,10 +263,12 @@ export class NativeChooseOptionMenu{
         document.addEventListener("keydown",this.onKey);
     }
     async load(cache){
-        const generation=++this.generation;this.font=null;this.close();
+        const generation=++this.generation;
+        if(!this.font)this.font=fallbackMenuFont();
         const font=await loadCacheMenuFont(cache);
         if(generation!==this.generation)return;
         this.font=font;if(this.pending){const info=this.pending;this.pending=null;this.open(info);}
+        else if(this.active)this.render();
     }
     open(info){
         if(!info){this.close();return;}

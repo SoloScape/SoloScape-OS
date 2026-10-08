@@ -12,6 +12,7 @@ import {NativeOsrsLoadingLifecycle,GameState} from "./native-loading-lifecycle.m
 import {loginCacheCrcs} from "./login-protocol.mjs";
 import {NativeGameplay} from "./native-gameplay.mjs";
 import {NativeChooseOptionMenu} from "./native-menu.mjs";
+import {NativeClickCross} from "./mouse-cross.mjs";
 import {NativeInterfaceCanvas} from "./interface-canvas.mjs";
 import {ServerInterfaces} from "./server-interfaces.mjs";
 import {NativeDialogueModels} from "./dialogue-models.mjs";
@@ -199,12 +200,15 @@ function showExamine({name,description}){
     examineResult.textContent=`${name}: ${description}`;examineResult.hidden=false;
     examineTimer=setTimeout(()=>{examineResult.hidden=true;},9000);
 }
+const clickCrossUi=new NativeClickCross(byId("click-cross-canvas"));
 const menuUi=new NativeChooseOptionMenu(byId("osrs-menu-canvas"),{
     onEntry:(entry,info)=>{
         try{
-            if(entry.kind==="walk")gameplay?.move({...info.tile,run:info.run});
+            if(entry.kind==="walk")gameplay?.move({...info.tile,run:info.run,screenX:info.x,screenY:info.y});
             else if(entry.kind==="npc")gameplay?.interactNpc(info.index,entry.slot,{run:info.run});
             else if(entry.kind==="examine")gameplay?.examineNpc(info.index);
+            else if(entry.kind==="object")gameplay?.interactObject(entry.slot,{run:info.run});
+            else if(entry.kind==="examine-object")gameplay?.examineObject();
         }catch(error){loginStatus.textContent="Menu action unavailable: "+error.message;}
     }
 });
@@ -252,6 +256,7 @@ loginForm.addEventListener("submit",async event=>{
         if(sequence!==sessionAttempt)return;
         // Cancel every preview continuation before authenticated scene ownership begins.
         attempt++;if(!renderer)renderer=new NativeTerrainViewport(byId("world-canvas"));
+        renderer.onClickCross=(x,y)=>clickCrossUi.show(x,y);
         button.disabled=true;levelSelector.disabled=true;
         gameSession=new NativeGameSession({url:loginConfig.gatewayUrl,
             onStatus:message=>{if(sequence===sessionAttempt)loginStatus.textContent=message;},
@@ -317,12 +322,12 @@ loginForm.addEventListener("submit",async event=>{
     }finally{credentials.password="";credentials.otp="";if(sequence===sessionAttempt)loginBusy=false;}
 });
 disconnect.addEventListener("click",()=>{
-    sessionAttempt++;gameLoading?.dispose();gameLoading=null;gameplay?.close();menuUi.close();clearTimeout(examineTimer);examineResult.hidden=true;gameSession?.close();gameSession=null;gameplay=null;loginBusy=false;
+    sessionAttempt++;gameLoading?.dispose();gameLoading=null;gameplay?.close();menuUi.close();clickCrossUi.clear();clearTimeout(examineTimer);examineResult.hidden=true;gameSession?.close();gameSession=null;gameplay=null;loginBusy=false;
     serverInterfaces=null;lockInterfacePreview(false);
     button.disabled=false;levelSelector.disabled=false;loading.hidden=true;
     loginButton.disabled=!loginConfig;disconnect.hidden=true;title.showLogin("Disconnected");
 });
-window.addEventListener("pagehide",()=>{sessionAttempt++;gameLoading?.dispose();title.dispose();interfacePreview.close();clearTimeout(examineTimer);menuUi.dispose();gameplay?.close();gameSession?.close();renderer?.dispose();},{once:true});
+window.addEventListener("pagehide",()=>{sessionAttempt++;gameLoading?.dispose();title.dispose();interfacePreview.close();clearTimeout(examineTimer);menuUi.dispose();clickCrossUi.dispose();gameplay?.close();gameSession?.close();renderer?.dispose();},{once:true});
 void (async()=>{
     await prepareLogin();
     const titleCache=loginConfig?.gatewayUrl&&loginConfig.gatewayUrl!==cache.url?new NativeJs5Cache({url:loginConfig.gatewayUrl,revision:240}):cache;

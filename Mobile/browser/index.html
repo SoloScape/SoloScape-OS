@@ -12,6 +12,7 @@
   <div class="scene-heading">World preview <small>3D terrain • cache-backed</small></div>
   <div class="coordinates"><label for="map-x">Region X<input id="map-x" type="number" min="0" max="255" value="50"></label><label for="map-y">Region Y<input id="map-y" type="number" min="0" max="255" value="50"></label><button id="load-world" type="button">Travel</button></div>
  </div>
+ <canvas id="click-cross-canvas" aria-hidden="true"></canvas>
  <canvas id="osrs-menu-canvas" aria-label="Cache-backed game interaction menu" hidden></canvas>
  <canvas id="native-interface-canvas" aria-label="Cached game interface preview" hidden></canvas>
  <p class="npc-examine-result" id="npc-examine-result" role="status" aria-live="polite" hidden></p>

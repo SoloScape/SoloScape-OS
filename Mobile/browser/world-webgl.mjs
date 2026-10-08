@@ -348,7 +348,10 @@ export function combineRegionMeshes(scenes){
     }
     const vertices=new Float32Array(levels.flat().reduce((n,v)=>n+v.length,0));let at=0;
     for(const v of levels.flat()){vertices.set(v,at);at+=v.length;}
-    return {vertices,levelCounts:levels.map(parts=>parts.reduce((n,v)=>n+v.length/6,0)),texturedBatches};
+    const pickMeshes=scenes.flatMap(({scene,dx=0,dy=0})=>(scene.pickMeshes??[]).map(loc=>({
+        ...loc,x:loc.x+dx,y:loc.y+dy,vertices:shift(loc.vertices,dx,dy),
+    })));
+    return {vertices,levelCounts:levels.map(parts=>parts.reduce((n,v)=>n+v.length/6,0)),texturedBatches,pickMeshes};
 }
 
 // Perspective-correct ground picking uses the same triangles/matrix as rendering.
@@ -406,10 +409,15 @@ export function pickNpcTriangles(meshes,matrix,nx,ny,bounds=null){
 
 // Browser context menus are never appropriate over the game canvas.
 // Keep hit routing independently testable from WebGL and browser startup.
-export function dispatchWorldContextMenu(event,{pickNpc,pickGround,onNpc,onGround,onCancel}){
+export function shouldRotateCameraDrag(button,pointerType){return pointerType==="touch"||button===1;}
+export function dispatchWorldContextMenu(event,{pickNpc,pickObject=()=>null,pickGround,onNpc,onObject=()=>{},onGround,onCancel}){
     event.preventDefault();
     const npc=pickNpc(event.clientX,event.clientY);
-    if(npc){onNpc({...npc,mode:"menu",run:Boolean(event.shiftKey)});return "npc";}
+    const object=pickObject(event.clientX,event.clientY);
+    if(npc&&(!object||npc.depth===undefined||npc.depth<=object.depth)){
+        onNpc({...npc,mode:"menu",run:Boolean(event.shiftKey)});return "npc";
+    }
+    if(object){onObject({...object,mode:"menu",run:Boolean(event.shiftKey)});return "object";}
     const ground=pickGround(event.clientX,event.clientY);
     if(ground){onGround({...ground,run:Boolean(event.shiftKey)});return "ground";}
     onCancel();return "empty";
@@ -440,8 +448,9 @@ export class NativeTerrainViewport {
         this.textureProgram=program(gl,true);this.textures=new Map();this.textureMeta=new Map();this.textureClock=performance.now();this.terrainBatches=[];this.sceneryBatches=[];this.visibleLevel=0;
         this.buf=gl.createBuffer();
         this.sceneryBuf=gl.createBuffer();this.sceneryCount=0;
-        this.actorBuf=gl.createBuffer();this.actorCount=0;this.actorBatches=[];this.actorPickMeshes=[];this.onDestination=onDestination;
-        this.onNpc=()=>{};this.onNpcCancel=()=>{};this.onGroundMenu=()=>{};
+        this.actorBuf=gl.createBuffer();this.actorCount=0;this.actorBatches=[];this.actorPickMeshes=[];
+        this.sceneryPickMeshes=[];this.onDestination=onDestination;this.onClickCross=()=>{};
+        this.onNpc=()=>{};this.onObject=()=>{};this.onNpcCancel=()=>{};this.onGroundMenu=()=>{};
         this.palette=gl.createTexture();
         const pixels=new Uint8Array(65536*4);
         for(let i=0;i<HSL_PALETTE.length;i++){
@@ -465,7 +474,19 @@ export class NativeTerrainViewport {
             const nx=2*(clientX-rect.left)/rect.width-1,ny=1-2*(clientY-rect.top)/rect.height;
             const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,rect.width/rect.height);
             const npc=pickNpcTriangles(this.actorPickMeshes,matrix,nx,ny,this.drawBounds());
-            return npc?{index:npc.index,x:clientX-rect.left,y:clientY-rect.top}:null;
+            return npc?{index:npc.index,x:clientX-rect.left,y:clientY-rect.top,depth:npc.depth}:null;
+        };
+        this.pickObjectAt=(clientX,clientY)=>{
+            const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return null;
+            const nx=2*(clientX-rect.left)/rect.width-1,ny=1-2*(clientY-rect.top)/rect.height;
+            const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,rect.width/rect.height);
+            const plane=this.roofContext?.player?.plane??this.visibleLevel;
+            const valid=this.sceneryPickMeshes.filter(loc=>loc.plane===plane&&loc.level<=this.visibleRoofLevel());
+            const hit=pickNpcTriangles(valid.map((loc,index)=>({index,vertices:loc.vertices})),matrix,nx,ny,this.drawBounds());
+            if(!hit)return null;
+            const loc=valid[hit.index];
+            return {id:loc.id,name:loc.name,actions:loc.actions,tileX:loc.x,tileY:loc.y,
+                plane:loc.plane,x:clientX-rect.left,y:clientY-rect.top,depth:hit.depth};
         };
         this.lastNpcHold=-Infinity;
         this.longPress=new NpcLongPress(hit=>{
@@ -478,13 +499,17 @@ export class NativeTerrainViewport {
                 const hit=this.pickNpcAt(e.clientX,e.clientY);
                 this.longPress.start(e.pointerId,e.clientX,e.clientY,hit?{...hit,run:false}:null);
             }
-            canvas.setPointerCapture?.(e.pointerId);};
+            if(e.pointerType==="touch"||e.button===0||e.button===1)
+                canvas.setPointerCapture?.(e.pointerId);
+            if(e.button===1)e.preventDefault();};
         this.onPointerMove=e=>{
             if(!this.pointer||this.pointer.id!==e.pointerId)return;
             const dx=e.clientX-this.pointer.x,dy=e.clientY-this.pointer.y;
             this.longPress.move(e.pointerId,e.clientX,e.clientY);
+            // RuneLite desktop: only middle drag rotates; left-click selects,
+            // right-click opens the menu. Touch dragging remains camera orbit.
             this.pointer.dragged ||=Math.hypot(e.clientX-this.pointer.startX,e.clientY-this.pointer.startY)>6;
-            if(!this.pointer.dragged)return;
+            if(!shouldRotateCameraDrag(this.pointer.button,this.pointer.pointerType)||!this.pointer.dragged)return;
             this.yaw+=dx*.007;this.pitch=Math.max(.18,Math.min(1.38,this.pitch+dy*.007));
             this.pointer.x=e.clientX;this.pointer.y=e.clientY;
         };
@@ -496,7 +521,11 @@ export class NativeTerrainViewport {
             const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return;
             const nx=2*(e.clientX-rect.left)/rect.width-1,ny=1-2*(e.clientY-rect.top)/rect.height;
             const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,rect.width/rect.height);
-            const npc=this.pickNpcAt(e.clientX,e.clientY);
+            const npc=this.pickNpcAt(e.clientX,e.clientY),object=this.pickObjectAt(e.clientX,e.clientY);
+            if(object&&(!npc||object.depth<npc.depth)){
+                this.onObject({...object,run:e.shiftKey,mode:"default"});
+                return;
+            }
             if(npc){
                 this.onNpc({...npc,run:e.shiftKey,mode:"default"});
                 return;
@@ -505,7 +534,8 @@ export class NativeTerrainViewport {
             if(pointer.button!==0||!this.pickVertices)return;
             const count=this.pickLevelCounts.slice(0,this.visibleRoofLevel()+1).reduce((a,b)=>a+b,0)*6;
             const tile=pickTerrainTile(this.pickVertices.subarray(0,count),matrix,nx,ny,this.drawBounds());
-            if(tile)this.onDestination({...tile,run:e.shiftKey});
+            if(tile)this.onDestination({...tile,run:e.shiftKey,
+                screenX:e.clientX-rect.left,screenY:e.clientY-rect.top});
         };
         this.onContextMenu=e=>{
             // Suppress the native "Save image as..." canvas menu even when no NPC
@@ -525,8 +555,8 @@ export class NativeTerrainViewport {
                 return tile?{tile,x:clientX-rect.left,y:clientY-rect.top}:null;
             };
             dispatchWorldContextMenu(e,{
-                pickNpc:(x,y)=>this.pickNpcAt(x,y),pickGround,
-                onNpc:hit=>this.onNpc(hit),onGround:hit=>this.onGroundMenu(hit),
+                pickNpc:(x,y)=>this.pickNpcAt(x,y),pickObject:(x,y)=>this.pickObjectAt(x,y),pickGround,
+                onNpc:hit=>this.onNpc(hit),onObject:hit=>this.onObject(hit),onGround:hit=>this.onGroundMenu(hit),
                 onCancel:()=>this.onNpcCancel()
             });
         };
@@ -580,6 +610,7 @@ export class NativeTerrainViewport {
         this.sceneryCount=vertices.length/6;
         this.sceneryLevelCounts=scene?.levelCounts??[this.sceneryCount,0,0,0];
         this.replaceBatches("sceneryBatches",scene?.texturedBatches??[]);
+        this.sceneryPickMeshes=scene?.pickMeshes??[];
         for(const texture of this.textures.values())this.gl.deleteTexture(texture);
         this.textures.clear();this.textureMeta?.clear();
         this.addTextures(scene?.textures??new Map());

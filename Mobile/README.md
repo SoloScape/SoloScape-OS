@@ -1174,3 +1174,33 @@ animated locations, instanced map squares, original player/NPC skeletal model
 poses and actor normals, and the full TSPS water, reflection and GPU shader
 passes. No claim of pixel-identical RuneLite/OSRS rendering is made until those
 subsystems and authenticated reference frame comparisons are complete.
+
+### OSRS/RuneLite-style mouse input and object menus
+
+Desktop left-click now chooses the nearest rendered NPC/object's default action,
+or clicks verified ground to walk; moving the mouse while holding left does not
+rotate the camera. Desktop **middle-button drag** rotates yaw/pitch; **right-click**
+opens Choose Option and never rotates the camera. Touch drag still orbits and
+stationary touch-hold on an NPC still opens its menu.
+
+Successful walk/NPC/object interactions show the pinned TSPS-style **yellow mouse
+cross** for 100 ms, with a 24-to-8 pixel shrink. The overlay is separate from
+the WebGL scene and never captures mouse events. Right-click NPC menus are
+always available: they display with a browser-font fallback immediately, then
+switch to CRC-verified cache \`b12_full\` when that font finishes downloading.
+
+The cache object decoder now keeps revision-240 location action strings. Static
+location geometry retains per-placement triangle picking (including textured
+faces), combined region coordinates and original action-slot identity. Menu
+actions, including **Open** when defined, send the pinned revision-240
+\`OPLOC1–5\` permutations; Examine uses \`EXAMINE_LOC\`. Selection is cleared on
+rebuild, dismissal and disconnect. Dynamic/animated/varbit-transformed locs
+that the standalone scene loader does not yet render cannot be picked or
+interacted with through this static-mesh path; inventory/ground-item/player
+context actions likewise need their own interaction handlers.
+
+Regression checks are in \`tests/world-mouse-parity.test.mjs\`,
+\`tests/npc-interactions.test.mjs\` and \`tests/scenery.test.mjs\`. These cover
+menu ordering, packets, mouse modes, cache actions and cross animation. A live
+authenticated device/browser session is still needed to verify the interaction
+look and feel against RuneLite.

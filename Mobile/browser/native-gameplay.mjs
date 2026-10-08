@@ -3,6 +3,7 @@ import {NativeTspsPlayerController} from "./tsps-game-controller.mjs";
 import {NativeNpcSync} from "./npc-sync.mjs";
 import {NativeNpcModels} from "./npc-models.mjs";
 import {encodeNpcInteraction,encodeNpcExamine,npcActionOptions} from "./npc-interactions.mjs";
+import {encodeLocInteraction,encodeLocExamine,objectActionOptions} from "./loc-interactions.mjs";
 import {decodeRebuild,encodeMoveDestination,encodeWindowStatus,MOVE_GAMECLICK,MAP_BUILD_COMPLETE,WINDOW_STATUS} from "./player-protocol.mjs";
 import {loadNativeTerrain} from "./terrain-world.mjs";
 import {loadFloorMaterials} from "./floor-materials.mjs";
@@ -50,6 +51,7 @@ export class NativeGameplay {
         this.npcs=new NativeNpcSync();this.npcModels=new NativeNpcModels(models);this.npcMotions=new Map();this.npcDrawn=0;this.selectionToken=0;this.selectedNpc=null;
         this.viewport.onDestination=tile=>this.move(tile);
         this.viewport.onNpc=hit=>void this.selectNpc(hit);
+        this.viewport.onObject=hit=>this.selectObject(hit);
         this.viewport.onGroundMenu=hit=>this.showGroundMenu(hit);
         this.viewport.onNpcCancel=()=>this.clearNpcMenu();
     }
@@ -250,7 +252,7 @@ export class NativeGameplay {
         this.onNpcMenu({kind:"ground",name:"Ground",tile,x,y,run});
     }
     clearNpcMenu(){
-        this.selectionToken++;this.selectedNpc=null;this.onNpcMenu(null);
+        this.selectionToken++;this.selectedNpc=null;this.selectedObject=null;this.onNpcMenu(null);
     }
     async selectNpc({index,x,y,run=false,mode="menu"}){
         if(this.closed||this.loading||!this.sync?.local)return;
@@ -263,13 +265,47 @@ export class NativeGameplay {
             if(this.closed||this.loading||token!==this.selectionToken||generation!==this.generation||
                 this.npcs.npcs.get(index)?.type!==type)return;
             const actions=npcActionOptions(definition,this.npcs.npcs.get(index));
-            this.selectedNpc={index,type,slots:actions.map(a=>a.slot),definition};
+            this.selectedNpc={index,type,slots:actions.map(a=>a.slot),definition,x,y};
             if(mode==="default"&&actions.length){this.interactNpc(index,actions[0].slot,{run});return;}
             this.onNpcMenu({index,name:this.npcs.npcs.get(index).name||definition.name||`NPC ${type}`,
                 actions,x,y,run});
         }catch(error){
             if(token===this.selectionToken&&!this.closed)this.onStatus("NPC options unavailable: "+error.message);
         }
+    }
+    selectObject({id,name,actions,tileX,tileY,plane,x,y,run=false,mode="menu"}){
+        if(this.closed||this.loading||!this.sync?.local||!this.origin||
+            plane!==this.sync.local.plane)return;
+        const worldX=this.origin.mapX*64+tileX,worldY=this.origin.mapY*64+tileY;
+        if(worldX<0||worldX>16383||worldY<0||worldY>16383||
+            !this.regions.has(`${worldX>>>6},${worldY>>>6}`))return;
+        this.clearNpcMenu();
+        const options=objectActionOptions({actions});
+        this.selectedObject={id,name,worldX,worldY,slots:options.map(a=>a.slot),x,y};
+        if(mode==="default"){
+            if(options.length)this.interactObject(options[0].slot,{run});
+            else{this.clearNpcMenu();this.move({x:tileX,y:tileY,run,screenX:x,screenY:y});}
+            return;
+        }
+        this.onNpcMenu({kind:"object",id,name,actions:options,x,y,run});
+    }
+    interactObject(slot,{run=false}={}){
+        const target=this.selectedObject;
+        if(this.closed||this.loading||!target||!target.slots.includes(slot))return false;
+        const {opcode,payload}=encodeLocInteraction(target.id,target.worldX,target.worldY,slot,
+            {controlKey:Boolean(run||this.run())});
+        this.session.sendGame(opcode,payload);
+        this.viewport.onClickCross?.(target.x,target.y);
+        this.clearNpcMenu();return true;
+    }
+    examineObject(){
+        const target=this.selectedObject;
+        if(this.closed||this.loading||!target)return false;
+        const {opcode,payload}=encodeLocExamine(target.id);
+        this.session.sendGame(opcode,payload);
+        this.viewport.onClickCross?.(target.x,target.y);
+        this.onExamine({name:target.name,description:"Examine requested from the server."});
+        this.clearNpcMenu();return true;
     }
     examineNpc(index){
         const selected=this.selectedNpc,npc=this.npcs.npcs.get(index);
@@ -287,6 +323,7 @@ export class NativeGameplay {
             !selected.slots.includes(slot)||npc.visibleOps!==undefined&&(npc.visibleOps&(1<<slot))===0)return false;
         const {opcode,payload}=encodeNpcInteraction(index,slot,{controlKey:Boolean(run||this.run())});
         this.session.sendGame(opcode,payload);
+        if(this.selectedNpc)this.viewport.onClickCross?.(this.selectedNpc.x,this.selectedNpc.y);
         this.clearNpcMenu();
         return true;
     }
@@ -300,7 +337,10 @@ export class NativeGameplay {
             // Require loaded ground. Server pathfinding decides reachability and plane changes.
             playerGroundHeight(region,(x&63)+.5,(y&63)+.5,player.plane);
             this.session.sendGame(MOVE_GAMECLICK,encodeMoveDestination(x,y,{run:tile.run||this.run()}),-1);
-            this.destination={x,y};this.report();
+            this.destination={x,y};
+            if(Number.isFinite(tile.screenX)&&Number.isFinite(tile.screenY))
+                this.viewport.onClickCross?.(tile.screenX,tile.screenY);
+            this.report();
         }catch(error){this.onStatus("Movement unavailable: "+error.message);}
     }
     updateNpcMotions(){
@@ -422,5 +462,5 @@ export class NativeGameplay {
         if(typeof this.session.stop==="function")this.session.stop(new Error(message));
         else this.session.close();
     }
-    close(){this.closed=true;this.generation++;clearInterval(this.timer);this.playerController.clear();this.interfaces?.close();this.clearNpcMenu();this.viewport.setActors(null);this.viewport.setRoofContext?.(null,null,null);this.viewport.onDestination=()=>{};this.viewport.onNpc=()=>{};this.viewport.onNpcCancel=()=>{};this.viewport.onGroundMenu=()=>{};}
+    close(){this.closed=true;this.generation++;clearInterval(this.timer);this.playerController.clear();this.interfaces?.close();this.clearNpcMenu();this.viewport.setActors(null);this.viewport.setRoofContext?.(null,null,null);this.viewport.onDestination=()=>{};this.viewport.onNpc=()=>{};this.viewport.onObject=()=>{};this.viewport.onNpcCancel=()=>{};this.viewport.onGroundMenu=()=>{};}
 }

@@ -161,6 +161,10 @@ test("native scene loader renders combined terrain/location archives using verif
     assert.equal(result.rendered,1);assert.equal(result.vertices.length,18);assert.equal(result.models,1);
     assert.equal(result.errors.length,0);assert.equal(result.keyUsed,false);assert.equal(result.locationGroup,97);
     assert.deepEqual(result.placements,[{id:5,name:"null",x:1,y:2,shape:10,rotation:0}]);
+    assert.equal(result.pickMeshes.length,1,"drawn object must be clickable");
+    assert.equal(result.pickMeshes[0].id,5);
+    assert.deepEqual([result.pickMeshes[0].x,result.pickMeshes[0].y],[1,2]);
+    assert.deepEqual([...result.pickMeshes[0].vertices],[...result.vertices]);
     assert.equal(requests.filter(r=>r==="7:1").length,1);
     const broken=await loadStaticScenery(sceneCache(true).cache,terrain);
     assert.equal(broken.rendered,0);assert.equal(broken.vertices.length,0);

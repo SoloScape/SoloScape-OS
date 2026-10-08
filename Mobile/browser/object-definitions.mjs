@@ -33,7 +33,7 @@ export function decodeObjectDefinition(bytes,id){
     const d={id,name:"null",models:[],types:null,sizeX:1,sizeY:1,isRotated:false,
         modelSizeX:128,modelSizeHeight:128,modelSizeY:128,offsetX:0,offsetHeight:0,offsetY:0,
         ambient:0,contrast:0,contour: -1,seqId:-1,transforms:null,decorDisplacement:16,
-        recolors:[],retextures:[],mergeNormals:false};
+        recolors:[],retextures:[],actions:[],mergeNormals:false};
     const pairs=()=>Array.from({length:b.readUnsignedByte()},()=>[b.readUnsignedShort(),b.readUnsignedShort()]);
     for(let count=0;count<4096;count++){
         const op=b.readUnsignedByte();
@@ -50,7 +50,11 @@ export function decodeObjectDefinition(bytes,id){
             const n=b.readUnsignedByte();
             for(let i=0;i<n;i++){d.models.push(b.readInt()>>>0);if(d.types)d.types.push(b.readUnsignedByte());}
         }else if(op===2)d.name=b.readString();
-        else if(op===3||op>=30&&op<=38||op>=150&&op<=154)b.readString();
+        else if(op===3)b.readString();
+        else if(op>=30&&op<=38||op>=150&&op<=154){
+            const slot=op>=150?op-150:op-30,label=b.readString();
+            if(slot<5)d.actions[slot]=label.toLowerCase()==="hidden"?null:label;
+        }
         else if(op===14)d.sizeX=b.readUnsignedByte();
         else if(op===15)d.sizeY=b.readUnsignedByte();
         else if(op===21)d.contour=0;

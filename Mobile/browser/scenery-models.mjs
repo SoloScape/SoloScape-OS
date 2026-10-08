@@ -198,7 +198,7 @@ export async function loadStaticScenery(cache,terrain,{key,isCurrent=()=>true,on
     const definitions=unpackArchiveFiles(await decodeGroup(await cache.loadGroup(2,6)),files,ids,{maxFiles:100000});
     const decoded=new Map(),errors=[];
     for(const [id,bytes] of definitions){try{decoded.set(id,decodeObjectDefinition(bytes,id));}catch(error){errors.push({id,reason:error.message});}}
-    const models=new Map(),modelErrors=new Set(),meshes=Array.from({length:4},()=>[]),placements=[],walls=new Map(),textured=new Map();
+    const models=new Map(),modelErrors=new Set(),meshes=Array.from({length:4},()=>[]),placements=[],pickMeshes=[],walls=new Map(),textured=new Map();
     const planeViews=Array.from({length:4},(_,p)=>terrainPlane(terrain,p));
     let rendered=0,skipped=0,omittedFaces=0,totalFloats=0;
     for(const loc of source.locations){if(loc.shape<=3){const d=decoded.get(loc.id);if(d)walls.set(`${loc.plane},${loc.x},${loc.y}`,d.decorDisplacement);}}
@@ -210,6 +210,7 @@ export async function loadStaticScenery(cache,terrain,{key,isCurrent=()=>true,on
         if(!view||!d||d.transforms||d.seqId!==-1||!d.sizeX||!d.sizeY){skipped++;continue;}
         const parts=placementParts(loc,d,walls.get(`${loc.plane},${loc.x},${loc.y}`));
         let drawn=false;
+        const pickParts=[];
         for(const part of parts){
             if(!part.modelIds.length)continue;
             const components=[];
@@ -229,16 +230,24 @@ export async function loadStaticScenery(cache,terrain,{key,isCurrent=()=>true,on
             try{
                 const mesh=buildObjectMesh(view,loc,d,part,components,{textures:textureSource.textures});omittedFaces+=mesh.omittedFaces;
                 totalFloats+=mesh.vertices.length;
-                meshes[level].push(mesh.vertices);drawn ||= mesh.vertices.length>0;
+                meshes[level].push(mesh.vertices);if(mesh.vertices.length)pickParts.push(mesh.vertices);
+                drawn ||= mesh.vertices.length>0;
                 for(const [id,vertices] of mesh.texturedBatches){
                     const key=`${level}:${id}`;
                     if(!textured.has(key))textured.set(key,{level,texture:id,chunks:[]});
                     textured.get(key).chunks.push(vertices);totalFloats+=vertices.length;drawn ||=vertices.length>0;
+                    if(vertices.length)pickParts.push(vertices);
                 }
             }catch(error){errors.push({id:loc.id,x:loc.x,y:loc.y,reason:error.message});}
         }
         if(totalFloats>24_000_000)throw new Error("Scene mesh exceeds limit");
-        if(drawn){rendered++;placements.push({id:loc.id,name:d.name,x:loc.x,y:loc.y,shape:loc.shape,rotation:loc.rotation});}else skipped++;
+        if(drawn){
+            rendered++;placements.push({id:loc.id,name:d.name,x:loc.x,y:loc.y,shape:loc.shape,rotation:loc.rotation});
+            // Individual original geometry is retained for exact pixel-triangle
+            // object picking, including textured-only locs, on mouse actions.
+            pickMeshes.push({id:loc.id,name:d.name,x:loc.x,y:loc.y,plane:loc.plane,level,
+                actions:d.actions??[],chunks:pickParts});
+        }else skipped++;
         if((rendered+skipped)%100===0)onProgress({rendered,skipped,models:models.size});
     }
     if(!isCurrent())return null;
@@ -248,5 +257,6 @@ export async function loadStaticScenery(cache,terrain,{key,isCurrent=()=>true,on
     errors.push(...textureSource.errors);
     return {vertices,levelCounts,texturedBatches,textures:textureSource.textures,placements,rendered,skipped,omittedFaces,models:models.size,definitions:decoded.size,
         locations:source.locations.length,upperPlaneLocations:source.locations.filter(l=>l.plane>0).length,
-        locationGroup:source.group,keyUsed:source.keyUsed,errors};
+        locationGroup:source.group,keyUsed:source.keyUsed,errors,
+        pickMeshes:pickMeshes.map(({chunks,...loc})=>({...loc,vertices:join(chunks)}))};
 }
