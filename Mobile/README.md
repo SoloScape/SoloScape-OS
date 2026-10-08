@@ -86,6 +86,58 @@ The launcher maps these to the upstream client’s `REACT_APP_*` variables. **An
 
 A production bundle can be attempted from `Mobile/` with `npm run build` after supplying `SOLOSCAPE_GAME_URL=wss://...` and `SOLOSCAPE_CACHE_BASE_URL=https://.../caches/`. This only builds the upstream client; it does **not** add the missing server protocol integration. Upstream packages require their own setup first.
 
+## Native browser cache client — first reusable asset-loader component
+
+**Status (8 October 2026):** the final credential-free live JS5 diagnostic
+passed. Archive 0's first group `0:0` was fetched through the gateway,
+**196 bytes**, with CRC32 `0x68527d89` matching its format-7 reference
+catalog. The master/index revision, group catalog and network transport
+were already verified on the local revision-240 SoloScape server. There are
+no further standalone probes planned.
+
+The new **browser-native** cache service in `browser/native-js5.mjs` does
+not depend on Node `Buffer`, Node `ws`, or the incompatible TSPS packet
+format. It provides a renderer-facing `NativeJs5Cache` API:
+
+- `await cache.loadMaster()` — validated master-index CRC/version entries
+- `await cache.loadIndex(indexId)` — validates a reference table against
+  master CRC/version, decodes its group IDs and CRCs using browser gzip
+- `await cache.loadGroup(indexId, groupId)` — fetches one native JS5 group,
+  verifies catalog CRC32, and memoizes the intact container **in memory**
+
+The service uses browser `WebSocket`, `crypto.getRandomValues` and
+`DecompressionStream`, validates the 512-byte JS5 framing, enforces
+strict compressed/decompressed size limits, allows plaintext WS **only on
+loopback**, and never handles credentials. CRC32 detects accidental changes,
+not malicious tampering. Uncompressed and gzip containers are supported;
+bzip2, large groups and full asset decoding are not yet supported.
+
+A standalone **browser development shell** lets us use this client-side
+library in an actual browser without altering the pinned TSPS submodule.
+With the Java server running on native TCP 43594 and the gateway running on
+WS 43595, from `Mobile/` open another PowerShell window:
+
+```powershell
+git pull --ff-only origin feature/mobile
+npm install
+npm run dev:native
+```
+
+Open **`http://localhost:3001/`** (not 127.0.0.1, as the gateway requires
+the exact browser Origin `http://localhost:3001`). Select archive index
+`0`, load its catalog, then load group `0` into the browser's memory.
+This exercises a real on-demand asset-loading **application component**,
+rather than running another Node CLI probe. It does not yet display
+sprites/models or integrate with TSPS's WebGL renderer.
+
+The preview only binds to `127.0.0.1:3001`; it cannot be opened from
+a phone over LAN. The TSPS upstream development app also defaults to
+port 3001, so stop it before launching the native browser shell. Future
+integration will adapt this native JS5 service to TSPS's `CacheStore` /
+`CacheIndex` interfaces and reconcile the revision-241 decode profile
+before attempting rendering. Neither TSPS login nor native game login
+has been implemented. This is **not yet a playable client**.
+
 ## Native WebSocket-to-TCP gateway (transport foundation)
 
 The standalone `gateway/` is deliberately a **raw byte transport**, not a converter. Its purpose is to provide a browser-compatible transport for a future native-OSRS client encoder/decoder. Unlike a blanket TCP proxy, it validates the initial native login/JS5 handshake opcode before allowing TCP forwarding and refuses TSPS's proprietary HELLO (200) or LOGIN (204). **Do not point the unmodified TSPS client at it expecting to log in.**

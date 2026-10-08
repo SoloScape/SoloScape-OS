@@ -112,6 +112,35 @@ check precedes the asset request; the data remains in memory only.
 This is an intentionally narrow initial test, not a reference-table
 or asset decoder suitable for TSPS, and it is **not yet verified live**.
 
+### Browser-native cache service: renderer integration groundwork
+
+User's final standalone live JS5 test on **8 October 2026** successfully
+retrieved archive-0 group `0:0` over the native WS gateway; the **196-byte**
+cache container matched CRC32 `0x68527d89` in archive 0's verified
+format-7 reference table. This closes the planned TCP/WebSocket/JS5
+diagnostic phase without establishing a playable game client.
+
+The actual **browser-side** asset-loading service now lives in
+`Mobile/browser/native-js5.mjs`, with a small loopback-only browser
+development shell. It performs 21-byte native JS5 handshake, strict
+512-byte group framing, master-index validation, per-index CRC/revision
+checks, browser-native gzip metadata parsing, and group CRC checks.
+Its reusable `NativeJs5Cache.loadIndex()` and `loadGroup()` methods
+return in-memory JS5 cache-container bytes; no copies of licensed cache
+assets are committed or written by this service. Integration tests use
+Node `ws` only to simulate browser WebSockets against a mock native TCP
+server through the real gateway, and do **not** replace an actual mobile
+browser smoke test.
+
+The pinned TSPS renderer already has `CacheIndex`, `CacheStore` and
+`ReferenceTable` abstractions in its own revision-241 cache pipeline.
+A real renderer integration must adapt these **revision-240 verified
+containers** to those interfaces (and reconcile revision-specific
+decoding, metadata, XTEAs and asset formats); merely changing the TSPS
+game server URL to the raw WS gateway will not work. TSPS proprietary
+HELLO/LOGIN remain blocked. **Do not send login credentials** to this
+browser shell or gateway in its current development-only configuration.
+
 ## Required protocol adapter work (not implemented)
 
 1. **Choose a source-of-truth native client protocol.** Identify the exact SoloScape revision, RSA public modulus, current JS5/cache revision, ISAAC seeds, login block layout and inbound/outbound packet tables from the `rsprot` dependency and SoloScape generated files.
