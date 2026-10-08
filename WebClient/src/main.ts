@@ -72,6 +72,7 @@ import {
 import { ClientBootRenderer } from './ui/ClientBootRenderer';
 import { applyLoginKey } from './ui/LoginInput';
 import { MobileHud } from './ui/MobileHud';
+import { Rev240UiState } from './protocol/Rev240UiState';
 import { loadCacheGameUiAssets } from './cache/CacheGameUiAssets';
 import type { CacheInterfaceStore } from './cache/CacheInterfaceDefinitions';
 
@@ -147,6 +148,10 @@ const mobileHud = new MobileHud(
     onZoom: (delta) => orbitCamera.queueZoom(delta),
   },
 );
+
+const uiState = new Rev240UiState();
+mobileHud.setServerUi(uiState);
+uiState.onChange = () => mobileHud.refreshServerUi();
 
 let sceneRenderer: WebGlSceneRenderer | null = null;
 let browserGameLoop: BrowserGameLoop | null = null;
@@ -861,6 +866,7 @@ gameLogin.onStateChange = (state) => {
 
   if (titleMode === 'game' && (state === 'closed' || state === 'error')) {
     mobileHud.setVisible(false);
+    uiState.reset();
     resetSceneDebug();
     playerInfo = null;
     selectedLoginField = 'password';
@@ -889,6 +895,7 @@ gameLogin.onStateChange = (state) => {
 };
 
 gameLogin.onLoginSuccess = (success) => {
+  uiState.reset();
   framedGamePackets = 0;
   mapLoadGeneration += 1;
   resetSceneDebug();
@@ -919,6 +926,13 @@ gameLogin.onGameData = (data) => {
 
 gameLogin.onGamePacket = (packet) => {
   framedGamePackets += 1;
+  try {
+    if (uiState.apply(packet)) return;
+  } catch (error: unknown) {
+    appendLog('UI packet ' + packet.name + ' decode failed: ' +
+      (error instanceof Error ? error.message : String(error)));
+    throw error;
+  }
 
   if (packet.opcode === PLAYER_INFO_OPCODE) {
     if (!playerInfo) {
@@ -1285,6 +1299,7 @@ connectButton.addEventListener('click', () => {
       gameLogin.disconnect();
     }
     js5.disconnect();
+    uiState.reset();
     sceneAssetLoader.reset();
     sceneMaterialLoader.reset();
     playerModelLoader.reset();
@@ -1442,6 +1457,7 @@ window.requestAnimationFrame(animateTitleFrame);
 
 type SoloScapeDebugWindow = Window & {
   soloscapeJs5?: Js5Client;
+  soloscapeUiState?: Rev240UiState;
   soloscapeStartupAssets?: Js5StartupAssets;
   soloscapeTitleAssets?: TitleScreenAssets;
   soloscapeGameLogin?: GameLoginClient;
@@ -1461,6 +1477,7 @@ type SoloScapeDebugWindow = Window & {
 };
 
 (window as SoloScapeDebugWindow).soloscapeJs5 = js5;
+(window as SoloScapeDebugWindow).soloscapeUiState = uiState;
 (window as SoloScapeDebugWindow).soloscapeGameLogin = gameLogin;
 
 renderBootScreen(
