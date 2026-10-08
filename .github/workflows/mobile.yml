@@ -29,9 +29,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install gateway test dependency
+        run: npm install --prefix Mobile --no-package-lock --ignore-scripts
       - name: Run integration config tests
         run: npm test --prefix Mobile
       - name: Syntax check integration scripts
         run: |
           node --check Mobile/scripts/config.mjs
           node --check Mobile/scripts/run-client.mjs
+          node --check Mobile/gateway/config.mjs
+          node --check Mobile/gateway/server.mjs
+          node --check Mobile/gateway/cli.mjs

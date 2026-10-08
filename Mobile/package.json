@@ -9,6 +9,10 @@
   "scripts": {
     "dev": "node scripts/run-client.mjs dev",
     "build": "node scripts/run-client.mjs build",
-    "test": "node --test"
+    "test": "node --test",
+    "gateway": "node gateway/cli.mjs"
+  },
+  "dependencies": {
+    "ws": "8.18.3"
   }
 }
