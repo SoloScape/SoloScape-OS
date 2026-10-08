@@ -23,15 +23,38 @@ is used. HTML controls remain transparent, focusable hit targets with
 accessible labels. The 3D game view is never obscured by a large cache
 gameframe background sprite.
 
-The minimap canvas is intentionally transparent until accurate original
-mapscene/minimap rendering exists. The current UI does not pretend to
-render the map using guessed terrain colours or a fake player marker.
+The minimap now paints terrain using the **actual decoded cache floor
+underlay/overlay RGB definitions** from the same scene-material loader as
+the 3D world, and the server's real player coordinates. Tiles without
+resolvable cache colour remain transparent: no guessed terrain palette or
+fake player-marker sprite. Full original mapscene icon/shape rendering is
+still pending.
 
 Panels are opened only from actual server `IF_OPENSUB` or `IF_RESYNC_V2`
 destination attachments and available archive-3 groups. If no verified
 server mount exists, no invented inventory/skills/combat panel is drawn.
 An explicit diagnostic and a selector for *actually server-opened* cache
 groups are available. The login/title screen remains cache-backed.
+
+## Game HUD reliability and live cache state
+
+- The initial JS5 archive CRCs are retained after successful bootstrap.
+  A dropped cache WebSocket reconnects without forcing game/title re-entry.
+  Login waits for an actual ready asset socket, with a clear reconnecting
+  status instead of repeatedly claiming that the initial cache is loading.
+- An unsupported/malformed UI packet is reported and skipped instead of
+  being rethrown through the game transport and disconnecting the player.
+- HUD actions are logged; logout requires explicit confirmation; original
+  cache-sprite hit areas consume pointer input so they do not accidentally
+  become world-walk clicks. Server game-WebSocket close codes/reasons are
+  included in the debug log.
+- The compass is loaded from an actual verified named `compass` sprite group
+  when present in the connected archive 8. HP and Prayer levels come only
+  from server `UPDATE_STAT_V2` packets and appear in the original cached
+  bitmap font. No server value means no fabricated displayed number.
+- Original cache widgets now honour `IF_SETHIDE` server visibility updates.
+  Full CS2-based pressed/highlight state and icon action binding remain
+  future work; static default cache sprites are not proof of active state.
 
 ## Cache-backed game UI assets
 
