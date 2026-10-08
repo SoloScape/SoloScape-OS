@@ -133,7 +133,6 @@ export class CacheMobileHudArt {
     const generation = ++this.generation;
     this.host.replaceChildren();
     this.images.clear();
-    this.layers.clear();
     this.shells.clear();
     const layer = document.createElement('div');
     layer.className = 'hud-cache-art-stage';
