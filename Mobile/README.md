@@ -121,12 +121,16 @@ The gateway checks origin and path at upgrade, uses binary-only WebSocket frames
 
 Before implementing native login, you can probe a **running local** SoloScape TCP server's JS5 response without sending account credentials:
 
-```bash
-cd Mobile
-SOLOSCAPE_GAME_TCP_PORT=43594 SOLOSCAPE_NATIVE_REVISION=240 npm run probe
+```powershell
+# From the Mobile directory on Windows PowerShell
+$env:SOLOSCAPE_GAME_TCP_PORT = '43594'
+$env:SOLOSCAPE_NATIVE_REVISION = '240'
+npm run probe
 ```
 
-Use the actual `gamePort` and native cache **major revision** from your running SoloScape configuration. The example `240` follows the documented `240.2` version; do not assume it matches a deployed server. The probe sends exactly the standard JS5 start opcode (15) and a four-byte big-endian revision. A response code 0 means the initial JS5 handshake was accepted, **not** that assets can be loaded or a player can log in. The Node integration tests run against mock TCP endpoints; the real SoloScape service has not been probed yet.
+After pulling the latest `feature/mobile` branch (for example, `git pull origin feature/mobile`), rerun `npm run probe` using these environment settings. If the response is still a timeout, inspect the game server logs and verify the deployed rsprot version; a successful TCP port check alone only confirms a listener.
+
+Use the actual `gamePort` and native cache **major revision** from your running SoloScape configuration. The example `240` follows the documented `240.2` version; do not assume it matches a deployed server. The rsprot revision-240 JS5 handshake is **21 bytes total**: native opcode `15`, a four-byte big-endian revision, and four four-byte seed integers (16 cryptographically random bytes). The old five-byte probe was incomplete and resulted in a timeout even with a running server. A response code `0` means the initial JS5 handshake was accepted, **not** that assets can be loaded or a player can log in. The Node integration tests use a mock TCP endpoint that explicitly waits for the entire 21-byte request; a live SoloScape result must still be verified.
 
 See [protocol compatibility notes](PROTOCOL.md) for the packet differences and further work.
 

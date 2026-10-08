@@ -11,7 +11,7 @@ try {
     const host = process.env.SOLOSCAPE_GAME_TCP_HOST || "127.0.0.1";
     const port = readPositiveInteger(process.env.SOLOSCAPE_GAME_TCP_PORT, "SOLOSCAPE_GAME_TCP_PORT");
     const revision = readPositiveInteger(process.env.SOLOSCAPE_NATIVE_REVISION, "SOLOSCAPE_NATIVE_REVISION");
-    console.log(`[js5-probe] Checking ${host}:${port} for native cache revision ${revision} (no credentials)`);
+    console.log(`[js5-probe] Checking ${host}:${port} for native cache revision ${revision} (21-byte JS5 request; no credentials)`);
     const result = await probeJs5({ host, port, revision });
     if (result.accepted) {
         console.log("[js5-probe] Native JS5 handshake accepted (response 0); game login and cache transfer NOT verified.");

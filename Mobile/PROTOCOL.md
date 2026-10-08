@@ -30,6 +30,19 @@ TSPS's numeric packet IDs and lengths are **not** interchangeable with native OS
 
 The gateway currently recognises initial native login / JS5 byte candidates `14, 15, 16, 18`. **This is a transport safety allowlist, not a validated rsprot implementation.** Confirm the exact native revision-240 handshake with real rsprot before production usage. Do not infer successful game login from an echo test.
 
+## Confirmed native rsprot revision-240 JS5 request framing
+
+Inspected the upstream [rsprot `InitJs5RemoteConnectionDecoder.kt`](https://github.com/blurite/rsprot/blob/master/protocol/osrs-240/osrs-240-shared/src/main/kotlin/net/rsprot/protocol/common/loginprot/incoming/codec/InitJs5RemoteConnectionDecoder.kt) and [`LoginClientProt.kt`](https://github.com/blurite/rsprot/blob/master/protocol/osrs-240/osrs-240-shared/src/main/kotlin/net/rsprot/protocol/common/loginprot/incoming/prot/LoginClientProt.kt):
+
+- Login opcode: `15` (`INIT_JS5REMOTE_CONNECTION`).
+- Fixed payload length: **20 bytes**.
+- Layout: 4-byte big-endian **revision** followed by **four 4-byte seed integers** (16 bytes).
+- Total request size: **21 bytes**. No length prefix in this fixed-size message.
+- The `Mobile/gateway/js5-probe.mjs` implementation now sends this complete request; it generates 16 random seed bytes and logs **no seed material**. The incomplete former implementation wrote only opcode + revision (5 bytes), which leaves rsprot waiting for the remaining 16 bytes and causes a timeout.
+- rsprot's `LoginChannelHandler.kt` compares the revision to `RSProtConstants.REVISION`, validates the JS5 source via its address validator, then writes a login response. A successful initial handshake is not proof of completed cache transfer or gameplay.
+
+The user confirmed a local Java 21 process listening at `127.0.0.1:43594` and local `Server/game.yml` setting `game-port: 43594`, `revision: 240`. An initial **five-byte** probe timed out; repeat using the corrected **21-byte** probe before inferring anything about deployed JS5. This observation is not evidence that login works.
+
 ## Required protocol adapter work (not implemented)
 
 1. **Choose a source-of-truth native client protocol.** Identify the exact SoloScape revision, RSA public modulus, current JS5/cache revision, ISAAC seeds, login block layout and inbound/outbound packet tables from the `rsprot` dependency and SoloScape generated files.
