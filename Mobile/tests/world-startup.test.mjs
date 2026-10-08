@@ -198,6 +198,32 @@ try{
     const sceneTexture=viewport.textures.get(3),sceneBuffer=viewport.sceneryBatches[0].buffer;
     viewport.setTerrain(terrain);if(viewport.sceneryCount!==0)throw new Error("Travel retained obsolete scenery");
     if(gl.isTexture(sceneTexture)||gl.isBuffer(sceneBuffer)||viewport.sceneryBatches.length)throw new Error("Travel retained texture resources");
+    // Both shader programs enforce the classic tile window, even though the
+    // outside marker is in the frustum and its cache region remains loaded.
+    viewport.target=[0,0,0];viewport.pitch=1.3;viewport.yaw=0;viewport.distance=70;
+    const {sceneCameraMatrix}=await import("/world-webgl.mjs");
+    const camera=sceneCameraMatrix(viewport.target,0,1.3,70,1);
+    const sample=(north)=>{
+        const p=[0,.5,north,1];
+        const c=[0,1,2,3].map(row=>p.reduce((n,v,col)=>n+camera[col*4+row]*v,0));
+        gl.readPixels(Math.floor(viewport.canvas.width*(.5+c[0]/c[3]/2)),
+            Math.floor(viewport.canvas.height*(.5+c[1]/c[3]/2)),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        return Array.from(pixel);
+    };
+    const marker=[];
+    for(const north of [0,12])for(const [x,z] of [[-2,-2],[2,-2],[-2,2],[2,-2],[2,2],[-2,2]])
+        marker.push(x,.5,north+z,2000,.25,.25);
+    const markerVertices=new Float32Array(marker);
+    for(const textured of [false,true]){
+        const pixels=new Uint8Array(64*64*4);for(let i=0;i<pixels.length;i+=4)pixels.set([255,0,0,255],i);
+        viewport.setScenery(textured?{vertices:new Float32Array(),levelCounts:[0,0,0,0],
+            texturedBatches:[{level:0,texture:9,vertices:markerVertices}],textures:new Map([[9,{size:64,pixels}]])}:
+            {vertices:markerVertices});
+        viewport.render();
+        const inside=sample(0),outside=sample(12),clear=[11,23,31,255];
+        if(inside.every((n,i)=>Math.abs(n-clear[i])<=1))throw new Error("Draw window hid nearby marker");
+        if(outside.some((n,i)=>Math.abs(n-clear[i])>1))throw new Error("Distant marker survived draw cutoff: "+outside);
+    }
     if(gl.getError()!==gl.NO_ERROR)throw new Error("WebGL error");
     const palette=viewport.palette;
     const sceneryBuffer=viewport.sceneryBuf;

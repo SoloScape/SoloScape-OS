@@ -33,6 +33,19 @@ import {terrainPlane,sceneLevel,validateSceneLevel} from "./scene-planes.mjs";
 import {NpcLongPress} from "./npc-pointer.mjs";
 // Native scene distances are tiles, unlike RuneLite's client zoom values.
 export const GAME_CAMERA_ZOOM=Object.freeze({default:12,min:6,max:24});
+export const CLASSIC_DRAW_DISTANCE=25;
+
+export function sceneDrawBounds(target,yaw,pitch,distance){
+    // Classic visibility is a square of tiles around the camera, not its focal point.
+    // Mesh tile zero starts at -31.5, and cache north is flipped by the view matrix.
+    const x=Math.floor(target[0]+Math.sin(yaw)*Math.cos(pitch)*distance+31.5)-31.5;
+    const z=Math.floor(target[2]-Math.cos(yaw)*Math.cos(pitch)*distance+31.5)-31.5;
+    return [x-CLASSIC_DRAW_DISTANCE,z-CLASSIC_DRAW_DISTANCE,x+CLASSIC_DRAW_DISTANCE,z+CLASSIC_DRAW_DISTANCE];
+}
+
+export function withinDrawBounds(x,z,bounds){
+    return !bounds||(x>=bounds[0]&&z>=bounds[1]&&x<bounds[2]&&z<bounds[3]);
+}
 
 export function cameraWheelDistance(distance,event){
     if(event.ctrlKey)return GAME_CAMERA_ZOOM.default;
@@ -56,21 +69,27 @@ uniform mat4 u_mvp;
 varying highp float v_hsl_w;
 varying highp float v_w;
 varying highp vec2 v_uv;
+varying highp vec2 v_scenePosition;
 void main(){
     vec4 v=u_mvp*vec4(a_position,1.0);
     gl_Position=v;
     v_hsl_w=a_color.x*v.w;
     v_w=v.w;
     v_uv=a_color.yz;
+    v_scenePosition=a_position.xz;
 }`);
     const fs=shader(gl,gl.FRAGMENT_SHADER,`precision highp float;
 uniform sampler2D u_palette;
 uniform bool u_wireframe;
 uniform sampler2D u_texture;
+uniform vec4 u_drawBounds;
 varying highp float v_hsl_w;
 varying highp float v_w;
 varying highp vec2 v_uv;
+varying highp vec2 v_scenePosition;
 void main(){
+    if(v_scenePosition.x<u_drawBounds.x||v_scenePosition.y<u_drawBounds.y||
+        v_scenePosition.x>=u_drawBounds.z||v_scenePosition.y>=u_drawBounds.w)discard;
     ${textured?`vec4 texel=texture2D(u_texture,v_uv);
     if(texel.a<0.1)discard;
     float light=clamp(v_hsl_w/v_w,2.0,126.0)/128.0;
@@ -279,7 +298,7 @@ export function combineRegionMeshes(scenes){
 }
 
 // Perspective-correct ground picking uses the same triangles/matrix as rendering.
-export function pickTerrainTile(vertices,matrix,nx,ny){
+export function pickTerrainTile(vertices,matrix,nx,ny,bounds=null){
     const project=(at)=>{
         const x=vertices[at],y=vertices[at+1],z=vertices[at+2];
         const p=[0,1,2,3].map(r=>matrix[r]*x+matrix[r+4]*y+matrix[r+8]*z+matrix[r+12]);
@@ -296,6 +315,7 @@ export function pickTerrainTile(vertices,matrix,nx,ny){
         const weights=[u/a[3],v/b[3],w/c[3]],sum=weights.reduce((n,v)=>n+v,0);
         const x=weights.reduce((n,t,k)=>n+t*vertices[i+k*6],0)/sum;
         const y=weights.reduce((n,t,k)=>n+t*vertices[i+k*6+2],0)/sum;
+        if(!withinDrawBounds(x,y,bounds))continue;
         depth=z;best={x:Math.floor(x+31.5),y:Math.floor(y+31.5)};
     }
     return best;
@@ -303,14 +323,14 @@ export function pickTerrainTile(vertices,matrix,nx,ny){
 
 // Pick real rendered NPC triangles, including textured geometry. Compare clip
 // depths so overlapping NPCs select the visible actor, not insertion order.
-export function pickNpcTriangles(meshes,matrix,nx,ny){
+export function pickNpcTriangles(meshes,matrix,nx,ny,bounds=null){
     let best=null,depth=Infinity;
     for(const {index,vertices} of meshes){
         if(!(vertices instanceof Float32Array)||vertices.length%18)continue;
         const project=at=>{
             const x=vertices[at],y=vertices[at+1],z=vertices[at+2];
             const v=[0,1,2,3].map(r=>matrix[r]*x+matrix[r+4]*y+matrix[r+8]*z+matrix[r+12]);
-            return v[3]>0?[v[0]/v[3],v[1]/v[3],v[2]/v[3]]:null;
+            return v[3]>0?[v[0]/v[3],v[1]/v[3],v[2]/v[3],v[3]]:null;
         };
         for(let i=0;i<vertices.length;i+=18){
             const a=project(i),b=project(i+6),c=project(i+12);if(!a||!b||!c)continue;
@@ -320,6 +340,10 @@ export function pickNpcTriangles(meshes,matrix,nx,ny){
             const v=((c[1]-a[1])*(nx-c[0])+(a[0]-c[0])*(ny-c[1]))/denominator,w=1-u-v;
             if(u<0||v<0||w<0)continue;
             const z=u*a[2]+v*b[2]+w*c[2];
+            const weights=[u/a[3],v/b[3],w/c[3]],sum=weights.reduce((n,t)=>n+t,0);
+            const x=weights.reduce((n,t,k)=>n+t*vertices[i+k*6],0)/sum;
+            const north=weights.reduce((n,t,k)=>n+t*vertices[i+k*6+2],0)/sum;
+            if(!withinDrawBounds(x,north,bounds))continue;
             if(z>=-1&&z<=1&&z<depth){depth=z;best={index,depth};}
         }
     }
@@ -386,7 +410,7 @@ export class NativeTerrainViewport {
             const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return null;
             const nx=2*(clientX-rect.left)/rect.width-1,ny=1-2*(clientY-rect.top)/rect.height;
             const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,rect.width/rect.height);
-            const npc=pickNpcTriangles(this.actorPickMeshes,matrix,nx,ny);
+            const npc=pickNpcTriangles(this.actorPickMeshes,matrix,nx,ny,this.drawBounds());
             return npc?{index:npc.index,x:clientX-rect.left,y:clientY-rect.top}:null;
         };
         this.lastNpcHold=-Infinity;
@@ -426,7 +450,7 @@ export class NativeTerrainViewport {
             this.onNpcCancel();
             if(pointer.button!==0||!this.pickVertices)return;
             const count=this.pickLevelCounts.slice(0,this.visibleLevel+1).reduce((a,b)=>a+b,0)*6;
-            const tile=pickTerrainTile(this.pickVertices.subarray(0,count),matrix,nx,ny);
+            const tile=pickTerrainTile(this.pickVertices.subarray(0,count),matrix,nx,ny,this.drawBounds());
             if(tile)this.onDestination({...tile,run:e.shiftKey});
         };
         this.onContextMenu=e=>{
@@ -443,7 +467,7 @@ export class NativeTerrainViewport {
                 const nx=2*(clientX-rect.left)/rect.width-1,ny=1-2*(clientY-rect.top)/rect.height;
                 const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,rect.width/rect.height);
                 const count=this.pickLevelCounts.slice(0,this.visibleLevel+1).reduce((a,b)=>a+b,0)*6;
-                const tile=pickTerrainTile(this.pickVertices.subarray(0,count),matrix,nx,ny);
+                const tile=pickTerrainTile(this.pickVertices.subarray(0,count),matrix,nx,ny,this.drawBounds());
                 return tile?{tile,x:clientX-rect.left,y:clientY-rect.top}:null;
             };
             dispatchWorldContextMenu(e,{
@@ -528,6 +552,7 @@ export class NativeTerrainViewport {
         this.addTextures(scene?.textures??new Map());
     }
     setSceneLevel(level){validateSceneLevel(level);this.visibleLevel=level;}
+    drawBounds(){return sceneDrawBounds(this.target,this.yaw,this.pitch,this.distance);}
     replaceBatches(name,batches){
         const gl=this.gl;
         for(const batch of this[name])gl.deleteBuffer(batch.buffer);
@@ -547,6 +572,8 @@ export class NativeTerrainViewport {
         if(!this.count&&!this.sceneryCount&&!this.terrainBatches.length&&!this.sceneryBatches.length)return;
         const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,w/h);
         gl.useProgram(this.program);
+        const bounds=this.drawBounds();
+        gl.uniform4fv(gl.getUniformLocation(this.program,"u_drawBounds"),bounds);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D,this.palette);
         gl.uniform1i(gl.getUniformLocation(this.program,"u_palette"),0);
@@ -571,6 +598,7 @@ export class NativeTerrainViewport {
             gl.drawArrays(gl.TRIANGLES,0,this.actorCount);
         }
         gl.useProgram(this.textureProgram);
+        gl.uniform4fv(gl.getUniformLocation(this.textureProgram,"u_drawBounds"),bounds);
         gl.uniformMatrix4fv(gl.getUniformLocation(this.textureProgram,"u_mvp"),false,matrix);
         gl.uniform1i(gl.getUniformLocation(this.textureProgram,"u_texture"),0);
         const ta=gl.getAttribLocation(this.textureProgram,"a_position"),tc=gl.getAttribLocation(this.textureProgram,"a_color");

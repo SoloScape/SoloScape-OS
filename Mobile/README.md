@@ -82,6 +82,9 @@ pan along map axes (W/up north, S/down south, A/left west, D/right east).
 The native camera starts 12 tiles from its target, with wheel zoom bounded
 between 6 and 24 tiles. Ctrl + wheel restores the default. Login resets the
 distance before player assets load; walking and map rebuilds preserve your zoom.
+Terrain, scenery and actors use the classic 25-tile draw window around the
+camera tile. Ground and NPC picking obey the same window. Whole neighbouring
+map regions remain loaded for movement; loaded map area does not set visibility.
 The camera maps cache north to negative WebGL Z alongside upward height,
 preserving map handedness across terrain, scenery and textured batches.
 At yaw zero, north appears up and east right; orbiting changes the view.
