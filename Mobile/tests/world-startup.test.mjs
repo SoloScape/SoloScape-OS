@@ -110,10 +110,12 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
 });
 
 test("real WebGL shader renders client HSL palette pixels and releases palette texture",
-    {timeout:45000,skip:process.platform!=="linux"},async()=>{
+    {timeout:60000,skip:process.platform!=="linux"},async()=>{
     const chrome=process.env.CHROME_BIN||"/usr/bin/google-chrome";
     await access(chrome);
     const browserRoot=new URL("../browser/",import.meta.url);
+    let reportResult;
+    const browserResult=new Promise(resolve=>{reportResult=resolve;});
     const html=`<!doctype html><html><body><canvas id="scene" style="width:128px;height:128px"></canvas>
 <script type="module">
 import {NativeTerrainViewport} from "/world-webgl.mjs";
@@ -139,10 +141,14 @@ try{
     if(gl.isTexture(palette))throw new Error("Palette texture was not disposed");
     document.body.dataset.result="webgl-hsl-pass";
 }catch(error){document.body.dataset.result="webgl-hsl-fail: "+error.message;}
+await fetch("/result?status="+encodeURIComponent(document.body.dataset.result));
 </script></body></html>`;
     const server=createServer(async(req,res)=>{
         try{
-            if(req.url==="/"){
+            if(req.url.startsWith("/result?")){
+                reportResult(new URL(req.url,"http://localhost").searchParams.get("status"));
+                res.writeHead(200);res.end("received");
+            }else if(req.url==="/"){
                 res.writeHead(200,{"Content-Type":"text/html"});res.end(html);
             }else if(["/world-webgl.mjs","/floor-lighting.mjs"].includes(req.url)){
                 res.writeHead(200,{"Content-Type":"text/javascript"});
@@ -158,20 +164,25 @@ try{
     try{
         const url="http://127.0.0.1:"+server.address().port+"/";
         child=spawn(chrome,["--headless","--no-sandbox","--disable-dev-shm-usage",
+            "--no-first-run","--no-default-browser-check","--disable-background-networking",
+            "--disable-component-update","--disable-sync","--disable-extensions",
             "--use-angle=swiftshader","--enable-unsafe-swiftshader",
-            "--user-data-dir="+profile,"--virtual-time-budget=10000","--dump-dom",url],
-            {stdio:["ignore","pipe","pipe"]});
-        let output="",errors="";
-        child.stdout.on("data",data=>output+=data);
+            "--user-data-dir="+profile,url],{stdio:["ignore","ignore","pipe"]});
+        let errors="";
         child.stderr.on("data",data=>errors+=data);
-        const timer=setTimeout(()=>child.kill("SIGKILL"),30000);
-        const code=await new Promise((resolve,reject)=>{
-            child.once("error",reject);child.once("exit",resolve);
-        }).finally(()=>clearTimeout(timer));
-        assert.equal(code,0,errors.slice(-2000));
-        assert.match(output,/data-result="webgl-hsl-pass"/,output+"\n"+errors.slice(-2000));
+        let timer;
+        const stopped=new Promise((_,reject)=>{
+            child.once("error",reject);
+            child.once("exit",(code,signal)=>reject(new Error("Chrome exited before result: "+
+                code+"/"+signal+" "+errors.slice(-2000))));
+            timer=setTimeout(()=>reject(new Error("No WebGL result: "+errors.slice(-2000))),40000);
+        });
+        const result=await Promise.race([browserResult,stopped]).finally(()=>clearTimeout(timer));
+        assert.equal(result,"webgl-hsl-pass");
     }finally{
-        if(child&&child.exitCode===null&&child.signalCode===null)child.kill("SIGKILL");
+        if(child&&child.exitCode===null&&child.signalCode===null){
+            child.kill("SIGKILL");await once(child,"exit");
+        }
         await new Promise(resolve=>server.close(resolve));
         await rm(profile,{recursive:true,force:true});
     }
