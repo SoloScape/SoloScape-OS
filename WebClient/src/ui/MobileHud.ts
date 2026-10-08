@@ -6,6 +6,7 @@ import { cacheSpriteCanvas } from '../cache/CacheGameUiAssets';
 import { CacheBitmapFont } from './CacheBitmapFont';
 import type { Js5Client } from '../cache/Js5Client';
 import { CacheInterfaceRenderer } from './CacheInterfaceRenderer';
+import { CacheMobileHudArt } from './CacheMobileHudArt';
 import { Rev240UiState } from '../protocol/Rev240UiState';
 
 type TabId =
@@ -136,6 +137,8 @@ export class MobileHud {
   private readonly playerMarker: HTMLElement;
   private readonly mapSquares = new Map<number, LoadedMapSquare>();
   private cacheFont: CacheBitmapFont | null = null;
+  private cacheHudArt: CacheMobileHudArt | null = null;
+  private cacheArtSequence = 0;
   private interfaceRenderer: CacheInterfaceRenderer | null = null;
   private serverUi: Rev240UiState | null = null;
   private activePanelGroup: number | null = null;
@@ -243,6 +246,27 @@ export class MobileHud {
    */
   setCacheAssets(assets: CacheGameUiAssets, js5: Js5Client): void {
     this.interfaceRenderer?.cancel();
+    this.cacheHudArt?.dispose();
+    this.root.classList.remove('hud-cache-art-active');
+    const previous = this.root.querySelector('#hud-cache-art');
+    previous?.remove();
+    const artHost = document.createElement('div');
+    artHost.id = 'hud-cache-art';
+    artHost.setAttribute('aria-hidden', 'true');
+    this.root.prepend(artHost);
+    const art = new CacheMobileHudArt(this.root, artHost, js5, assets.interfaces);
+    this.cacheHudArt = art;
+    const sequence = ++this.cacheArtSequence;
+    void art.load().then((loaded) => {
+      if (sequence !== this.cacheArtSequence || this.cacheHudArt !== art) return;
+      // Only enable cache-native visuals if actual cached sprite artwork
+      // could be decoded. The HTML controls remain for mouse/touch input.
+      this.root.classList.toggle('hud-cache-art-active', loaded);
+    }).catch((error: unknown) => {
+      if (this.cacheHudArt !== art) return;
+      console.warn('Unable to render cache-native mobile frame:', error);
+      this.root.classList.remove('hud-cache-art-active');
+    });
     this.interfaceRenderer = new CacheInterfaceRenderer(
       js5, assets.interfaces, assets.bold12, this.serverUi ?? new Rev240UiState(),
     );
