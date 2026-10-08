@@ -55,6 +55,12 @@ internal object BotPvpPolicy {
             (if (it == current) 20 else 0) - (if (it in retaliating) 40 else 0)
     }
 
+    /** One uniform roll across the sizes that fit the remaining Wilderness population. */
+    fun squadSize(remaining: Int, sizeRoll: Int): Int {
+        require(remaining >= 2)
+        return 2 + sizeRoll.coerceIn(0, minOf(2, remaining - 2))
+    }
+
     fun engagementRange(chaseDistance: Int, retaliatingOrCommitted: Boolean): Int =
         if (retaliatingOrCommitted) maxOf(chaseDistance, 32) else chaseDistance
 
