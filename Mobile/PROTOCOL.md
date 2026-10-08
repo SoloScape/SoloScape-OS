@@ -1,5 +1,16 @@
 # TSPS → SoloScape protocol interoperability
 
+The browser now starts on a cache-backed title screen instead of a terrain
+preview/development dashboard. Revision-240 cache index 10 supplies `title.jpg`;
+index 8 supplies the logo/title buttons/runes/mute sprites; indices 8/13 supply
+bitmap fonts. The original TSPS fire and MIDI/Vorbis/legacy sample code is
+adapted reproducibly with retained BSD attribution. `scape main` is resolved
+by name in index 6 and uses actual instrument/sample groups, with a static
+same-origin AudioWorklet. User activation starts audio; login stops it, and
+disconnect restores the title. F10 reveals diagnostics without reducing the
+game viewport. Live title assets, 17,541 MIDI events, 13 patches and 94 decoded
+samples were verified; desktop and 390×844 phone-layout browser checks passed.
+
 Status: **native revision-240 browser login, player/NPC updates and server-driven interface lifecycle implemented; TSPS protocol remains incompatible**. Synthetic account login is verified against the installed rsprot decoder and gateway. A real local authentication and game packet stream were previously observed, and the NPC renderer has now been confirmed working in a live local client. Native OPNPC_V2 primary interactions and OPNPC6 Examine are implemented and fixture-tested, with live interaction still awaiting confirmation. The HTML mock menu was replaced with canvas menu rendering based on the pinned client Choose Option code; it loads original b12_full glyphs and metrics from revision-240 cache indices 8 and 13, group 496. The full TSPS interface menu system is not yet ported.
 
 The authenticated packet dispatcher now consumes `IF_OPENTOP`, `IF_OPENSUB`,

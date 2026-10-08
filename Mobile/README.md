@@ -9,9 +9,29 @@ This directory integrates the pinned upstream browser client as a Git submodule 
 **Starting 8 October 2026**, `npm run dev` (also `npm run dev:native`)
 starts **SoloScape's own WebGL world client** at
 `http://localhost:3001/`, not the collection of JS5 diagnostic buttons.
-This uses the already live-tested browser-native revision-240 JS5 cache
-loader and renders a **real map-region terrain height mesh** (default:
-Lumbridge region `m50_50`) in WebGL with touch/mouse camera orbiting,
+The landing page is now the classic title screen. It uses the server's
+**revision-240 `title.jpg` from cache index 10**, mirrored at the original
+765×503 coordinates, plus the cache logo, title box, buttons and fonts.
+The red loading bar advances as those verified assets and music metadata
+finish loading. **New account** opens the creation form; SoloScape creates
+the account on first password login. **Login** opens the existing login form,
+including an optional authenticator code. Original TSPS rune-fire code drives
+the animation. **Scape Main** comes from cache index 6 and plays through the
+ported TSPS MIDI synthesizer with index-15 patches and index-4/14 samples.
+Browser autoplay rules require the first click/tap/key before music starts;
+the cache mute button controls it. Music stops on entering the game.
+
+Login switches to a full-viewport game; disconnect returns to the title.
+The top bar, sidebar and development overlays are hidden in ordinary play.
+**F10** opens the developer panel with region travel, floor controls,
+disconnect, cache-interface preview and diagnostics. No terrain preview
+starts automatically before login. The title scales for desktop and phone
+viewports; no cache artwork or music captures are committed. Reproduce the
+original fire/music modules with `node scripts/adapt-title-runtime.mjs` after
+initializing the pinned TSPS submodule. No additional npm dependency is needed.
+
+The client uses the already live-tested browser-native revision-240 JS5 cache
+loader and renders a **real map-region terrain height mesh** in WebGL with touch/mouse camera orbiting,
 mouse-wheel zoom and WASD/arrow camera panning.
 
 The implementation lives in `Mobile/browser/terrain-world.mjs`,
@@ -35,17 +55,16 @@ git pull --ff-only origin feature/mobile
 npm run dev
 ```
 
-`http://localhost:3001/` should start loading map region `50,50`
-automatically. Change X/Y and press **Travel** to view other regions.
+`http://localhost:3001/` loads the cache title screen. Log in to enter your
+server location, or open **F10**, change X/Y and press **Travel** for a
+developer-only region preview.
 The first live m50_50 attempt failed to find a **single-file**
 terrain group; that is a map reference/index lookup failure, not proof
 that the native gateway or server is offline. The client now supports
 **multi-file native map groups**, extracting the terrain file with ID
-0 using the OSRS archive chunk table. On initial startup only, if
-m50_50 is unavailable, it chooses the nearest available **real,
-named map terrain group** from the verified index-5 catalog, displays
-the actual coordinates, and updates the region controls. Manually
-requested regions remain exact, with a clear failure if absent.
+0 using the OSRS archive chunk table. The cache loader retains support for
+choosing the nearest real named region when fallback is requested explicitly.
+Developer Travel requests remain exact, with a clear failure if absent.
 No mock map or stand-in terrain is rendered.
 
 Touch/drag or mouse/drag rotates the camera; wheel zooms; WASD/arrows

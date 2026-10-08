@@ -102,6 +102,8 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
             "/login-crypto.mjs","/login-protocol.mjs","/login-pow.mjs","/native-login.mjs","/game-protocol.mjs",
             "/player-sync.mjs","/player-models.mjs","/native-gameplay.mjs","/npc-sync.mjs","/npc-models.mjs","/npc-interactions.mjs","/npc-pointer.mjs","/native-menu.mjs","/native-interfaces.mjs","/interface-canvas.mjs",
             "/interface-protocol.mjs","/server-interfaces.mjs","/native-scripts.mjs","/dialogue-models.mjs",
+            "/title-screen.mjs","/title-fire.mjs","/title-music.mjs","/title-music-worklet.mjs","/title-audio-cache.mjs",
+            "/title-audio-realtime-midi-synth.mjs","/title-audio-audio-context.mjs","/title-audio-vorbis-sample.mjs",
         ];
         for(const path of modules){
             const response=await fetch(root+path);
@@ -248,6 +250,24 @@ try{
     await interfaces.pending;
     if(!canvas.hidden)throw new Error("Server resync did not close interface");
     interfaces.close();host.remove();
+    // Title controls use accessible native fields while cache fonts paint the
+    // visible form. No development shell or terrain preview starts on boot.
+    const {NativeTitleScreen}=await import("/title-screen.mjs");
+    const screen=document.createElement("section");
+    screen.innerHTML='<canvas id="title-canvas"></canvas><div id="title-controls"><button id="title-new-account">New account</button><button id="title-login">Login</button><form id="login-form"><input id="login-username"><input id="login-password" type="password"><input id="login-otp"><button id="login-submit">Login</button></form><button id="title-cancel">Cancel</button><p id="login-status"></p></div><button id="title-mute"></button>';
+    document.body.append(screen);
+    const title=new NativeTitleScreen({canvas:screen.querySelector("canvas"),stage:screen.querySelector("#title-controls"),
+        form:screen.querySelector("form"),status:screen.querySelector("p")});
+    title.assets.font={measure:s=>s.length*5,draw(){}};
+    title.showWelcome();
+    if(!screen.querySelector("form").hidden||screen.querySelector("#title-login").hidden)throw new Error("Welcome shows login form too early");
+    screen.querySelector("#title-new-account").click();
+    if(screen.querySelector("form").hidden||screen.querySelector("#login-password").autocomplete!=="new-password")throw new Error("New account did not open creation flow");
+    screen.querySelector("#login-password").value="synthetic";title.enterGame();
+    if(!screen.hidden||!document.body.classList.contains("in-game"))throw new Error("Title remained over authenticated game");
+    title.showLogin("Disconnected");
+    if(screen.hidden||screen.querySelector("#login-password").value||document.body.classList.contains("in-game"))throw new Error("Disconnect did not restore clean login screen");
+    title.dispose();screen.remove();
     document.body.dataset.result="webgl-hsl-pass";
 }catch(error){document.body.dataset.result="webgl-hsl-fail: "+error.message;}
 await fetch("/result?status="+encodeURIComponent(document.body.dataset.result));

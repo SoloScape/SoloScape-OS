@@ -1,6 +1,6 @@
 // Loopback-only native WebGL world client; exposes only public login configuration.
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizeRegionKeys } from "./region-keys.mjs";
@@ -35,6 +35,8 @@ const routes = new Map([
         [`/${name}.mjs`,[`${name}.mjs`,"text/javascript; charset=utf-8"]]),
     ["/style.css", ["style.css", "text/css; charset=utf-8"]],
 ]);
+for(const name of ["title-screen.mjs","title-music.mjs","title-fire.mjs","title-music-worklet.mjs",...(await readdir(root)).filter(name=>/^title-audio-[a-z0-9-]+\.mjs$/.test(name))])
+    routes.set("/"+name,[name,"text/javascript; charset=utf-8"]);
 // An ephemeral loopback port is allowed solely for CI route smoke tests.
 const port = process.env.SOLOSCAPE_PREVIEW_PORT === "0" ? 0 : 3001;
 const keyPath=process.env.SOLOSCAPE_XTEA_FILE;
@@ -72,7 +74,7 @@ const server = createServer(async (req, res) => {
             "Content-Type": route[1],
             "Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff",
-            "Content-Security-Policy": `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' ws://127.0.0.1:43595 ${loginConfig.gatewayUrl?new URL(loginConfig.gatewayUrl).origin:""}; base-uri 'none'; form-action 'none'`,
+            "Content-Security-Policy": `default-src 'none'; script-src 'self'; worker-src 'self'; img-src 'self' blob:; style-src 'self'; connect-src 'self' ws://127.0.0.1:43595 ${loginConfig.gatewayUrl?new URL(loginConfig.gatewayUrl).origin:""}; base-uri 'none'; form-action 'none'`,
         });
         res.end(bytes);
     } catch (error) {

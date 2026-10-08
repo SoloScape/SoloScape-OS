@@ -1,29 +1,26 @@
 <!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#101d20">
+<meta name="theme-color" content="#000000">
 <title>SoloScape OS — Web Client</title>
 <link rel="stylesheet" href="/world.css">
 </head><body>
 <div class="client" id="client">
-<header class="bar">
- <div class="brand"><div class="brand-icon">S</div><div><strong>SoloScape OS</strong><span>Native web client · revision 240</span></div></div>
- <div class="connection"><span class="dot" id="network-dot"></span><span id="network">Connecting to local cache</span></div>
-</header>
 <main class="world">
  <canvas id="world-canvas" aria-label="SoloScape revision-240 WebGL terrain viewport"></canvas>
- <div class="scene-overlay">
+ <div class="scene-overlay" hidden>
   <div class="scene-heading">World preview <small>3D terrain • cache-backed</small></div>
   <div class="coordinates"><label for="map-x">Region X<input id="map-x" type="number" min="0" max="255" value="50"></label><label for="map-y">Region Y<input id="map-y" type="number" min="0" max="255" value="50"></label><button id="load-world" type="button">Travel</button></div>
  </div>
  <canvas id="osrs-menu-canvas" aria-label="Cache-backed game interaction menu" hidden></canvas>
  <canvas id="native-interface-canvas" aria-label="Cached game interface preview" hidden></canvas>
  <p class="npc-examine-result" id="npc-examine-result" role="status" aria-live="polite" hidden></p>
- <div class="loading" id="loading" aria-live="polite"><div class="loading-ring"></div><strong>Opening SoloScape world</strong><span id="loading-detail">Loading revision-240 terrain from your local server…</span></div>
- <div class="controls-note">Tap / left-click NPC for default action · Right-click / hold for options · Drag to orbit</div>
+ <div class="loading" id="loading" aria-live="polite" hidden><strong>Loading - please wait.</strong><span id="loading-detail">Connecting to SoloScape…</span></div>
  <div class="map-status" id="map-status" role="status"></div>
 </main>
-<aside class="sidebar">
+<aside class="sidebar" id="developer-panel" hidden aria-label="Developer controls">
+ <button id="developer-close" type="button">Close developer panel</button>
+ <div class="connection"><span class="dot" id="network-dot"></span><span id="network">Connecting to cache</span></div>
  <div class="section-name">Client status</div>
  <div class="info"><span>Server</span><strong>SoloScape (local)</strong></div>
  <div class="info"><span>Transport</span><strong>Native JS5 / WebSocket</strong></div>
@@ -34,16 +31,8 @@
  <div class="roadmap"><span class="ready">✓</span><div><strong>Static scenery</strong><small id="scenery-status" role="status">Loading verified location and model data…</small></div></div>
  <div class="roadmap"><span class="ready">✓</span><div><strong>Textures + upper planes</strong><small>Verified sprites, model UVs and bridge heights</small></div></div>
  <div class="floor-view"><label for="scene-level">Floor view</label><select id="scene-level"><option value="0">Ground + bridges</option><option value="1">Through first floor</option><option value="2">Through second floor</option><option value="3">All floors + roofs</option></select></div>
- <div class="section-name border">Native login</div>
- <form id="login-form" class="login-form">
-  <label for="login-username">Username<input id="login-username" name="username" autocomplete="username" maxlength="320" required></label>
-  <label for="login-password">Password<input id="login-password" name="password" type="password" autocomplete="current-password" maxlength="80" required></label>
-  <label for="login-otp">Authenticator code (if enabled)<input id="login-otp" name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6"></label>
-  <button id="login-submit" type="submit" class="login" disabled>Loading login configuration…</button>
-  <button id="login-disconnect" type="button" class="login" hidden>Disconnect</button>
- </form>
+ <button id="login-disconnect" type="button" hidden>Disconnect</button>
  <label class="floor-view"><input id="run-movement" type="checkbox"> Run when moving</label>
- <p id="login-status" role="status" aria-live="polite">Checking native login configuration…</p>
  <p class="disclaimer">Development build. Terrain and static models use verified SoloScape cache data and client HSL colours. Full scene rendering and playable sessions remain in development.</p>
  <form id="interface-preview-form" class="interface-dev">
   <label for="interface-group">Verified cache interface group</label>
@@ -54,5 +43,21 @@
  <a href="/diagnostics" class="diag">Developer cache inspector</a>
 </aside>
 </div>
+<section id="title-screen" aria-label="SoloScape title screen">
+ <canvas id="title-canvas" aria-label="Revision-240 cache title background, logo and animated fire"></canvas>
+ <div id="title-controls">
+  <button id="title-new-account" class="title-button welcome-new" type="button" hidden>New account</button>
+  <button id="title-login" class="title-button welcome-login" type="button" hidden>Login</button>
+  <form id="login-form" hidden>
+   <label class="sr-only" for="login-username">Username</label><input id="login-username" name="username" autocomplete="username" maxlength="320" spellcheck="false" autocapitalize="none" required>
+   <label class="sr-only" for="login-password">Password</label><input id="login-password" name="password" type="password" autocomplete="current-password" maxlength="80" required>
+   <label class="sr-only" for="login-otp">Authenticator code (optional)</label><input id="login-otp" name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6">
+   <button id="login-submit" class="title-button form-login" type="submit" disabled>Login</button>
+  </form>
+  <button id="title-cancel" class="title-button form-cancel" type="button" hidden>Cancel</button>
+  <p id="login-status" class="sr-only" role="status" aria-live="polite">Checking login configuration…</p>
+ </div>
+ <button id="title-mute" type="button" aria-label="Mute title music" aria-pressed="false" hidden></button>
+</section>
 <script type="module" src="/app.mjs"></script>
 </body></html>

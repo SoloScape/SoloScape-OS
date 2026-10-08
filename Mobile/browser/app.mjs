@@ -13,6 +13,7 @@ import {NativeChooseOptionMenu} from "./native-menu.mjs";
 import {NativeInterfaceCanvas} from "./interface-canvas.mjs";
 import {ServerInterfaces} from "./server-interfaces.mjs";
 import {NativeDialogueModels} from "./dialogue-models.mjs";
+import {NativeTitleScreen} from "./title-screen.mjs";
 
 const byId=id=>document.getElementById(id);
 const details=byId("loading-detail"),loading=byId("loading"),status=byId("map-status");
@@ -173,10 +174,21 @@ async function enterWorld(allowFallback=false){
         if(sequence===attempt)button.disabled=false;
     }
 }
-button.addEventListener("click",()=>enterWorld(false));
+button.addEventListener("click",()=>{title.enterGame();void enterWorld(false);});
 levelSelector.addEventListener("change",()=>renderer?.setSceneLevel(Number(levelSelector.value)));
 const loginForm=byId("login-form"),loginButton=byId("login-submit"),disconnect=byId("login-disconnect"),loginStatus=byId("login-status");
 let loginConfig=null,gameSession=null,gameplay=null,loginBusy=false,sessionAttempt=0;
+function cancelLogin(){
+    sessionAttempt++;gameplay?.close();gameSession?.close();gameSession=null;gameplay=null;loginBusy=false;
+    serverInterfaces=null;lockInterfacePreview(false);loginButton.disabled=!loginConfig;disconnect.hidden=true;
+}
+const title=new NativeTitleScreen({canvas:byId("title-canvas"),stage:byId("title-controls"),form:loginForm,status:loginStatus,onCancel:cancelLogin});
+function toggleDeveloper(open){
+    document.body.classList.toggle("developer-open",open);byId("developer-panel").hidden=!open;
+    document.querySelector(".scene-overlay").hidden=!open;
+}
+window.addEventListener("keydown",e=>{if(e.key==="F10"){e.preventDefault();toggleDeveloper(!document.body.classList.contains("developer-open"));}});
+byId("developer-close").addEventListener("click",()=>toggleDeveloper(false));
 const examineResult=byId("npc-examine-result");
 let examineTimer=null;
 function showExamine({name,description}){
@@ -225,7 +237,7 @@ loginForm.addEventListener("submit",async event=>{
         button.disabled=true;levelSelector.disabled=true;
         gameSession=new NativeGameSession({url:loginConfig.gatewayUrl,
             onStatus:message=>{if(sequence===sessionAttempt)loginStatus.textContent=message;},
-            onAuthenticated:account=>gameplay.authenticated(account),
+            onAuthenticated:account=>{title.enterGame();loading.hidden=false;details.textContent="Loading your server location…";gameplay.authenticated(account);},
             onPacket:packet=>{
                 if(sequence!==sessionAttempt)return;
                 gameplay.handle(packet);
@@ -234,7 +246,7 @@ loginForm.addEventListener("submit",async event=>{
                 if(sequence!==sessionAttempt)return;
                 gameplay?.close();button.disabled=false;levelSelector.disabled=false;loading.hidden=true;
                 serverInterfaces=null;lockInterfacePreview(false);
-                loginStatus.textContent=message;loginButton.disabled=false;disconnect.hidden=true;
+                title.showLogin(message);loginButton.disabled=false;disconnect.hidden=true;
             },
         });
         serverInterfaces=new ServerInterfaces({view:new NativeInterfaceCanvas(byId("native-interface-canvas"),loginCache),session:gameSession,
@@ -262,15 +274,18 @@ loginForm.addEventListener("submit",async event=>{
         if(sequence===sessionAttempt&&gameSession.connected&&!gameplay.sync?.initialized)
             loginStatus.textContent=`Authenticated · player slot ${result.playerIndex}. Waiting for your server location…`;
     }catch(error){
-        if(sequence===sessionAttempt){gameplay?.close();serverInterfaces=null;lockInterfacePreview(false);button.disabled=false;levelSelector.disabled=false;loginStatus.textContent=error.message;loginButton.disabled=false;disconnect.hidden=true;}
+        if(sequence===sessionAttempt){gameplay?.close();serverInterfaces=null;lockInterfacePreview(false);button.disabled=false;levelSelector.disabled=false;title.showLogin(error.message);loginButton.disabled=false;disconnect.hidden=true;loading.hidden=true;}
     }finally{credentials.password="";credentials.otp="";if(sequence===sessionAttempt)loginBusy=false;}
 });
 disconnect.addEventListener("click",()=>{
     sessionAttempt++;gameplay?.close();menuUi.close();clearTimeout(examineTimer);examineResult.hidden=true;gameSession?.close();gameSession=null;gameplay=null;loginBusy=false;
     serverInterfaces=null;lockInterfacePreview(false);
     button.disabled=false;levelSelector.disabled=false;loading.hidden=true;
-    loginButton.disabled=!loginConfig;disconnect.hidden=true;loginStatus.textContent="Disconnected";
+    loginButton.disabled=!loginConfig;disconnect.hidden=true;title.showLogin("Disconnected");
 });
-window.addEventListener("pagehide",()=>{sessionAttempt++;interfacePreview.close();clearTimeout(examineTimer);menuUi.dispose();gameplay?.close();gameSession?.close();renderer?.dispose();},{once:true});
-void prepareLogin();
-enterWorld(true);
+window.addEventListener("pagehide",()=>{sessionAttempt++;title.dispose();interfacePreview.close();clearTimeout(examineTimer);menuUi.dispose();gameplay?.close();gameSession?.close();renderer?.dispose();},{once:true});
+void (async()=>{
+    await prepareLogin();
+    const titleCache=loginConfig?.gatewayUrl&&loginConfig.gatewayUrl!==cache.url?new NativeJs5Cache({url:loginConfig.gatewayUrl,revision:240}):cache;
+    await title.start(titleCache);
+})();
