@@ -66,9 +66,9 @@ async function enterWorld(allowFallback=false){
                 scene.floorMaterials=floors;
                 renderer.setTerrain(scene,{resetCamera:false});
                 status.textContent=sceneDescription+
-                    `Cache-defined tile shapes and primary RGB: ${floors.loadedUnderlays}/${floors.selectedUnderlays} underlays, `+
+                    `Cache-defined tiles with blended HSL and vertex lighting: ${floors.loadedUnderlays}/${floors.selectedUnderlays} underlays, `+
                     `${floors.loadedOverlays}/${floors.selectedOverlays} overlays. `+
-                    "Missing, textured and transparent floor faces are not drawn. OSRS HSL lighting, textures, objects and players remain incomplete.";
+                    "Missing, textured and transparent floor faces are not drawn. Region-edge lighting/blending and object shadows remain incomplete. Textures, objects and players are not implemented.";
             },
             onMaterialError:error=>{
                 status.textContent=sceneDescription+

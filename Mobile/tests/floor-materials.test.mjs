@@ -3,10 +3,15 @@ import { test } from "node:test";
 import { crc32, gzipSync } from "node:zlib";
 import { NativeJs5Cache } from "../browser/native-js5.mjs";
 import { decodeTerrainRegion } from "../browser/terrain-world.mjs";
-import { buildTerrainMesh } from "../browser/world-webgl.mjs";
+import { buildTerrainMesh, buildTileGeometry } from "../browser/world-webgl.mjs";
 import {
     decodeFloorDefinition, unpackArchiveFiles, loadFloorMaterials,
 } from "../browser/floor-materials.mjs";
+
+import {
+    calculateFloorHsl, packHsl, adjustFloorLight, calculateVertexLights,
+    blendUnderlayHsl, prepareFloorLighting, HSL_PALETTE,
+} from "../browser/floor-lighting.mjs";
 
 function packedPair(a,b){
     const table=Buffer.alloc(8);
@@ -128,14 +133,13 @@ test("configuration index 2 supplies verified underlay and overlay RGB to native
     assert.equal(materials.selectedOverlays,1);
     assert.deepEqual(fetches,["255:255","255:2","2:1","2:4"]);
     const mesh=buildTerrainMesh(terrain);
-    const shade=1;
-    assert.ok(Math.abs(mesh[3]-(0x11/255)*shade)<1e-6);
-    assert.ok(Math.abs(mesh[4]-(0x33/255)*shade)<1e-6);
-    assert.ok(Math.abs(mesh[5]-(0xcc/255)*shade)<1e-6);
+    const light=prepareFloorLighting(terrain,materials);
+    assert.equal(mesh[3],adjustFloorLight(light.overlays.get(0),light.lights[64]));
+    assert.equal(mesh[4],0);
+    assert.equal(mesh[5],0);
     const withoutOverlay={...terrain,overlays:new Int16Array(4096)};
     const baseMesh=buildTerrainMesh(withoutOverlay);
-    assert.ok(Math.abs(baseMesh[3]-(0xaa/255)*shade)<1e-6);
-    assert.ok(Math.abs(baseMesh[4]-(0x11/255)*shade)<1e-6);
+    assert.equal(baseMesh[3],adjustFloorLight(light.underlays[0],light.lights[64]));
     await loadFloorMaterials(cache,terrain);
     assert.deepEqual(fetches,["255:255","255:2","2:1","2:4"]);
 });
@@ -164,7 +168,7 @@ test("unknown floor tile ids do not trigger arbitrary extra group downloads",asy
     assert.ok(buildTerrainMesh({...terrain,floorMaterials:materials}).every(Number.isFinite));
 });
 
-test("floor faces use primary scene RGB and omit missing, transparent or textured definitions",()=>{
+test("floor faces use primary scene HSL and omit missing, transparent or textured definitions",()=>{
     const terrain={
         side:64,heights:new Int32Array(4096),
         underlays:new Uint16Array(4096),overlays:new Int16Array(4096),
@@ -177,8 +181,8 @@ test("floor faces use primary scene RGB and omit missing, transparent or texture
     terrain.overlayShapes[0]=1;
     const mesh=buildTerrainMesh(terrain);
     assert.equal(mesh.length,36);
-    assert.deepEqual(Array.from(mesh.subarray(3,6)),[1,0,0]);
-    assert.deepEqual(Array.from(mesh.subarray(21,24)),[0,0,1]);
+    assert.equal(mesh[3],adjustFloorLight(packHsl(0,255,127),0));
+    assert.equal(mesh[21],adjustFloorLight(packHsl(170,255,127),0));
     terrain.floorMaterials.overlays.set(0,{rgb:0xff00ff,textureId:-1});
     assert.equal(buildTerrainMesh(terrain).length,18);
     terrain.floorMaterials.overlays.set(0,{rgb:0x0000ff,textureId:2});
@@ -187,4 +191,91 @@ test("floor faces use primary scene RGB and omit missing, transparent or texture
     assert.equal(buildTerrainMesh(terrain).length,18);
     terrain.floorMaterials.underlays.clear();
     assert.equal(buildTerrainMesh(terrain).length,0);
+});
+
+function lightingTerrain(){
+    return {side:64,heights:new Int32Array(4096),
+        underlays:new Uint16Array(4096),overlays:new Int16Array(4096)};
+}
+
+test("Java floor HSL vectors retain weighted hue and high-lightness saturation packing",()=>{
+    assert.deepEqual(calculateFloorHsl(0xff0000),{
+        hue:0,saturation:255,lightness:127,hueMultiplier:255,overlayHue:0,
+    });
+    assert.deepEqual(calculateFloorHsl(0x00ff00),{
+        hue:85,saturation:255,lightness:127,hueMultiplier:255,overlayHue:85,
+    });
+    assert.deepEqual(calculateFloorHsl(0x808080),{
+        hue:0,saturation:0,lightness:128,hueMultiplier:1,overlayHue:0,
+    });
+    assert.equal(packHsl(0,255,179),985);
+    assert.equal(packHsl(0,255,180),474);
+    assert.equal(packHsl(0,255,193),224);
+    assert.equal(packHsl(0,255,218),109);
+    assert.equal(packHsl(0,255,244),122);
+    assert.equal(adjustFloorLight(959,84),937);
+    assert.equal(adjustFloorLight(959,0),898);
+    assert.equal(adjustFloorLight(959,10000),1022);
+    assert.equal(adjustFloorLight(-1,84),-1);
+    assert.equal(HSL_PALETTE.length,65536);
+    assert.equal(HSL_PALETTE[0],1);
+    assert.ok(HSL_PALETTE[65535]>0);
+});
+
+test("client integer normal lighting gives flat 84, opposing slope intensities and occlusion",()=>{
+    const flat=lightingTerrain();
+    const i=32*64+32;
+    assert.equal(calculateVertexLights(flat)[i],84);
+    assert.equal(calculateVertexLights(flat)[0],0,"Border normal has no neighbour data");
+    for(let x=0;x<64;x++)for(let y=0;y<64;y++)flat.heights[x*64+y]=x*128;
+    assert.equal(calculateVertexLights(flat)[i],46);
+    for(let x=0;x<64;x++)for(let y=0;y<64;y++)flat.heights[x*64+y]=-x*128;
+    assert.equal(calculateVertexLights(flat)[i],129);
+    flat.heights.fill(0);
+    flat.lightOcclusions=new Uint8Array(4096);
+    for(const at of [i,i-64,i+64,i-1,i+1])flat.lightOcclusions[at]=32;
+    assert.equal(calculateVertexLights(flat)[i],44);
+    flat.lightOcclusions=new Uint8Array(1);
+    assert.throws(()=>calculateVertexLights(flat),/occlusions/);
+});
+
+test("underlay sliding window matches weighted client blend and asymmetric removal boundary",()=>{
+    const terrain=lightingTerrain(),i=32*64+32;
+    const materials={underlays:new Map([[0,{rgb:0xff0000}],[1,{rgb:0x00ff00}],
+        [2,{rgb:0x0000ff}]]),overlays:new Map()};
+    terrain.underlays[i]=1;
+    terrain.underlays[i+5*64]=2;
+    terrain.underlays[i-5*64]=3;
+    terrain.underlays[i+6*64]=3;
+    assert.equal(blendUnderlayHsl(terrain,materials)[i],11199);
+    terrain.underlays[i+5*64]=1;
+    assert.equal(blendUnderlayHsl(terrain,materials)[i],959);
+    terrain.underlays[i+1]=500;
+    assert.equal(blendUnderlayHsl(terrain,materials)[i],-1,"Missing neighbour is not a guessed colour");
+    assert.equal(blendUnderlayHsl(terrain,materials)[0],-1,"No underlay produces no face");
+});
+
+test("packed vertex HSL varies with terrain slope while overlay secondary RGB has no scene effect",()=>{
+    const terrain=lightingTerrain();
+    terrain.underlays.fill(1);
+    terrain.floorMaterials={underlays:new Map([[0,{rgb:0xff0000,textureId:-1}]]),
+        overlays:new Map([[0,{rgb:0x0000ff,secondaryRgb:0x00ff00,textureId:-1}]])};
+    terrain.overlays[32*64+32]=1;
+    for(let x=0;x<64;x++)for(let y=0;y<64;y++)terrain.heights[x*64+y]=x*x*4;
+    const mesh=buildTerrainMesh(terrain);
+    const lighting=prepareFloorLighting(terrain,terrain.floorMaterials);
+    const tileOffset=(32*63+32)*36;
+    const se=33*64+32;
+    assert.equal(mesh[tileOffset+3],adjustFloorLight(packHsl(170,255,127),lighting.lights[se]));
+    assert.ok(new Set(Array.from(mesh).filter((_,i)=>i%6===3)).size>1);
+    terrain.floorMaterials.overlays.get(0).secondaryRgb=0xff0000;
+    assert.deepEqual(buildTerrainMesh(terrain),mesh);
+});
+
+test("tile midpoint colours average already-lit packed HSL using client integer truncation",()=>{
+    const colors={underlay:[900,904,918,934],overlay:[1900,1904,1918,1934]};
+    const faces=buildTileGeometry(3,1,[-80,-88,-104,-120],colors);
+    const midpoint=faces.flatMap(face=>face.vertices).filter(v=>v[0]===1&&v[1]===.5);
+    assert.ok(midpoint.some(v=>v[3]===911));
+    assert.ok(midpoint.some(v=>v[3]===1911));
 });

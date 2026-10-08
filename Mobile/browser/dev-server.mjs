@@ -12,6 +12,7 @@ const routes = new Map([
     ["/world.css", ["world.css", "text/css; charset=utf-8"]],
     ["/terrain-world.mjs", ["terrain-world.mjs", "text/javascript; charset=utf-8"]],
     ["/world-webgl.mjs", ["world-webgl.mjs", "text/javascript; charset=utf-8"]],
+    ["/floor-lighting.mjs", ["floor-lighting.mjs", "text/javascript; charset=utf-8"]],
     ["/floor-materials.mjs", ["floor-materials.mjs", "text/javascript; charset=utf-8"]],
     ["/world-startup.mjs", ["world-startup.mjs", "text/javascript; charset=utf-8"]],
     ["/app.mjs", ["app.mjs", "text/javascript; charset=utf-8"]],

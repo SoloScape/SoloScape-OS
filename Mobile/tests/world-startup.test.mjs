@@ -89,7 +89,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         // loading spinner displayed forever because the import graph failed.
         const modules=[
             "/app.mjs","/native-js5.mjs","/terrain-world.mjs",
-            "/world-webgl.mjs","/floor-materials.mjs","/world-startup.mjs",
+            "/world-webgl.mjs","/floor-materials.mjs","/floor-lighting.mjs","/world-startup.mjs",
         ];
         for(const path of modules){
             const response=await fetch(root+path);

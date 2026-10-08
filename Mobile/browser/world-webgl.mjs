@@ -27,7 +27,8 @@
  * 
  */
 // Tile topology adapted from RSPSApp/tsps b9ca431 SceneTileModel (BSD-2-Clause).
-// Geometry is cache-defined; raw RGB is not final OSRS HSL lighting.
+// Cache geometry and packed-HSL vertex colours use the client terrain pipeline.
+import { prepareFloorLighting, adjustFloorLight, HSL_PALETTE } from "./floor-lighting.mjs";
 function shader(gl,type,source){
     const sh=gl.createShader(type);
     gl.shaderSource(sh,source);gl.compileShader(sh);
@@ -41,17 +42,24 @@ function program(gl){
     const vs=shader(gl,gl.VERTEX_SHADER,`attribute vec3 a_position;
 attribute vec3 a_color;
 uniform mat4 u_mvp;
-varying vec3 v_color;
+varying highp float v_hsl_w;
+varying highp float v_w;
 void main(){
     vec4 v=u_mvp*vec4(a_position,1.0);
     gl_Position=v;
-    v_color=a_color;
+    v_hsl_w=a_color.x*v.w;
+    v_w=v.w;
 }`);
-    const fs=shader(gl,gl.FRAGMENT_SHADER,`precision mediump float;
-varying vec3 v_color;
-varying float v_depth;
+    const fs=shader(gl,gl.FRAGMENT_SHADER,`precision highp float;
+uniform sampler2D u_palette;
+uniform bool u_wireframe;
+varying highp float v_hsl_w;
+varying highp float v_w;
 void main(){
-    gl_FragColor=vec4(v_color,1.0);
+    if(u_wireframe){gl_FragColor=vec4(1.0);return;}
+    float hsl=clamp(floor(v_hsl_w/v_w),0.0,65535.0);
+    vec2 cell=vec2(mod(hsl,256.0),floor(hsl/256.0));
+    gl_FragColor=texture2D(u_palette,(cell+0.5)/256.0);
 }`);
     const p=gl.createProgram();
     gl.attachShader(p,vs);gl.attachShader(p,fs);gl.linkProgram(p);
@@ -122,7 +130,7 @@ const tileShapeFaces = [
 ];
 
 
-export function buildTileGeometry(shape,rotation,heights) {
+export function buildTileGeometry(shape,rotation,heights,cornerColors) {
     if(!Number.isInteger(shape)||shape<0||shape>12||
         !Number.isInteger(rotation)||rotation<0||rotation>3||
         heights?.length!==4||!Array.from(heights).every(Number.isInteger)) {
@@ -140,25 +148,23 @@ export function buildTileGeometry(shape,rotation,heights) {
         if((code&1)===0&&code<=8)code=((code-2*rotation-1)&7)+1;
         else if(code>8&&code<=12)code=((code-9-rotation)&3)+9;
         else if(code>12)code=((code-13-rotation)&3)+13;
-        return coordinates[code];
+        return {position:coordinates[code],code};
     });
     const indices=tileShapeFaces[shape],faces=[];
     for(let i=0;i<indices.length;i+=4){
         const corners=indices.slice(i+1,i+4).map(v=>v<4?(v-rotation)&3:v);
-        faces.push({isOverlay:indices[i]===1,vertices:corners.map(v=>vertices[v])});
+        const isOverlay=indices[i]===1;
+        const colors=cornerColors?.[isOverlay?"overlay":"underlay"];
+        faces.push({isOverlay,vertices:corners.map(v=>{
+            const vertex=vertices[v];
+            if(!colors)return vertex.position;
+            const [sw,se,ne,nw]=colors;
+            const values=[0,sw,(sw+se)>>1,se,(se+ne)>>1,ne,(ne+nw)>>1,nw,
+                (nw+sw)>>1,(sw+se)>>1,(se+ne)>>1,(ne+nw)>>1,(nw+sw)>>1,sw,se,ne,nw];
+            return [...vertex.position,values[vertex.code]];
+        })});
     }
     return faces;
-}
-
-function floorColor(id,isOverlay,materials) {
-    if(!materials)return [1,1,1]; // Wireframe only while definitions are unavailable.
-    const definition=(isOverlay?materials.overlays:materials.underlays)?.get(id-1);
-    if(!definition||definition.textureId>=0||
-        isOverlay&&definition.rgb===0xff00ff)return null;
-    const rgb=definition.rgb;
-    if(!Number.isInteger(rgb)||rgb<0||rgb>0xffffff)return null;
-    // secondaryRgb is a minimap colour; it must not replace the scene's primary RGB.
-    return [(rgb>>>16&255)/255,(rgb>>>8&255)/255,(rgb&255)/255];
 }
 
 export function buildTerrainMesh(terrain){
@@ -169,17 +175,27 @@ export function buildTerrainMesh(terrain){
         throw new Error("Invalid terrain mesh input");
     }
     const numbers=[];
+    const materials=terrain.floorMaterials;
+    const lighting=materials?prepareFloorLighting(terrain,materials):null;
     for(let x=0;x<63;x++)for(let y=0;y<63;y++){
         const i=x*64+y,overlay=terrain.overlays[i]&0x7fff;
         const shape=overlay?(terrain.overlayShapes?.[i]??0)+1:0;
         const rotation=overlay?(terrain.overlayRotations?.[i]??0):0;
         const heights=[terrain.heights[i],terrain.heights[i+64],
             terrain.heights[i+65],terrain.heights[i+1]];
-        for(const face of buildTileGeometry(shape,rotation,heights)){
-            const id=face.isOverlay?overlay:terrain.underlays[i];
-            const c=floorColor(id,face.isOverlay,terrain.floorMaterials);
-            if(!c)continue;
-            for(const [vx,vy,h] of face.vertices)numbers.push(x+vx-31.5,-h/32,y+vy-31.5,...c);
+        const cornerIndices=[i,i+64,i+65,i+1];
+        const underlayDef=materials?.underlays?.get(terrain.underlays[i]-1);
+        const underlay=underlayDef?.textureId>=0?-1:(lighting?.underlays[i]??-1);
+        const overlayHsl=lighting?.overlays.get(overlay-1)??-1;
+        const colors=lighting?{
+            underlay:cornerIndices.map(c=>adjustFloorLight(underlay,lighting.lights[c])),
+            overlay:cornerIndices.map(c=>adjustFloorLight(overlayHsl,lighting.lights[c])),
+        }:undefined;
+        for(const face of buildTileGeometry(shape,rotation,heights,colors)){
+            if(lighting&&(face.isOverlay?overlayHsl:underlay)===-1)continue;
+            for(const [vx,vy,h,hsl] of face.vertices) {
+                numbers.push(x+vx-31.5,-h/32,y+vy-31.5,hsl??0,0,0);
+            }
         }
     }
     return new Float32Array(numbers);
@@ -208,6 +224,18 @@ export class NativeTerrainViewport {
         const gl=this.gl;
         this.program=program(gl);
         this.buf=gl.createBuffer();
+        this.palette=gl.createTexture();
+        const pixels=new Uint8Array(65536*4);
+        for(let i=0;i<HSL_PALETTE.length;i++){
+            const rgb=HSL_PALETTE[i];
+            pixels.set([rgb>>>16&255,rgb>>>8&255,rgb&255,255],i*4);
+        }
+        gl.bindTexture(gl.TEXTURE_2D,this.palette);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,256,256,0,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
         this.count=0;
         this.yaw=.8;this.pitch=.66;this.distance=100;
         this.target=[0,10,0];
@@ -272,6 +300,10 @@ export class NativeTerrainViewport {
         ];
         const matrix=multiply(perspective(w/h),lookAt(eye,this.target));
         gl.useProgram(this.program);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D,this.palette);
+        gl.uniform1i(gl.getUniformLocation(this.program,"u_palette"),0);
+        gl.uniform1i(gl.getUniformLocation(this.program,"u_wireframe"),this.drawMode===gl.LINES?1:0);
         gl.uniformMatrix4fv(gl.getUniformLocation(this.program,"u_mvp"),false,matrix);
         gl.bindBuffer(gl.ARRAY_BUFFER,this.buf);
         const a=gl.getAttribLocation(this.program,"a_position"),c=gl.getAttribLocation(this.program,"a_color");
@@ -286,6 +318,7 @@ export class NativeTerrainViewport {
             this.canvas.removeEventListener(name,fn);
         }
         window.removeEventListener("keydown",this.onKey);
-        this.gl.deleteBuffer(this.buf);this.gl.deleteProgram(this.program);
+        this.gl.deleteBuffer(this.buf);this.gl.deleteTexture(this.palette);
+        this.gl.deleteProgram(this.program);
     }
 }

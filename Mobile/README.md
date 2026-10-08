@@ -599,3 +599,51 @@ assets or standalone probes are introduced. CI fixtures cover all 48 encoded
 path/rotation combinations, all 52 model topologies, diagonal face colours,
 midpoint heights, transparency and missing materials. Live visual verification
 against SoloScape and the official mobile client remains required.
+
+### Packed HSL blending and vertex lighting (8 October 2026)
+
+The ground renderer now replaces raw RGB fills with the client colour pipeline:
+
+- RGB channels are divided by 256, producing weighted underlay hue, saturation,
+  lightness and hue multiplier; overlay hue is calculated separately.
+- Underlay colours use the radius-five sliding blend window (offsets -4 through
+  +5), weighting hue by its multiplier. One blended base HSL is used per tile,
+  as in the Java client; vertex brightness varies with the height-field normals.
+- Lighting uses the original integer divisions, normal scale 65536, direction
+  (-50, -10, -50), base 96 and intensity factor 768. Flat unoccluded terrain
+  evaluates to 84. The TypeScript upstream's combined floating-point expression
+  would instead round it to 83; that discrepancy is not carried over.
+- Midpoint vertices average already-lit packed HSL integers. The fragment shader
+  interpolates the packed colour in screen space and then looks it up in a
+  65,536-entry palette, rather than blending RGB or adding arbitrary shading.
+- The palette uses the pinned client brightness preset 0.8, with nearest-neighbour
+  sampling. It includes entry 65535, which the upstream's 65535-element array omitted.
+
+Sources are the pinned TSPS
+[ColorUtil](https://github.com/RSPSApp/tsps/blob/b9ca431be440174fce5adf0efbb7afa992358916/client/rs/util/ColorUtil.ts)
+and the deobfuscated Java client
+[terrain builder](https://github.com/open-osrs/runelite/blob/915fb55c0a2a1c000dc04a431e68f3bbb29a40cf/runescape-client/src/main/java/class134.java),
+[SceneTileModel](https://github.com/open-osrs/runelite/blob/915fb55c0a2a1c000dc04a431e68f3bbb29a40cf/runescape-client/src/main/java/SceneTileModel.java)
+and [Rasterizer3D](https://github.com/open-osrs/runelite/blob/915fb55c0a2a1c000dc04a431e68f3bbb29a40cf/runescape-client/src/main/java/Rasterizer3D.java).
+Floor conversion is also cross-checked against RuneLite's
+[UnderlayDefinition](https://github.com/runelite/runelite/blob/master/cache/src/main/java/net/runelite/cache/definitions/UnderlayDefinition.java)
+and [OverlayDefinition](https://github.com/runelite/runelite/blob/master/cache/src/main/java/net/runelite/cache/definitions/OverlayDefinition.java).
+The Java reference is historical desktop client evidence, not proof of current
+official mobile pixel parity.
+
+The current single-region scene has no surrounding region heights or floor IDs.
+Border normals remain unset as in the client array initialization, and blend
+windows contain only loaded data, so edge shading/blending is incomplete.
+Missing in-region floor definitions suppress affected blends rather than adding
+guessed colours. Object shadows remain absent until locations/models supply
+occlusion data; the existing client occlusion calculation is supported but no
+shadow values are invented. Textured faces remain omitted. This change does not
+implement mobile brightness settings, Java software-rasterizer scanline
+quantization, textures, world models or account sessions. WebGL fragment high
+precision is required for packed-colour interpolation. Live comparison against
+the user's revision-240 scene and official mobile client remains outstanding.
+
+The existing CI floor tests cover RGB-to-HSL golden vectors, saturation thresholds,
+lightness clamps, Java integer-lighting values, occlusion weights, blend-window
+removal boundaries, missing-definition handling, per-vertex mesh HSL and rotated
+midpoint averaging. The preview-server test also requests the new lighting module.
