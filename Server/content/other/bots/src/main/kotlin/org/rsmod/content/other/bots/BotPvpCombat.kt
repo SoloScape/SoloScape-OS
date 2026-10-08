@@ -277,6 +277,7 @@ class BotPvpCombat @Inject constructor(
         wilderness: Boolean,
         patrol: CoordGrid,
         waitingForTeamReply: Boolean = false,
+        declinedPlayer: Player? = null,
     ): String {
         val state = states[player] ?: return "unconfigured"
         val cycle = player.currentMapClock
@@ -400,6 +401,7 @@ class BotPvpCombat @Inject constructor(
                 !teams.allied(player, opponent) &&
                 (playerLeader == null || defendingLeader || supportingLeader || retaliating) &&
                 (!waitingForTeamReply || retaliating) &&
+                (opponent !== declinedPlayer || retaliating) &&
                 BotPvpPolicy.canSquadEngage(
                     hasSquad = squad != null,
                     squadmate = squad?.members?.contains(opponent) == true,
