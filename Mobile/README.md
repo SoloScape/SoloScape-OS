@@ -19,9 +19,8 @@ The red loading bar advances as those verified assets and music metadata
 finish loading. **New User** is intentionally inactive. **Existing User** opens
 the ordinary login/password form; the authenticator field is removed from this
 screen. The form requests no browser autofill and supplies password-manager
-ignore hints; browser extensions can override these. Native selection and
-editing remain available, with highlights and the caret painted in cache-font
-coordinates. Original TSPS rune-fire code drives
+ignore hints; browser extensions can override these. Login labels, typed text and the blinking caret use the welcome
+text's bold cache font. Selection is disabled and the title cursor stays an arrow. Original TSPS rune-fire code drives
 the animation. **Scape Main** comes from cache index 6 and plays through the
 ported TSPS MIDI synthesizer with index-15 patches and index-4/14 samples.
 Browser autoplay rules require the first click/tap/key before music starts;

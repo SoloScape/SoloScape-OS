@@ -27,17 +27,17 @@ test("fixed 765 by 503 title centres the panel and anchors mute bottom-right",()
     assert.equal(desktop.scale,1);assert.equal(desktop.y,(1080-503)/2);
 });
 
-test("cache-font selection and caret follow native input offsets through scrolling",()=>{
+test("cache-font caret follows native offsets without selectable highlights",()=>{
     const font={measure:text=>text.length*5};
     const field=titleFieldLayout(font,"Alice",1,4,true);
-    assert.deepEqual(field.selection,[5,20]);assert.equal(field.caret,20);
+    assert.equal(field.selection,null);assert.equal(field.caret,20);
     assert.equal(field.indexAt(6),1);assert.equal(field.indexAt(9),2);
     assert.equal(titleFieldLayout(font,"Alice",2,2,true).caret,10);
     assert.equal(titleFieldLayout(font,"Alice",1,4,false).selection,null);
     const scrolled=titleFieldLayout(font,"abcdefghij",8,10,true,20);
-    assert.equal(scrolled.text,"ghij");assert.deepEqual(scrolled.selection,[10,20]);
+    assert.equal(scrolled.text,"ghij");assert.equal(scrolled.selection,null);
     assert.equal(scrolled.indexAt(0),6);assert.equal(scrolled.indexAt(100),10);
-    assert.deepEqual(titleFieldLayout(font,"*****",1,4,true).selection,[5,20]);
+    assert.equal(titleFieldLayout(font,"*****",1,4,true).selection,null);
 });
 
 test("music cache bridge waits for one verified group and preserves decoded bytes",async()=>{

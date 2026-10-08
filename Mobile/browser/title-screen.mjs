@@ -15,7 +15,7 @@ export function titleLayout(width,height){
         backgroundScale:scale,bx:x-162*scale,by:y,
         muteX:x+725*scale,muteY:y+463*scale};
 }
-// Native input selection indexes map onto the cache font, including masked
+// Native caret indexes map onto the cache font, including masked
 // passwords and horizontally scrolled text. Never paint the password itself.
 export function titleFieldLayout(font,value,selectionStart,selectionEnd,active,width=185){
     const advances=Array.from({length:value.length+1},(_,i)=>font.measure(value.slice(0,i)));
@@ -26,7 +26,7 @@ export function titleFieldLayout(font,value,selectionStart,selectionEnd,active,w
     while(end<value.length&&advances[end+1]-advances[start]<=width)end++;
     const x=index=>advances[Math.max(start,Math.min(end,index))]-advances[start];
     return {start,end,text:value.slice(start,end),caret:x(caret),
-        selection:active&&selectionStart!==selectionEnd?[x(selectionStart),x(selectionEnd)]:null,
+        selection:null,
         indexAt:position=>{
             let index=start;while(index<end&&position>(advances[index]+advances[index+1])/2-advances[start])index++;
             return index;
@@ -53,29 +53,20 @@ export class NativeTitleScreen{
         this.back=document.getElementById("title-cancel");this.mute=document.getElementById("title-mute");
         this.fieldLayouts=new Map();this.fieldListeners=[];
         for(const input of [document.getElementById("login-username"),document.getElementById("login-password")]){
-            let anchor=null;
-            const indexAt=event=>{
-                const rect=input.getBoundingClientRect();
-                return this.fieldLayouts.get(input)?.indexAt((event.clientX-rect.left)*192/rect.width)??0;
-            };
+            const collapse=()=>{const end=input.selectionEnd??input.value.length;if(input.selectionStart!==end)input.setSelectionRange(end,end);};
             const down=event=>{
-                if(event.pointerType==="touch"||event.button!==0)return;
-                event.preventDefault();input.focus();anchor=event.shiftKey?(input.selectionStart??0):indexAt(event);
-                const end=indexAt(event);input.setSelectionRange(Math.min(anchor,end),Math.max(anchor,end),end<anchor?"backward":"forward");
-                input.setPointerCapture(event.pointerId);this.paint();
+                if(event.button!==0)return;
+                event.preventDefault();input.focus();
+                const rect=input.getBoundingClientRect();
+                const caret=this.fieldLayouts.get(input)?.indexAt((event.clientX-rect.left)*192/rect.width)??input.value.length;
+                input.setSelectionRange(caret,caret);this.paint();
             };
-            const move=event=>{
-                if(anchor===null)return;const end=indexAt(event);
-                input.setSelectionRange(Math.min(anchor,end),Math.max(anchor,end),end<anchor?"backward":"forward");this.paint();
+            const prevent=event=>{event.preventDefault();collapse();};
+            const key=event=>{
+                if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="a")event.preventDefault();
+                if(event.shiftKey&&["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Home","End"].includes(event.key))event.preventDefault();
             };
-            const up=()=>{anchor=null;};
-            const double=event=>{
-                const index=indexAt(event),value=input.value;let start=index,end=index;
-                while(start>0&&!/\s/.test(value[start-1]))start--;
-                while(end<value.length&&!/\s/.test(value[end]))end++;
-                input.setSelectionRange(start,end);this.paint();
-            };
-            for(const [type,handler] of [["pointerdown",down],["pointermove",move],["pointerup",up],["pointercancel",up],["lostpointercapture",up],["dblclick",double]]){
+            for(const [type,handler] of [["pointerdown",down],["selectstart",prevent],["dblclick",prevent],["select",collapse],["keydown",key]]){
                 input.addEventListener(type,handler);this.fieldListeners.push([input,type,handler]);
             }
         }
@@ -171,7 +162,7 @@ export class NativeTitleScreen{
                 const words=message.split(" "),rows=[];let line="";
                 for(const word of words){const next=line?line+" "+word:word;if(line&&(this.assets.font?.measure(next)??next.length*7)>320){rows.push(line);line=word;}else line=next;}if(line)rows.push(line);
                 rows.slice(0,3).forEach((row,i)=>this.text(ctx,row,382,211+i*15,"#ffff00"));
-                const font=this.assets.small,fields=[["Login:","login-username",253,false],["Password:","login-password",268,true]];
+                const font=this.assets.font,fields=[["Login:","login-username",253,false],["Password:","login-password",268,true]];
                 for(const [label,id,y,masked] of fields){
                     const input=document.getElementById(id),value=masked?"*".repeat(input.value.length):input.value;
                     const active=document.activeElement===input,field=titleFieldLayout(font,value,input.selectionStart,input.selectionEnd,active);
@@ -179,9 +170,8 @@ export class NativeTitleScreen{
                     const x=274+font.measure(label);
                     input.style.left=x+"px";
                     font.draw(ctx,label,274,y,"#ffffff",true);
-                    if(field.selection){ctx.fillStyle="#316ac5";ctx.fillRect(x+field.selection[0],y-12,field.selection[1]-field.selection[0],15);}
                     font.draw(ctx,field.text,x,y,"#ffffff",true);
-                    if(active&&!field.selection&&Math.floor(performance.now()/500)%2===0)font.draw(ctx,"|",x+field.caret,y,"#ffffff",true);
+                    if(active&&Math.floor(performance.now()/500)%2===0)font.draw(ctx,"|",x+field.caret,y,"#ffffff",true);
                 }
                 this.button(ctx,302,321,document.getElementById("login-submit").disabled?"Please wait...":"Login");this.button(ctx,462,321,"Cancel");
             }

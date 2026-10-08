@@ -271,7 +271,8 @@ try{
     const titleInput=screen.querySelector("#login-username");titleInput.value="Alice";titleInput.focus();titleInput.setSelectionRange(1,4);title.paint();
     const titlePixels=screen.querySelector("canvas").getContext("2d").getImageData(0,0,screen.querySelector("canvas").width,screen.querySelector("canvas").height).data;
     let highlighted=false;for(let i=0;i<titlePixels.length;i+=4)if(titlePixels[i]===49&&titlePixels[i+1]===106&&titlePixels[i+2]===197){highlighted=true;break;}
-    if(!highlighted)throw new Error("Native input selection has no visible cache-font highlight");
+    if(highlighted)throw new Error("Login text must not have a selection highlight");
+    titleInput.dispatchEvent(new Event("select"));if(titleInput.selectionStart!==titleInput.selectionEnd)throw new Error("Login text selection was not collapsed");
     screen.querySelector("#login-password").value="synthetic";title.enterGame();
     if(!screen.hidden||!document.body.classList.contains("in-game"))throw new Error("Title remained over authenticated game");
     title.showLogin("Disconnected");
