@@ -1,5 +1,33 @@
-// First native browser world viewport: real decoded revision-240 map heights.
-// Cache-backed floor RGB where available; texture mapping and scene locs remain TODO.
+/*
+ * BSD 2-Clause License
+ * 
+ * Copyright (c) 2022-2026, dennisdev, xrsps
+ * All rights reserved.
+ * 
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ * 
+ * * Redistributions of source code must retain the above copyright notice, this
+ *   list of conditions and the following disclaimer.
+ * 
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ * 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * 
+ */
+// Tile topology adapted from RSPSApp/tsps b9ca431 SceneTileModel (BSD-2-Clause).
+// Geometry is cache-defined; raw RGB is not final OSRS HSL lighting.
 function shader(gl,type,source){
     const sh=gl.createShader(type);
     gl.shaderSource(sh,source);gl.compileShader(sh);
@@ -14,19 +42,16 @@ function program(gl){
 attribute vec3 a_color;
 uniform mat4 u_mvp;
 varying vec3 v_color;
-varying float v_depth;
 void main(){
     vec4 v=u_mvp*vec4(a_position,1.0);
     gl_Position=v;
     v_color=a_color;
-    v_depth=clamp((v.w-15.0)/120.0,0.0,1.0);
 }`);
     const fs=shader(gl,gl.FRAGMENT_SHADER,`precision mediump float;
 varying vec3 v_color;
 varying float v_depth;
 void main(){
-    vec3 fog=vec3(0.08,0.15,0.20);
-    gl_FragColor=vec4(mix(v_color,fog,v_depth*0.55),1.0);
+    gl_FragColor=vec4(v_color,1.0);
 }`);
     const p=gl.createProgram();
     gl.attachShader(p,vs);gl.attachShader(p,fs);gl.linkProgram(p);
@@ -63,44 +88,116 @@ function multiply(a,b){
     }
     return out;
 }
-function color(underlay,overlay,shade,materials){
-    // The cache stores floor IDs as 1-based indexes. Overlay ID uses the
-    // low 15 bits (TSPS SceneBuilder / RuneLite convention).
-    const overlayId=(overlay&0x7fff)-1,underlayId=underlay-1;
-    const overlayDef=materials?.overlays?.get(overlayId);
-    const underlayDef=materials?.underlays?.get(underlayId);
-    let definition=overlayDef;
-    if(definition?.rgb===0xff00ff)definition=null; // transparent overlay
-    const rgb=definition?(definition.secondaryRgb??definition.rgb):
-        underlayDef?.rgb;
-    if(Number.isInteger(rgb)&&rgb>=0&&rgb<=0xffffff) {
-        const r=(rgb>>>16)&255,g=(rgb>>>8)&255,b=rgb&255;
-        return [r,g,b].map(channel=>Math.min(1,Math.max(0,channel/255*shade)));
+
+const tileShapeVertexIndices = [
+    [1, 3, 5, 7],
+    [1, 3, 5, 7],
+    [1, 3, 5, 7],
+    [1, 3, 5, 7, 6],
+    [1, 3, 5, 7, 6],
+    [1, 3, 5, 7, 6],
+    [1, 3, 5, 7, 6],
+    [1, 3, 5, 7, 2, 6],
+    [1, 3, 5, 7, 2, 8],
+    [1, 3, 5, 7, 2, 8],
+    [1, 3, 5, 7, 11, 12],
+    [1, 3, 5, 7, 11, 12],
+    [1, 3, 5, 7, 13, 14],
+];
+
+const tileShapeFaces = [
+    [0, 1, 2, 3, 0, 0, 1, 3],
+    [1, 1, 2, 3, 1, 0, 1, 3],
+    [0, 1, 2, 3, 1, 0, 1, 3],
+    [0, 0, 1, 2, 0, 0, 2, 4, 1, 0, 4, 3],
+    [0, 0, 1, 4, 0, 0, 4, 3, 1, 1, 2, 4],
+    [0, 0, 4, 3, 1, 0, 1, 2, 1, 0, 2, 4],
+    [0, 1, 2, 4, 1, 0, 1, 4, 1, 0, 4, 3],
+    [0, 4, 1, 2, 0, 4, 2, 5, 1, 0, 4, 5, 1, 0, 5, 3],
+    [0, 4, 1, 2, 0, 4, 2, 3, 0, 4, 3, 5, 1, 0, 4, 5],
+    [0, 0, 4, 5, 1, 4, 1, 2, 1, 4, 2, 3, 1, 4, 3, 5],
+    [0, 0, 1, 5, 0, 1, 4, 5, 0, 1, 2, 4, 1, 0, 5, 3, 1, 5, 4, 3, 1, 4, 2, 3],
+    [1, 0, 1, 5, 1, 1, 4, 5, 1, 1, 2, 4, 0, 0, 5, 3, 0, 5, 4, 3, 0, 4, 2, 3],
+    [1, 0, 5, 4, 1, 0, 1, 5, 0, 0, 4, 3, 0, 4, 5, 3, 0, 5, 2, 3, 0, 1, 2, 5],
+];
+
+
+export function buildTileGeometry(shape,rotation,heights) {
+    if(!Number.isInteger(shape)||shape<0||shape>12||
+        !Number.isInteger(rotation)||rotation<0||rotation>3||
+        heights?.length!==4||!Array.from(heights).every(Number.isInteger)) {
+        throw new Error("Invalid cache tile geometry");
     }
-    // Explicit incomplete-material fallback: retain the original preview
-    // tint until a decoded colour / texture material exists in cache.
-    const base=overlay>0?[.34,.42,.47]:underlay>0?
-        [.23+((underlay*13)%26)/100,.36+((underlay*7)%18)/100,.22+((underlay*5)%17)/100]:
-        [.39,.40,.35];
-    return base.map(c=>Math.min(1,Math.max(.05,c*shade)));
+    const [sw,se,ne,nw]=heights;
+    const coordinates=[
+        null,[0,0,sw],[.5,0,(sw+se)>>1],[1,0,se],
+        [1,.5,(se+ne)>>1],[1,1,ne],[.5,1,(ne+nw)>>1],[0,1,nw],
+        [0,.5,(nw+sw)>>1],[.5,.25,(sw+se)>>1],[.75,.5,(se+ne)>>1],
+        [.5,.75,(ne+nw)>>1],[.25,.5,(nw+sw)>>1],
+        [.25,.25,sw],[.75,.25,se],[.75,.75,ne],[.25,.75,nw],
+    ];
+    const vertices=tileShapeVertexIndices[shape].map(code=>{
+        if((code&1)===0&&code<=8)code=((code-2*rotation-1)&7)+1;
+        else if(code>8&&code<=12)code=((code-9-rotation)&3)+9;
+        else if(code>12)code=((code-13-rotation)&3)+13;
+        return coordinates[code];
+    });
+    const indices=tileShapeFaces[shape],faces=[];
+    for(let i=0;i<indices.length;i+=4){
+        const corners=indices.slice(i+1,i+4).map(v=>v<4?(v-rotation)&3:v);
+        faces.push({isOverlay:indices[i]===1,vertices:corners.map(v=>vertices[v])});
+    }
+    return faces;
 }
-/** Triangle mesh with a real tile height per vertex, no fake placeholder geometry. */
+
+function floorColor(id,isOverlay,materials) {
+    if(!materials)return [1,1,1]; // Wireframe only while definitions are unavailable.
+    const definition=(isOverlay?materials.overlays:materials.underlays)?.get(id-1);
+    if(!definition||definition.textureId>=0||
+        isOverlay&&definition.rgb===0xff00ff)return null;
+    const rgb=definition.rgb;
+    if(!Number.isInteger(rgb)||rgb<0||rgb>0xffffff)return null;
+    // secondaryRgb is a minimap colour; it must not replace the scene's primary RGB.
+    return [(rgb>>>16&255)/255,(rgb>>>8&255)/255,(rgb&255)/255];
+}
+
 export function buildTerrainMesh(terrain){
-    if(!terrain ||terrain.side!==64||terrain.heights?.length!==4096)throw new Error("Invalid terrain mesh input");
-    const numbers=new Float32Array(63*63*6*6);
-    const pos=(x,y)=>[x-31.5,-terrain.heights[x*64+y]/32,y-31.5];
-    const tri=(p,c,offset)=>{numbers.set([...p,...c],offset);return offset+6;};
-    let offset=0;
-    for(let x=0;x<63;x++)for(let y=0;y<63;y++){
-        const avg=(terrain.heights[x*64+y]+terrain.heights[(x+1)*64+y]+
-            terrain.heights[x*64+y+1]+terrain.heights[(x+1)*64+y+1])/4;
-        const shade=.72+Math.min(.3,Math.abs(avg)/2800);
-        const c=color(terrain.underlays[x*64+y],terrain.overlays[x*64+y],shade,terrain.floorMaterials);
-        const p00=pos(x,y),p10=pos(x+1,y),p01=pos(x,y+1),p11=pos(x+1,y+1);
-        offset=tri(p00,c,offset);offset=tri(p10,c,offset);offset=tri(p11,c,offset);
-        offset=tri(p00,c,offset);offset=tri(p11,c,offset);offset=tri(p01,c,offset);
+    if(!terrain||terrain.side!==64||terrain.heights?.length!==4096||
+        terrain.underlays?.length!==4096||terrain.overlays?.length!==4096||
+        terrain.overlayShapes&&terrain.overlayShapes.length!==4096||
+        terrain.overlayRotations&&terrain.overlayRotations.length!==4096) {
+        throw new Error("Invalid terrain mesh input");
     }
-    return numbers;
+    const numbers=[];
+    for(let x=0;x<63;x++)for(let y=0;y<63;y++){
+        const i=x*64+y,overlay=terrain.overlays[i]&0x7fff;
+        const shape=overlay?(terrain.overlayShapes?.[i]??0)+1:0;
+        const rotation=overlay?(terrain.overlayRotations?.[i]??0):0;
+        const heights=[terrain.heights[i],terrain.heights[i+64],
+            terrain.heights[i+65],terrain.heights[i+1]];
+        for(const face of buildTileGeometry(shape,rotation,heights)){
+            const id=face.isOverlay?overlay:terrain.underlays[i];
+            const c=floorColor(id,face.isOverlay,terrain.floorMaterials);
+            if(!c)continue;
+            for(const [vx,vy,h] of face.vertices)numbers.push(x+vx-31.5,-h/32,y+vy-31.5,...c);
+        }
+    }
+    return new Float32Array(numbers);
+}
+
+export function terrainWireframe(vertices){
+    if(!(vertices instanceof Float32Array)||vertices.length%18) {
+        throw new Error("Invalid triangle mesh");
+    }
+    const lines=new Float32Array(vertices.length*2);
+    let at=0;
+    for(let i=0;i<vertices.length;i+=18){
+        for(const v of [0,1,1,2,2,0]){
+            lines.set(vertices.subarray(i+v*6,i+v*6+6),at);
+            at+=6;
+        }
+    }
+    return lines;
 }
 export class NativeTerrainViewport {
     constructor(canvas) {
@@ -151,7 +248,9 @@ export class NativeTerrainViewport {
     }
     setTerrain(terrain,{resetCamera=true}={}){
         const gl=this.gl;
-        const vertices=buildTerrainMesh(terrain);
+        const mesh=buildTerrainMesh(terrain);
+        this.drawMode=terrain.floorMaterials?gl.TRIANGLES:gl.LINES;
+        const vertices=terrain.floorMaterials?mesh:terrainWireframe(mesh);
         gl.bindBuffer(gl.ARRAY_BUFFER,this.buf);
         gl.bufferData(gl.ARRAY_BUFFER,vertices,gl.STATIC_DRAW);
         this.count=vertices.length/6;
@@ -178,7 +277,7 @@ export class NativeTerrainViewport {
         const a=gl.getAttribLocation(this.program,"a_position"),c=gl.getAttribLocation(this.program,"a_color");
         gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);
         gl.enableVertexAttribArray(c);gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
-        gl.drawArrays(gl.TRIANGLES,0,this.count);
+        gl.drawArrays(this.drawMode,0,this.count);
     }
     dispose(){
         this.disposed=true;cancelAnimationFrame(this.raf);

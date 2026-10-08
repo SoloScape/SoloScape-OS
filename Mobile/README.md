@@ -571,3 +571,31 @@ CI checks the launcher configuration and syntax; it does not yet prove the TSPS 
 ## Scope
 
 The mobile client should be additive. Avoid replacing `Client/`, changing SoloScape's existing desktop-client launch flows, or porting the whole TSPS TypeScript game server unless a specific compatibility requirement is established.
+
+### Cache-defined floor topology (8 October 2026)
+
+The native terrain decoder retains overlay paths and rotations from each map
+opcode: path `(opcode - 2) >> 2`, rotation `(opcode - 2) & 3`. The format is
+cross-checked against [RuneLite MapLoader](https://github.com/runelite/runelite/blob/master/cache/src/main/java/net/runelite/cache/definitions/loaders/MapLoader.java).
+The WebGL mesh uses the pinned
+[TSPS SceneTileModel](https://github.com/RSPSApp/tsps/blob/b9ca431be440174fce5adf0efbb7afa992358916/client/rs/scene/SceneTileModel.ts)
+vertex/face tables, corner rotation, and integer midpoint heights, with its
+BSD notice retained in the adapted source. Underlay and overlay faces now occupy
+their cache-defined portions of each tile instead of a full-square replacement.
+
+Invented ID-derived tints, elevation-based shading and blue fog are removed.
+Before floor definitions arrive, the viewport shows a **debug wireframe** of
+cache geometry. When definitions arrive it shows raw **primary RGB** on known,
+untextured faces; secondary RGB belongs to the minimap and is no longer used
+as the scene colour. Missing definitions, magenta transparent overlays and
+textured faces are omitted, without substituted colours.
+
+This is an intermediate scene renderer, **not verified mobile-client parity**.
+OSRS HSL blending/lighting, textures, region seams (the final row/column requires
+neighbour-region heights), upper planes/bridges, objects, native login, entities
+and mobile controls remain incomplete. Existing controls and the region selector
+are development tools, not a recreation of RuneScape Mobile. No generated game
+assets or standalone probes are introduced. CI fixtures cover all 48 encoded
+path/rotation combinations, all 52 model topologies, diagonal face colours,
+midpoint heights, transparency and missing materials. Live visual verification
+against SoloScape and the official mobile client remains required.

@@ -269,6 +269,8 @@ function decodeTerrainTiles(data,mapX,mapY,opcodeWidth) {
     const heights=new Int32Array(PLANES*SIDE*SIDE);
     const underlays=new Uint16Array(SIDE*SIDE);
     const overlays=new Int16Array(SIDE*SIDE);
+    const overlayShapes=new Uint8Array(SIDE*SIDE);
+    const overlayRotations=new Uint8Array(SIDE*SIDE);
     let at=0;
     const nextOpcode=()=>{
         requireBytes(data,at,opcodeWidth);
@@ -306,7 +308,11 @@ function decodeTerrainTiles(data,mapX,mapY,opcodeWidth) {
             }
             if(op<=49){
                 const overlay=overlayValue();
-                if(plane===0)overlays[x*SIDE+y]=overlay;
+                if(plane===0){
+                    overlays[x*SIDE+y]=overlay;
+                    overlayShapes[x*SIDE+y]=(op-2)>>2;
+                    overlayRotations[x*SIDE+y]=(op-2)&3;
+                }
             }else if(op>81){
                 if(plane===0)underlays[x*SIDE+y]=op-81;
             }
@@ -315,7 +321,8 @@ function decodeTerrainTiles(data,mapX,mapY,opcodeWidth) {
     }
     return {
         mapX,mapY,side:SIDE,heights:heights.subarray(0,SIDE*SIDE),
-        underlays,overlays,sourceBytes:data.length,consumedBytes:at,
+        underlays,overlays,overlayShapes,overlayRotations,
+        sourceBytes:data.length,consumedBytes:at,
         trailingBytes:data.length-at,terrainFormat:opcodeWidth===2?"u16":"u8",
     };
 }

@@ -6,7 +6,7 @@ import {
     baseTileHeight, decodeTerrainRegion, djb2, getTerrainGroup, loadNativeTerrain,
     mapRegionCatalog, resolveTerrainRegion, extractTerrainFile,
 } from "../browser/terrain-world.mjs";
-import { buildTerrainMesh } from "../browser/world-webgl.mjs";
+import { buildTerrainMesh, buildTileGeometry, terrainWireframe } from "../browser/world-webgl.mjs";
 
 function cacheContainer(payload,compression=2){
     const data=compression===2?gzipSync(payload):payload;
@@ -99,7 +99,7 @@ test("real height field produces correct bounded WebGL triangle geometry",()=>{
     const mesh=buildTerrainMesh(region);
     assert.equal(mesh.length,63*63*6*6);
     assert.ok(mesh.every(Number.isFinite));
-    assert.deepEqual(Array.from(mesh.subarray(0,3)),[-31.5,2.5,-31.5]);
+    assert.deepEqual(Array.from(mesh.subarray(0,3)),[-30.5,2.5,-31.5]);
     assert.throws(()=>buildTerrainMesh({side:64,heights:new Int32Array(40)}),/Invalid/);
 });
 
@@ -247,4 +247,78 @@ test("custom cache legacy terrain is selected only with exact full-length decode
 test("terrain decoder does not ignore an incomplete tile stream",()=>{
     const invalid=Buffer.from([0,1,10,0,1,10,0,1,10]);
     assert.throws(()=>decodeTerrainRegion(invalid,50,50),/Truncated/);
+});
+
+function shapedTerrainBytes(legacy=false){
+    const bytes=[];
+    const opcode=n=>legacy?bytes.push(n):bytes.push(n>>>8,n&255);
+    for(let plane=0;plane<4;plane++)for(let x=0;x<64;x++)for(let y=0;y<64;y++){
+        if(plane===0&&x===0&&y<48){
+            opcode(2+y);opcode(1);
+            opcode(82);
+        }
+        opcode(1);bytes.push(10);
+    }
+    return Buffer.from(bytes);
+}
+
+test("terrain preserves all 12 overlay paths and four rotations in both cache formats",()=>{
+    for(const legacy of [false,true]){
+        const region=decodeTerrainRegion(shapedTerrainBytes(legacy),50,50);
+        assert.equal(region.terrainFormat,legacy?"u8":"u16");
+        for(let i=0;i<48;i++){
+            assert.equal(region.overlays[i],1);
+            assert.equal(region.overlayShapes[i],i>>2);
+            assert.equal(region.overlayRotations[i],i&3);
+            assert.equal(region.underlays[i],1);
+        }
+        const mesh=buildTerrainMesh(region);
+        assert.ok(mesh.length>63*63*36);
+        assert.ok(mesh.every(Number.isFinite));
+    }
+});
+
+test("diagonal cache shape splits underlay and overlay at the rotated OSRS corners",()=>{
+    const h=[-80,-88,-104,-120];
+    assert.deepEqual(buildTileGeometry(2,0,h),[
+        {isOverlay:false,vertices:[[1,0,-88],[1,1,-104],[0,1,-120]]},
+        {isOverlay:true,vertices:[[0,0,-80],[1,0,-88],[0,1,-120]]},
+    ]);
+    assert.deepEqual(buildTileGeometry(2,1,h),[
+        {isOverlay:false,vertices:[[0,0,-80],[1,0,-88],[1,1,-104]]},
+        {isOverlay:true,vertices:[[0,1,-120],[0,0,-80],[1,1,-104]]},
+    ]);
+    const faces=buildTileGeometry(3,1,h);
+    assert.ok(faces.some(face=>face.vertices.some(v=>v[0]===1&&v[1]===.5&&v[2]===-96)));
+    assert.throws(()=>buildTileGeometry(13,0,h),/Invalid/);
+    assert.throws(()=>buildTileGeometry(2,4,h),/Invalid/);
+});
+
+test("every cache tile topology covers one tile without degenerate or reversed triangles",()=>{
+    const area=vertices=>{
+        const [a,b,c]=vertices;
+        return ((b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]))/2;
+    };
+    for(let shape=0;shape<=12;shape++)for(let rotation=0;rotation<4;rotation++){
+        const faces=buildTileGeometry(shape,rotation,[-80,-88,-104,-120]);
+        let sum=0;
+        for(const face of faces){
+            const a=area(face.vertices);
+            assert.ok(a>0,`shape ${shape}, rotation ${rotation}: winding`);
+            sum+=a;
+            for(const [x,y,h] of face.vertices){
+                assert.ok(x>=0&&x<=1&&y>=0&&y<=1);
+                assert.ok(h>=-120&&h<=-80);
+            }
+        }
+        assert.equal(sum,1,`shape ${shape}, rotation ${rotation}: tile coverage`);
+    }
+});
+
+test("wireframe exposes verified geometry before floors without invented filled materials",()=>{
+    const mesh=buildTerrainMesh(decodeTerrainRegion(terrainBytes(),50,50));
+    const lines=terrainWireframe(mesh);
+    assert.equal(lines.length,mesh.length*2);
+    assert.deepEqual(Array.from(lines.subarray(0,12)),Array.from(mesh.subarray(0,12)));
+    assert.throws(()=>terrainWireframe(new Float32Array(7)),/Invalid/);
 });

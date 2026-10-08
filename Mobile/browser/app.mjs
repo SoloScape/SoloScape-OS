@@ -59,21 +59,21 @@ async function enterWorld(allowFallback=false){
                 }
                 worldLabel.textContent=`Region ${scene.mapX}, ${scene.mapY}`;
                 status.textContent=sceneDescription+
-                    "World geometry displayed. Loading optional floor colours in the background; temporary tints shown. No objects or players yet.";
+                    "Cache geometry wireframe displayed. Loading floor definitions. No objects or players yet.";
             },
             fetchMaterials:scene=>loadFloorMaterials(cache,scene),
             applyMaterials:(scene,floors)=>{
                 scene.floorMaterials=floors;
                 renderer.setTerrain(scene,{resetCamera:false});
                 status.textContent=sceneDescription+
-                    `Cache-backed flat floor colours: ${floors.loadedUnderlays}/${floors.selectedUnderlays} underlays, `+
+                    `Cache-defined tile shapes and primary RGB: ${floors.loadedUnderlays}/${floors.selectedUnderlays} underlays, `+
                     `${floors.loadedOverlays}/${floors.selectedOverlays} overlays. `+
-                    "Textures, blended lighting, objects and players are not implemented yet.";
+                    "Missing, textured and transparent floor faces are not drawn. OSRS HSL lighting, textures, objects and players remain incomplete.";
             },
             onMaterialError:error=>{
                 status.textContent=sceneDescription+
-                    "World geometry displayed. Optional floor configuration unavailable ("+
-                    (error?.message??String(error))+"); temporary tints remain. No objects or players yet.";
+                    "Cache geometry wireframe displayed. Floor configuration unavailable ("+
+                    (error?.message??String(error))+"); wireframe remains. No objects or players yet.";
             },
         });
     }catch(error){

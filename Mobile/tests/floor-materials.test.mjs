@@ -128,10 +128,10 @@ test("configuration index 2 supplies verified underlay and overlay RGB to native
     assert.equal(materials.selectedOverlays,1);
     assert.deepEqual(fetches,["255:255","255:2","2:1","2:4"]);
     const mesh=buildTerrainMesh(terrain);
-    const shade=.72;
-    assert.ok(Math.abs(mesh[3]-(0xcc/255)*shade)<1e-6);
-    assert.ok(Math.abs(mesh[4]-(0x22/255)*shade)<1e-6);
-    assert.ok(Math.abs(mesh[5]-(0x44/255)*shade)<1e-6);
+    const shade=1;
+    assert.ok(Math.abs(mesh[3]-(0x11/255)*shade)<1e-6);
+    assert.ok(Math.abs(mesh[4]-(0x33/255)*shade)<1e-6);
+    assert.ok(Math.abs(mesh[5]-(0xcc/255)*shade)<1e-6);
     const withoutOverlay={...terrain,overlays:new Int16Array(4096)};
     const baseMesh=buildTerrainMesh(withoutOverlay);
     assert.ok(Math.abs(baseMesh[3]-(0xaa/255)*shade)<1e-6);
@@ -162,4 +162,29 @@ test("unknown floor tile ids do not trigger arbitrary extra group downloads",asy
     assert.equal(materials.selectedOverlays,0);
     assert.deepEqual(requests,["255:255","255:2","2:1"]);
     assert.ok(buildTerrainMesh({...terrain,floorMaterials:materials}).every(Number.isFinite));
+});
+
+test("floor faces use primary scene RGB and omit missing, transparent or textured definitions",()=>{
+    const terrain={
+        side:64,heights:new Int32Array(4096),
+        underlays:new Uint16Array(4096),overlays:new Int16Array(4096),
+        overlayShapes:new Uint8Array(4096),overlayRotations:new Uint8Array(4096),
+        floorMaterials:{underlays:new Map([[0,{rgb:0xff0000,textureId:-1}]]),
+            overlays:new Map([[0,{rgb:0x0000ff,secondaryRgb:0x00ff00,textureId:-1}]])},
+    };
+    terrain.underlays[0]=1;
+    terrain.overlays[0]=1;
+    terrain.overlayShapes[0]=1;
+    const mesh=buildTerrainMesh(terrain);
+    assert.equal(mesh.length,36);
+    assert.deepEqual(Array.from(mesh.subarray(3,6)),[1,0,0]);
+    assert.deepEqual(Array.from(mesh.subarray(21,24)),[0,0,1]);
+    terrain.floorMaterials.overlays.set(0,{rgb:0xff00ff,textureId:-1});
+    assert.equal(buildTerrainMesh(terrain).length,18);
+    terrain.floorMaterials.overlays.set(0,{rgb:0x0000ff,textureId:2});
+    assert.equal(buildTerrainMesh(terrain).length,18);
+    terrain.floorMaterials.overlays.clear();
+    assert.equal(buildTerrainMesh(terrain).length,18);
+    terrain.floorMaterials.underlays.clear();
+    assert.equal(buildTerrainMesh(terrain).length,0);
 });
