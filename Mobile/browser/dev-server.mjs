@@ -31,7 +31,7 @@ const routes = new Map([
     ["/sprite-preview.mjs", ["sprite-preview.mjs", "text/javascript; charset=utf-8"]],
     ...["login-crypto","login-protocol","login-pow","native-login","game-protocol"].map(name=>
         [`/${name}.mjs`,[`${name}.mjs`,"text/javascript; charset=utf-8"]]),
-    ...["player-sync","player-protocol","player-config","player-colors","player-models","player-animation","native-gameplay","npc-sync","npc-models"].map(name=>
+    ...["player-sync","player-protocol","player-config","player-colors","player-models","player-animation","native-gameplay","npc-sync","npc-models","npc-interactions"].map(name=>
         [`/${name}.mjs`,[`${name}.mjs`,"text/javascript; charset=utf-8"]]),
     ["/style.css", ["style.css", "text/css; charset=utf-8"]],
 ]);

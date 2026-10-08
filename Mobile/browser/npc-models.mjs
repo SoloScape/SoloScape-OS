@@ -13,7 +13,7 @@ export function decodeNpcType(bytes,id=-1){
     if(!(bytes instanceof Uint8Array))throw new Error("Invalid NPC configuration");
     const r=new ByteBuffer(bytes),d={id,name:"",size:1,modelIds:[],modelOffsets:[],recolorFrom:[],recolorTo:[],
         retextureFrom:[],retextureTo:[],idleSeqId:-1,walkSeqId:-1,runSeqId:-1,basTypeId:-1,
-        widthScale:128,heightScale:128,ambient:0,contrast:0,turnSpeed:32,actions:[],transforms:null};
+        widthScale:128,heightScale:128,ambient:0,contrast:0,turnSpeed:32,actions:[],isInteractable:true,transforms:null};
     for(let count=0;count<4096;count++){
         const op=r.readUnsignedByte();
         if(op===0){if(r.offset!==r.length)throw new Error("NPC definition trailing bytes");return d;}
@@ -39,9 +39,10 @@ export function decodeNpcType(bytes,id=-1){
         else if(op===61)d.modelIds=take(r,r.readUnsignedByte(),"readInt");
         else if(op===62)d.chatheadIds=take(r,r.readUnsignedByte(),"readInt");
         else if(op>=74&&op<=79)r.readUnsignedShort();
-        else if(op===93||op===99||op===107||op===109||op===111||op===112||op===122||op===123||
+        else if(op===93||op===99||op===109||op===111||op===112||op===122||op===123||
             op===130||op===141||op===143||op===145||op===147||op===158||op===159||op===161||op===162){}
         else if(op===95)d.combatLevel=r.readUnsignedShort();
+        else if(op===107)d.isInteractable=false;
         else if(op===97)d.widthScale=r.readUnsignedShort();
         else if(op===98)d.heightScale=r.readUnsignedShort();
         else if(op===100)d.ambient=r.readByte();

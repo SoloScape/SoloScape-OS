@@ -291,6 +291,31 @@ export function pickTerrainTile(vertices,matrix,nx,ny){
     return best;
 }
 
+// Pick real rendered NPC triangles, including textured geometry. Compare clip
+// depths so overlapping NPCs select the visible actor, not insertion order.
+export function pickNpcTriangles(meshes,matrix,nx,ny){
+    let best=null,depth=Infinity;
+    for(const {index,vertices} of meshes){
+        if(!(vertices instanceof Float32Array)||vertices.length%18)continue;
+        const project=at=>{
+            const x=vertices[at],y=vertices[at+1],z=vertices[at+2];
+            const v=[0,1,2,3].map(r=>matrix[r]*x+matrix[r+4]*y+matrix[r+8]*z+matrix[r+12]);
+            return v[3]>0?[v[0]/v[3],v[1]/v[3],v[2]/v[3]]:null;
+        };
+        for(let i=0;i<vertices.length;i+=18){
+            const a=project(i),b=project(i+6),c=project(i+12);if(!a||!b||!c)continue;
+            const denominator=(b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1]);
+            if(Math.abs(denominator)<1e-10)continue;
+            const u=((b[1]-c[1])*(nx-c[0])+(c[0]-b[0])*(ny-c[1]))/denominator;
+            const v=((c[1]-a[1])*(nx-c[0])+(a[0]-c[0])*(ny-c[1]))/denominator,w=1-u-v;
+            if(u<0||v<0||w<0)continue;
+            const z=u*a[2]+v*b[2]+w*c[2];
+            if(z>=-1&&z<=1&&z<depth){depth=z;best={index,depth};}
+        }
+    }
+    return best;
+}
+
 export function terrainWireframe(vertices){
     if(!(vertices instanceof Float32Array)||vertices.length%18) {
         throw new Error("Invalid triangle mesh");
@@ -316,7 +341,8 @@ export class NativeTerrainViewport {
         this.textureProgram=program(gl,true);this.textures=new Map();this.terrainBatches=[];this.sceneryBatches=[];this.visibleLevel=0;
         this.buf=gl.createBuffer();
         this.sceneryBuf=gl.createBuffer();this.sceneryCount=0;
-        this.actorBuf=gl.createBuffer();this.actorCount=0;this.actorBatches=[];this.onDestination=onDestination;
+        this.actorBuf=gl.createBuffer();this.actorCount=0;this.actorBatches=[];this.actorPickMeshes=[];this.onDestination=onDestination;
+        this.onNpc=()=>{};this.onNpcCancel=()=>{};
         this.palette=gl.createTexture();
         const pixels=new Uint8Array(65536*4);
         for(let i=0;i<HSL_PALETTE.length;i++){
@@ -347,13 +373,22 @@ export class NativeTerrainViewport {
         this.onPointerUp=e=>{
             if(this.pointer?.id!==e.pointerId)return;
             const pointer=this.pointer;this.pointer=null;
-            if(e.type==="pointercancel"||pointer.dragged||pointer.button!==0||!this.pickVertices)return;
-            const rect=canvas.getBoundingClientRect(),nx=2*(e.clientX-rect.left)/rect.width-1,ny=1-2*(e.clientY-rect.top)/rect.height;
+            if(e.type==="pointercancel"||pointer.dragged||![0,2].includes(pointer.button))return;
+            const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return;
+            const nx=2*(e.clientX-rect.left)/rect.width-1,ny=1-2*(e.clientY-rect.top)/rect.height;
             const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,rect.width/rect.height);
+            const npc=pickNpcTriangles(this.actorPickMeshes,matrix,nx,ny);
+            if(npc){
+                this.onNpc({index:npc.index,x:e.clientX-rect.left,y:e.clientY-rect.top,run:e.shiftKey});
+                return;
+            }
+            this.onNpcCancel();
+            if(pointer.button!==0||!this.pickVertices)return;
             const count=this.pickLevelCounts.slice(0,this.visibleLevel+1).reduce((a,b)=>a+b,0)*6;
             const tile=pickTerrainTile(this.pickVertices.subarray(0,count),matrix,nx,ny);
             if(tile)this.onDestination({...tile,run:e.shiftKey});
         };
+        this.onContextMenu=e=>{if(this.actorPickMeshes.length)e.preventDefault();};
         this.onWheel=e=>{e.preventDefault();this.distance=Math.max(18,Math.min(170,this.distance*Math.exp(e.deltaY*.001)));};
         this.onKey=e=>{
             if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName||""))return;
@@ -371,6 +406,7 @@ export class NativeTerrainViewport {
         canvas.addEventListener("pointermove",this.onPointerMove);
         canvas.addEventListener("pointerup",this.onPointerUp);
         canvas.addEventListener("pointercancel",this.onPointerUp);
+        canvas.addEventListener("contextmenu",this.onContextMenu);
         canvas.addEventListener("wheel",this.onWheel,{passive:false});
         window.addEventListener("keydown",this.onKey);
         gl.enable(gl.DEPTH_TEST);
@@ -486,7 +522,7 @@ export class NativeTerrainViewport {
     dispose(){
         this.disposed=true;cancelAnimationFrame(this.raf);
         for(const [name,fn] of [["pointerdown",this.onPointerDown],["pointermove",this.onPointerMove],
-            ["pointerup",this.onPointerUp],["pointercancel",this.onPointerUp],["wheel",this.onWheel]]) {
+            ["pointerup",this.onPointerUp],["pointercancel",this.onPointerUp],["contextmenu",this.onContextMenu],["wheel",this.onWheel]]) {
             this.canvas.removeEventListener(name,fn);
         }
         window.removeEventListener("keydown",this.onKey);

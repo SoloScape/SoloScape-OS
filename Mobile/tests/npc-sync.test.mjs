@@ -77,6 +77,7 @@ test("NPC cache definition decodes model ids, animation, scales and recolours",(
     assert.deepEqual([part.faceColors[0],part.faceTextures[0]],[11,13]);
     assert.equal(model.faceColors[0],10);
     assert.throws(()=>decodeNpcType(Uint8Array.of(255,0),42),/Unsupported NPC/);
+    assert.equal(decodeNpcType(Uint8Array.of(107,0),42).isInteractable,false);
 });
 test("authenticated NPCs share actor buffers and clear on despawn",async()=>{
     let presented,clock=1000;
@@ -91,6 +92,7 @@ test("authenticated NPCs share actor buffers and clear on despawn",async()=>{
     gameplay.handle({name:"NPC_INFO_SMALL_V6",payload:spawn({index:7,dx:1,dy:1})});
     await gameplay.drawActors();assert.equal(gameplay.npcDrawn,1);
     assert.equal(presented.vertices.length,18);
+    assert.equal(presented.npcPickMeshes[0].index,7);
     clock+=700;
     gameplay.handle({name:"NPC_INFO_SMALL_V6",payload:bits([1,8],[1,1],[3,2])});
     await gameplay.drawActors();

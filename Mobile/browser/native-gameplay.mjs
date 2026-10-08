@@ -1,6 +1,7 @@
 import {NativePlayerSync} from "./player-sync.mjs";
 import {NativeNpcSync} from "./npc-sync.mjs";
 import {NativeNpcModels} from "./npc-models.mjs";
+import {encodeNpcInteraction,npcActionOptions} from "./npc-interactions.mjs";
 import {decodeRebuild,encodeMoveDestination,encodeWindowStatus,MOVE_GAMECLICK,MAP_BUILD_COMPLETE,WINDOW_STATUS} from "./player-protocol.mjs";
 import {loadNativeTerrain} from "./terrain-world.mjs";
 import {loadFloorMaterials} from "./floor-materials.mjs";
@@ -24,14 +25,16 @@ export function interpolatePlayer(motion,now){
 }
 
 export class NativeGameplay {
-    constructor({cache,viewport,session,onStatus=()=>{},onRegion=()=>{},run=()=>false,
+    constructor({cache,viewport,session,onStatus=()=>{},onRegion=()=>{},onNpcMenu=()=>{},run=()=>false,
         loadTerrain=loadNativeTerrain,loadMaterials=loadFloorMaterials,loadScenery=loadStaticScenery,
         models=new NativePlayerModels(cache),now=()=>performance.now()}={}){
-        this.cache=cache;this.viewport=viewport;this.session=session;this.onStatus=onStatus;this.onRegion=onRegion;this.run=run;
+        this.cache=cache;this.viewport=viewport;this.session=session;this.onStatus=onStatus;this.onRegion=onRegion;this.onNpcMenu=onNpcMenu;this.run=run;
         this.loadTerrain=loadTerrain;this.loadMaterials=loadMaterials;this.loadScenery=loadScenery;this.models=models;this.now=now;
         this.generation=0;this.closed=false;this.regions=new Map();this.packetCount=0;this.animationStarted=now();
-        this.npcs=new NativeNpcSync();this.npcModels=new NativeNpcModels(models);this.npcMotions=new Map();this.npcDrawn=0;
+        this.npcs=new NativeNpcSync();this.npcModels=new NativeNpcModels(models);this.npcMotions=new Map();this.npcDrawn=0;this.selectionToken=0;this.selectedNpc=null;
         this.viewport.onDestination=tile=>this.move(tile);
+        this.viewport.onNpc=hit=>void this.selectNpc(hit);
+        this.viewport.onNpcCancel=()=>this.clearNpcMenu();
     }
     authenticated(account){
         this.sync=new NativePlayerSync(account.playerIndex);
@@ -74,7 +77,7 @@ export class NativeGameplay {
     }
     async loadRebuild(rebuild){
         const generation=++this.generation,current=()=>!this.closed&&generation===this.generation;
-        this.npcs.reset();this.npcMotions.clear();this.npcDrawn=0;
+        this.clearNpcMenu();this.npcs.reset();this.npcMotions.clear();this.npcDrawn=0;
         this.loading=true;this.modelReady=false;this.renderError=null;this.regions=new Map();this.viewport.setActors(null);this.viewport.setScenery(null);
         this.onStatus("Loading your server location…");
         // Rebuild is queued BEFORE teleport player info, so sync.local may still be in the old map.
@@ -126,6 +129,36 @@ export class NativeGameplay {
         this.session.sendGame(MAP_BUILD_COMPLETE);this.loading=false;this.unavailable=unavailable;
         this.report();await this.drawActors();
     }
+    clearNpcMenu(){
+        this.selectionToken++;this.selectedNpc=null;this.onNpcMenu(null);
+    }
+    async selectNpc({index,x,y,run=false}){
+        if(this.closed||this.loading||!this.sync?.local)return;
+        const npc=this.npcs.npcs.get(index);
+        if(!npc)return;
+        this.clearNpcMenu();
+        const token=this.selectionToken,generation=this.generation,type=npc.type;
+        try{
+            const definition=await this.npcModels.definition(type);
+            if(this.closed||this.loading||token!==this.selectionToken||generation!==this.generation||
+                this.npcs.npcs.get(index)?.type!==type)return;
+            const actions=npcActionOptions(definition,this.npcs.npcs.get(index));
+            this.selectedNpc={index,type,slots:actions.map(a=>a.slot)};
+            this.onNpcMenu({index,name:this.npcs.npcs.get(index).name||definition.name||`NPC ${type}`,
+                actions,x,y,run});
+        }catch(error){
+            if(token===this.selectionToken&&!this.closed)this.onStatus("NPC options unavailable: "+error.message);
+        }
+    }
+    interactNpc(index,slot,{run=false}={}){
+        const selected=this.selectedNpc,npc=this.npcs.npcs.get(index);
+        if(this.closed||this.loading||!selected||selected.index!==index||selected.type!==npc?.type||
+            !selected.slots.includes(slot)||npc.visibleOps!==undefined&&(npc.visibleOps&(1<<slot))===0)return false;
+        const {opcode,payload}=encodeNpcInteraction(index,slot,{controlKey:Boolean(run||this.run())});
+        this.session.sendGame(opcode,payload);
+        this.clearNpcMenu();
+        return true;
+    }
     move(tile){
         if(this.closed||this.loading||!this.sync?.local||!this.origin)return;
         const x=this.origin.mapX*64+tile.x,y=this.origin.mapY*64+tile.y;
@@ -141,6 +174,11 @@ export class NativeGameplay {
     }
     updateNpcMotions(){
         const now=this.now();
+        if(this.selectedNpc){
+            const npc=this.npcs.npcs.get(this.selectedNpc.index);
+            if(!npc||npc.type!==this.selectedNpc.type||npc.plane!==this.sync?.local?.plane||
+                npc.visibleOps!==undefined&&this.selectedNpc.slots.some(slot=>(npc.visibleOps&(1<<slot))===0))this.clearNpcMenu();
+        }
         for(const [index,motion] of this.npcMotions)if(!this.npcs.npcs.has(index))this.npcMotions.delete(index);
         for(const [index,npc] of this.npcs.npcs){
             const previous=this.npcMotions.get(index),target={...npc},old=previous?.target;
@@ -156,7 +194,7 @@ export class NativeGameplay {
     }
     async drawActors(){
         if(this.closed||this.loading||this.drawing||!this.origin)return;
-        const generation=this.generation,now=this.now(),meshes=[];
+        const generation=this.generation,now=this.now(),meshes=[],npcPickMeshes=[];
         this.drawing=true;
         const add=(mesh,region)=>{
             const dx=(region.mapX-this.origin.mapX)*64,dy=(region.mapY-this.origin.mapY)*64;
@@ -204,13 +242,15 @@ export class NativeGameplay {
                         elapsed:Math.max(0,now-motion.animationStarted),
                         sequenceElapsed:Math.max(0,now-motion.sequenceStarted-(npc.sequence?.delay??0)*20)});
                     add(mesh,region);drawn++;
+                    npcPickMeshes.push({index:motion.target.index,vertices:mesh.vertices});
+                    for(const batch of mesh.texturedBatches)npcPickMeshes.push({index:motion.target.index,vertices:batch.vertices});
                 }catch{missing++;}
             }
             if(this.closed||generation!==this.generation)return;
             const length=meshes.reduce((n,m)=>n+m.vertices.length,0),vertices=new Float32Array(length);
             let offset=0;for(const mesh of meshes){vertices.set(mesh.vertices,offset);offset+=mesh.vertices.length;}
             this.viewport.setActors({vertices,texturedBatches:meshes.flatMap(m=>m.texturedBatches),
-                textures:this.models.textures.textures});
+                textures:this.models.textures.textures,npcPickMeshes});
             if(this.npcDrawn!==drawn||this.npcMissing!==missing){this.npcDrawn=drawn;this.npcMissing=missing;this.report();}
         }catch(error){
             if(!this.closed&&generation===this.generation)this.onStatus("Actor drawing unavailable: "+error.message);
@@ -227,5 +267,5 @@ export class NativeGameplay {
             (this.unavailable?.length?` · ${this.unavailable.length} map edges unavailable`:""));
     }
     fail(error){if(!this.closed){this.onStatus("Native scene failed: "+error.message);this.session.close();}}
-    close(){this.closed=true;this.generation++;clearInterval(this.timer);this.viewport.setActors(null);this.viewport.onDestination=()=>{};}
+    close(){this.closed=true;this.generation++;clearInterval(this.timer);this.clearNpcMenu();this.viewport.setActors(null);this.viewport.onDestination=()=>{};this.viewport.onNpc=()=>{};this.viewport.onNpcCancel=()=>{};}
 }

@@ -97,7 +97,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
             "/cache-reader.mjs","/model-codec.mjs","/object-definitions.mjs","/location-cache.mjs","/scenery-models.mjs",
             "/texture-cache.mjs","/texture-mapper.mjs","/scene-planes.mjs",
             "/login-crypto.mjs","/login-protocol.mjs","/login-pow.mjs","/native-login.mjs","/game-protocol.mjs",
-            "/player-sync.mjs","/player-models.mjs","/native-gameplay.mjs","/npc-sync.mjs","/npc-models.mjs",
+            "/player-sync.mjs","/player-models.mjs","/native-gameplay.mjs","/npc-sync.mjs","/npc-models.mjs","/npc-interactions.mjs",
         ];
         for(const path of modules){
             const response=await fetch(root+path);

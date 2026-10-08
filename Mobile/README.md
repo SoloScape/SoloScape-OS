@@ -64,11 +64,14 @@ player rendering and click-to-move. Revision-240 global player updates,
 appearance composition, classic locomotion animation, collision-owned
 movement requests, rebuilds and plane changes are decoded from the live
 game stream. The native client also decodes revision-240 NPC V6 updates,
-loads verified
-NPC cache definitions/models and renders nearby NPCs using classic idle/walk/run
-and action animation. Instanced regions, dynamic NPC transforms and specialised
+loads verified NPC cache definitions/models and renders nearby NPCs
+using classic idle/walk/run
+and action animation. Tapping an NPC opens a cache-defined action menu
+that sends native OPNPC_V2 requests. Instanced regions, dynamic NPC
+transforms and specialised
 customisation, interfaces and chat remain
-incomplete; live authenticated NPC rendering still needs browser verification. Do not ask users
+incomplete; NPC interaction packets still need live server verification.
+Do not ask users
 for credentials before trusted TLS and a reviewed native login path.
 
 ### Native NPC V6 synchronization and rendering
@@ -83,9 +86,16 @@ animation loaders. Up to 48 nearby NPCs in loaded map regions are drawn
 alongside the local player. The login status reports synchronized and
 rendered NPC counts.
 
-A real login and visual NPC inspection remain outstanding for this
-milestone. Dynamic varbit/varp-driven NPC morphs, specialised model
-customisation, skeletal sequences, effects, interaction menus and NPCs
+NPC rendering was confirmed working in a live local client on 8 October
+2026; newly implemented NPC interactions still need a live server check.
+Tap or click a rendered NPC to open its real cache actions (Talk-to,
+Trade, Attack, etc., when present); the visible-action mask is respected.
+The selected slot is encoded using the server's OPNPC1_V2 through
+OPNPC5_V2 client packets; the server handles pathing and available
+action scripts.
+Tapping ground or Cancel dismisses the menu; no action is sent for an
+NPC that despawned or changed type. Dynamic varbit/varp-driven NPC morphs,
+specialised model customisation, skeletal sequences, effects, and NPCs
 in instanced worlds are not yet supported. Missing/unsupported models
 are skipped, never replaced with fabricated geometry. Run
 `npm test` from `Mobile/` for fixture and gateway integration checks;

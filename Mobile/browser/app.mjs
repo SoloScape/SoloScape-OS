@@ -144,6 +144,35 @@ button.addEventListener("click",()=>enterWorld(false));
 levelSelector.addEventListener("change",()=>renderer?.setSceneLevel(Number(levelSelector.value)));
 const loginForm=byId("login-form"),loginButton=byId("login-submit"),disconnect=byId("login-disconnect"),loginStatus=byId("login-status");
 let loginConfig=null,gameSession=null,gameplay=null,loginBusy=false,sessionAttempt=0;
+const npcMenu=byId("npc-menu"),npcMenuTitle=byId("npc-menu-title"),npcMenuActions=byId("npc-menu-actions");
+function hideNpcMenu(){npcMenu.hidden=true;npcMenuActions.replaceChildren();}
+function showNpcMenu(info){
+    hideNpcMenu();if(!info)return;
+    npcMenuTitle.textContent=info.name;
+    if(!info.actions.length){
+        const note=document.createElement("span");note.className="npc-menu-empty";
+        note.textContent="No available interactions";npcMenuActions.append(note);
+    }
+    for(const {slot,label} of info.actions){
+        const button=document.createElement("button");button.type="button";
+        button.textContent=label;
+        button.addEventListener("click",()=>{
+            try{gameplay?.interactNpc(info.index,slot,{run:info.run});}
+            catch(error){loginStatus.textContent="NPC interaction unavailable: "+error.message;}
+        });
+        npcMenuActions.append(button);
+    }
+    npcMenu.hidden=false;
+    const world=npcMenu.parentElement,limitX=world.clientWidth-npcMenu.offsetWidth-8,
+        limitY=world.clientHeight-npcMenu.offsetHeight-8;
+    npcMenu.style.left=Math.max(8,Math.min(info.x,limitX))+"px";
+    npcMenu.style.top=Math.max(8,Math.min(info.y,limitY))+"px";
+    npcMenuActions.querySelector("button")?.focus({preventScroll:true});
+}
+byId("npc-menu-cancel").addEventListener("click",()=>gameplay?.clearNpcMenu());
+document.addEventListener("keydown",event=>{
+    if(event.key==="Escape"&&!npcMenu.hidden){event.preventDefault();gameplay?.clearNpcMenu();}
+});
 async function prepareLogin(){
     try{
         const response=await fetch("/login-config.json");
@@ -151,7 +180,7 @@ async function prepareLogin(){
         const config=await response.json();
         if(config.unavailable)throw new Error(config.message);
         loginConfig=config;loginButton.disabled=false;loginButton.textContent="Log in";
-        loginStatus.textContent="Log in to load your player and server location. Click or tap the ground to move.";
+        loginStatus.textContent="Log in to load your player and server location. Tap NPCs for actions or ground to move.";
     }catch(error){loginButton.textContent="Login unavailable";loginStatus.textContent=error.message;}
 }
 loginForm.addEventListener("submit",async event=>{
@@ -181,7 +210,7 @@ loginForm.addEventListener("submit",async event=>{
                 loginStatus.textContent=message;loginButton.disabled=false;disconnect.hidden=true;
             },
         });
-        gameplay=new NativeGameplay({cache:loginCache,viewport:renderer,session:gameSession,
+        gameplay=new NativeGameplay({cache:loginCache,viewport:renderer,session:gameSession,onNpcMenu:showNpcMenu,
             run:()=>byId("run-movement").checked,
             onStatus:message=>{if(sequence===sessionAttempt)loginStatus.textContent=message;},
             onRegion:region=>{
@@ -204,7 +233,7 @@ loginForm.addEventListener("submit",async event=>{
     }finally{credentials.password="";credentials.otp="";if(sequence===sessionAttempt)loginBusy=false;}
 });
 disconnect.addEventListener("click",()=>{
-    sessionAttempt++;gameplay?.close();gameSession?.close();gameSession=null;gameplay=null;loginBusy=false;
+    sessionAttempt++;gameplay?.close();hideNpcMenu();gameSession?.close();gameSession=null;gameplay=null;loginBusy=false;
     button.disabled=false;levelSelector.disabled=false;loading.hidden=true;
     loginButton.disabled=!loginConfig;disconnect.hidden=true;loginStatus.textContent="Disconnected";
 });
