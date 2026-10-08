@@ -58,6 +58,27 @@ If a leader dies or despawns, an active member takes over; respawning survivors
 return to their leader or the squad's multi-combat home. `::botinfo` shows a bot's
 squad size and whether it is the leader or a member.
 
+## Player-led Wilderness teams
+
+In addition to bot-only squads, lone Wilderness PK bots periodically have a 15%
+chance to ask a nearby real player `Team?` in public chat. The bot must be idle,
+within ten tiles, and in the Wilderness. Only the addressed player's public-chat
+`yes` accepts the offer; `no` rejects it and makes the bot move on with an
+extended retry cooldown. Offers expire after 30 game cycles, and bots do not
+issue overlapping requests to the same player.
+
+Once accepted, the bot follows the player and targets whoever the player is
+attacking, whoever attacks the player, or attackers threatening the bot itself.
+It cannot target its own human teammate. Attacks still obey all native PvP rules
+including single-way ownership and Wilderness combat levels. If the player logs
+out, dies, teleports out of the Wilderness or crosses south of the ditch, the
+bot stops following and resumes its normal Wilderness behaviour. This is
+independent of the random duo/trio/quad bot squads.
+
+Configure `pvp.player-team.chance=0.15` in `.data/bots.properties` (0 disables
+offers, 1 always offers when checked and an eligible player is nearby). This
+setting applies to each periodic opportunity, not to a one-time spawn roll.
+
 ## Behaviours
 
 - Four difficulty profiles vary reactions, eating, style switches, movement, specials,
