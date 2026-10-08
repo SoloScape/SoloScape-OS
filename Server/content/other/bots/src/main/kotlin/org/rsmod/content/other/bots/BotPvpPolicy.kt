@@ -65,6 +65,10 @@ internal object BotPvpPolicy {
     fun playerTeamActive(leaderInWilderness: Boolean, followerInWilderness: Boolean): Boolean =
         leaderInWilderness && followerInWilderness
 
+    /** A rejected invitation is not permission to hunt that player. */
+    fun canTargetDecliner(declined: Boolean, retaliating: Boolean): Boolean =
+        !declined || retaliating
+
     /** One uniform roll across the sizes that fit the remaining Wilderness population. */
     fun squadSize(remaining: Int, sizeRoll: Int): Int {
         require(remaining >= 2)
