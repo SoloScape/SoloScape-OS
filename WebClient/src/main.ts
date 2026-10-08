@@ -1128,6 +1128,7 @@ gameLogin.onGamePacket = (packet) => {
       }
 
       currentScene = scene;
+      mobileHud.setScene(scene);
       (window as SoloScapeDebugWindow).soloscapeScene = scene;
 
       appendLog(
