@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { fetchJs5MasterIndex } from "./js5-cache.mjs";
+import { decodeCrcVersionMasterIndex } from "./js5-master-index.mjs";
 
 function readRevision(value) {
     if (!/^\d+$/.test(String(value ?? "")) ||
@@ -18,6 +19,8 @@ try {
     const digest = createHash("sha256").update(index.container).digest("hex");
     console.log(`[cache-probe] Master index received: ${index.container.length} bytes, compression ${index.compression}, decoded size ${index.uncompressedBytes} bytes.`);
     console.log(`[cache-probe] In-memory compressed-container SHA-256: ${digest}`);
+    const metadata = decodeCrcVersionMasterIndex(index);
+    console.log(`[cache-probe] Master index interpreted as ${metadata.entries.length} CRC/version archive records (8 bytes each; checksums not yet independently validated).`);
     console.log("[cache-probe] No cache files saved. Full cache loading and mobile rendering NOT verified.");
 } catch (error) {
     console.error("[cache-probe]", error.message);

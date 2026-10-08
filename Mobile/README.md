@@ -202,10 +202,22 @@ npm run probe:cache
 
 The gateway defaults to `ws://127.0.0.1:43595/` with Origin
 `http://localhost:3001`. A successful download proves that native JS5 can
-serve **one cache metadata group** over WebSocket. It does not establish that
+serve **one cache metadata group** over WebSocket. The parser can also interpret a valid uncompressed legacy CRC/version master-index as eight-byte records (archive CRC and archive reference-table version); it does **not** validate those values against downloaded reference tables. It does not establish that
 all game assets are present, that cache contents have correct checksums, or
 that the upstream TSPS revision-241 renderer can consume the revision-240
 data. No authenticated account or login attempt is involved.
+
+### Confirmed live cache milestone
+
+On 8 October 2026, the local SoloScape server with revision `240` served the
+`255:255` JS5 master index over the WebSocket gateway. The probe reported
+**205 container bytes**, compression `0`, **200 decoded bytes** and SHA-256
+`d45568eb3b832e4794eb58dcca479b815ce93b63422ad2bafc976355c2c52f6b`.
+No cache files were saved. Interpreting the 200-byte data as legacy
+CRC/version pairs implies **25 archive index entries**; this is now supported
+by an eight-byte parser with tests, but individual reference-table checksums
+have **not** been cross-checked against those entries. Re-run
+`npm run probe:cache` to display the inferred entry count.
 
 ## Known incompatibilities / next engineering work
 

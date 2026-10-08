@@ -61,6 +61,25 @@ The `Mobile/gateway/js5-cache.mjs` implementation makes one **pre-authenticated*
 
 **Native login remains intentionally unimplemented**: rsprot uses a server RSA key, a revision-specific binary login block, ISAAC game packet ciphers, and desktop-only client settings in `Server/api/net/.../NetworkFactory.kt`. These cannot be replaced by TSPS's plaintext proprietary `LOGIN=204` message. Do not transmit account passwords through the gateway until a reviewed native encoder/decoder exists and the connection uses trusted TLS.
 
+### Live cache-group result and metadata interpretation
+
+The user completed `npm run probe:cache` on **8 October 2026**, using their
+revision-240 SoloScape Java server through the local WebSocket gateway. Native
+JS5 master-index group `255:255` returned 205 bytes of cache container,
+compression 0 and 200 bytes of uncompressed payload. SHA-256 of the in-memory
+container: `d45568eb3b832e4794eb58dcca479b815ce93b63422ad2bafc976355c2c52f6b`.
+No cache files were written. This is **verified live cache metadata transfer**
+but not a complete asset loader.
+
+In the traditional CRC/version master-index format each archive entry is
+8 bytes (CRC32 plus reference-table version). The 200-byte result is
+consistent with 25 entries. `Mobile/gateway/js5-master-index.mjs` parses
+that bounded uncompressed layout. It performs structural parsing **only**;
+no CRC comparison against reference-table groups has been implemented and
+the bytes may not be compatible with TSPS's revision-241 cache conventions.
+The next cache milestone is to download one selected archive reference
+table `255:<archive>` and cross-check its container CRC/version metadata.
+
 ## Required protocol adapter work (not implemented)
 
 1. **Choose a source-of-truth native client protocol.** Identify the exact SoloScape revision, RSA public modulus, current JS5/cache revision, ISAAC seeds, login block layout and inbound/outbound packet tables from the `rsprot` dependency and SoloScape generated files.
