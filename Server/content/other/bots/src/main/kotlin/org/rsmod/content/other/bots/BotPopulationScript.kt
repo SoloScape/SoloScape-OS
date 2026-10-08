@@ -30,7 +30,9 @@ class BotPopulationScript @Inject constructor(
                 if (population.isBot(player)) continue
                 val message = player.publicMessage ?: continue
                 if (heard.put(player, message) !== message && message.clanType == null) {
-                    social.hear(player, message.text, population.players(), clock.cycle)
+                    if (!population.hearPlayerTeamReply(player, message.text, clock.cycle)) {
+                        social.hear(player, message.text, population.players(), clock.cycle)
+                    }
                 }
             }
             heard.keys.removeIf { !it.isSlotAssigned }
