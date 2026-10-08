@@ -55,6 +55,9 @@ internal object BotPvpPolicy {
             (if (it == current) 20 else 0) - (if (it in retaliating) 40 else 0)
     }
 
+    fun engagementRange(chaseDistance: Int, retaliatingOrCommitted: Boolean): Int =
+        if (retaliatingOrCommitted) maxOf(chaseDistance, 32) else chaseDistance
+
     fun shouldPreventSkull(risk: BotPvpRiskAssignment, roll: Double): Boolean =
         roll < risk.skullPreventionChance
 
