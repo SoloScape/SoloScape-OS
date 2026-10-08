@@ -41,7 +41,7 @@ async function enterWorld(allowFallback=false){
         if(region.fallback){ x.value=String(region.mapX);y.value=String(region.mapY); }
         worldLabel.textContent=`Region ${region.mapX}, ${region.mapY}`;
         const fallbackNote=region.fallback?`Requested m${mapX}_${mapY} is absent; loaded the nearest actual terrain region m${region.mapX}_${region.mapY}. `:"";
-        status.textContent=fallbackNote+`Native world terrain: m${region.mapX}_${region.mapY} (JS5 5:${region.group}). ${region.sourceBytes.toLocaleString()} decoded bytes, ${region.containerBytes.toLocaleString()} CRC-verified container bytes. Ground geometry from real SoloScape data; provisional floor colours, no objects or players yet.`;
+        status.textContent=fallbackNote+`Native world terrain: m${region.mapX}_${region.mapY} (JS5 5:${region.group}). ${region.sourceBytes.toLocaleString()} decoded bytes, ${region.containerBytes.toLocaleString()} CRC-verified container bytes. Terrain: ${region.terrainFormat} tile opcodes, ${region.consumedBytes.toLocaleString()} consumed, ${region.trailingBytes.toLocaleString()} trailing bytes (not interpreted). Ground geometry from real SoloScape data; provisional floor colours, no objects or players yet.`;
     }catch(error){
         if(sequence===attempt){
             loading.hidden=true;showFailure(error);

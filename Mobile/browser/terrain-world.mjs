@@ -256,43 +256,92 @@ export function baseTileHeight(x,y) {
     return Math.min(60,Math.max(10,v));
 }
 
-/** Decode all 4 planes so tile opcodes stay correctly aligned; show plane 0. */
-export function decodeTerrainRegion(data,mapX,mapY) {
-    if (!(data instanceof Uint8Array) || data.length > 16*1024*1024) {
-        throw new Error("Unsafe terrain region data");
-    }
-    const heights = new Int32Array(PLANES*SIDE*SIDE);
-    const underlays = new Uint16Array(SIDE*SIDE);
-    const overlays = new Int16Array(SIDE*SIDE);
-    let at = 0;
-    const value = () => { requireBytes(data,at,2); const n=(data[at]<<8)|data[at+1]; at+=2; return n; };
-    const heightByte = () => {requireBytes(data,at,1);return data[at++];};
+/**
+ * TSPS SceneBuilder.decodeTerrain() parses 4*64*64 tiles but does NOT
+ * require the tile stream to consume every source byte. Region files can
+ * contain a suffix; do not treat that alone as a corrupt cache group.
+ *
+ * Rev 209+ clients use 16-bit opcodes/overlay IDs. Custom map archives can
+ * retain the legacy 8-bit layout; accept that layout only when it consumes
+ * the ENTIRE terrain stream, never based on a partial prefix.
+ */
+function decodeTerrainTiles(data,mapX,mapY,opcodeWidth) {
+    const heights=new Int32Array(PLANES*SIDE*SIDE);
+    const underlays=new Uint16Array(SIDE*SIDE);
+    const overlays=new Int16Array(SIDE*SIDE);
+    let at=0;
+    const nextOpcode=()=>{
+        requireBytes(data,at,opcodeWidth);
+        if(opcodeWidth===1)return data[at++];
+        const n=(data[at]<<8)|data[at+1];at+=2;return n;
+    };
+    const overlayValue=()=>{
+        if(opcodeWidth===1){
+            requireBytes(data,at,1);
+            const n=data[at++];
+            return n>127?n-256:n;
+        }
+        requireBytes(data,at,2);
+        const n=(data[at]<<8)|data[at+1];at+=2;
+        return n>32767?n-65536:n;
+    };
+    const heightByte=()=>{requireBytes(data,at,1);return data[at++];};
     for(let plane=0;plane<PLANES;plane++)for(let x=0;x<SIDE;x++)for(let y=0;y<SIDE;y++){
-        const loc = plane*SIDE*SIDE+x*SIDE+y;
+        const loc=plane*SIDE*SIDE+x*SIDE+y;
+        let ended=false;
         for(let opCount=0;opCount<64;opCount++){
-            const op=value();
+            const op=nextOpcode();
             if(op===0){
-                heights[loc]=plane===0 ? -8*baseTileHeight(mapX*64+x+932731,mapY*64+y+556238) :
+                heights[loc]=plane===0?
+                    -8*baseTileHeight(mapX*SIDE+x+932731,mapY*SIDE+y+556238):
                     heights[loc-SIDE*SIDE]-240;
+                ended=true;
                 break;
             }
             if(op===1){
                 let h=heightByte();if(h===1)h=0;
-                heights[loc]=plane===0 ? -h*8 : heights[loc-SIDE*SIDE]-h*8;
+                heights[loc]=plane===0?-h*8:heights[loc-SIDE*SIDE]-h*8;
+                ended=true;
                 break;
             }
             if(op<=49){
-                let overlay=value();if(overlay&0x8000)overlay-=65536;
+                const overlay=overlayValue();
                 if(plane===0)overlays[x*SIDE+y]=overlay;
-            } else if(op>81){
+            }else if(op>81){
                 if(plane===0)underlays[x*SIDE+y]=op-81;
             }
-            if(opCount===63)throw new Error("Malformed terrain tile with excessive opcodes");
         }
+        if(!ended)throw new Error("Malformed terrain tile with excessive opcodes");
     }
-    if(at!==data.length)throw new Error("Unexpected trailing terrain bytes");
-    return {mapX,mapY,side:SIDE,heights:heights.subarray(0,SIDE*SIDE),
-        underlays,overlays,sourceBytes:data.length};
+    return {
+        mapX,mapY,side:SIDE,heights:heights.subarray(0,SIDE*SIDE),
+        underlays,overlays,sourceBytes:data.length,consumedBytes:at,
+        trailingBytes:data.length-at,terrainFormat:opcodeWidth===2?"u16":"u8",
+    };
+}
+
+export function decodeTerrainRegion(data,mapX,mapY) {
+    if(!(data instanceof Uint8Array)||data.length===0||data.length>16*1024*1024){
+        throw new Error("Unsafe terrain region data");
+    }
+    // The documented revision-240 layout is u16. Use it whenever it
+    // consumes the whole file. Test legacy u8 only for a full-file match.
+    let modern=null,modernError=null;
+    try{
+        modern=decodeTerrainTiles(data,mapX,mapY,2);
+        if(modern.trailingBytes===0)return modern;
+    }catch(error){modernError=error;}
+    try{
+        const legacy=decodeTerrainTiles(data,mapX,mapY,1);
+        if(legacy.trailingBytes===0)return legacy;
+    }catch{
+        // A custom map might only support the modern format.
+    }
+    // TSPS SceneBuilder does not insist the decoded tile data reaches EOF.
+    // Only accept a fully completed 16-bit tile grid (already bounded and
+    // verified by native JS5 CRC). Surface the exact suffix byte count in UI.
+    if(modern)return modern;
+    throw modernError??new Error("Terrain data does not contain a complete 4-plane tile grid");
 }
 
 /** One selected unencrypted map tile group; no object/loc/XTEA download. */

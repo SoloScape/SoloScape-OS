@@ -81,7 +81,11 @@ test("terrain u16 tile decoder reads all four levels and real floor data",()=>{
     assert.equal(min,-80);
     assert.equal(max,-80);
     assert.throws(()=>decodeTerrainRegion(bytes.subarray(0,-2),50,50),/Truncated/);
-    assert.throws(()=>decodeTerrainRegion(Buffer.concat([bytes,Buffer.from([2])]),50,50),/trailing/);
+    const withSuffix=decodeTerrainRegion(Buffer.concat([bytes,Buffer.from([2])]),50,50);
+    assert.equal(withSuffix.terrainFormat,"u16");
+    assert.equal(withSuffix.trailingBytes,1);
+    assert.equal(withSuffix.consumedBytes,bytes.length);
+    assert.deepEqual(withSuffix.heights,region.heights);
 });
 
 test("OSRS base height noise is bounded and depends on world coordinates",()=>{
@@ -206,4 +210,41 @@ test("native cache service loads CRC-validated packed terrain from a fallback re
     assert.deepEqual([world.mapX,world.mapY,world.group,world.fallback],[49,50,143,true]);
     assert.equal(world.heights[0],-80);
     assert.deepEqual(fetched,["255:255","255:5","5:143"]);
+});
+
+function legacyTerrainBytes(){
+    const bytes=[];
+    for(let plane=0;plane<4;plane++)for(let x=0;x<64;x++)for(let y=0;y<64;y++){
+        if(plane===0&&x===0&&y===0)bytes.push(82);
+        bytes.push(1,10);
+    }
+    return Buffer.from(bytes);
+}
+
+test("new OSRS terrain decoder follows TSPS SceneBuilder with nonzero trailing suffix",()=>{
+    const source=terrainBytes();
+    const suffix=Buffer.from([0x12,0xa4,0x31,0xf2,0,4,9]);
+    const region=decodeTerrainRegion(Buffer.concat([source,suffix]),50,50);
+    assert.equal(region.terrainFormat,"u16");
+    assert.equal(region.sourceBytes,source.length+suffix.length);
+    assert.equal(region.consumedBytes,source.length);
+    assert.equal(region.trailingBytes,suffix.length);
+    assert.equal(region.heights[0],-80);
+    assert.equal(region.underlays[0],1);
+    assert.ok(buildTerrainMesh(region).every(Number.isFinite));
+});
+
+test("custom cache legacy terrain is selected only with exact full-length decode",()=>{
+    const source=legacyTerrainBytes();
+    const region=decodeTerrainRegion(source,50,50);
+    assert.equal(region.terrainFormat,"u8");
+    assert.equal(region.consumedBytes,source.length);
+    assert.equal(region.trailingBytes,0);
+    assert.equal(region.heights[0],-80);
+    assert.equal(region.underlays[0],1);
+});
+
+test("terrain decoder does not ignore an incomplete tile stream",()=>{
+    const invalid=Buffer.from([0,1,10,0,1,10,0,1,10]);
+    assert.throws(()=>decodeTerrainRegion(invalid,50,50),/Truncated/);
 });

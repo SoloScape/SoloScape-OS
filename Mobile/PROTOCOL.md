@@ -221,6 +221,23 @@ actually catalogued named `mX_Y` terrain region when the default
 m50_50 is missing; manual travel remains exact. No additional
 standalone probes and no fabricated region data.
 
+### Terrain tile byte-consumption compatibility
+
+The upstream pinned TSPS `SceneBuilder.decodeTerrain` loops over
+4 planes × 64 × 64 tiles and does not assert the input buffer
+is at EOF. The SoloScape native loader previously imposed that
+extra assertion and rejected a live map with `Unexpected trailing
+terrain bytes`. The decoder now accepts a **fully parsed** modern
+revision-240 (u16) tile grid with a remaining suffix, exposes
+`consumedBytes`/`trailingBytes`, and limits all reads using the
+existing 16 MiB decompression and size caps. It will also accept
+legacy u8 tile data only if that decoding consumes **the complete
+file**, to support custom RSPS caches. The client still reports
+unparsed suffix bytes and does not claim they were decoded as
+terrain objects. CRC integrity and the correctly packed file ID 0
+remain mandatory. Synthetic CI coverage includes both formats
+and adversarial truncation. **Live browser result pending.**
+
 ## Required protocol adapter work (not implemented)
 
 1. **Choose a source-of-truth native client protocol.** Identify the exact SoloScape revision, RSA public modulus, current JS5/cache revision, ISAAC seeds, login block layout and inbound/outbound packet tables from the `rsprot` dependency and SoloScape generated files.

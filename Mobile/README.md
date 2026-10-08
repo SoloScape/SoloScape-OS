@@ -65,6 +65,27 @@ setup), but does **not** speak SoloScape's native protocol and is
 not the main development entry point. The old cache diagnostics are
 available only under `http://localhost:3001/diagnostics`.
 
+### Terrain stream completeness: align with upstream SceneBuilder
+
+The first native WebGL client could retrieve map data but rejected
+some regions with `Unexpected trailing terrain bytes`. The original
+TSPS `SceneBuilder.decodeTerrain()` reads the fixed four-plane,
+64x64-tile grid without requiring the file to end immediately at
+the final tile. SoloScape's browser decoder now follows that rule
+**only after a complete, bounds-checked tile-grid decode**. It
+retains the byte count consumed and the number of unparsed trailing
+bytes in the world-status message, instead of silently discarding
+or interpreting those suffix bytes. The existing JS5 index and
+per-group CRC validation remain mandatory.
+
+The revision-240 default remains the 16-bit terrain opcode format.
+For custom archives that retain legacy 8-bit terrain encoding, the
+decoder recognises that encoding **only when it consumes the file
+exactly**; a partial legacy parse does not qualify. Truncated tiles
+or unsupported opcode streams remain errors. No fallback artwork,
+fabricated maps, new credential flows, or standalone probes were
+introduced. Live rendering still requires browser confirmation.
+
 ## Source baseline
 
 - Upstream project: `RSPSApp/tsps`, pinned as the `Mobile/tsps-upstream/` Git submodule (initialise it when cloning).
