@@ -1182,13 +1182,18 @@ public class ProxyService(
                 else -> throw IllegalStateException()
             }
         val targetRev = target.config.revision
-        val binary =
-            if (targetRev == null || targetRev == "latest_supported") {
-                // JagexNativeClientDownloader.download(nativeClientType)
-                getHistoricNativeClient("240.1", nativeClientType)
-            } else {
-                getHistoricNativeClient(targetRev, nativeClientType)
+        val nativeClientVersion =
+            when (targetRev) {
+                null, "latest_supported" -> "240.1"
+                // SoloScape's target revision is 240.2, but Lost City has no 240.2 binary.
+                // Use the same archived revision-240 client as the default native launch.
+                "240.2" -> "240.1"
+                else -> targetRev
             }
+        if (targetRev == "240.2") {
+            logger.info { "Using archived native client $nativeClientVersion for target revision $targetRev" }
+        }
+        val binary = getHistoricNativeClient(nativeClientVersion, nativeClientType)
         val extension = if (binary.extension.isNotEmpty()) ".${binary.extension}" else ""
         val stamp = System.currentTimeMillis()
         val patched = TEMP_CLIENTS_DIRECTORY.resolve("${binary.nameWithoutExtension}-$stamp$extension")
