@@ -14,7 +14,8 @@
     "probe": "node gateway/probe-cli.mjs",
     "probe:game": "node gateway/game-probe-cli.mjs",
     "probe:gateway": "node gateway/gateway-probe-cli.mjs",
-    "probe:cache": "node gateway/js5-cache-cli.mjs"
+    "probe:cache": "node gateway/js5-cache-cli.mjs",
+    "probe:cache:verify": "node gateway/js5-reference-cli.mjs"
   },
   "dependencies": {
     "ws": "8.22.0"

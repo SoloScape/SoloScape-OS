@@ -4,24 +4,28 @@ import { validateGatewayEndpoint } from "./gateway-probe.mjs";
 import { encodeJs5UrgentRequest, Js5GroupAssembler } from "./js5-group.mjs";
 
 /**
- * Download ONLY the native cache master-index group (255:255) through
- * the WebSocket gateway. The returned container stays in memory; callers
- * must not persist cache assets without verifying their licence/rights.
- * This does not interpret the master-index manifest or load 3D assets.
+ * Download one INDEX METADATA group (255:<index>, or master index 255:255)
+ * from the native JS5 server through the WebSocket gateway.
+ * This deliberately rejects arbitrary archive payload/group requests.
+ * Returned containers are in-memory only; no cache assets are persisted.
  */
-export function fetchJs5MasterIndex({
+export function fetchJs5IndexGroup({
     url = "ws://127.0.0.1:43595/",
     origin = "http://localhost:3001",
     revision,
+    index = 255,
     timeoutMs = 10000,
 } = {}) {
     validateGatewayEndpoint(url, origin);
+    if (!Number.isInteger(index) || index < 0 || index > 255) {
+        throw new RangeError("JS5 index ID must be an integer from 0 to 255");
+    }
     if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 30000) {
         throw new Error("timeoutMs must be between 100 and 30000");
     }
     const handshake = encodeJs5Handshake(revision);
-    const urgent = encodeJs5UrgentRequest(255, 255);
-    const assembler = new Js5GroupAssembler();
+    const urgent = encodeJs5UrgentRequest(255, index);
+    const assembler = new Js5GroupAssembler({ archive: 255, group: index });
 
     return new Promise((resolve, reject) => {
         const ws = new WebSocket(url, {
@@ -38,7 +42,7 @@ export function fetchJs5MasterIndex({
             if (error) reject(error);
             else resolve(group);
         };
-        const timer = setTimeout(() => finish(new Error("Cache master-index request timed out")), timeoutMs);
+        const timer = setTimeout(() => finish(new Error(`Cache index group 255:${index} request timed out`)), timeoutMs);
         ws.once("open", () => ws.send(handshake, { binary: true }, (error) => {
             if (error) finish(error);
         }));
@@ -77,4 +81,9 @@ export function fetchJs5MasterIndex({
             if (!completed) finish(new Error(`Cache stream closed early (code ${code}: ${String(reason)})`));
         });
     });
+}
+
+/** Keep existing master-index API stable for clients and smoke tests. */
+export function fetchJs5MasterIndex(options = {}) {
+    return fetchJs5IndexGroup({ ...options, index: 255 });
 }

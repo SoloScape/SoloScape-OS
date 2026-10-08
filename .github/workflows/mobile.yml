@@ -52,3 +52,5 @@ jobs:
           node --check Mobile/gateway/js5-cache.mjs
           node --check Mobile/gateway/js5-cache-cli.mjs
           node --check Mobile/gateway/js5-master-index.mjs
+          node --check Mobile/gateway/js5-reference-verify.mjs
+          node --check Mobile/gateway/js5-reference-cli.mjs

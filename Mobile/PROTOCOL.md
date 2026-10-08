@@ -80,6 +80,12 @@ the bytes may not be compatible with TSPS's revision-241 cache conventions.
 The next cache milestone is to download one selected archive reference
 table `255:<archive>` and cross-check its container CRC/version metadata.
 
+### Cross-checking one archive reference-table checksum
+
+In the [upstream OpenRune cache provider](https://github.com/OpenRune/OpenRune-Server/blob/main/or-cache/src/main/kotlin/dev/openrune/net/CacheJs5GroupProvider.kt), the master index `255:255` is the `cache.versionTable`, and archive reference-table sectors `255:<index>` are transmitted with `stripVersion = false`. The underlying [`VersionTableBuilder`](https://github.com/OpenRune/OpenRune-FileStore/blob/main/filesystem/src/main/kotlin/dev/openrune/filesystem/util/secure/VersionTableBuilder.kt) places each sector's standard CRC32 and version at offsets `5 + index * 8` in the master-index cache container. The [`CRC` implementation](https://github.com/OpenRune/OpenRune-FileStore/blob/main/filesystem/src/main/kotlin/dev/openrune/filesystem/util/secure/CRC.kt) implements standard CRC32; the reference-table sector CRC is over the complete container bytes, including the compression header, without excluding any trailing bytes.
+
+`Mobile/gateway/js5-reference-verify.mjs` validates group `255:0` (the first archive reference table) against the CRC32 stored in the freshly fetched master index. A separate `npm run probe:cache:verify` diagnostic performs the two bounded in-memory downloads and **exits with failure on mismatch**. Tests cover canonical CRC32, metadata pair layout, compressed containers, gateway forwarding, corruption, Origin rejection, and index bounds. The version field is printed but **not independently verified**. The live reference-table CRC result is **not yet known**.
+
 ## Required protocol adapter work (not implemented)
 
 1. **Choose a source-of-truth native client protocol.** Identify the exact SoloScape revision, RSA public modulus, current JS5/cache revision, ISAAC seeds, login block layout and inbound/outbound packet tables from the `rsprot` dependency and SoloScape generated files.

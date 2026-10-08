@@ -219,6 +219,34 @@ by an eight-byte parser with tests, but individual reference-table checksums
 have **not** been cross-checked against those entries. Re-run
 `npm run probe:cache` to display the inferred entry count.
 
+### Archive reference-table CRC32 integrity check
+
+The live `npm run probe:cache` output on 8 October 2026 confirmed **25**
+CRC/version metadata entries in the 200-byte master-index payload. The
+next diagnostic fetches **one reference table**, archive index `0`, group
+`255:0`, over a **second native JS5 connection through the gateway**.
+OpenRune's cache provider sends the index-255 reference-table sector without
+stripping a revision suffix, so its CRC32 is calculated over the complete
+returned container (including its header). The test compares that CRC32
+against archive 0's entry in the freshly fetched `255:255` master index.
+
+Keep the Java game server and WebSocket gateway running. From the `Mobile`
+directory in a separate PowerShell window:
+
+```powershell
+git pull --ff-only origin feature/mobile
+$env:SOLOSCAPE_NATIVE_REVISION = '240'
+npm run probe:cache:verify
+```
+
+The command prints the archive 0 CRC32, number of container bytes, and
+reference-table version from the master index. It **fails with a nonzero
+exit code** if the checksum differs, and it never saves or decompresses
+asset data. This validates a single **CRC32 integrity** relationship, not
+cryptographic authenticity, version equivalence, archive completeness,
+TSPS compatibility, native authentication, or playable mobile gameplay.
+The success of the live reference-table check is **pending**.
+
 ## Known incompatibilities / next engineering work
 
 - TSPS upstream revision **241** versus SoloScape's documented **240.2**: align supported protocol, game packets, cache ids and interface definitions.
