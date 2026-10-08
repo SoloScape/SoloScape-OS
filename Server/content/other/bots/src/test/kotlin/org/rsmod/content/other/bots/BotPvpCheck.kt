@@ -124,6 +124,16 @@ object BotPvpCheck {
 
         val distance: (Int) -> Int = { if (it == 1) 2 else 10 }
         val free: (Int) -> Int = { 0 }
+        check(BotPvpPolicy.playerTeamReply("yes") == true)
+        check(BotPvpPolicy.playerTeamReply(" YES ") == true)
+        check(BotPvpPolicy.playerTeamReply("no") == false)
+        check(BotPvpPolicy.playerTeamReply(" No ") == false)
+        check(BotPvpPolicy.playerTeamReply("maybe") == null)
+        check(BotPvpPolicy.playerTeamReply("yesterday") == null)
+        check(BotPvpPolicy.playerTeamActive(true, true))
+        check(!BotPvpPolicy.playerTeamActive(false, true))
+        check(!BotPvpPolicy.playerTeamActive(true, false))
+        check(!BotPvpPolicy.playerTeamActive(false, false))
         check(BotPvpPolicy.squadSize(2, 0) == 2)
         check(BotPvpPolicy.squadSize(3, 0) == 2)
         check(BotPvpPolicy.squadSize(3, 1) == 3)
