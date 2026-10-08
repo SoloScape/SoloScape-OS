@@ -159,7 +159,7 @@ constructor(
             }
             runClientScript(8013, tab, if (value > 0) formatted else "")
         }
-        ifSetText("${LOOT_COMPONENT}occupiedslots", bank.occupiedSpace().toString())
+        ifSetText("${LOOT_COMPONENT}occupiedslots", (invMap["inv.bank"]?.occupiedSpace() ?: 0).toString())
         ifSetText("${LOOT_COMPONENT}capacity", bankCapacity.toString())
     }
 
