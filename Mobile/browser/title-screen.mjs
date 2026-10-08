@@ -298,9 +298,11 @@ export class NativeTitleScreen{
             if(this.mode==="welcome"){
                 this.text(ctx,OSRS_TITLE_COPY.welcome,382,251,"#ffff00");this.button(ctx,302,291,OSRS_TITLE_COPY.newUser);this.button(ctx,462,291,OSRS_TITLE_COPY.existingUser);
             }else if(this.mode==="login"||this.mode==="connecting"){
-                // Reflect actual cache/authentication/map stages instead of always claiming
-                // the TCP handshake is still in progress after it has succeeded.
-                const message=this.status.textContent||"Connecting to server...";
+                // Keep the in-game title message stable during every login,
+                // authentication and world-loading phase. Internal progress and
+                // error details remain available through the status channel.
+                const message=this.mode==="connecting"?"Connecting to server...":
+                    (this.status.textContent||OSRS_TITLE_COPY.loginPrompt);
                 const words=message.split(" "),rows=[];let line="";
                 for(const word of words){const next=line?line+" "+word:word;if(line&&(this.assets.font?.measure(next)??next.length*7)>320){rows.push(line);line=word;}else line=next;}if(line)rows.push(line);
                 rows.slice(0,3).forEach((row,i)=>this.text(ctx,row,382,214+i*15,"#ffff00"));

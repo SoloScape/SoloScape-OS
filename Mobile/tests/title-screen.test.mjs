@@ -190,6 +190,21 @@ test("title form draws original cache labels and works with optional remembered/
         assert.equal(stored.size,0,"unchecking remember purges stored username");
         elements.get("title-login-help").click();
         assert.match(status.textContent,/SoloScape server/);
+        title.beginConnecting();
+        for(const phase of ["Authenticating…","Authenticated - waiting for player",
+            "Loading map terrain and scenery"]){
+            drawn.length=0;
+            status.textContent=phase;
+            title.paint();
+            assert.equal(drawn.filter(text=>text==="Connecting to server...").length,1,
+                "the title must display the same message during every phase");
+            assert.equal(drawn.includes(phase),false,"internal progress must not appear on the title");
+            assert.equal(status.textContent,phase,"the real progress signal must be preserved");
+        }
+        drawn.length=0;
+        title.showLogin("Login unsuccessful");
+        assert.ok(drawn.includes("Login unsuccessful"),
+            "returning to login still allows a visible failure message");
         title.dispose();
     }finally{
         for(const [key,value] of Object.entries(saved)){

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
 import {test} from "node:test";
 import {NativeOsrsLoadingLifecycle,GameState,LoadingRequirement} from "../browser/native-loading-lifecycle.mjs";
 import {GameStateMachine} from "../browser/tsps-runtime/game-state-GameStateMachine.mjs";
@@ -71,4 +72,11 @@ test("later server map rebuild returns from logged in to loading without reconne
     lifecycle.mapFrameReady();
     await awaitState(lifecycle,GameState.LOGGED_IN);
     lifecycle.dispose();
+});
+
+test("only the classic loading label is visible; extra map progress is hidden",()=>{
+    const html=readFileSync(new URL("../browser/index.html",import.meta.url),"utf8");
+    const css=readFileSync(new URL("../browser/world.css",import.meta.url),"utf8");
+    assert.match(html,/Loading - please wait\./);
+    assert.match(css,/\.loading\s+#loading-detail\s*\{\s*display:\s*none\s*\}/);
 });
