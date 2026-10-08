@@ -439,6 +439,50 @@
   background: linear-gradient(120deg, #5d5544, #575144 40%, #595141);
 }
 
+/* Cache archive-3 widget trees, rendered in their original pixel coordinates. */
+.cache-interface-viewport {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.cache-interface-stage {
+  position: relative;
+  transform-origin: top left;
+}
+
+.cache-widget {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+.cache-widget-sprite,
+.cache-widget-text {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.cache-widget-sprite {
+  object-fit: contain;
+}
+
+.cache-widget-items {
+  display: grid;
+  grid-template-columns: repeat(var(--item-columns), 32px);
+  grid-auto-rows: 32px;
+  column-gap: var(--item-spacing-x);
+  row-gap: var(--item-spacing-y);
+}
+
+.cache-widget-item {
+  width: 32px;
+  height: 32px;
+  box-sizing: border-box;
+}
+
 .hud-inventory-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
