@@ -43,6 +43,31 @@ function offset(raw: number, mode: number, parent: number, own: number): number 
   }
 }
 
+/**
+ * Only small sprites at the edges may be painted over the WebGL scene.
+ * A toplevel cache interface contains large, opaque gameframe backgrounds
+ * and viewport decorations: painting those as a fullscreen DOM image hides
+ * the actual world, even though the sprite is a valid cache asset.
+ *
+ * This is a safety gate until full widget layout + mobile CS2 is available.
+ */
+export function isSafeHudOverlaySprite(
+  left: number, top: number, width: number, height: number,
+  viewportWidth: number, viewportHeight: number,
+): boolean {
+  if (![left, top, width, height, viewportWidth, viewportHeight]
+    .every(Number.isFinite)) return false;
+  if (width <= 0 || height <= 0 || viewportWidth <= 0 || viewportHeight <= 0) return false;
+  // No fullscreen backgrounds, large strips or stretched panels.
+  if (width > Math.min(250, viewportWidth * 0.5) ||
+      height > Math.min(230, viewportHeight * 0.4) ||
+      width * height > viewportWidth * viewportHeight * 0.09) return false;
+  if (left + width <= 0 || top + height <= 0 ||
+      left >= viewportWidth || top >= viewportHeight) return false;
+  const edgeBand = Math.min(viewportWidth * 0.32, 340);
+  return left < edgeBand || left + width > viewportWidth - edgeBand;
+}
+
 interface WidgetNode {
   readonly element: HTMLElement;
   readonly component: CacheInterfaceComponent;
@@ -194,8 +219,14 @@ export class CacheMobileHudArt {
         parent.append(el);
         this.shells.set(widget.id, { element: el, component: widget, width: w, height: h });
 
+        const bounds = el.getBoundingClientRect();
+        const viewBounds = this.root.getBoundingClientRect();
+        const localLeft = bounds.left - viewBounds.left;
+        const localTop = bounds.top - viewBounds.top;
         if (widget.type === 5 && widget.spriteId !== null &&
-          w > 0 && h > 0 && spriteLimit < 180) {
+          spriteLimit < 180 &&
+          isSafeHudOverlaySprite(localLeft, localTop, w, h,
+            this.root.clientWidth, this.root.clientHeight)) {
           spriteLimit++;
           const image = document.createElement('img');
           image.className = 'hud-cache-art-sprite';
