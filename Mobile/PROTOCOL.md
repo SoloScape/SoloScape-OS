@@ -53,6 +53,14 @@ The local user confirmed the Java 21 SoloScape server with `game-port: 43594` an
 
 `Mobile/gateway/gateway-probe.mjs` now checks both same requests end-to-end through our native WebSocket gateway, using two independent WebSocket sessions and a fixed `Origin`. Its mock-backed integration tests verify forwarding while not leaking the session ID in the result. Live gateway probing is still pending.
 
+## Bounded JS5 master-index transport milestone
+
+Revision-240 rsprot [`Js5ClientProt.kt`](https://github.com/blurite/rsprot/blob/master/protocol/osrs-240/osrs-240-shared/src/main/kotlin/net/rsprot/protocol/common/js5/incoming/prot/Js5ClientProt.kt) declares `URGENT_REQUEST` as opcode 1, payload length 3; its [decoder](https://github.com/blurite/rsprot/blob/master/protocol/osrs-240/osrs-240-shared/src/main/kotlin/net/rsprot/protocol/common/js5/incoming/codec/UrgentRequestDecoder.kt) reads archive u8 and group u16. [`Js5Service.getMasterIndex()`](https://github.com/blurite/rsprot/blob/master/protocol/osrs-240/osrs-240-api/src/main/kotlin/net/rsprot/protocol/api/js5/Js5Service.kt) reads provider group `255:255`; `prepareJs5Buffer()` prefixes archive+group and inserts `0xFF` every 512-byte wire block as continuation.
+
+The `Mobile/gateway/js5-cache.mjs` implementation makes one **pre-authenticated** JS5 connection, requests the `255:255` master-index group (`01 ff 00 ff`), reassembles a bounded cache container and returns it **in memory only**. The CLI reports the length, compression and SHA-256, without writing cache files or decompressing/rendering them. Mock TCP↔WebSocket integration tests check segmented responses, wrong IDs, invalid continuation blocks, unsafe lengths, timeouts and Origin rejection. This is the first real *cache delivery* diagnostic but not a complete revision-240 asset loader. Live result still requires a running SoloScape server + gateway.
+
+**Native login remains intentionally unimplemented**: rsprot uses a server RSA key, a revision-specific binary login block, ISAAC game packet ciphers, and desktop-only client settings in `Server/api/net/.../NetworkFactory.kt`. These cannot be replaced by TSPS's plaintext proprietary `LOGIN=204` message. Do not transmit account passwords through the gateway until a reviewed native encoder/decoder exists and the connection uses trusted TLS.
+
 ## Required protocol adapter work (not implemented)
 
 1. **Choose a source-of-truth native client protocol.** Identify the exact SoloScape revision, RSA public modulus, current JS5/cache revision, ISAAC seeds, login block layout and inbound/outbound packet tables from the `rsprot` dependency and SoloScape generated files.

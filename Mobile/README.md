@@ -177,6 +177,36 @@ npm run probe:gateway
 
 This uses `ws://127.0.0.1:43595/` and `Origin: http://localhost:3001` by default. You can override these using `SOLOSCAPE_GATEWAY_URL` and `SOLOSCAPE_GATEWAY_ORIGIN`; the Origin must match the gateway allowlist. The probe refuses non-loopback plaintext WebSockets. It sends a full native JS5 request (15 plus revision and four random seed integers), opens a **separate connection** to send native game-init (14), verifies response 0 and the full session response, and never reveals the session ID. It does **not** send TSPS packets, passwords or a native game login block. Even when both pass, **TSPS compatibility is not yet implemented**.
 
+### In-memory revision-240 cache master-index fetch
+
+After the live JS5 and game-init handshakes passed through the gateway on
+8 October 2026, the next test is **one bounded native JS5 archive-group
+download**, not a full asset/cache distribution. The CLI requests the **cache
+master index**, archive `255`, group `255`, using rsprot's
+`URGENT_REQUEST` (opcode 1, archive byte 255, group short 255) **after**
+the 21-byte JS5 connection handshake. It reconstructs 512-byte JS5 blocks
+and their `0xFF` continuation markers, checks the cache-container header,
+applies a 2 MiB compressed-container ceiling and reports only the size,
+compression type and SHA-256 fingerprint. **No asset or cache files are
+written**. Compressed cache content is not yet decompressed or interpreted.
+
+With the **gateway still running** from the previous step, update the branch
+and run this from a second PowerShell window in `Mobile/`:
+
+```powershell
+git pull --ff-only origin feature/mobile
+npm install
+$env:SOLOSCAPE_NATIVE_REVISION = '240'
+npm run probe:cache
+```
+
+The gateway defaults to `ws://127.0.0.1:43595/` with Origin
+`http://localhost:3001`. A successful download proves that native JS5 can
+serve **one cache metadata group** over WebSocket. It does not establish that
+all game assets are present, that cache contents have correct checksums, or
+that the upstream TSPS revision-241 renderer can consume the revision-240
+data. No authenticated account or login attempt is involved.
+
 ## Known incompatibilities / next engineering work
 
 - TSPS upstream revision **241** versus SoloScape's documented **240.2**: align supported protocol, game packets, cache ids and interface definitions.

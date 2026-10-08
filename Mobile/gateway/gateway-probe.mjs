@@ -5,7 +5,7 @@ import { encodeJs5Handshake } from "./js5-probe.mjs";
 const MAX_TIMEOUT_MS = 30_000;
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "::1"]);
 
-function validateEndpoint(url, origin) {
+export function validateGatewayEndpoint(url, origin) {
     let wsUrl, originUrl;
     try {
         wsUrl = new URL(url);
@@ -28,7 +28,7 @@ function validateEndpoint(url, origin) {
 
 export function probeGateway({ url = "ws://127.0.0.1:43595/", origin = "http://localhost:3001",
     mode, revision, timeoutMs = 5000 } = {}) {
-    validateEndpoint(url, origin);
+    validateGatewayEndpoint(url, origin);
     if (!["js5", "game"].includes(mode)) {
         throw new Error("Probe mode must be js5 or game");
     }
