@@ -3,6 +3,7 @@ import type { LoadedMapSquare } from '../cache/MapSquareLoader';
 import type { SceneFloorMaterials } from '../cache/SceneMaterialLoader';
 import { paintCacheTerrainMinimap } from './CacheTerrainMinimap';
 import type { CacheGameUiAssets } from '../cache/CacheGameUiAssets';
+import { cacheSpriteCanvas, loadNamedHudSprite } from '../cache/CacheGameUiAssets';
 import { CacheBitmapFont } from './CacheBitmapFont';
 import type { Js5Client } from '../cache/Js5Client';
 import { CacheInterfaceRenderer } from './CacheInterfaceRenderer';
@@ -218,6 +219,22 @@ export class MobileHud {
     );
     this.interfaceGroupIds = new Set(assets.interfaces.availableGroupIds);
     this.cacheFont = new CacheBitmapFont(assets.bold12);
+    const compass = this.require<HTMLButtonElement>('[data-action="north"]');
+    // Name hashes are checked against archive 8, no guessed sprite ID.
+    void loadNamedHudSprite(js5, 'compass')
+      .then((frame) => {
+        if (this.cacheHudArt !== art || !frame) return;
+        const image = document.createElement('img');
+        image.className = 'hud-cache-compass';
+        image.alt = '';
+        image.src = cacheSpriteCanvas(frame, true).toDataURL('image/png');
+        compass.replaceChildren(image);
+      })
+      .catch((error: unknown) => {
+        this.options.onCacheArtStatus?.('Original cache compass unavailable: ' +
+          (error instanceof Error ? error.message : String(error)));
+      });
+    this.refreshServerUi();
     if (this.selectedTab) {
       this.renderPanelHeading(STONES.find((stone) => stone.id === this.selectedTab)?.name ??
         this.selectedTab);
@@ -235,6 +252,8 @@ export class MobileHud {
     orb.title = energy === null || energy === undefined
       ? 'Run energy unavailable' : 'Run energy ' + energy + ' / 10000';
     orb.setAttribute('aria-label', orb.title);
+    this.renderCachedOrbValue('health', this.serverUi?.skills.get(3)?.currentLevel);
+    this.renderCachedOrbValue('prayer', this.serverUi?.skills.get(5)?.currentLevel);
     this.interfaceRenderer?.refreshServerState();
     if (this.selectedTab && this.serverUi) {
       const resolved = this.resolveTabInterface(this.selectedTab);
@@ -243,6 +262,26 @@ export class MobileHud {
         this.renderCachedPanel(this.selectedTab);
       }
     }
+  }
+
+  private renderCachedOrbValue(name: 'health' | 'prayer', value: number | undefined): void {
+    const orb = this.require<HTMLElement>('.hud-orb-' + name);
+    const label = name === 'health' ? 'Hitpoints' : 'Prayer';
+    orb.setAttribute('aria-label', label +
+      (value === undefined ? ' awaiting server stat update' : ': ' + value));
+    orb.title = orb.getAttribute('aria-label') ?? label;
+    orb.replaceChildren();
+    if (value === undefined || !this.cacheFont) return;
+    const font = this.cacheFont;
+    const text = String(value);
+    const canvas = document.createElement('canvas');
+    canvas.className = 'hud-cache-orb-value';
+    canvas.width = Math.max(16, font.measure(text) + 3);
+    canvas.height = 16;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    font.draw(context, text, 1, 14, 0xffffff);
+    orb.append(canvas);
   }
 
   private renderPanelHeading(label: string): void {
