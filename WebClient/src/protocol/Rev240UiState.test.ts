@@ -100,3 +100,28 @@ test('UI state ignores unrelated game packets and rejects truncated relevant dat
   assert.throws(() => state.apply(packet('UPDATE_INV_FULL', [0])),
     /Truncated/);
 });
+
+test('IF_SETMODEL_V2, IF_SETCOLOUR, IF_SETPOSITION retain server widget data', () => {
+  const state = new Rev240UiState();
+  const id = 0x00950002;
+  // p4Alt1(42) + p4Alt1(widget id)
+  state.apply(packet('IF_SETMODEL_V2', [42, 0, 0, 0, 2, 0, 0x95, 0]));
+  assert.equal(state.widgetChanges.get(id)?.modelId, 42);
+
+  // p2Alt3(0x7c1f) and p4Alt1(widget id)
+  state.apply(packet('IF_SETCOLOUR', [0x9f, 0x7c, 2, 0, 0x95, 0]));
+  assert.equal(state.widgetChanges.get(id)?.colour, 0xf800f8);
+
+  // p2Alt2(12), p2Alt2(24), p4Alt1(widget id)
+  state.apply(packet('IF_SETPOSITION', [0, 140, 0, 152, 2, 0, 0x95, 0]));
+  assert.equal(state.widgetChanges.get(id)?.x, 12);
+  assert.equal(state.widgetChanges.get(id)?.y, 24);
+});
+
+test('new server top interface clears obsolete widget state', () => {
+  const state = new Rev240UiState();
+  state.apply(packet('IF_SETTEXT', [0, 2, 0, 0x95, 72, 105, 0]));
+  assert.equal(state.widgetChanges.size, 1);
+  state.apply(packet('IF_OPENTOP', [0xa4, 2]));
+  assert.equal(state.widgetChanges.size, 0);
+});
