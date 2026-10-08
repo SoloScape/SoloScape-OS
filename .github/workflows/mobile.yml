@@ -30,7 +30,9 @@ jobs:
         with:
           node-version: '22'
       - name: Install gateway test dependency
-        run: npm install --prefix Mobile --no-package-lock --ignore-scripts
+        run: npm install --prefix Mobile --ignore-scripts
+      - name: Audit mobile dependency security
+        run: npm audit --prefix Mobile --audit-level=high
       - name: Run integration config tests
         run: npm test --prefix Mobile
       - name: Syntax check integration scripts

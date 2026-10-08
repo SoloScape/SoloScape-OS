@@ -113,7 +113,7 @@ Set `SOLOSCAPE_GAME_TCP_PORT` to the **actual SoloScape game TCP port** from you
 | `SOLOSCAPE_GATEWAY_ALLOWED_ORIGINS` | **Required** comma-separated exact browser origins, e.g. `http://localhost:3001` |
 | `SOLOSCAPE_GATEWAY_ALLOW_LAN=1` | Explicit opt-in when binding beyond loopback |
 
-The gateway checks origin and path at upgrade, uses binary-only WebSocket frames, caps message sizes/queues, and closes failed or incompatible connections. Default HTTP transport is **not encrypted**: for a production deployment, bind on loopback behind a properly configured TLS reverse proxy and connect with `wss://`. Do not expose plaintext `ws://` to the public Internet or use it for real accounts.
+The gateway checks origin and path at upgrade, uses binary-only WebSocket frames, caps message sizes/queues, and closes failed or incompatible connections. The gateway pins a patched `ws` release (`8.22.0`) to address known 2026 denial-of-service and disclosure advisories; CI runs `npm audit --audit-level=high` along with transport integration tests. If you installed the previous version, run `npm install` again after pulling this change. Do not use `npm audit fix --force` unless you've reviewed its proposed dependency changes. Default HTTP transport is **not encrypted**: for a production deployment, bind on loopback behind a properly configured TLS reverse proxy and connect with `wss://`. Do not expose plaintext `ws://` to the public Internet or use it for real accounts.
 
 `npm test` includes a TCP echo integration test that verifies native bytes are carried intact, TSPS HELLO is rejected, and cross-origin requests fail. This does **not** validate native client gameplay, rsprot login or TSPS integration.
 
