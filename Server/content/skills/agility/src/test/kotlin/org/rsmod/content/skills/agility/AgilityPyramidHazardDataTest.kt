@@ -20,6 +20,23 @@ class AgilityPyramidHazardDataTest {
         assertTrue(
             AgilityPyramidHazardData.stoneTrapAt(CoordGrid(3045, 4700, 3)) != null,
         )
+
+        val reported =
+            listOf(
+                requireNotNull(AgilityPyramidHazardData.stoneTrapAt(CoordGrid(3355, 2841, 1))),
+                requireNotNull(AgilityPyramidHazardData.stoneTrapAt(CoordGrid(3374, 2835, 1))),
+                requireNotNull(AgilityPyramidHazardData.stoneTrapAt(CoordGrid(3368, 2849, 2))),
+            )
+        assertEquals(listOf(-1, 1, 0), reported.map { it.safeDx })
+        assertEquals(listOf(0, 0, 1), reported.map { it.safeDz })
+    }
+
+    @Test
+    fun `rolling stone chance scales from level 30 to no fail at 70`() {
+        assertEquals(75.0, AgilityPyramidHazardData.stoneSuccessChance(30))
+        assertEquals(87.5, AgilityPyramidHazardData.stoneSuccessChance(50))
+        assertEquals(100.0, AgilityPyramidHazardData.stoneSuccessChance(70))
+        assertEquals(100.0, AgilityPyramidHazardData.stoneSuccessChance(99))
     }
 
     @Test

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.rsmod.api.player.events.PlayerMovementEvent
 import org.rsmod.api.player.vars.varMoveSpeed
 import org.rsmod.api.testing.GameTestState
 import org.rsmod.api.testing.factory.entityFactory
@@ -63,6 +64,31 @@ class PlayerMovementProcessorTest {
                 assertNull(tempMoveSpeed)
             }
         }
+    }
+
+    @Test
+    fun GameTestState.`publish coords changed event after movement`() = runBasicGameTest {
+        val movement = PlayerMovementProcessor(collision, routeFactory, stepFactory, eventBus)
+        val start = CoordGrid(3200, 3200)
+        val end = start.translateX(1)
+        var observedStart: CoordGrid? = null
+        var observedEnd: CoordGrid? = null
+
+        eventBus.subscribeUnbound(PlayerMovementEvent.CoordsMovedEvent::class.java) {
+            observedStart = lastKnownCoords
+            observedEnd = player.coords
+        }
+
+        withPlayer {
+            coords = start
+            moveSpeed = MoveSpeed.Walk
+            varMoveSpeed = MoveSpeed.Walk
+            routeDestination += end
+            movement.process(this)
+        }
+
+        assertEquals(start, observedStart)
+        assertEquals(end, observedEnd)
     }
 
     @Test

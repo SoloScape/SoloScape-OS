@@ -26,12 +26,27 @@ import org.rsmod.game.hit.HitType
 import org.rsmod.map.CoordGrid
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
-import skillSuccess
 
 internal data class PyramidStoneTrap(
     val tiltVarbit: String,
+    val safeDx: Int?,
+    val safeDz: Int?,
     val tiles: Set<CoordGrid>,
-)
+) {
+    fun isForward(stepDx: Int, stepDz: Int): Boolean =
+        when {
+            safeDx == null || safeDz == null -> true
+            safeDx != 0 -> stepDx == safeDx
+            else -> stepDz == safeDz
+        }
+
+    fun traversalDirection(stepDx: Int, stepDz: Int): Pair<Int, Int> =
+        if (safeDx != null && safeDz != null) {
+            safeDx to safeDz
+        } else {
+            stepDx to stepDz
+        }
+}
 
 internal enum class PyramidBlockAxis {
     East,
@@ -72,6 +87,8 @@ internal object AgilityPyramidHazardData {
         listOf(
             trap(
                 "varbit.agility_pyramid_tilt_1",
+                -1,
+                0,
                 point(3354, 2841, 1),
                 point(3355, 2841, 1),
                 point(3354, 2842, 1),
@@ -79,6 +96,8 @@ internal object AgilityPyramidHazardData {
             ),
             trap(
                 "varbit.agility_pyramid_tilt_2",
+                1,
+                0,
                 point(3374, 2835, 1),
                 point(3375, 2835, 1),
                 point(3374, 2836, 1),
@@ -86,6 +105,8 @@ internal object AgilityPyramidHazardData {
             ),
             trap(
                 "varbit.agility_pyramid_tilt_3",
+                0,
+                1,
                 point(3368, 2849, 2),
                 point(3369, 2849, 2),
                 point(3368, 2850, 2),
@@ -93,6 +114,8 @@ internal object AgilityPyramidHazardData {
             ),
             trap(
                 "varbit.agility_pyramid_tilt_4",
+                null,
+                null,
                 point(3048, 4699, 2),
                 point(3049, 4699, 2),
                 point(3048, 4700, 2),
@@ -100,6 +123,8 @@ internal object AgilityPyramidHazardData {
             ),
             trap(
                 "varbit.agility_pyramid_tilt_5",
+                null,
+                null,
                 point(3044, 4699, 3),
                 point(3045, 4699, 3),
                 point(3044, 4700, 3),
@@ -124,8 +149,26 @@ internal object AgilityPyramidHazardData {
     fun stoneTrapAt(coords: CoordGrid): PyramidStoneTrap? =
         stoneTraps.firstOrNull { coords in it.tiles }
 
-    private fun trap(tiltVarbit: String, vararg tiles: CoordGrid) =
-        PyramidStoneTrap(tiltVarbit, tiles.toSet())
+    fun stoneSuccessChance(level: Int): Double =
+        when {
+            level <= STONE_BASE_LEVEL -> STONE_BASE_CHANCE
+            level >= STONE_NO_FAIL_LEVEL -> 100.0
+            else ->
+                STONE_BASE_CHANCE +
+                    (level - STONE_BASE_LEVEL) *
+                        ((100.0 - STONE_BASE_CHANCE) / (STONE_NO_FAIL_LEVEL - STONE_BASE_LEVEL))
+        }
+
+    private fun trap(
+        tiltVarbit: String,
+        safeDx: Int?,
+        safeDz: Int?,
+        vararg tiles: CoordGrid,
+    ) = PyramidStoneTrap(tiltVarbit, safeDx, safeDz, tiles.toSet())
+
+    private const val STONE_BASE_LEVEL = 30
+    private const val STONE_NO_FAIL_LEVEL = 70
+    private const val STONE_BASE_CHANCE = 75.0
 
     private fun point(x: Int, z: Int, level: Int) = CoordGrid(x, z, level)
 }
@@ -213,13 +256,15 @@ constructor(
     }
 
     private suspend fun ProtectedAccess.rollStone(args: StoneRollArgs) {
-        val dx = (args.trigger.x - args.previous.x).sign
-        val dz = (args.trigger.z - args.previous.z).sign
-        if (dx == 0 && dz == 0) {
+        val stepDx = (args.trigger.x - args.previous.x).sign
+        val stepDz = (args.trigger.z - args.previous.z).sign
+        if (stepDx == 0 && stepDz == 0) {
             return
         }
 
         val trap = AgilityPyramidHazardData.stoneTrapAt(args.trigger) ?: return
+        val (dx, dz) = trap.traversalDirection(stepDx, stepDz)
+        val forward = trap.isForward(stepDx, stepDz)
         val exit =
             CoordGrid(
                 args.trigger.x + dx * STONE_ROLL_DISTANCE,
@@ -233,36 +278,52 @@ constructor(
         faceSquare(exit)
         VarPlayerIntMapSetter.set(player, trap.tiltVarbit, 1)
 
-        val failed =
-            player.agilityLvl < NO_FAIL_LEVEL &&
-                !skillSuccess(STONE_SUCCESS_LOW, STONE_SUCCESS_HIGH, player.agilityLvl)
-        if (failed) {
-            anim(STONE_FAIL_SEQ)
-            delay(1)
-            VarPlayerIntMapSetter.set(player, trap.tiltVarbit, 0)
-            telejump(AgilityPyramidObstacleData.dropOneLayer(args.trigger), TeleportType.Exempt)
-            resetAnim()
-            queueHit(delay = 0, type = HitType.Typeless, damage = STONE_FAIL_DAMAGE)
-            mes("The stone block throws you down to the level below.")
-            return
-        }
+        try {
+            val successChance = AgilityPyramidHazardData.stoneSuccessChance(player.agilityLvl)
+            val failed = !forward || random.randomDouble() * 100.0 >= successChance
+            if (failed) {
+                anim(STONE_FAIL_SEQ)
+                exactMove(
+                    args.trigger,
+                    exit,
+                    0,
+                    STONE_ROLL_TICKS * CLIENT_CYCLES_PER_TICK,
+                    facing(args.trigger, exit),
+                    TeleportType.Exempt,
+                )
+                delay(STONE_ROLL_TICKS)
+                telejump(
+                    AgilityPyramidObstacleData.dropOneLayer(exit),
+                    TeleportType.Exempt,
+                )
+                resetAnim()
+                queueHit(
+                    delay = 0,
+                    type = HitType.Typeless,
+                    damage = if (forward) STONE_FAIL_DAMAGE else STONE_REVERSE_DAMAGE,
+                )
+                mes("The stone block throws you down to the level below.")
+                return
+            }
 
-        anim(STONE_SUCCESS_SEQ)
-        exactMove(
-            args.trigger,
-            exit,
-            0,
-            STONE_ROLL_TICKS * CLIENT_CYCLES_PER_TICK,
-            facing(args.trigger, exit),
-            TeleportType.Exempt,
-        )
-        delay(STONE_ROLL_TICKS)
-        VarPlayerIntMapSetter.set(player, trap.tiltVarbit, 0)
-        if (coords != exit) {
-            teleport(exit, TeleportType.Exempt)
+            anim(STONE_SUCCESS_SEQ)
+            exactMove(
+                args.trigger,
+                exit,
+                0,
+                STONE_ROLL_TICKS * CLIENT_CYCLES_PER_TICK,
+                facing(args.trigger, exit),
+                TeleportType.Exempt,
+            )
+            delay(STONE_ROLL_TICKS)
+            if (coords != exit) {
+                teleport(exit, TeleportType.Exempt)
+            }
+            resetAnim()
+            statAdvance(STAT_AGILITY, STONE_XP * xpMods.get(player, STAT_AGILITY))
+        } finally {
+            VarPlayerIntMapSetter.set(player, trap.tiltVarbit, 0)
         }
-        resetAnim()
-        statAdvance(STAT_AGILITY, STONE_XP * xpMods.get(player, STAT_AGILITY))
     }
 
     private fun tickBlock(npc: Npc, blocksById: Map<Int, PyramidBlockSpec>) {
@@ -332,26 +393,24 @@ constructor(
         const val BLOCK_PUSH_QUEUE = "queue.agility_pyramid_block_push"
         const val BLOCK_TIMER = "timer.agility_pyramid_block"
 
-        const val NO_FAIL_LEVEL = 75
         const val STAT_AGILITY = "stat.agility"
         const val CLIENT_CYCLES_PER_TICK = 30
 
         const val STONE_XP = 12.0
-        const val STONE_SUCCESS_LOW = 168
-        const val STONE_SUCCESS_HIGH = 320
         const val STONE_FAIL_DAMAGE = 6
+        const val STONE_REVERSE_DAMAGE = 1
         const val STONE_ROLL_DISTANCE = 2
         const val STONE_ROLL_TICKS = 2
         const val STONE_SUCCESS_SEQ = "seq.agilityarena_dive_player"
-        const val STONE_FAIL_SEQ = "seq.agilityarena_land_player"
+        const val STONE_FAIL_SEQ = "seq.agility_pyramid_tilt_fall"
 
-        const val BLOCK_PUSH_DAMAGE = 8
+        const val BLOCK_PUSH_DAMAGE = 6
         const val BLOCK_PUSH_SEQ = "seq.agility_pyramid_block_push_2"
         const val BLOCK_PUSH_COOLDOWN = 4
-        const val BLOCK_CYCLE_TICKS = 16
+        const val BLOCK_CYCLE_TICKS = 19
         const val BLOCK_EXTEND_PHASE = 0
         const val BLOCK_SECOND_PUSH_CHECK = 1
-        const val BLOCK_RETRACT_PHASE = 3
+        const val BLOCK_RETRACT_PHASE = 6
 
         fun facing(from: CoordGrid, to: CoordGrid): Int {
             val dx = to.x - from.x
