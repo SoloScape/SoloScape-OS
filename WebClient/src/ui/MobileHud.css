@@ -75,6 +75,20 @@
   filter: drop-shadow(1px 2px 0 #0c0b0b);
 }
 
+/* Original archive-8 sprite frames preserve pixel edges when scaled. */
+#mobile-hud .hud-stone img.cache-hud-icon {
+  display: block;
+  width: 86%;
+  height: 86%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+#mobile-hud .hud-panel-title canvas {
+  display: block;
+  image-rendering: pixelated;
+}
+
 #mobile-hud .hud-stone:active {
   box-shadow: inset 2px 2px 4px #1c160e;
   background: #3d3528;
