@@ -1,4 +1,7 @@
-/* OSRS Mobile (November 2024) game-only HUD. Login/title remain 765 x 503. */
+/*
+ * Layout and accessible input only. All OSRS appearance comes from decoded
+ * JS5 cache sprites, cache widgets and bitmap fonts; no handmade UI art.
+ */
 .viewport.in-game {
   width: 100vw;
   height: 100dvh;
@@ -12,30 +15,20 @@
 #mobile-hud {
   --stone: clamp(31px, 7.5cqh, 42px);
   --map: clamp(105px, 29cqh, 155px);
-  --metal: #494438;
-  --edge: #12100d;
-  --gold: #e6b761;
   position: absolute;
   inset: 0;
   z-index: 4;
   overflow: hidden;
   pointer-events: none;
-  color: #f2e1b0;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(10px, 2.35cqh, 13px);
-  text-shadow: 1px 1px 1px #000;
   user-select: none;
   -webkit-user-select: none;
 }
 
 #mobile-hud[hidden],
-#mobile-hud [hidden] {
-  display: none !important;
-}
+#mobile-hud [hidden] { display: none !important; }
 
 #mobile-hud button,
 #mobile-hud input {
-  font: inherit;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
@@ -45,60 +38,36 @@
   cursor: pointer;
 }
 
-#mobile-hud button:focus-visible,
-#mobile-hud input:focus-visible {
-  outline: 2px solid #f5d379;
-  outline-offset: 2px;
+#mobile-hud .hud-stone,
+#mobile-hud .hud-hitbox,
+#mobile-hud .hud-profile,
+#mobile-hud .hud-map-frame,
+#mobile-hud .hud-orb {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  background-image: none;
+  padding: 0;
+  color: transparent;
+  text-shadow: none;
 }
 
 #mobile-hud .hud-stone {
   position: relative;
-  display: grid;
-  place-items: center;
+  display: block;
   width: var(--stone);
   height: var(--stone);
   flex: 0 0 auto;
-  padding: 6px;
-  border: 2px solid #16130e;
-  border-radius: 8px;
-  box-shadow: inset 2px 2px 1px #858076, inset -2px -2px 2px #29231c,
-    0 1px 2px #000;
-  background: linear-gradient(135deg, #665e50, #3b382f 48%, #524b3e);
-  color: #d6c5a0;
-  transition: filter 90ms;
 }
 
-#mobile-hud .hud-stone svg {
-  display: block;
-  width: 86%;
-  height: 86%;
-  filter: drop-shadow(1px 2px 0 #0c0b0b);
-}
-
-/* Original archive-8 sprite frames preserve pixel edges when scaled. */
-#mobile-hud .hud-stone img.cache-hud-icon {
-  display: block;
-  width: 86%;
-  height: 86%;
-  object-fit: contain;
-  image-rendering: pixelated;
-}
-
-#mobile-hud .hud-panel-title canvas {
-  display: block;
-  image-rendering: pixelated;
-}
-
-#mobile-hud .hud-stone:active {
-  box-shadow: inset 2px 2px 4px #1c160e;
-  background: #3d3528;
-}
-
-#mobile-hud .hud-stone.is-selected,
-#mobile-hud .hud-stone.is-active {
-  color: #ffdb70;
-  border-color: #a88843;
-  background: linear-gradient(135deg, #79674a, #544327);
+#mobile-hud button:focus-visible,
+#mobile-hud input:focus-visible,
+#mobile-hud select:focus-visible {
+  outline: 2px solid Highlight;
+  outline-offset: 2px;
 }
 
 .hud-top-left {
@@ -112,8 +81,6 @@
 #mobile-hud .hud-logout {
   width: clamp(35px, 8cqh, 46px);
   height: clamp(27px, 6cqh, 35px);
-  border-radius: 5px;
-  color: #ca8e6c;
 }
 
 .hud-chat {
@@ -122,13 +89,11 @@
   width: 100%;
   max-height: clamp(34px, 13cqh, 82px);
   overflow: hidden;
-  font-family: Georgia, serif;
-  font-size: clamp(10px, 2.5cqh, 13px);
-  text-shadow: 1px 1px 2px #000, -1px -1px 2px #000;
+  color: CanvasText;
+  font: 12px system-ui, sans-serif;
 }
 
 .hud-chat-line { margin: 3px 0; }
-.hud-chat-system { color: #f9b73e; }
 
 .hud-chat-controls {
   position: absolute;
@@ -142,7 +107,6 @@
 #mobile-hud .hud-chat-controls .hud-stone {
   width: clamp(27px, 6cqh, 34px);
   height: clamp(27px, 6cqh, 34px);
-  padding: 5px;
 }
 
 .hud-chat-form {
@@ -153,25 +117,25 @@
   width: min(35cqw, 245px);
   height: 32px;
   pointer-events: auto;
-  border: 2px solid #181511;
-  background: #473f31;
+  color: CanvasText;
+  background: Canvas;
+  font: 12px system-ui, sans-serif;
 }
 
 .hud-chat-form input {
   width: 100%;
   min-width: 0;
   padding: 4px 6px;
-  color: #f2dca0;
+  color: inherit;
   border: 0;
-  background: #29251c;
+  background: transparent;
 }
 
 .hud-chat-form button {
   width: 28px;
-  color: #e9ce8f;
+  color: inherit;
   border: 0;
-  border-left: 1px solid #777065;
-  background: #514736;
+  background: transparent;
 }
 
 .hud-chat-notice {
@@ -179,44 +143,8 @@
   top: 37px;
   left: 0;
   width: min(65cqw, 350px);
-  color: #ffd071;
   pointer-events: none;
-}
-
-.hud-hotkey-rail {
-  position: absolute;
-  left: max(9px, env(safe-area-inset-left));
-  top: clamp(148px, 36cqh, 210px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-}
-
-.hud-hotkeys {
-  display: flex;
-  flex-direction: column;
-  gap: clamp(2px, .7cqh, 5px);
-  padding: 3px;
-  border-radius: 8px;
-  background: rgb(18 16 12 / 45%);
-}
-
-#mobile-hud .hud-hotkey {
-  border-radius: 50%;
-  color: #dbbc73;
-  background: radial-gradient(circle at 35% 25%, #767064, #423d33 64%, #28231a);
-}
-
-#mobile-hud .hud-profile {
-  padding: 2px 6px;
-  max-width: 56px;
-  font-size: 10px;
-  color: #f0c56d;
-  border: 1px solid #31291f;
-  border-radius: 4px;
-  background: #39332c;
-  box-shadow: inset 1px 1px #91806a;
+  font: 12px system-ui, sans-serif;
 }
 
 .hud-map-cluster {
@@ -234,21 +162,7 @@
   width: var(--map);
   height: var(--map);
   overflow: hidden;
-  border: clamp(4px, .9cqh, 6px) solid #30271c;
   border-radius: 50%;
-  padding: 0;
-  background: #586d4f;
-  box-shadow: 0 0 0 2px #9a8262, 0 0 0 4px #100e0b,
-    inset 0 0 12px #14170e;
-}
-
-.hud-map-frame::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: 50%;
-  box-shadow: inset 0 0 12px 3px rgb(0 0 0 / 45%);
 }
 
 #hud-minimap {
@@ -256,19 +170,6 @@
   width: 100%;
   height: 100%;
   image-rendering: pixelated;
-}
-
-.hud-player-marker {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 6px;
-  height: 6px;
-  transform: translate(-50%, -50%);
-  border: 1px solid #3a1e0d;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 0 0 1px #fff;
 }
 
 .hud-orbs {
@@ -281,46 +182,17 @@
 }
 
 .hud-orb {
-  display: flex;
-  align-items: center;
-  gap: 1px;
   width: calc(var(--stone) + 5px);
   height: clamp(21px, 5.25cqh, 30px);
-  padding: 2px 3px;
-  border: 2px solid #241b17;
-  border-radius: 16px 10px 10px 16px;
-  background: linear-gradient(90deg, #504c43, #797366 40%, #3c3a33);
-  box-shadow: inset 1px 1px 1px #a09a89, 0 1px 2px #000;
-  font: bold clamp(10px, 2.3cqh, 13px) Georgia, serif;
-  color: #c9f35f;
+  pointer-events: none;
 }
-
-.hud-orb svg {
-  width: clamp(17px, 4cqh, 24px);
-  height: clamp(17px, 4cqh, 24px);
-  border: 2px solid #261d1b;
-  border-radius: 50%;
-  padding: 3px;
-  background: radial-gradient(circle at 40% 30%, #7a7774, #2b2925);
-  filter: drop-shadow(0 1px 1px #111);
-}
-
-.hud-orb-xp { color: #dfbe72; }
-.hud-orb-health svg { color: #d63320; }
-.hud-orb-prayer svg { color: #cfdcf5; }
-.hud-orb-run svg { color: #dbbb35; }
-.hud-orb-special svg { color: #74bacc; }
-.hud-orb-run.is-active { border-color: #a68c30; }
 
 #mobile-hud .hud-compass {
   position: absolute;
-  z-index: 1;
   top: 0;
   right: calc(var(--map) - 18px);
   width: clamp(27px, 6.5cqh, 37px);
   height: clamp(27px, 6.5cqh, 37px);
-  border-radius: 50%;
-  color: #e6c9a0;
 }
 
 #mobile-hud .hud-globe {
@@ -329,8 +201,6 @@
   right: 0;
   width: clamp(26px, 6.4cqh, 36px);
   height: clamp(26px, 6.4cqh, 36px);
-  border-radius: 50%;
-  color: #7ed0da;
 }
 
 #mobile-hud .hud-zoom {
@@ -338,15 +208,9 @@
   top: calc(var(--map) - 16px);
   width: 20px;
   height: 20px;
-  border-radius: 50%;
-  padding: 3px;
 }
-
 #mobile-hud .hud-zoom-in { right: calc(var(--map) - 17px); }
 #mobile-hud .hud-zoom-out { right: calc(var(--map) - 40px); }
-#mobile-hud .hud-zoom-in svg { transform: rotate(45deg); }
-#mobile-hud .hud-zoom-out svg { transform: rotate(45deg) scale(.7); }
-
 .hud-map-collapsed .hud-map-frame { visibility: hidden; }
 .hud-map-collapsed .hud-orbs { transform: translateX(calc(var(--map) - 14px)); }
 .hud-map-collapsed .hud-zoom { visibility: hidden; }
@@ -358,11 +222,6 @@
   display: flex;
   align-items: flex-start;
   gap: 2px;
-  border: 2px solid #2c251b;
-  border-radius: 6px;
-  padding: 2px;
-  background: linear-gradient(90deg, #3e382c, #2d2a23);
-  box-shadow: inset 1px 1px 2px #8b7d68, 0 0 2px 1px #0f0d0a;
 }
 
 .hud-stones-primary,
@@ -375,8 +234,6 @@
 #mobile-hud .hud-side-stones .hud-stone {
   width: var(--stone);
   height: clamp(29px, 6.95cqh, 40px);
-  border-radius: 6px;
-  padding: 6px;
 }
 
 #mobile-hud .hud-collapse {
@@ -385,11 +242,7 @@
   right: 0;
   width: calc(var(--stone) * .9);
   height: 23px;
-  padding: 3px;
-  color: #e5c37a;
 }
-
-.hud-stones-collapsed .hud-collapse svg { transform: rotate(180deg); }
 
 .hud-panel {
   position: absolute;
@@ -398,10 +251,8 @@
   width: clamp(175px, 27cqw, 260px);
   max-height: min(62cqh, 325px);
   pointer-events: auto;
-  border: 3px ridge #897452;
-  box-shadow: 0 0 0 2px #19140d, inset 1px 1px 4px #a39987, 3px 3px 3px #000;
-  background: #4b4333;
-  color: #e9d6aa;
+  color: CanvasText;
+  font: 12px system-ui, sans-serif;
 }
 
 .hud-stones-collapsed .hud-panel {
@@ -415,10 +266,6 @@
   min-height: 29px;
   gap: 4px;
   padding: 3px 30px 3px 6px;
-  border-bottom: 2px solid #241d14;
-  background: linear-gradient(#655943, #3d3429);
-  color: var(--gold);
-  font: bold clamp(12px, 2.6cqh, 15px) Georgia, serif;
 }
 
 #mobile-hud .hud-panel-title .hud-stone {
@@ -427,19 +274,17 @@
   top: 2px;
   width: 24px;
   height: 24px;
-  padding: 4px;
 }
+
+#mobile-hud .hud-panel-title canvas { display: block; image-rendering: pixelated; }
 
 .hud-panel-body {
   max-height: min(54cqh, 289px);
   overflow: auto;
   overscroll-behavior: contain;
   padding: 6px;
-  border: 3px solid #393326;
-  background: linear-gradient(120deg, #5d5544, #575144 40%, #595141);
 }
 
-/* Cache archive-3 widget trees, rendered in their original pixel coordinates. */
 .cache-interface-viewport {
   position: relative;
   width: 100%;
@@ -465,9 +310,7 @@
   image-rendering: pixelated;
 }
 
-.cache-widget-sprite {
-  object-fit: contain;
-}
+.cache-widget-sprite { object-fit: contain; }
 
 .cache-widget-items {
   display: grid;
@@ -492,12 +335,7 @@
   gap: 5px;
 }
 
-#mobile-hud .hud-popout-button {
-  width: 31px;
-  height: 31px;
-  color: #dcb65f;
-  border-radius: 50%;
-}
+#mobile-hud .hud-popout-button { width: 31px; height: 31px; }
 
 .hud-popout-content {
   display: flex;
@@ -505,20 +343,14 @@
   gap: 3px;
   min-width: 150px;
   padding: 7px;
-  border: 2px ridge #998561;
-  background: #433e32;
-  box-shadow: 2px 2px 3px #090807;
-  color: #f0d297;
+  font: 12px system-ui, sans-serif;
 }
-
-.hud-popout-content small { color: #d9c39d; }
 .hud-popout-content.is-full { min-width: 240px; min-height: 95px; }
 
 @media (orientation: portrait) {
   #mobile-hud { --stone: clamp(28px, 5vw, 36px); --map: clamp(94px, 24vw, 132px); }
   .hud-top-left { width: 42cqw; }
   .hud-chat-controls { top: 86px; }
-  .hud-hotkey-rail { top: 28cqh; }
   .hud-side-stones, .hud-panel { top: 23cqh; }
   .hud-panel { width: 38cqw; }
 }
@@ -527,71 +359,44 @@
   #mobile-hud { --stone: 28px; --map: 94px; }
   .hud-side-stones, .hud-panel { top: 112px; }
   #mobile-hud .hud-side-stones .hud-stone { height: 25px; }
-  .hud-hotkey-rail { top: 95px; }
   .hud-chat-controls { top: 75px; }
 }
 
-/* Revision-240 authoritative server values beneath the original cache widget stage. */
 .hud-live-skills {
   display: flex;
   flex-wrap: wrap;
   gap: 3px;
   margin-top: 6px;
-  padding-top: 4px;
-  border-top: 1px solid #2c2519;
 }
-.hud-live-skill {
-  flex: 1 1 80px;
-  padding: 2px 3px;
-  color: #e9d6a7;
-  font-size: 10px;
-}
-.hud-cache-unverified {
-  display: block;
-  color: #e1b45e;
-  font-size: 10px;
-}
-.hud-server-interface-select {
-  display: block;
-  width: 100%;
-  margin: 6px 0;
-  background: #29251d;
-  color: #f2db9d;
-}
+.hud-live-skill { flex: 1 1 80px; padding: 2px 3px; }
+
+.hud-cache-unverified { display: block; }
+.hud-server-interface-select { display: block; width: 100%; margin: 6px 0; }
+
 .cache-widget-item {
   display: flex;
   align-items: end;
   justify-content: flex-end;
   font-size: 9px;
-  font-weight: bold;
-  color: #f9d77c;
-  text-shadow: 1px 1px #000;
 }
 
-/*
- * Cache-based mobile art must never replace or obscure the live 3D viewport.
- * The artwork layer only paints bounded, edge-aligned sprite widgets.
- * Keep the original interactive controls fully visible: sprite loading alone
- * cannot prove a one-to-one control match (mobile CS2 is not implemented).
- */
 #mobile-hud .hud-cache-art {
   position: absolute;
   inset: 0;
   z-index: 5;
-  background: transparent;
   overflow: hidden;
   pointer-events: none;
 }
-#mobile-hud .hud-cache-art-stage {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: transparent;
-}
+
+#mobile-hud .hud-cache-art-stage,
 #mobile-hud .hud-cache-art-widget {
+  position: absolute;
   pointer-events: none;
   background: transparent;
 }
+
+#mobile-hud .hud-cache-art-stage { inset: 0; }
+
 #mobile-hud .hud-cache-art-sprite {
   display: block;
   width: 100%;
@@ -600,16 +405,12 @@
   image-rendering: pixelated;
   pointer-events: none;
 }
-/* Accessible click targets, buttons and the minimap stay above decorative art. */
-#mobile-hud .hud-hotkey-rail,
+
 #mobile-hud .hud-map-cluster,
 #mobile-hud .hud-side-stones,
 #mobile-hud .hud-chat-controls,
 #mobile-hud .hud-popout,
 #mobile-hud .hud-top-left,
-#mobile-hud .hud-panel {
-  z-index: 6;
-}
-#mobile-hud .hud-panel {
-  z-index: 8;
-}
+#mobile-hud .hud-panel { z-index: 6; }
+
+#mobile-hud .hud-panel { z-index: 8; }
