@@ -18,6 +18,7 @@ export class CacheInterfaceRenderer {
   private readonly spritePromises = new Map<number, Promise<string | null>>();
   private readonly fontPromises = new Map<number, Promise<CacheBitmapFont>>();
   private readonly defaultFont: CacheBitmapFont;
+  private observer: ResizeObserver | null = null;
   private generation = 0;
 
   constructor(
@@ -30,10 +31,13 @@ export class CacheInterfaceRenderer {
 
   cancel(): void {
     this.generation++;
+    this.observer?.disconnect();
+    this.observer = null;
   }
 
   async show(groupId: number, host: HTMLElement): Promise<void> {
-    const generation = ++this.generation;
+    this.cancel();
+    const generation = this.generation;
     host.replaceChildren();
     host.textContent = 'Loading cache interface ' + groupId + '...';
     try {
@@ -186,6 +190,7 @@ export class CacheInterfaceRenderer {
       viewport.style.minHeight = Math.ceil(baseHeight * scale) + 'px';
     };
     const observer = new ResizeObserver(resize);
+    this.observer = observer;
     observer.observe(viewport);
     resize();
   }
