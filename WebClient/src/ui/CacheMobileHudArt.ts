@@ -232,6 +232,19 @@ export class CacheMobileHudArt {
           image.className = 'hud-cache-art-sprite';
           image.alt = '';
           image.decoding = 'async';
+          // Cache sprites can be displaced relative to the old HTML hitbox
+          // layout. Consume pointer input over visible HUD art so tapping
+          // an icon never falls through into MOVE_GAMECLICK/world movement.
+          // We cannot dispatch a tab action without an authenticated widget
+          // event mapping / CS2 opcode, so do not guess a handler here.
+          image.addEventListener('pointerdown', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          });
+          image.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          });
           if (widget.spriteFlipH || widget.spriteFlipV) {
             image.style.transform = [
               widget.spriteFlipH ? 'scaleX(-1)' : '',
