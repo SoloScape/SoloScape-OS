@@ -2,6 +2,7 @@
 import { NativeJs5Cache } from "./native-js5.mjs";
 import { loadNativeTerrain } from "./terrain-world.mjs";
 import { NativeTerrainViewport } from "./world-webgl.mjs";
+import { loadFloorMaterials } from "./floor-materials.mjs";
 
 const byId=id=>document.getElementById(id);
 const details=byId("loading-detail"),loading=byId("loading"),status=byId("map-status");
@@ -34,6 +35,15 @@ async function enterWorld(allowFallback=false){
         if(!renderer)renderer=new NativeTerrainViewport(byId("world-canvas"));
         const region=await loadNativeTerrain(cache,mapX,mapY,{allowFallback});
         if(sequence!==attempt)return;
+        let floorNote;
+        try{
+            const floors=await loadFloorMaterials(cache,region);
+            region.floorMaterials=floors;
+            floorNote=`Cache floor colours: ${floors.loadedUnderlays}/${floors.selectedUnderlays} underlays, ${floors.loadedOverlays}/${floors.selectedOverlays} overlays. Flat RGB only; textures and blended lighting not yet implemented.`;
+        }catch(floorError){
+            floorNote="Floor configuration unavailable ("+floorError.message+"); using temporary tints.";
+        }
+        if(sequence!==attempt)return;
         renderer.setTerrain(region);
         loading.hidden=true;
         network.textContent="Verified SoloScape cache online";
@@ -41,7 +51,7 @@ async function enterWorld(allowFallback=false){
         if(region.fallback){ x.value=String(region.mapX);y.value=String(region.mapY); }
         worldLabel.textContent=`Region ${region.mapX}, ${region.mapY}`;
         const fallbackNote=region.fallback?`Requested m${mapX}_${mapY} is absent; loaded the nearest actual terrain region m${region.mapX}_${region.mapY}. `:"";
-        status.textContent=fallbackNote+`Native world terrain: m${region.mapX}_${region.mapY} (JS5 5:${region.group}). ${region.sourceBytes.toLocaleString()} decoded bytes, ${region.containerBytes.toLocaleString()} CRC-verified container bytes. Terrain: ${region.terrainFormat} tile opcodes, ${region.consumedBytes.toLocaleString()} consumed, ${region.trailingBytes.toLocaleString()} trailing bytes (not interpreted). Ground geometry from real SoloScape data; provisional floor colours, no objects or players yet.`;
+        status.textContent=fallbackNote+`Native world terrain: m${region.mapX}_${region.mapY} (JS5 5:${region.group}). ${region.sourceBytes.toLocaleString()} decoded bytes, ${region.containerBytes.toLocaleString()} CRC-verified container bytes. Terrain: ${region.terrainFormat} tile opcodes, ${region.consumedBytes.toLocaleString()} consumed, ${region.trailingBytes.toLocaleString()} trailing bytes (not interpreted). Ground geometry from real SoloScape data. ${floorNote} No objects or players yet.`;
     }catch(error){
         if(sequence===attempt){
             loading.hidden=true;showFailure(error);

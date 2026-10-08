@@ -238,6 +238,26 @@ terrain objects. CRC integrity and the correctly packed file ID 0
 remain mandatory. Synthetic CI coverage includes both formats
 and adversarial truncation. **Live browser result pending.**
 
+### Cache-backed OSRS floor colour decoding
+
+TSPS's `Dat2CacheLoaderFactory` fetches underlay definitions from
+cache **index 2, group 1** and overlays from **index 2, group 4**;
+tile fields are **1-based IDs** (overlay high flag masked to 15 bits).
+The native client now loads both groups only as required, validates
+their reference-table revision and JS5 group CRC through
+`NativeJs5Cache`, unpacks selected file IDs from the native
+multi-chunk archive format, and decodes relevant OSRS RGB/secondary RGB
+and texture metadata. Flat colours replace deterministic placeholder
+tints for matched floor definitions in the WebGL mesh. There is no
+texture sampling, underlay HSL blending or accurate OSRS floor lighting
+yet; unsupported materials are visibly labelled as fallbacks.
+
+The first live WebGL region success was `m50_50`, native group `5:12850`,
+**13,519 compressed bytes**, **60,239 decoded**, complete u16 terrain
+grid at **60,238 consumed bytes** and one trailing uninterpreted byte.
+The real floor-colour decoder has synthetic CI coverage, but its
+live browser result has not been confirmed.
+
 ## Required protocol adapter work (not implemented)
 
 1. **Choose a source-of-truth native client protocol.** Identify the exact SoloScape revision, RSA public modulus, current JS5/cache revision, ISAAC seeds, login block layout and inbound/outbound packet tables from the `rsprot` dependency and SoloScape generated files.

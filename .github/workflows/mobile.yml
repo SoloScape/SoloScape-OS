@@ -63,5 +63,6 @@ jobs:
           node --check Mobile/browser/sprite-preview.mjs
           node --check Mobile/browser/terrain-world.mjs
           node --check Mobile/browser/world-webgl.mjs
+          node --check Mobile/browser/floor-materials.mjs
           node --check Mobile/browser/diagnostics-app.mjs
           node --check Mobile/browser/app.mjs

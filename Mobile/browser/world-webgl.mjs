@@ -1,5 +1,5 @@
 // First native browser world viewport: real decoded revision-240 map heights.
-// Terrain colour is provisional; scene locs, models and textures are TODO.
+// Cache-backed floor RGB where available; texture mapping and scene locs remain TODO.
 function shader(gl,type,source){
     const sh=gl.createShader(type);
     gl.shaderSource(sh,source);gl.compileShader(sh);
@@ -63,8 +63,22 @@ function multiply(a,b){
     }
     return out;
 }
-function color(underlay,overlay,shade){
-    // Deterministic temporary material tint, NOT OSRS floor definitions.
+function color(underlay,overlay,shade,materials){
+    // The cache stores floor IDs as 1-based indexes. Overlay ID uses the
+    // low 15 bits (TSPS SceneBuilder / RuneLite convention).
+    const overlayId=(overlay&0x7fff)-1,underlayId=underlay-1;
+    const overlayDef=materials?.overlays?.get(overlayId);
+    const underlayDef=materials?.underlays?.get(underlayId);
+    let definition=overlayDef;
+    if(definition?.rgb===0xff00ff)definition=null; // transparent overlay
+    const rgb=definition?(definition.secondaryRgb??definition.rgb):
+        underlayDef?.rgb;
+    if(Number.isInteger(rgb)&&rgb>=0&&rgb<=0xffffff) {
+        const r=(rgb>>>16)&255,g=(rgb>>>8)&255,b=rgb&255;
+        return [r,g,b].map(channel=>Math.min(1,Math.max(0,channel/255*shade)));
+    }
+    // Explicit incomplete-material fallback: retain the original preview
+    // tint until a decoded colour / texture material exists in cache.
     const base=overlay>0?[.34,.42,.47]:underlay>0?
         [.23+((underlay*13)%26)/100,.36+((underlay*7)%18)/100,.22+((underlay*5)%17)/100]:
         [.39,.40,.35];
@@ -81,7 +95,7 @@ export function buildTerrainMesh(terrain){
         const avg=(terrain.heights[x*64+y]+terrain.heights[(x+1)*64+y]+
             terrain.heights[x*64+y+1]+terrain.heights[(x+1)*64+y+1])/4;
         const shade=.72+Math.min(.3,Math.abs(avg)/2800);
-        const c=color(terrain.underlays[x*64+y],terrain.overlays[x*64+y],shade);
+        const c=color(terrain.underlays[x*64+y],terrain.overlays[x*64+y],shade,terrain.floorMaterials);
         const p00=pos(x,y),p10=pos(x+1,y),p01=pos(x,y+1),p11=pos(x+1,y+1);
         offset=tri(p00,c,offset);offset=tri(p10,c,offset);offset=tri(p11,c,offset);
         offset=tri(p00,c,offset);offset=tri(p11,c,offset);offset=tri(p01,c,offset);

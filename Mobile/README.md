@@ -86,6 +86,34 @@ or unsupported opcode streams remain errors. No fallback artwork,
 fabricated maps, new credential flows, or standalone probes were
 introduced. Live rendering still requires browser confirmation.
 
+### Cache-derived floor colours (work in progress)
+
+The live browser has now decoded real `m50_50` terrain: cache group
+`5:12850` was **13,519 CRC-verified container bytes**, decompressed
+to **60,239 bytes**, of which the full u16 four-plane grid consumed
+**60,238 bytes** with one unparsed suffix byte. This confirms the
+revision-240 world mesh; it is still not a logged-in game.
+
+`browser/floor-materials.mjs` now provides flat colour definitions
+from SoloScape's **CRC-verified config index 2**, underlay group `2:1`
+and overlay group `2:4`, following the pinned TSPS
+`Dat2CacheLoaderFactory`, `UnderlayFloorType` and
+`OverlayFloorType` sources. It extracts only the region's referenced
+file IDs from bounded multi-file OSRS archive containers, then
+decodes primary/secondary RGB, transparency markers, and relevant
+material opcodes. The WebGL triangle mesh uses these actual definition
+colours, with a status count of matched definitions. Unsupported or
+missing definitions keep **explicitly labelled temporary tints** so
+a colour mismatch never blocks viewing valid geometry. This is a
+flat-shaded intermediate representation: TSPS blended HSL,
+texture sampling, tile overlays/shapes and scene objects remain
+unimplemented.
+
+Keep the Java server and gateway running, from `Mobile/` run
+`git pull --ff-only origin feature/mobile`, restart `npm run dev`,
+then hard-refresh `http://localhost:3001/`. The visual colour
+result against the real server remains **pending live confirmation**.
+
 ## Source baseline
 
 - Upstream project: `RSPSApp/tsps`, pinned as the `Mobile/tsps-upstream/` Git submodule (initialise it when cloning).
