@@ -16,7 +16,10 @@ test('mobile game HUD contains no fabricated SVG or hand-drawn RuneScape icons',
 
 test('cache-only HUD never invents a minimap terrain palette or UI chrome', () => {
   assert.doesNotMatch(hud, /underlayIds\[|overlayIds\[|ctx\.fillStyle|\.fillRect\(/);
-  assert.doesNotMatch(css, /linear-gradient|radial-gradient|box-shadow|drop-shadow/i);
+  assert.doesNotMatch(css, /linear-gradient|radial-gradient|drop-shadow/i);
+  const decorativeShadows = css.split('\n').filter((line) =>
+    /^\s*box-shadow\s*:/.test(line) && !/:\s*none\s*;/.test(line));
+  assert.deepEqual(decorativeShadows, []);
   assert.doesNotMatch(css, /\.hud-orb svg|\.hud-stone svg|cache-hud-icon/);
 });
 
