@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
 import {NativeTitleScreen,titleLayout,titleFieldLayout,OSRS_TITLE_COPY,OSRS_TITLE_FONT_IDS} from "../browser/title-screen.mjs";
+import {paintWorldSelect,WORLD_SELECT_LAYOUT} from "../browser/world-select-screen.mjs";
 import {NativeAudioCache,retryOnMissingGroup} from "../browser/title-audio-cache.mjs";
 import {NativeTitleMusic} from "../browser/title-music.mjs";
 import {RealtimeMidiSynth} from "../browser/title-audio-realtime-midi-synth.mjs";
@@ -99,11 +100,13 @@ test("title form draws original cache labels and works with optional remembered/
     };
     const ids=["title-new-account","title-login","title-cancel","title-mute",
         "title-remember","title-hide-username","title-login-help",
-        "title-world-switch","title-world-current","title-world-back","login-username",
+        "title-world-switch","title-world-current","title-world-back",
+        "title-world-sort-0","title-world-sort-1","title-world-sort-2","title-world-sort-3",
+        "login-username",
         "login-password","login-submit"];
     for(const id of ids)el(id);
     const ctx={setTransform(){},fillRect(){},strokeRect(){},drawImage(){},
-        beginPath(){},arc(...args){circles.push(args);},stroke(){},fill(){},moveTo(){},lineTo(){},
+        beginPath(){},closePath(){},arc(...args){circles.push(args);},stroke(){},fill(){},moveTo(){},lineTo(){},
         save(){},restore(){},translate(){},scale(){},fillText(){}};
     const canvas={width:0,height:0,getContext:()=>ctx,
         parentElement:{hidden:false,getBoundingClientRect:()=>({width:765,height:503})}};
@@ -133,6 +136,18 @@ test("title form draws original cache labels and works with optional remembered/
         elements.get("title-world-switch").click();
         assert.equal(title.mode,"world-select");
         assert.ok(drawn.includes("Select a world"));
+        assert.ok(drawn.includes("Members only world"));
+        assert.ok(drawn.includes("Free world"));
+        assert.ok(drawn.includes("Location"));
+        assert.ok(drawn.includes("Players"));
+        assert.ok(drawn.includes("Type"));
+        assert.ok(drawn.includes("Cancel"));
+        assert.equal(elements.get("title-world-sort-1").hidden,false);
+        elements.get("title-world-sort-1").click();
+        assert.equal(title.worldSortOption,1);
+        assert.equal(title.worldSortDirection,0);
+        elements.get("title-world-sort-1").click();
+        assert.equal(title.worldSortDirection,1);
         assert.equal(elements.get("title-world-switch").hidden,true);
         assert.equal(elements.get("title-world-current").hidden,false);
         elements.get("title-world-current").click();
@@ -178,4 +193,52 @@ test("title form draws original cache labels and works with optional remembered/
             else globalThis[key]=value;
         }
     }
+});
+
+test("OpenOSRS world selector renders its own black canvas and exact 765px header/grid coordinates",()=>{
+    assert.deepEqual([WORLD_SELECT_LAYOUT.rowX,WORLD_SELECT_LAYOUT.rowY,
+        WORLD_SELECT_LAYOUT.rowWidth,WORLD_SELECT_LAYOUT.rowHeight],[338,253,88,19]);
+    assert.deepEqual([WORLD_SELECT_LAYOUT.cancelX,WORLD_SELECT_LAYOUT.cancelY],[708,4]);
+    const texts=[],images=[],fills=[],gradients=[];
+    const ctx={
+        fillStyle:"",lineWidth:1,
+        fillRect:(...args)=>fills.push(args),
+        strokeRect(){},beginPath(){},closePath(){},stroke(){},fill(){},
+        moveTo(){},lineTo(){},save(){},restore(){},
+        createLinearGradient:(...args)=>{
+            gradients.push(args);
+            return {addColorStop(){}};
+        },drawImage:(...args)=>images.push(args),
+    };
+    const font={measure:s=>s.length*6,
+        draw:(_ctx,text,x,y,color)=>texts.push({text,x,y,color})};
+    const small={measure:s=>s.length*5,
+        draw:(_ctx,text,x,y,color)=>texts.push({text,x,y,color})};
+    const spriteNames=["sl_back","sl_flags","sl_stars","sl_arrows"];
+    const sprites=new Map(spriteNames.map(name=>
+        [name,Array.from({length:name==="sl_flags"?2:4},(_,i)=>({name,i}))]));
+    paintWorldSelect(ctx,{font,small,sprites,worldId:255,sortOption:0});
+    assert.deepEqual(fills[0],[0,0,765,503],"reference uses full black background");
+    assert.deepEqual(gradients.map(v=>v.slice(0,4)),[[0,0,0,23],[125,0,125,23]]);
+    for(const label of ["Select a world","Members only world","Free world",
+        "World","Players","Location","Type","Cancel","255","0"]){
+        assert.ok(texts.find(t=>t.text===label),"missing reference header/row "+label);
+    }
+    assert.deepEqual([texts.find(t=>t.text==="255").x,
+        texts.find(t=>t.text==="255").y],[344,267.5]);
+    assert.deepEqual(images.find(v=>v[0].name==="sl_back").slice(1),[338,253]);
+    assert.deepEqual(images.find(v=>v[0].name==="sl_flags").slice(1),[367,253]);
+    assert.deepEqual(images.filter(v=>v[0].name==="sl_arrows").map(v=>v[1]),
+        [280,295,390,405,500,515,610,625]);
+    assert.ok(images.some(v=>v[0].name==="sl_stars"&&v[0].i===1));
+    assert.ok(images.some(v=>v[0].name==="sl_stars"&&v[0].i===0));
+});
+test("OpenOSRS world selector gracefully draws fallback art when sprite groups are missing",()=>{
+    let black=0,circles=0;
+    const ctx={fillRect(){black++;},strokeRect(){},beginPath(){},closePath(){},
+        moveTo(){},lineTo(){},fill(){},stroke(){},save(){},restore(){},
+        createLinearGradient(){return {addColorStop(){}}}};
+    const font={draw(){},measure:s=>s.length*6};
+    assert.doesNotThrow(()=>paintWorldSelect(ctx,{font,small:font,sprites:new Map()}));
+    assert.ok(black>=5);
 });

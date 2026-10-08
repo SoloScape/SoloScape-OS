@@ -8,6 +8,7 @@ import {loadCacheMenuFont} from "./native-menu.mjs";
 import {djb2} from "./terrain-world.mjs";
 import {LoginScreenAnimation} from "./title-fire.mjs";
 import {NativeTitleMusic} from "./title-music.mjs";
+import {paintWorldSelect} from "./world-select-screen.mjs";
 
 // Wording confirmed against rev-240 OpenOSRS injected game class kk.
 export const OSRS_TITLE_FONT_IDS=Object.freeze({bold12:496,plain11:494});
@@ -70,6 +71,8 @@ export class NativeTitleScreen{
         this.worldCurrent=document.getElementById("title-world-current");
         this.worldBack=document.getElementById("title-world-back");
         this.worldId=255;this.worldReturnMode="welcome";
+        this.worldSortOption=0;this.worldSortDirection=0;this.worldRowHover=false;
+        this.worldSortButtons=[0,1,2,3].map(i=>document.getElementById("title-world-sort-"+i));
         this.remembered=false;this.usernameHidden=false;
         this.optionHover={remember:false,hide:false,help:false};
         try{
@@ -121,6 +124,19 @@ export class NativeTitleScreen{
         this.worldButton?.addEventListener("click",()=>this.showWorldSelect());
         this.worldCurrent?.addEventListener("click",()=>this.closeWorldSelect());
         this.worldBack?.addEventListener("click",()=>this.closeWorldSelect());
+        this.worldCurrent?.addEventListener("pointerenter",()=>{this.worldRowHover=true;this.paint();});
+        this.worldCurrent?.addEventListener("pointerleave",()=>{this.worldRowHover=false;this.paint();});
+        this.worldSortButtons.forEach((button,i)=>button?.addEventListener("click",()=>{
+            if(this.mode!=="world-select")return;
+            this.worldSortDirection=this.worldSortOption===i?1-this.worldSortDirection:0;
+            this.worldSortOption=i;this.paint();
+        }));
+        this.worldEscape=event=>{
+            if(event.key==="Escape"&&this.mode==="world-select"){
+                event.preventDefault();this.closeWorldSelect();
+            }
+        };
+        document.addEventListener("keydown",this.worldEscape);
         this.back.addEventListener("click",()=>{this.onCancel();this.showWelcome();});
         this.mute.addEventListener("click",()=>{this.music?.toggle();this.mute.setAttribute("aria-pressed",String(this.music?.muted??false));});
         this.gesture=()=>void this.music?.unlock();
@@ -138,13 +154,14 @@ export class NativeTitleScreen{
                 this.assets.background=await createImageBitmap(new Blob([bytes],{type:"image/jpeg"}));
                 if(this.assets.background.width!==545||this.assets.background.height!==671)throw new Error("Unexpected revision-240 wide title dimensions");
             }],
-            ...["logo","titlebox","titlebutton","runes","title_mute","sl_button"].map(name=>["Loading sprites - ",async()=>{
+            ...["logo","titlebox","titlebutton","runes","title_mute","sl_button",
+                "sl_back","sl_flags","sl_stars","sl_arrows"].map(name=>["Loading sprites - ",async()=>{
                 let frames;
                 try{frames=decodeIndexedSprites(await namedTitleFile(cache,8,name));}
                 catch(error){
                     // The OSRS option sprite is decorative: use drawn radio boxes
                     // if this optional archive is absent; never break login.
-                    if(name==="sl_button")return;
+                    if(["sl_button","sl_back","sl_flags","sl_stars","sl_arrows"].includes(name))return;
                     throw error;
                 }
                 this.assets.sprites.set(name,frames.map(spriteCanvas));
@@ -179,6 +196,7 @@ export class NativeTitleScreen{
     showWorldSelect(){
         if(!["welcome","login"].includes(this.mode))return;
         this.worldReturnMode=this.mode;
+        this.worldRowHover=false;
         this.mode="world-select";this.syncControls();this.paint();
     }
     closeWorldSelect(){
@@ -210,10 +228,11 @@ export class NativeTitleScreen{
     syncControls(){
         this.newAccount.hidden=this.login.hidden=this.mode!=="welcome";
         this.form.hidden=this.mode!=="login";this.back.hidden=this.mode!=="login";
-        this.mute.hidden=["loading","error"].includes(this.mode)||!this.visible;
+        this.mute.hidden=["loading","error","world-select"].includes(this.mode)||!this.visible;
         if(this.worldButton)this.worldButton.hidden=!this.visible||!["welcome","login"].includes(this.mode);
         if(this.worldCurrent)this.worldCurrent.hidden=this.mode!=="world-select";
         if(this.worldBack)this.worldBack.hidden=this.mode!=="world-select";
+        this.worldSortButtons.forEach(button=>{if(button)button.hidden=this.mode!=="world-select";});
         this.canvas.parentElement.hidden=!this.visible;
     }
     text(ctx,text,x,y,color="#ffffff",small=false){
@@ -245,6 +264,14 @@ export class NativeTitleScreen{
         if(this.canvas.width!==765||this.canvas.height!==503){this.canvas.width=765;this.canvas.height=503;}
         ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle="#000000";ctx.fillRect(0,0,765,503);ctx.imageSmoothingEnabled=false;
         const l=titleLayout(765,503),controls=titleLayout(bounds.width,bounds.height),{background}=this.assets;
+        if(this.mode==="world-select"){
+            this.stage.style.transform=`translate(${controls.x}px,${controls.y}) scale(${controls.scale})`;
+            paintWorldSelect(ctx,{sprites:this.assets.sprites,font:this.assets.font,
+                small:this.assets.small,worldId:this.worldId,
+                sortOption:this.worldSortOption,sortDirection:this.worldSortDirection,
+                hovered:this.worldRowHover});
+            return;
+        }
         if(background){
             ctx.save();ctx.translate(l.bx,l.by);ctx.scale(l.backgroundScale,l.backgroundScale);
             ctx.drawImage(background,0,0);ctx.translate(1089,0);ctx.scale(-1,1);ctx.drawImage(background,0,0);ctx.restore();
@@ -270,11 +297,6 @@ export class NativeTitleScreen{
             const box=this.assets.sprites.get("titlebox")?.[0];if(box)ctx.drawImage(box,202,170);
             if(this.mode==="welcome"){
                 this.text(ctx,OSRS_TITLE_COPY.welcome,382,251,"#ffff00");this.button(ctx,302,291,OSRS_TITLE_COPY.newUser);this.button(ctx,462,291,OSRS_TITLE_COPY.existingUser);
-            }else if(this.mode==="world-select"){
-                this.text(ctx,"Select a world",382,219,"#ffff00");
-                this.text(ctx,`World ${this.worldId}`,382,267,"#ffffff");
-                this.text(ctx,"Current world - only world configured",382,286,"#ffff00",true);
-                this.button(ctx,382,321,"Back");
             }else if(this.mode==="login"||this.mode==="connecting"){
                 // Reflect actual cache/authentication/map stages instead of always claiming
                 // the TCP handshake is still in progress after it has succeeded.
@@ -328,5 +350,5 @@ export class NativeTitleScreen{
             const sprite=this.assets.sprites.get("title_mute")?.[this.music?.muted?1:0];if(sprite)ctx.drawImage(sprite,l.muteX,l.muteY);
         }
     }
-    dispose(){this.usernameInput?.removeEventListener("input",this.saveUsername);cancelAnimationFrame(this.animation);for(const [input,type,handler] of this.fieldListeners)input.removeEventListener(type,handler);window.removeEventListener("resize",this.resize);window.visualViewport?.removeEventListener("resize",this.resize);document.removeEventListener("pointerup",this.gesture,true);document.removeEventListener("keydown",this.gesture,true);this.fire?.destroy();this.music?.dispose();this.assets.background?.close();}
+    dispose(){this.usernameInput?.removeEventListener("input",this.saveUsername);cancelAnimationFrame(this.animation);for(const [input,type,handler] of this.fieldListeners)input.removeEventListener(type,handler);window.removeEventListener("resize",this.resize);window.visualViewport?.removeEventListener("resize",this.resize);document.removeEventListener("pointerup",this.gesture,true);document.removeEventListener("keydown",this.gesture,true);document.removeEventListener("keydown",this.worldEscape);this.fire?.destroy();this.music?.dispose();this.assets.background?.close();}
 }

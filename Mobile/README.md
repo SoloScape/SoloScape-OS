@@ -1247,8 +1247,11 @@ tick; both checkboxes retain functional pointer and keyboard targets.
 
 The original **World 255 / Click to switch** button returns at title-space
 x=5, y=463, using the revision-240 sl_button sprite when available, with a
-safe fallback. Clicking opens a single-world selector with World 255 and a
-Back button; it does **not** offer unconfigured servers or change any login
-endpoint. Returning to login preserves entered fields. The World button is
-hidden while connecting and after authentication. Tests cover geometry,
-small-font drawing, circle coordinates and world-switch interactions.
+safe fallback. Clicking opens the standalone black 765x503 RuneScape world grid with a
+gradient header, members/free legend, four sorting columns, the centered 88x19
+World 255 UK-flag row at (338,253) and top-right Cancel. It does not
+invent server destinations; world selection, Escape and Cancel all return
+to the previous welcome/login state. The switcher is hidden while connecting.
+Verified rev-240 sl_back, sl_flags, sl_stars and sl_arrows sprite archives
+supply the art, with local fallbacks. Tests cover geometry, fonts, the world
+row's cache-sprite coordinates, sorting and interactive close actions.
