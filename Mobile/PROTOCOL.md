@@ -92,6 +92,26 @@ On 8 October 2026, the live `255:0` reference-table group was received through t
 
 The upstream [OpenRune `ReadOnlyCache.archiveData`](https://github.com/OpenRune/OpenRune-FileStore/blob/main/filesystem/src/main/kotlin/dev/openrune/filesystem/ReadOnlyCache.kt) parses cache reference-table formats 5–7. Formats 6–7 include an embedded 32-bit revision after the format byte; v7 then encodes archive counts and delta IDs with big-smart integers. The new `Mobile/gateway/js5-reference-header.mjs` performs bounded gzip decompression (or accepts an uncompressed container), checks the declared length, parses only the header and archive-ID deltas, and lets the CLI **reject a mismatch** between embedded and master-index revision. It does not parse archive file manifests, perform cryptographic verification, persist cache bytes, or render game assets. Run the live probe again to validate this header/revision check.
 
+### First real archive-0 group data verification
+
+With the upstream OpenRune `ReadOnlyCache` format-7 reference table,
+the archive-group IDs are delta-coded big-smart integers, optionally
+followed by the same number of 32-bit name hashes (flag 1), and then
+32-bit group CRCs. `Mobile/gateway/js5-reference-header.mjs` now has a
+bounded optional `decodeReferenceTableGroupCrcs()` extractor. The
+`fetchJs5Archive0Group()` function requests one group in **archive 0
+only** and retains the same 2-MiB compressed-container ceiling as our
+metadata probes. `verifyArchive0GroupCrc()` compares CRC32 of the **full
+JS5 cache container** received (the server's underlying provider removes
+the trailing two-byte sector version for archive data) with the catalog CRC.
+
+`npm run probe:asset` performs three independent WS-to-native JS5
+transfers: master `255:255`, index-0 reference `255:0`, then the
+first listed archive-0 group (expected `0:0`). Each metadata integrity
+check precedes the asset request; the data remains in memory only.
+This is an intentionally narrow initial test, not a reference-table
+or asset decoder suitable for TSPS, and it is **not yet verified live**.
+
 ## Required protocol adapter work (not implemented)
 
 1. **Choose a source-of-truth native client protocol.** Identify the exact SoloScape revision, RSA public modulus, current JS5/cache revision, ISAAC seeds, login block layout and inbound/outbound packet tables from the `rsprot` dependency and SoloScape generated files.

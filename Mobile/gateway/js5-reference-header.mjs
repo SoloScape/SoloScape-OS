@@ -12,8 +12,9 @@ const MAX_ARCHIVE_COUNT = 200_000;
  * smart (v7 bigsmart, otherwise u16), then delta-encoded archive IDs.
  * Bzip2 containers are intentionally unsupported.
  */
-export function decodeReferenceTableHeader(group, {
+function parseReferenceTable(group, {
     maxDecodedBytes = MAX_DECODED_REFERENCE_BYTES,
+    includeCrcs = false,
 } = {}) {
     if (!group || group.archive !== 255 || !Number.isInteger(group.group) ||
         group.group < 0 || group.group > 254) {
@@ -94,6 +95,7 @@ export function decodeReferenceTableHeader(group, {
     }
     let id = 0;
     let firstArchiveId = null;
+    const archiveIds = includeCrcs ? [] : null;
     for (let i = 0; i < archiveCount; i++) {
         const delta = smart(format);
         if (i > 0 && delta === 0) {
@@ -102,6 +104,21 @@ export function decodeReferenceTableHeader(group, {
         id += delta;
         if (id > 0x7fffffff) throw new Error("Reference-table archive ID overflow");
         if (firstArchiveId === null) firstArchiveId = id;
+        if (archiveIds !== null) archiveIds.push(id);
+    }
+    let groups;
+    if (includeCrcs) {
+        // Reference-table flags: bit 0 indicates name hashes before the CRC array.
+        // We only parse group CRC metadata here, not payload, files or assets.
+        if ((flags & ~0x0f) !== 0) {
+            throw new Error("Unsupported reference-table flag bits");
+        }
+        if ((flags & 1) !== 0) {
+            need(archiveCount * 4);
+            at += archiveCount * 4;
+        }
+        need(archiveCount * 4);
+        groups = archiveIds.map((archiveId) => ({ group: archiveId, crc32: u32() }));
     }
     return {
         format,
@@ -112,7 +129,21 @@ export function decodeReferenceTableHeader(group, {
         lastArchiveId: archiveCount ? id : null,
         compressedBytes: compressedSize,
         decodedBytes: bytes.length,
+        ...(includeCrcs ? { groups } : {}),
     };
+}
+
+export function decodeReferenceTableHeader(group, options = {}) {
+    return parseReferenceTable(group, options);
+}
+
+/**
+ * Catalog archive-group IDs and corresponding CRCs. Must only be used after
+ * verifying the containing reference table CRC against a trusted master-index
+ * snapshot and checking its revision matches the master index.
+ */
+export function decodeReferenceTableGroupCrcs(group, options = {}) {
+    return parseReferenceTable(group, { ...options, includeCrcs: true });
 }
 
 /** Require an explicit equality check; never treat the CRC32 as a revision check. */

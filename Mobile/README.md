@@ -249,6 +249,37 @@ TSPS compatibility, native authentication, or playable mobile gameplay.
 
 The probe now also decompresses **only** a bounded (16 MiB) uncompressed/gzip reference-table header, checks format 5–7 and the archive-ID deltas, and compares the table's embedded revision to the master-index revision. Gzip output and archive counts are bounded, bzip2 is not supported, and no asset files are written. This **header/revision comparison has not yet been run against the live server**: after pulling `feature/mobile`, rerun `npm run probe:cache:verify` with revision 240.
 
+### First actual archive group: native JS5 integrity probe
+
+**Live metadata result (8 Oct 2026):** archive 0 reference-table format 7,
+revision `1790003854`, **10,948 groups**, IDs 0–14,568, and 640,116
+decompressed metadata bytes. Master-index and reference-table CRC32/revision
+were both cross-checked against the live SoloScape server.
+
+The new `npm run probe:asset` validates the `255:255` master index, fetches
+the `255:0` archive-0 reference table, verifies its checksum and revision,
+parses the **archive-group IDs and CRC32 values**, then requests exactly the
+**first listed archive-0 group** (expected `0:0`) over the native WS gateway.
+The response's container CRC32 is compared with the per-group reference-table
+CRC32. This is a **one-group, at-most-2-MiB compressed-container** probe, not
+a bulk cache downloader. The group stays in memory, is **not decompressed**
+or written to disk, and is not delivered to the TSPS browser renderer.
+
+From `Mobile`, with the Java game server and native WebSocket gateway
+still running in their own terminals:
+
+```powershell
+git pull --ff-only origin feature/mobile
+$env:SOLOSCAPE_NATIVE_REVISION = '240'
+npm run probe:asset
+```
+
+A verified CRC32 establishes **one actual archive group** can be delivered
+intact via WebSocket; a failed response can mean the group is missing,
+exceeds the strict 2-MiB limit or has inconsistent CRC metadata. The
+live result is **pending**. CRC32 is not cryptographic authenticity and
+this does not implement native login or playable mobile gameplay.
+
 ## Known incompatibilities / next engineering work
 
 - TSPS upstream revision **241** versus SoloScape's documented **240.2**: align supported protocol, game packets, cache ids and interface definitions.

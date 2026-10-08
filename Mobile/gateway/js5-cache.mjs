@@ -4,28 +4,25 @@ import { validateGatewayEndpoint } from "./gateway-probe.mjs";
 import { encodeJs5UrgentRequest, Js5GroupAssembler } from "./js5-group.mjs";
 
 /**
- * Download one INDEX METADATA group (255:<index>, or master index 255:255)
- * from the native JS5 server through the WebSocket gateway.
- * This deliberately rejects arbitrary archive payload/group requests.
- * Returned containers are in-memory only; no cache assets are persisted.
+ * Transport exactly one native JS5 group. Keep this private: callers may
+ * request index metadata (255:*) or one explicitly bounded archive-0 group,
+ * never arbitrary bulk cache data.
  */
-export function fetchJs5IndexGroup({
+function fetchOneJs5Group({
     url = "ws://127.0.0.1:43595/",
     origin = "http://localhost:3001",
     revision,
-    index = 255,
+    archive,
+    group,
     timeoutMs = 10000,
 } = {}) {
     validateGatewayEndpoint(url, origin);
-    if (!Number.isInteger(index) || index < 0 || index > 255) {
-        throw new RangeError("JS5 index ID must be an integer from 0 to 255");
-    }
     if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 30000) {
         throw new Error("timeoutMs must be between 100 and 30000");
     }
     const handshake = encodeJs5Handshake(revision);
-    const urgent = encodeJs5UrgentRequest(255, index);
-    const assembler = new Js5GroupAssembler({ archive: 255, group: index });
+    const urgent = encodeJs5UrgentRequest(archive, group);
+    const assembler = new Js5GroupAssembler({ archive, group });
 
     return new Promise((resolve, reject) => {
         const ws = new WebSocket(url, {
@@ -42,7 +39,7 @@ export function fetchJs5IndexGroup({
             if (error) reject(error);
             else resolve(group);
         };
-        const timer = setTimeout(() => finish(new Error(`Cache index group 255:${index} request timed out`)), timeoutMs);
+        const timer = setTimeout(() => finish(new Error(`Cache group ${archive}:${group} request timed out`)), timeoutMs);
         ws.once("open", () => ws.send(handshake, { binary: true }, (error) => {
             if (error) finish(error);
         }));
@@ -81,6 +78,22 @@ export function fetchJs5IndexGroup({
             if (!completed) finish(new Error(`Cache stream closed early (code ${code}: ${String(reason)})`));
         });
     });
+}
+
+/** Only index-255 metadata tables are allowed by this public API. */
+export function fetchJs5IndexGroup({ index = 255, ...options } = {}) {
+    if (!Number.isInteger(index) || index < 0 || index > 255) {
+        throw new RangeError("JS5 index ID must be an integer from 0 to 255");
+    }
+    return fetchOneJs5Group({ ...options, archive: 255, group: index });
+}
+
+/** Fetch ONE bounded group in archive 0, after inspecting its catalog CRC. */
+export function fetchJs5Archive0Group({ group, ...options } = {}) {
+    if (!Number.isInteger(group) || group < 0 || group > 65535) {
+        throw new RangeError("Archive 0 group ID must be an integer from 0 to 65535");
+    }
+    return fetchOneJs5Group({ ...options, archive: 0, group });
 }
 
 /** Keep existing master-index API stable for clients and smoke tests. */

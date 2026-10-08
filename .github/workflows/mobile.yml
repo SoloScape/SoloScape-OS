@@ -55,3 +55,5 @@ jobs:
           node --check Mobile/gateway/js5-reference-verify.mjs
           node --check Mobile/gateway/js5-reference-cli.mjs
           node --check Mobile/gateway/js5-reference-header.mjs
+          node --check Mobile/gateway/js5-asset-verify.mjs
+          node --check Mobile/gateway/js5-asset-cli.mjs
