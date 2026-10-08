@@ -1,7 +1,7 @@
 import type { Js5Client } from './Js5Client';
 import { cacheSpriteToRgba, decodeCacheSpriteGroup, type CacheSpriteFrame } from './CacheSpriteDecoder';
 import { CacheInterfaceStore } from './CacheInterfaceDefinitions';
-import type { CacheFontAsset } from './TitleScreenAssets';
+import { resolveNamedGroup, type CacheFontAsset } from './TitleScreenAssets';
 
 export const GAME_SPRITE_ARCHIVE = 8;
 
@@ -114,4 +114,24 @@ export async function loadInterfaceFont(
     glyphs: decodeCacheSpriteGroup(glyphBytes),
     metrics: metricsBytes,
   };
+}
+
+/**
+ * Use a named cache group, never a guessed index or user-drawn fallback.
+ * A missing group simply means the original artwork is unavailable.
+ */
+export async function loadNamedHudSprite(
+  js5: Js5Client,
+  name: string,
+): Promise<CacheSpriteFrame | null> {
+  let groupId: number;
+  try {
+    groupId = resolveNamedGroup(js5, GAME_SPRITE_ARCHIVE, [name]).group;
+  } catch {
+    return null;
+  }
+  const group = await js5.downloadGroup(GAME_SPRITE_ARCHIVE, groupId);
+  const bytes = group.files.get(0) ?? group.files.values().next().value;
+  if (!bytes) return null;
+  return decodeCacheSpriteGroup(bytes)[0] ?? null;
 }
