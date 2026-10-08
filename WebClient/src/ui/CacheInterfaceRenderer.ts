@@ -279,7 +279,7 @@ export class CacheInterfaceRenderer {
     if (!promise) {
       promise = loadInterfaceSprite(this.js5, id)
         .then((frames) => frames.length ?
-          cacheSpriteCanvas(frames[0]!).toDataURL('image/png') : null)
+          cacheSpriteCanvas(frames[0]!, true).toDataURL('image/png') : null)
         .catch(() => null);
       this.spritePromises.set(id, promise);
     }
