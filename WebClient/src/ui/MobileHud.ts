@@ -140,6 +140,7 @@ export class MobileHud {
   private serverUi: Rev240UiState | null = null;
   private activePanelGroup: number | null = null;
   private activeServerConfirmed = false;
+  private manuallySelectedGroup: number | null = null;
   private interfaceGroupIds = new Set<number>();
   private cachedIconUrls = new Map<string, string>();
   private selectedTab: TabId | null = null;
@@ -279,10 +280,14 @@ export class MobileHud {
     if (this.selectedTab === 'skills') this.renderLiveSkills();
     if (this.selectedTab && this.serverUi) {
       const hinted = CACHE_TAB_GROUPS[this.selectedTab];
-      const confirmed = hinted !== undefined &&
-        [...this.serverUi.subInterfaces.values()].some((sub) => sub.groupId === hinted);
-      const group = hinted !== undefined && this.interfaceGroupIds.has(hinted)
-        ? hinted : null;
+      const manuallyOpened = this.manuallySelectedGroup !== null &&
+        [...this.serverUi.subInterfaces.values()].some(
+          (sub) => sub.groupId === this.manuallySelectedGroup);
+      const desired = manuallyOpened ? this.manuallySelectedGroup : hinted;
+      const confirmed = desired !== undefined && desired !== null &&
+        [...this.serverUi.subInterfaces.values()].some((sub) => sub.groupId === desired);
+      const group = desired !== undefined && desired !== null &&
+        this.interfaceGroupIds.has(desired) ? desired : null;
       if (group !== this.activePanelGroup ||
         confirmed !== this.activeServerConfirmed) {
         this.renderCachedPanel(this.selectedTab);
@@ -491,6 +496,7 @@ export class MobileHud {
       return;
     }
     this.selectedTab = tab;
+    this.manuallySelectedGroup = null;
     this.panel.hidden = false;
     this.renderPanelHeading(STONES.find((entry) => entry.id === tab)?.name ?? tab);
     this.renderCachedPanel(tab);
@@ -501,6 +507,7 @@ export class MobileHud {
     this.interfaceRenderer?.cancel();
     this.activePanelGroup = null;
     this.activeServerConfirmed = false;
+    this.manuallySelectedGroup = null;
     this.selectedTab = null;
     this.panel.hidden = true;
     this.updateActiveTab();
@@ -523,7 +530,11 @@ export class MobileHud {
     const hintedId = CACHE_TAB_GROUPS[tab];
     const open = [...(this.serverUi?.subInterfaces.values() ?? [])]
       .filter((value) => this.interfaceGroupIds.has(value.groupId));
-    const matchingOpen = open.find((value) => value.groupId === hintedId);
+    const manuallyOpened = this.manuallySelectedGroup !== null
+      ? open.find((value) => value.groupId === this.manuallySelectedGroup)
+      : undefined;
+    const matchingOpen = manuallyOpened ??
+      open.find((value) => value.groupId === hintedId);
     const groupId = matchingOpen?.groupId ??
       (hintedId !== undefined && this.interfaceGroupIds.has(hintedId)
         ? hintedId : null);
@@ -576,10 +587,8 @@ export class MobileHud {
     select.addEventListener('change', () => {
       const id = Number(select.value);
       if (!Number.isInteger(id) || !this.interfaceGroupIds.has(id)) return;
-      this.activePanelGroup = id;
-      void this.interfaceRenderer?.show(id, this.panelBody).then(() => {
-        if (this.selectedTab === 'skills') this.renderLiveSkills();
-      });
+      this.manuallySelectedGroup = id;
+      if (this.selectedTab) this.renderCachedPanel(this.selectedTab);
     });
     this.panelBody.append(select);
   }
