@@ -11,7 +11,10 @@ starts **SoloScape's own WebGL world client** at
 `http://localhost:3001/`, not the collection of JS5 diagnostic buttons.
 The landing page is now the classic title screen. It uses the server's
 **revision-240 `titlewide.jpg` from cache index 10**, mirrored into the full
-1089×671 background, plus the cache logo, title box, buttons and fonts.
+1089×671 artwork cropped to the classic 765×503 title screen, plus the cache
+logo, title box, buttons and fonts. The title screen is centred in the browser,
+with the stone login panel centred within it and mute in its bottom-right
+corner. It scales down proportionally only when the viewport is smaller.
 The red loading bar advances as those verified assets and music metadata
 finish loading. **New User** is intentionally inactive. **Existing User** opens
 the ordinary login/password form; the authenticator field is removed from this
@@ -28,9 +31,8 @@ Login switches to a full-viewport game; disconnect returns to the title.
 The top bar, sidebar and development overlays are hidden in ordinary play.
 **F10** opens the developer panel with region travel, floor controls,
 disconnect, cache-interface preview and diagnostics. No terrain preview
-starts automatically before login. Title controls remain at native size and
-top-aligned on desktop, scaling down to fit phone
-viewports; no cache artwork or music captures are committed. Reproduce the
+starts automatically before login. No cache artwork or music captures are
+committed. Reproduce the
 original fire/music modules with `node scripts/adapt-title-runtime.mjs` after
 initializing the pinned TSPS submodule. No additional npm dependency is needed.
 

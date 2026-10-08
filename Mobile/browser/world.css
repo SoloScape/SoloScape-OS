@@ -3,7 +3,7 @@
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden}
 [hidden]{display:none!important}.client,.world{width:100%;height:100dvh}.world{position:relative;overflow:hidden;background:#000;visibility:hidden}.in-game .world{visibility:visible}
 #world-canvas{display:block;width:100%;height:100%;touch-action:none;-webkit-touch-callout:none;user-select:none}
-#title-screen{position:fixed;inset:0;z-index:10;background:#000;overflow:hidden}
+#title-screen{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(765px,100vw,calc(100dvh * 765 / 503));aspect-ratio:765/503;z-index:10;background:#000;overflow:hidden}
 #title-canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
 #title-controls{position:absolute;left:0;top:0;width:765px;height:503px;transform-origin:0 0;pointer-events:none}
 .title-button{position:absolute;width:147px;height:41px;padding:0;border:0;background:transparent;color:transparent;cursor:pointer;pointer-events:auto;font-size:0}
@@ -25,4 +25,4 @@
 .section-name{margin:22px 0 12px;color:#ccb77c}.section-name.border,.interface-dev{border-top:1px solid #655c41;padding-top:14px}.info span,.roadmap small,.disclaimer{color:#bbb}.roadmap{display:flex;gap:8px;margin:12px 0}.roadmap small{display:block;margin-top:4px;line-height:1.5}.floor-view{display:block;margin:16px 0}.floor-view select{display:block;width:100%;margin-top:6px}.interface-dev input{width:100%;margin:8px 0}.interface-dev p,.disclaimer{line-height:1.5}.diag{display:block;margin:18px 0;color:#ccb77c}
 .scene-overlay{position:absolute;top:10px;left:10px;z-index:9;background:#000d;padding:10px}.scene-heading{margin-bottom:10px}.scene-heading small{display:block}.coordinates{display:flex;gap:8px;align-items:end}.coordinates input{display:block;width:60px;margin-top:4px}.coordinates button,.coordinates input{padding:6px;background:#292720;color:#fff;border:1px solid #655c41}
 .map-status{display:none;position:absolute;bottom:10px;left:10px;max-width:calc(100% - 360px);padding:8px;background:#000d;font-size:12px}.developer-open .map-status{display:block}.map-status:empty{display:none}
-@media(max-width:600px){#title-mute{width:40px;height:40px}.map-status{max-width:calc(100% - 20px)}}
+@media(max-width:600px){.map-status{max-width:calc(100% - 20px)}}

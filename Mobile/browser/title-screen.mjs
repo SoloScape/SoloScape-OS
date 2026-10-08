@@ -9,10 +9,11 @@ import {LoginScreenAnimation} from "./title-fire.mjs";
 import {NativeTitleMusic} from "./title-music.mjs";
 
 export function titleLayout(width,height){
-    const scale=Math.min(width/(width<600?400:765),height/503,1);
-    const backgroundScale=Math.max(width/1089,height/671);
-    return {scale,x:width/2-382*scale,y:0,
-        backgroundScale,bx:(width-1089*backgroundScale)/2,by:(height-671*backgroundScale)/2};
+    const scale=Math.min(width/765,height/503,1);
+    const x=(width-765*scale)/2,y=(height-503*scale)/2;
+    return {scale,x:x+.5*scale,y,panelOffset:-18.5,
+        backgroundScale:scale,bx:x-162*scale,by:y,
+        muteX:x+725*scale,muteY:y+463*scale};
 }
 // Native input selection indexes map onto the cache font, including masked
 // passwords and horizontally scrolled text. Never paint the password itself.
@@ -135,7 +136,8 @@ export class NativeTitleScreen{
     button(ctx,x,y,label){const sprite=this.assets.sprites.get("titlebutton")?.[0];if(sprite)ctx.drawImage(sprite,Math.floor(x-sprite.width/2),Math.floor(y-sprite.height/2));this.text(ctx,label,x,y+5);}
     paint(){
         if(!this.visible)return;
-        const width=window.innerWidth,height=window.visualViewport?.height??window.innerHeight,ratio=Math.min(3,window.devicePixelRatio||1),ctx=this.canvas.getContext("2d");
+        const bounds=this.canvas.parentElement.getBoundingClientRect();
+        const width=bounds.width,height=bounds.height,ratio=Math.min(3,window.devicePixelRatio||1),ctx=this.canvas.getContext("2d");
         if(this.canvas.width!==Math.round(width*ratio)||this.canvas.height!==Math.round(height*ratio)){this.canvas.width=Math.round(width*ratio);this.canvas.height=Math.round(height*ratio);}
         this.canvas.style.height=height+"px";ctx.setTransform(ratio,0,0,ratio,0,0);ctx.fillStyle="#000000";ctx.fillRect(0,0,width,height);ctx.imageSmoothingEnabled=false;
         const l=titleLayout(width,height),{background}=this.assets;
@@ -151,7 +153,7 @@ export class NativeTitleScreen{
                 ctx.drawImage(fire,l.bx+821*l.backgroundScale,l.by,fw,fh);
             }
         }
-        this.stage.style.transform=`translate(${l.x}px,${l.y}px) scale(${l.scale})`;
+        this.stage.style.transform=`translate(${l.x}px,${l.y+l.panelOffset*l.scale}px) scale(${l.scale})`;
         ctx.save();ctx.translate(l.x,l.y);ctx.scale(l.scale,l.scale);
         const logo=this.assets.sprites.get("logo")?.[0];if(logo)ctx.drawImage(logo,382-Math.floor(logo.width/2),18);
         if(this.mode==="loading"||this.mode==="error"){
@@ -160,6 +162,7 @@ export class NativeTitleScreen{
             ctx.fillStyle="#000000";ctx.fillRect(232,247,300,30);ctx.fillStyle="#8c1111";ctx.fillRect(232,247,this.percent*3,30);
             this.text(ctx,this.mode==="error"?"Check your connection and reload":this.message,382,268);
         }else{
+            ctx.translate(0,l.panelOffset);
             const box=this.assets.sprites.get("titlebox")?.[0];if(box)ctx.drawImage(box,202,170);
             if(this.mode==="welcome"){
                 this.text(ctx,"Welcome to RuneScape",382,251,"#ffff00");this.button(ctx,302,291,"New User");this.button(ctx,462,291,"Existing User");
@@ -185,8 +188,9 @@ export class NativeTitleScreen{
         }
         ctx.restore();
         if(!this.mute.hidden){
-            const mx=Math.max(0,Math.min(width-40,l.x+725*l.scale)),my=463*l.scale;
+            const mx=l.muteX,my=l.muteY;
             this.mute.style.left=mx+"px";this.mute.style.top=my+"px";
+            this.mute.style.width=this.mute.style.height=36*l.scale+"px";
             const sprite=this.assets.sprites.get("title_mute")?.[this.music?.muted?1:0];if(sprite)ctx.drawImage(sprite,mx,my,36*l.scale,36*l.scale);
         }
     }

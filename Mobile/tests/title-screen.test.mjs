@@ -11,15 +11,20 @@ test("title controls fit desktop, portrait and landscape without resizing the ga
         const l=titleLayout(w,h);
         for(const x of [202,562])assert.ok(l.x+x*l.scale>=0&&l.x+x*l.scale<=w);
         for(const y of [18,370])assert.ok(l.y+y*l.scale>=0&&l.y+y*l.scale<=h);
-        assert.ok(l.bx<=0&&l.by<=0);assert.ok(1089*l.backgroundScale>=w&&671*l.backgroundScale>=h);
+        assert.equal(l.backgroundScale,l.scale);
+        assert.ok(765*l.scale<=w&&503*l.scale<=h);
     }
 });
 
-test("OSRS reference keeps native title controls top-aligned over the wide cache background",()=>{
-    const l=titleLayout(1089,671);
-    assert.equal(l.scale,1);assert.equal(l.y,0);assert.equal(l.x,162.5);
-    assert.equal(l.backgroundScale,1);assert.equal(l.bx,0);assert.equal(l.by,0);
-    assert.equal(titleLayout(1920,1080).scale,1);
+test("fixed 765 by 503 title centres the panel and anchors mute bottom-right",()=>{
+    const l=titleLayout(765,503);
+    assert.equal(l.scale,1);assert.equal(l.y,0);assert.equal(l.x,.5);
+    assert.equal(l.backgroundScale,1);assert.equal(l.bx,-162);assert.equal(l.by,0);
+    assert.equal(170+l.panelOffset+200/2,503/2);
+    assert.equal(l.x+202+360/2,765/2);
+    assert.equal(l.muteX,725);assert.equal(l.muteY,463);
+    const desktop=titleLayout(1920,1080);
+    assert.equal(desktop.scale,1);assert.equal(desktop.y,(1080-503)/2);
 });
 
 test("cache-font selection and caret follow native input offsets through scrolling",()=>{
