@@ -66,7 +66,6 @@ export class CacheInterfaceRenderer {
     viewport.append(stage);
     host.append(viewport);
 
-    const nodes = new Map<number, HTMLElement>();
     const all = Array.from(components.values());
     const roots = all.filter((component) =>
       component.parentId === -1 || !components.has(component.parentId & 0xffff));
@@ -161,7 +160,6 @@ export class CacheInterfaceRenderer {
           }
           break;
       }
-      nodes.set(widget.id, element);
       parent.append(element);
       for (const child of children.get(widget.id) ?? []) {
         build(child, element, width, height, depth + 1);
