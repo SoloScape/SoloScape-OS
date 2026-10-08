@@ -6,7 +6,30 @@ import {
     baseTileHeight, decodeTerrainRegion, djb2, getTerrainGroup, loadNativeTerrain,
     mapRegionCatalog, resolveTerrainRegion, extractTerrainFile,
 } from "../browser/terrain-world.mjs";
-import { buildTerrainMesh, buildTileGeometry, terrainWireframe } from "../browser/world-webgl.mjs";
+import { buildTerrainMesh, buildTileGeometry, terrainWireframe, sceneCameraMatrix } from "../browser/world-webgl.mjs";
+
+function project(matrix,point){
+    const v=[...point,1],clip=Array.from({length:4},(_,row)=>
+        v.reduce((sum,n,col)=>sum+matrix[col*4+row]*n,0));
+    return clip.slice(0,3).map(n=>n/clip[3]);
+}
+
+test("scene camera preserves east/north handedness through orbit, pan and zoom",()=>{
+    for(const target of [[0,0,0],[12,4,-9]])for(const distance of [18,100,170]){
+        for(const [yaw,right,up] of [[0,[1,0,0],[0,0,1]],
+            [Math.PI/2,[0,0,1],[-1,0,0]],
+            [Math.PI,[-1,0,0],[0,0,-1]],
+            [3*Math.PI/2,[0,0,-1],[1,0,0]]]){
+            const matrix=sceneCameraMatrix(target,yaw,.66,distance,1.5);
+            const center=project(matrix,target);
+            assert.ok(Math.abs(center[0])<1e-6&&Math.abs(center[1])<1e-6,"Pan target remains centered");
+            const offset=delta=>project(matrix,target.map((v,i)=>v+delta[i]));
+            assert.ok(offset(right)[0]>center[0],"Expected compass direction appears right");
+            assert.ok(offset(up)[1]>center[1],"Expected compass direction appears up");
+            assert.ok(offset([0,1,0])[1]>center[1],"Upper floors remain above ground");
+        }
+    }
+});
 
 function cacheContainer(payload,compression=2){
     const data=compression===2?gzipSync(payload):payload;

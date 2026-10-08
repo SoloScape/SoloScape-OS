@@ -139,6 +139,22 @@ try{
     const rgb=HSL_PALETTE[937];
     const expected=[rgb>>>16&255,rgb>>>8&255,rgb&255,255];
     if(expected.some((v,i)=>v!==pixel[i]))throw new Error("Pixel "+pixel+" expected "+expected);
+    // Asymmetric compass landmarks catch reflections in the actual GPU path.
+    // At yaw zero the camera is south of the map: north is up, east is right.
+    const landmarks=[[-8,8,2000],[8,8,12000],[-8,-8,30000],[8,-8,50000]],markers=[];
+    for(const [east,north,hsl] of landmarks){
+        for(const [dx,dz] of [[-3,-3],[3,-3],[-3,3],[3,-3],[3,3],[-3,3]])
+            markers.push(east+dx,.5,north+dz,hsl,0,0);
+    }
+    viewport.setScenery({vertices:new Float32Array(markers)});viewport.render();
+    for(const [east,north,hsl] of landmarks){
+        const depth=50+north*Math.cos(1.3)-.5*Math.sin(1.3);
+        const px=Math.floor(viewport.canvas.width*(.5+Math.sqrt(3)*east/depth/2));
+        const py=Math.floor(viewport.canvas.height*(.5+Math.sqrt(3)*(.5*Math.cos(1.3)+north*Math.sin(1.3))/depth/2));
+        gl.readPixels(px,py,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        const color=HSL_PALETTE[hsl],want=[color>>>16&255,color>>>8&255,color&255,255];
+        if(want.some((v,i)=>v!==pixel[i]))throw new Error("Mirrored compass landmark "+east+","+north+": "+pixel);
+    }
     // A separate object buffer must draw above terrain, then survive recolouring
     // and clear only when Travel resets the scene.
     const object=new Float32Array([-8,.5,-8,2000,0,0, 8,.5,-8,2000,0,0,

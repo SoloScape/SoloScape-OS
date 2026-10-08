@@ -49,7 +49,11 @@ requested regions remain exact, with a clear failure if absent.
 No mock map or stand-in terrain is rendered.
 
 Touch/drag or mouse/drag rotates the camera; wheel zooms; WASD/arrows
-pan. If cache geometry is not available, the page displays the actual
+pan along map axes (W/up north, S/down south, A/left west, D/right east).
+The camera maps cache north to negative WebGL Z alongside upward height,
+preserving map handedness across terrain, scenery and textured batches.
+At yaw zero, north appears up and east right; orbiting changes the view.
+If cache geometry is not available, the page displays the actual
 network/format error and leaves the viewport empty. The renderer needs
 a real browser/live-server verification; GitHub CI uses synthetic map
 fixtures and validates mesh generation.

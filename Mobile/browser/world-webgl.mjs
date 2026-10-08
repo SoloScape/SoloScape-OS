@@ -106,6 +106,20 @@ function multiply(a,b){
     return out;
 }
 
+export function sceneCameraMatrix(target,yaw,pitch,distance,aspect){
+    // Mesh coordinates retain cache east/north, with height already flipped up.
+    // WebGL's right-handed Y-up space needs north mapped to negative Z too.
+    // Apply this once to the whole scene, preserving placement, lighting and UVs.
+    const center=[target[0],target[1],-target[2]];
+    const eye=[
+        center[0]+Math.sin(yaw)*Math.cos(pitch)*distance,
+        center[1]+Math.sin(pitch)*distance,
+        center[2]+Math.cos(yaw)*Math.cos(pitch)*distance,
+    ];
+    const cacheToWebgl=new Float32Array([1,0,0,0, 0,1,0,0, 0,0,-1,0, 0,0,0,1]);
+    return multiply(multiply(perspective(aspect),lookAt(eye,center)),cacheToWebgl);
+}
+
 const tileShapeVertexIndices = [
     [1, 3, 5, 7],
     [1, 3, 5, 7],
@@ -291,8 +305,8 @@ export class NativeTerrainViewport {
             const step=3;
             if(e.key==="ArrowLeft"||e.key.toLowerCase()==="a")this.target[0]-=step;
             else if(e.key==="ArrowRight"||e.key.toLowerCase()==="d")this.target[0]+=step;
-            else if(e.key==="ArrowUp"||e.key.toLowerCase()==="w")this.target[2]-=step;
-            else if(e.key==="ArrowDown"||e.key.toLowerCase()==="s")this.target[2]+=step;
+            else if(e.key==="ArrowUp"||e.key.toLowerCase()==="w")this.target[2]+=step;
+            else if(e.key==="ArrowDown"||e.key.toLowerCase()==="s")this.target[2]-=step;
             else return;
             e.preventDefault();
             this.target[0]=Math.max(-30,Math.min(30,this.target[0]));
@@ -364,13 +378,7 @@ export class NativeTerrainViewport {
         gl.viewport(0,0,w,h);
         gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
         if(!this.count&&!this.sceneryCount&&!this.terrainBatches.length&&!this.sceneryBatches.length)return;
-        const p=this.pitch,d=this.distance;
-        const eye=[
-            this.target[0]+Math.sin(this.yaw)*Math.cos(p)*d,
-            this.target[1]+Math.sin(p)*d,
-            this.target[2]+Math.cos(this.yaw)*Math.cos(p)*d,
-        ];
-        const matrix=multiply(perspective(w/h),lookAt(eye,this.target));
+        const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,w/h);
         gl.useProgram(this.program);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D,this.palette);
