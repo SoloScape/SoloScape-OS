@@ -165,6 +165,10 @@ test("title form draws original cache labels and works with optional remembered/
             "Can't login? Click here.","Login","Cancel"])
             assert.ok(drawn.includes(str),"missing authentic title text "+str);
         const user=elements.get("login-username"),pass=elements.get("login-password");
+        // Match the reference: one space after Login:, masked stars flush
+        // against Password:. Both positions use the actual cache-font width.
+        assert.equal(user.style.left,`${272+font.measure("Login:")+font.measure(" ")}px`);
+        assert.equal(pass.style.left,`${272+font.measure("Password:")-font.measure(" ")}px`);
         user.value="PlayerOne";user.selectionEnd=9;pass.value="sensitive password";
         elements.get("title-world-switch").click();
         assert.equal(title.mode,"world-select");

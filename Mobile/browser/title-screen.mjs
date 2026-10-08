@@ -309,7 +309,11 @@ export class NativeTitleScreen{
                     const input=document.getElementById(id),value=masked||this.usernameHidden?"*".repeat(masked&&this.mode==="connecting"?this.connectingPasswordLength:input.value.length):input.value;
                     const active=this.mode==="login"&&document.activeElement===input,field=titleFieldLayout(font,value,input.selectionStart,input.selectionEnd,active);
                     this.fieldLayouts.set(input,field);
-                    const x=272+font.measure(label);
+                    // Match the original login glyph spacing: leave one cache-font
+                    // space after Login:, but pull the password stars flush to
+                    // Password: (the font's label width includes a visible gap).
+                    const space=font.measure(" ");
+                    const x=272+font.measure(label)+(masked?-space:space);
                     input.style.left=x+"px";
                     font.draw(ctx,label,272,y,"#ffffff",true);
                     font.draw(ctx,field.text,x,y,"#ffffff",true);
