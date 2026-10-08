@@ -64,7 +64,8 @@ In addition to bot-only squads, lone Wilderness PK bots periodically have a 15%
 chance to ask a nearby real player `Team?` in public chat. The bot must be idle,
 within ten tiles, and in the Wilderness. Only the addressed player's public-chat
 `yes` accepts the offer; `no` rejects it and makes the bot move on with an
-extended retry cooldown. Offers expire after 30 game cycles, and bots do not
+extended retry cooldown. The rejecting player is temporarily ignored as a PvP
+target unless they attack the bot first. Offers expire after 30 game cycles, and bots do not
 issue overlapping requests to the same player.
 
 Once accepted, the bot follows the player and targets whoever the player is
