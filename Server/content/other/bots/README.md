@@ -36,6 +36,28 @@ Wilderness and both clan populations. The default is `standard`.
 Population changes use the properties file; the spawn/removal commands are removed.
 Existing skilling, trading, progression and Castle Wars controllers remain separate.
 
+## Wilderness squads
+
+Wilderness PKers have a 25% chance to start a squad instead of spawning alone. Squad
+sizes are randomly chosen as duos, trios or quads, up to the remaining Wilderness
+population. Only multi-combat areas are used for squad spawn points; if no suitable
+reachable multiway tile exists, the bot spawns solo.
+
+`pvp.teams.chance=0.25` in `.data/bots.properties` controls the group spawn chance.
+Set it to `0` to disable teams, or `1` to attempt teams whenever at least two bot
+slots remain. Each squad counts toward the configured `wilderness` population,
+rather than adding extra bots.
+
+A squad has a leader who patrols inside multi-combat. Followers spawn nearby,
+follow the leader instead of independently roaming, and adopt the leader's target.
+If any member is attacked, all eligible squad members prioritise that attacker.
+They never attack their own squadmates, and group-assisted targeting only operates
+when both attacker and target are in multi-combat. Each bot still obeys native
+Wilderness level, combat-bracket, combat ownership, spell and weapon restrictions.
+If a leader dies or despawns, an active member takes over; respawning survivors
+return to their leader or the squad's multi-combat home. `::botinfo` shows a bot's
+squad size and whether it is the leader or a member.
+
 ## Behaviours
 
 - Four difficulty profiles vary reactions, eating, style switches, movement, specials,
