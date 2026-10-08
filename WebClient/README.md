@@ -34,6 +34,28 @@ pretending to contain live game data. Tap-to-drop/run toggles currently affect
 the UI only. The cache-backed title/login screen remains unchanged and the
 HUD is shown only after successfully entering the world.
 
+## Cache-backed game UI assets
+
+The game HUD now requests the original `sideicons` sprite group from JS5
+archive 8 and uses the existing cache-8 glyphs / cache-13 metrics for
+bitmap-font panel headings. Validated sprites replace the corresponding
+hand-drawn SVG tab icons when the cache sheet has those frames. The
+classic sideicons frame index table is provisional and must be checked
+against the rev-240 cache for correct tab artwork.
+
+`CacheInterfaceStore` exposes archive-3 interface component groups as
+an on-demand, validated API. For debugging after connecting:
+
+    const widgets = await window.soloscapeCacheInterfaces.load(149)
+
+The decoder currently reads IF1 layout headers and IF3 layout plus
+text/sprite references; it retains raw component bytes for later parsing.
+This is not a full widget renderer, nor are hardcoded group numbers assumed
+to be the active server-open interfaces. UI-open/game packet handlers,
+additional widget types and script/interaction handling must be connected
+before the hardcoded placeholder panels can be removed. A missing cache
+sprite pack is logged and does not block login.
+
 ## Current game-login flow
 
 Game login uses a second WebSocket/TCP connection after JS5 bootstrap:
