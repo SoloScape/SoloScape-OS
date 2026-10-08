@@ -434,6 +434,7 @@ export class MobileHud {
   }
 
   private closePanel(): void {
+    this.interfaceRenderer?.cancel();
     this.selectedTab = null;
     this.panel.hidden = true;
     this.updateActiveTab();
