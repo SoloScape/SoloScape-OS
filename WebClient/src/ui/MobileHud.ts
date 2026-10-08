@@ -139,6 +139,7 @@ export class MobileHud {
   private interfaceRenderer: CacheInterfaceRenderer | null = null;
   private serverUi: Rev240UiState | null = null;
   private activePanelGroup: number | null = null;
+  private activeServerConfirmed = false;
   private interfaceGroupIds = new Set<number>();
   private cachedIconUrls = new Map<string, string>();
   private selectedTab: TabId | null = null;
@@ -281,7 +282,8 @@ export class MobileHud {
       const group = hinted !== undefined &&
         [...this.serverUi.subInterfaces.values()].some((s) => s.groupId === hinted)
         ? hinted : null;
-      if (group !== null && group !== this.activePanelGroup) {
+      if (group !== this.activePanelGroup ||
+        (group !== null) !== this.activeServerConfirmed) {
         this.renderCachedPanel(this.selectedTab);
       }
     }
@@ -497,6 +499,7 @@ export class MobileHud {
   private closePanel(): void {
     this.interfaceRenderer?.cancel();
     this.activePanelGroup = null;
+    this.activeServerConfirmed = false;
     this.selectedTab = null;
     this.panel.hidden = true;
     this.updateActiveTab();
@@ -524,6 +527,7 @@ export class MobileHud {
       (hintedId !== undefined && this.interfaceGroupIds.has(hintedId)
         ? hintedId : null);
     this.activePanelGroup = groupId;
+    this.activeServerConfirmed = Boolean(matchingOpen);
 
     if (!this.interfaceRenderer) {
       this.panelBody.textContent = 'Loading original game interfaces from cache...';
