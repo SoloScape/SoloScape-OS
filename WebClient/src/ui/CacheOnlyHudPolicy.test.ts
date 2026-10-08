@@ -24,6 +24,8 @@ test('cache-only HUD never invents a minimap terrain palette or UI chrome', () =
 });
 
 test('cache graphic loader does not use guessed sideicon frame indices', () => {
-  assert.doesNotMatch(assets, /resolveNamedGroup|sideIcons/);
+  assert.doesNotMatch(assets, /sideIcons|CACHE_SIDE_ICON|indexToTab/);
+  // A verified cache group name such as 'compass' is not a guessed index.
+  assert.match(assets, /resolveNamedGroup\(js5, GAME_SPRITE_ARCHIVE, \[name\]\)/);
   assert.match(assets, /downloadGroup\(GAME_SPRITE_ARCHIVE, candidate.groupId\)/);
 });
