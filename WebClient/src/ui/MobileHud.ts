@@ -65,6 +65,7 @@ export interface MobileHudOptions {
   readonly onCameraNorth: () => void;
   readonly onZoom: (delta: number) => void;
   readonly onCacheArtStatus?: (status: string) => void;
+  readonly onHudAction?: (action: string) => void;
 }
 
 /**
@@ -159,7 +160,12 @@ export class MobileHud {
       const target = event.target as Element;
       const control = target.closest<HTMLButtonElement>('[data-action]');
       if (control && root.contains(control)) {
-        this.handleAction(control.dataset.action ?? '');
+        const action = control.dataset.action ?? '';
+        this.options.onHudAction?.(action);
+        // These are semantic DOM hit targets, not cache-sourced sprite
+        // widgets. Do not let a button click become a world-walk click.
+        event.stopPropagation();
+        this.handleAction(action);
       }
     });
     this.require<HTMLFormElement>('#hud-chat-form').addEventListener('submit', (event) => {
@@ -290,7 +296,9 @@ export class MobileHud {
 
     switch (action) {
       case 'logout':
-        this.options.onLogout();
+        // A misplaced transparent hitbox must never terminate a live
+        // session with one accidental click.
+        if (window.confirm('Log out of SoloScape?')) this.options.onLogout();
         break;
       case 'stones-toggle':
         this.secondaryOpen = !this.secondaryOpen;
