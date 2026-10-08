@@ -72,6 +72,8 @@ import {
 import { ClientBootRenderer } from './ui/ClientBootRenderer';
 import { applyLoginKey } from './ui/LoginInput';
 import { MobileHud } from './ui/MobileHud';
+import { loadCacheGameUiAssets } from './cache/CacheGameUiAssets';
+import type { CacheInterfaceStore } from './cache/CacheInterfaceDefinitions';
 
 const CLIENT_VIEWPORT_WIDTH = 765;
 const CLIENT_VIEWPORT_HEIGHT = 503;
@@ -1193,6 +1195,21 @@ js5.onBootstrapComplete = (index) => {
 
       titleAssets = loadedTitleAssets;
       titleRenderer = renderer;
+      // UI art is loaded from the same validated JS5 cache as the title.
+      // Do not block account login on an optional HUD asset pack.
+      void loadCacheGameUiAssets(js5, loadedTitleAssets, appendLog)
+        .then((assets) => {
+          if (generation !== bootGeneration) return;
+          mobileHud.setCacheAssets(assets);
+          (window as Window & {
+            soloscapeCacheInterfaces?: CacheInterfaceStore;
+          }).soloscapeCacheInterfaces = assets.interfaces;
+        })
+        .catch((error: unknown) => {
+          if (generation !== bootGeneration) return;
+          appendLog('Game cache UI sprites unavailable: ' +
+            (error instanceof Error ? error.message : String(error)));
+        });
       (window as SoloScapeDebugWindow).soloscapeTitleAssets =
         loadedTitleAssets;
 
