@@ -1,12 +1,12 @@
 # SoloScape Mobile (TSPS port)
 
-> **Status: planning/scaffolding only.** A playable SoloScape mobile client has **not** been ported yet. The current `Client/` desktop RSProx launcher and `Server/` Kotlin game server remain unchanged.
+> **Status: experimental TSPS integration, not yet a playable SoloScape client.** The pinned upstream source and a configurable dev/build launcher are present. A playable SoloScape mobile client has **not** been ported yet. The current `Client/` desktop RSProx launcher and `Server/` Kotlin game server remain unchanged.
 
-This directory will house a mobile-first browser client based on [RSPSApp/tsps](https://github.com/RSPSApp/tsps), which provides a React/TypeScript/WebGL OSRS-style game client. Track the work in [issue #32](https://github.com/SoloScape/SoloScape-OS/issues/32).
+This directory integrates the pinned upstream browser client as a Git submodule at `tsps-upstream/`, based on [RSPSApp/tsps](https://github.com/RSPSApp/tsps), which provides a React/TypeScript/WebGL OSRS-style game client. Track the work in [issue #32](https://github.com/SoloScape/SoloScape-OS/issues/32).
 
 ## Source baseline
 
-- Upstream project: `RSPSApp/tsps`
+- Upstream project: `RSPSApp/tsps`, pinned as the `Mobile/tsps-upstream/` Git submodule (initialise it when cloning).
 - Reviewed upstream commit: [`b9ca431be440174fce5adf0efbb7afa992358916`](https://github.com/RSPSApp/tsps/commit/b9ca431be440174fce5adf0efbb7afa992358916)
 - Relevant upstream paths:
   - [`client/`](https://github.com/RSPSApp/tsps/tree/main/client): TypeScript WebGL game client, UI, network layer and cache loading
@@ -19,7 +19,7 @@ TSPS's repository license is **BSD 2-Clause**; retain its copyright notices, lic
 
 ## Compatibility boundary
 
-SoloScape's existing `Client/` is **RSProx**, a desktop OSRS traffic proxy/launcher, **not** a browser client. SoloScape's `Server/` is a Kotlin OpenRune/RSMod-derived server and documents OSRS revision **240.2**. TSPS currently targets its own TypeScript server and ships an example localhost world at port `43594`. Do **not** assume TSPS packets, client revision, encryption, caches or session flow match SoloScape's server.
+SoloScape's existing `Client/` is **RSProx**, a desktop OSRS traffic proxy/launcher, **not** a browser client. SoloScape's `Server/` is a Kotlin OpenRune/RSMod-derived server and documents OSRS revision **240.2**. TSPS currently targets its own TypeScript server and ships an example localhost world at port `43594`. The pinned TSPS cache target is **OSRS revision 241** (`server/target.txt`) versus SoloScape's documented **240.2**. The new launcher prints a warning if they differ. Do **not** assume TSPS packets, client revision, encryption, caches or session flow match SoloScape's server.
 
 A browser cannot open the game's raw TCP socket directly. A compatible WebSocket endpoint or gateway may be needed; confirm the transport and handshake before adopting a design. Production connections must use secure transport and configurable addresses. Never ship development localhost addresses or embedded credentials as production defaults.
 
@@ -31,9 +31,69 @@ A browser cannot open the game's raw TCP socket directly. A compatible WebSocket
 4. **Touch-first controls:** Validate movement/tap, camera gestures, menus/long press, chat/keyboard, usable UI scaling, screen orientation and safe-area handling on Android Chrome and iOS Safari.
 5. **Test and document:** Confirm real login, rendering, movement, chat and disconnect/reconnect against a local SoloScape test server. Add repeatable CI builds and a mobile smoke-test checklist.
 
-## Current run instructions
+## First experimental run
 
-None yet. This folder is an integration plan and deliberately does **not** pretend to be an installed or working copy of TSPS. Follow issue #32 as implementation is added.
+**Prerequisites:** Node.js 22.16+ and Git. These instructions launch the **upstream TSPS web client**, configured with your explicit test endpoint. They do **not** establish protocol compatibility or a working SoloScape login.
+
+1. Clone the repository including submodules, or from an existing checkout run:
+
+   ```bash
+   git submodule update --init Mobile/tsps-upstream
+   ```
+
+2. Install the upstream dependencies (the upstream setup may download sizeable dependencies and cache data):
+
+   ```bash
+   cd Mobile/tsps-upstream
+   npm run setup
+   cd ..
+   ```
+
+3. From `Mobile/`, set the WebSocket URL of an actual **browser-compatible** test server/gateway, then launch the browser app:
+
+   ```bash
+   SOLOSCAPE_GAME_URL=ws://192.168.1.10:43594 npm run dev
+   ```
+
+   In Windows PowerShell:
+
+   ```powershell
+   $env:SOLOSCAPE_GAME_URL = 'ws://192.168.1.10:43594'
+   npm run dev
+   ```
+
+   The web dev server defaults to **port 3001**, bound to `0.0.0.0` for LAN device testing. Open `http://YOUR_PC_LAN_IP:3001` on Android or iOS. A phone opening `localhost` would connect to the phone itself, not your PC. Mobile PWAs and some browser capabilities may require HTTPS or a trusted local certificate. **Do not expose the development server publicly.**
+
+   There is no known working SoloScape browser gateway yet. A raw TCP game port cannot be consumed directly by a browser, so the URL example is illustrative until a WebSocket-compatible adapter exists.
+
+4. To validate launcher configuration independently of the upstream runtime:
+
+   ```bash
+   npm test
+   ```
+
+### Supported environment variables
+
+| Variable | Meaning |
+| --- | --- |
+| `SOLOSCAPE_GAME_URL` | **Required:** explicit `ws://` or `wss://` browser game endpoint (no path, credentials or query) |
+| `SOLOSCAPE_CACHE_BASE_URL` | Optional in development; explicit `http(s)://` cache URL. Required over HTTPS for production builds |
+| `SOLOSCAPE_SERVER_NAME` | Name shown on the upstream server selector |
+| `SOLOSCAPE_WEB_PORT` | Dev HTTP port, default `3001` |
+| `SOLOSCAPE_WEB_HOST` | Dev listen address, default `0.0.0.0` |
+
+The launcher maps these to the upstream client’s `REACT_APP_*` variables. **Anything with `REACT_APP_` is public in browser code—never put API tokens or credentials there.** TSPS still uses its own cache by default in development, which is **not** guaranteed compatible with SoloScape.
+
+A production bundle can be attempted from `Mobile/` with `npm run build` after supplying `SOLOSCAPE_GAME_URL=wss://...` and `SOLOSCAPE_CACHE_BASE_URL=https://.../caches/`. This only builds the upstream client; it does **not** add the missing server protocol integration. Upstream packages require their own setup first.
+
+## Known incompatibilities / next engineering work
+
+- TSPS upstream revision **241** versus SoloScape's documented **240.2**: align supported protocol, game packets, cache ids and interface definitions.
+- The existing SoloScape server is not verified to provide a compatible game WebSocket gateway.
+- TSPS's cache and build scripts depend on portions of the TSPS server project. Those scripts run **in the upstream submodule**, while SoloScape's Kotlin server stays unchanged.
+- TSPS's existing touch gestures, PWA, iOS landscape handling and WebGL renderer are available in the pinned source; Android/iOS real-device smoke tests and SoloScape branding still remain.
+
+CI checks the launcher configuration and syntax; it does not yet prove the TSPS client can render or connect to SoloScape.
 
 ## Scope
 
