@@ -147,6 +147,7 @@ const mobileHud = new MobileHud(
     },
     onZoom: (delta) => orbitCamera.queueZoom(delta),
     onCacheArtStatus: appendLog,
+    onHudAction: (action) => appendLog('HUD action: ' + action),
   },
 );
 
@@ -176,6 +177,7 @@ let titleMode:
   | 'game' = 'bootstrap';
 let bootGeneration = 0;
 let validatedLoginCrcs: readonly number[] | null = null;
+let cacheReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let mapLoadGeneration = 0;
 let playerModelGeneration = 0;
 let framedGamePackets = 0;
@@ -673,6 +675,11 @@ async function beginGameLogin(): Promise<void> {
   if (gameLoginIsActive()) {
     return;
   }
+  if (js5.state !== 'ready') {
+    scheduleCacheReconnect();
+    renderLoginScreen('Cache socket disconnected; reconnecting to load world assets.');
+    return;
+  }
 
   const username = loginUsername.value.trim();
   const password = loginPassword.value;
@@ -822,6 +829,28 @@ appendLog(
 js5.onLog = appendLog;
 gameLogin.onLog = appendLog;
 
+/**
+ * JS5 can close independently of the active game socket. Reconnect only
+ * the cache transport: never clear validated title/config data or the
+ * game session just because a background asset connection was dropped.
+ */
+function scheduleCacheReconnect(): void {
+  if (cacheReconnectTimer !== null || js5IsActive() ||
+      !titleRenderer || !startupAssets) return;
+  cacheReconnectTimer = setTimeout(() => {
+    cacheReconnectTimer = null;
+    if (js5IsActive() || !titleRenderer || !startupAssets ||
+        titleMode === 'bootstrap') return;
+    appendLog('Reconnecting background JS5 cache transport...');
+    void js5.connect(urlInput.value, { revision: OSRS_PROTOCOL_REVISION })
+      .catch((error: unknown) => {
+        appendLog('JS5 reconnect failed: ' +
+          (error instanceof Error ? error.message : String(error)));
+        scheduleCacheReconnect();
+      });
+  }, 2500);
+}
+
 js5.onStateChange = (state) => {
   const labels: Record<typeof state, string> = {
     idle: 'Disconnected',
@@ -835,6 +864,14 @@ js5.onStateChange = (state) => {
   };
 
   status.textContent = labels[state];
+  if (state === 'closed' || state === 'error') {
+    scheduleCacheReconnect();
+  }
+  if (state === 'ready' && titleRenderer && startupAssets &&
+      titleMode !== 'bootstrap') {
+    appendLog('Background JS5 cache connection restored.');
+    if (titleMode === 'login') renderLoginScreen();
+  }
   connectButton.textContent = js5IsActive()
     ? 'Disconnect JS5'
     : 'Connect JS5';
@@ -1071,6 +1108,7 @@ gameLogin.onGamePacket = (packet) => {
 
       (window as SoloScapeDebugWindow).soloscapeSceneMaterials =
         materials;
+      mobileHud.setFloorMaterials(materials);
 
       if (sceneRenderer) {
         sceneRenderer.setTextureLayers(materials.textureLayers);
@@ -1191,6 +1229,11 @@ js5.onArchiveIndex = (_archive, _response, progress) => {
 js5.onBootstrapComplete = (index) => {
   const generation = bootGeneration;
   const archiveCount = presentJs5Archives(index).length;
+  // A cache reconnect is not a new login/title bootstrap.
+  if (titleRenderer && startupAssets && titleMode !== 'bootstrap') {
+    appendLog('JS5 reconnected: ' + archiveCount + ' cache indices restored.');
+    return;
+  }
 
   renderBootScreen(
     65,
@@ -1307,6 +1350,10 @@ connectButton.addEventListener('click', () => {
       gameLogin.disconnect();
     }
     js5.disconnect();
+    if (cacheReconnectTimer !== null) {
+      clearTimeout(cacheReconnectTimer);
+      cacheReconnectTimer = null;
+    }
     uiState.reset();
     sceneAssetLoader.reset();
     sceneMaterialLoader.reset();
