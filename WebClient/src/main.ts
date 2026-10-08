@@ -146,6 +146,7 @@ const mobileHud = new MobileHud(
       );
     },
     onZoom: (delta) => orbitCamera.queueZoom(delta),
+    onCacheArtStatus: appendLog,
   },
 );
 
