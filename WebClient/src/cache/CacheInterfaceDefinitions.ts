@@ -42,6 +42,10 @@ export interface CacheInterfaceComponent {
   readonly spriteId: number | null;
   readonly fontId: number | null;
   readonly text: string | null;
+  readonly modelId: number | null;
+  readonly modelZoom: number | null;
+  /** Legacy CS1 bytecode operands for cache-driven skill/varp text. */
+  readonly cs1Programs: ReadonlyArray<ReadonlyArray<number>>;
   /** Retain the complete definition for future widget/CS2 decoders. */
   readonly raw: Uint8Array;
 }
@@ -126,6 +130,9 @@ export function decodeCacheInterfaceComponent(
   let spriteId: number | null = null;
   let fontId: number | null = null;
   let text: string | null = null;
+  let modelId: number | null = null;
+  let modelZoom: number | null = null;
+  const cs1Programs: number[][] = [];
   let textXAlignment = 0;
   let textYAlignment = 0;
   let textLineHeight = 0;
@@ -179,6 +186,21 @@ export function decodeCacheInterfaceComponent(
         spriteFlipH = reader.u8() !== 0;
         break;
       }
+      case 6: {
+        const model = reader.u16();
+        modelId = model === 0xffff ? null : model;
+        reader.i16(); // model offset X
+        reader.i16(); // model offset Y
+        reader.u16(); // pitch
+        reader.u16(); // yaw
+        reader.u16(); // roll
+        modelZoom = reader.u16();
+        reader.u8(); // orthographic projection
+        reader.u16(); // model sequence
+        if (widthAlignment !== 0) reader.u16();
+        if (heightAlignment !== 0) reader.u16();
+        break;
+      }
       case 9:
         reader.u8(); // line width
         colour = reader.i32() >>> 0;
@@ -198,7 +220,12 @@ export function decodeCacheInterfaceComponent(
     const instructions = reader.remaining ? reader.u8() : 0;
     for (let i = 0; i < instructions; i++) {
       const length = reader.u16();
-      for (let j = 0; j < length; j++) reader.u16();
+      if (length > reader.remaining / 2) {
+        throw new Error('Truncated legacy interface CS1 instruction block');
+      }
+      const program: number[] = [];
+      for (let j = 0; j < length; j++) program.push(reader.u16());
+      cs1Programs.push(program);
     }
 
     if (type === 0 && reader.remaining >= 3) {
@@ -230,11 +257,23 @@ export function decodeCacheInterfaceComponent(
     if ((type === 1 || type === 3 || type === 4) && reader.remaining >= 4) {
       colour = reader.i32() >>> 0;
     }
-    if (type === 5 && reader.remaining >= 8) {
-      reader.i32(); // alternate sprite
-      const sprite = reader.i32();
-      spriteId = sprite < 0 ? null : sprite;
+    if (type === 5 && reader.remaining >= 1) {
+      // Old IF1 sprites use cache name strings, not IF3 numeric sprite IDs.
+      // Preserve the bytes for a later named-sprite loader; don't guess IDs.
+      reader.str();
+      if (reader.remaining) reader.str();
     }
+    if (type === 7 && reader.remaining >= 12) {
+      // IF1 type 7 is the inventory text-grid variant.
+      textXAlignment = reader.u8();
+      const font = reader.u16();
+      fontId = font === 0xffff ? null : font;
+      textShadow = reader.u8() !== 0;
+      colour = reader.i32() >>> 0;
+      gridPaddingX = reader.i16();
+      gridPaddingY = reader.i16();
+    }
+    if (type === 8 && reader.remaining) text = reader.str();
   }
   if (parentId === 0xffff) parentId = -1;
   else parentId = (groupId << 16) | parentId;
@@ -248,7 +287,7 @@ export function decodeCacheInterfaceComponent(
     textXAlignment, textYAlignment, textLineHeight, textShadow,
     spriteAngle, spriteTiling, spriteFlipH, spriteFlipV,
     gridPaddingX, gridPaddingY,
-    spriteId, fontId, text, raw: data,
+    spriteId, fontId, text, modelId, modelZoom, cs1Programs, raw: data,
   };
 }
 
