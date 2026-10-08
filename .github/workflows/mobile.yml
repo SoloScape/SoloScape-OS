@@ -84,6 +84,14 @@ jobs:
           node --check Mobile/browser/login-pow.mjs
           node --check Mobile/browser/native-login.mjs
           node --check Mobile/browser/game-protocol.mjs
+          node --check Mobile/browser/native-gameplay.mjs
+          node --check Mobile/browser/player-protocol.mjs
+          node --check Mobile/browser/player-sync.mjs
+          node --check Mobile/browser/player-config.mjs
+          node --check Mobile/browser/player-colors.mjs
+          node --check Mobile/browser/player-models.mjs
+          node --check Mobile/browser/player-animation.mjs
           node --check Mobile/scripts/native-login-config.mjs
+          node --check Mobile/scripts/adapt-player-config.mjs
           node --check Mobile/scripts/generate-native-protocol.mjs
           node --check Mobile/scripts/verify-native-login.mjs

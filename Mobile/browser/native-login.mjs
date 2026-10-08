@@ -8,12 +8,12 @@ const MAX_BUFFER=1024*1024;
 // The gateway forwards an ordered TCP byte stream: WebSocket messages are not packet boundaries.
 export class NativeGameSession {
     constructor({url="ws://127.0.0.1:43595/",WebSocketClass=globalThis.WebSocket,
-        timeoutMs=60000,heartbeatMs=5000,onStatus=()=>{},onPacket=()=>{},onClose=()=>{}}={}){
+        timeoutMs=60000,heartbeatMs=5000,onStatus=()=>{},onAuthenticated=()=>{},onPacket=()=>{},onClose=()=>{}}={}){
         this.url=validateNativeGatewayUrl(url);this.WebSocketClass=WebSocketClass;
         if(!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>120000||!Number.isInteger(heartbeatMs)||heartbeatMs<1)
             throw new Error("Invalid native session timeout");
         this.timeoutMs=timeoutMs;this.heartbeatMs=heartbeatMs;
-        this.onStatus=onStatus;this.onPacket=onPacket;this.onClose=onClose;
+        this.onStatus=onStatus;this.onAuthenticated=onAuthenticated;this.onPacket=onPacket;this.onClose=onClose;
         this.state="idle";this.buffer=new Uint8Array();this.connected=false;
         this.abort=new AbortController();
     }
@@ -66,6 +66,18 @@ export class NativeGameSession {
         if(this.socket.bufferedAmount>MAX_BUFFER)throw new Error("Native game send buffer exceeded limit");
         this.socket.send(bytes.slice());
     }
+    sendGame(opcode,payload=new Uint8Array(),size=payload.length){
+        if(!this.connected||this.state!=="game")throw new Error("Native game session is not authenticated");
+        if(!Number.isInteger(opcode)||opcode<0||opcode>127||!(payload instanceof Uint8Array)||
+            !Number.isInteger(size)||size< -2||size>=0&&size!==payload.length||
+            payload.length>(size===-1?255:65535))throw new Error("Invalid native client packet");
+        // Validate transport before advancing ISAAC; a failed send ends the session.
+        try{
+            const header=size===-1?[opcode,payload.length]:size===-2?[opcode,payload.length>>>8,payload.length&255]:[opcode];
+            header[0]=(opcode+this.encodeCipher.nextInt())&255;
+            const wire=new Uint8Array(header.length+payload.length);wire.set(header);wire.set(payload,header.length);this.send(wire);
+        }catch(error){this.stop(error);throw error;}
+    }
     drain(){
         while(this.buffer.length&&this.state!=="closed"){
             if(this.state==="hello"){
@@ -105,7 +117,7 @@ export class NativeGameSession {
                     try{this.send(Uint8Array.of((CLIENT_NO_TIMEOUT+this.encodeCipher.nextInt())&255));}
                     catch(error){this.stop(error);}
                 },this.heartbeatMs);
-                this.onStatus("Authenticated");this.resolve(this.account);this.resolve=this.reject=null;
+                this.onStatus("Authenticated");this.onAuthenticated(this.account);this.resolve(this.account);this.resolve=this.reject=null;
             }else if(this.state==="game"){
                 if(!this.packet){
                     const first=(this.take(1)[0]-this.decodeCipher.nextInt())&255;

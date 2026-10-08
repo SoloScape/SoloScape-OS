@@ -59,9 +59,12 @@ a real browser/live-server verification; GitHub CI uses synthetic map
 fixtures and validates mesh generation.
 
 **Important scope:** This is **real client/world renderer development**,
-with static scenery, textures and native encrypted login. Player entities,
-movement and native game payload interpretation are still pending. Live
-account authentication remains to be verified. Do not ask users
+with static scenery, textures, native encrypted login, server-authoritative
+player rendering and click-to-move. Revision-240 global player updates,
+appearance composition, classic locomotion animation, collision-owned
+movement requests, rebuilds and plane changes are decoded from the live
+game stream. Instanced region templates, NPCs, interfaces and chat remain
+outside this milestone. Do not ask users
 for credentials before trusted TLS and a reviewed native login path.
 The upstream TSPS revision-241 React/WebGL application is still
 available separately via `npm run dev:tsps` (requires its submodule

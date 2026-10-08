@@ -238,6 +238,10 @@ function buildPlaneMesh(terrain){
 export function buildTerrainMesh(terrain){return new Float32Array(buildPlaneMesh(terrain).levels.flat());}
 
 export function buildTerrainScene(terrain){
+    if(terrain.regions){
+        const scenes=terrain.regions.map(region=>({scene:buildTerrainScene(region),dx:(region.mapX-terrain.mapX)*64,dy:(region.mapY-terrain.mapY)*64}));
+        return combineRegionMeshes(scenes);
+    }
     const levels=Array.from({length:4},()=>[]),texturedBatches=[];
     for(let p=0;p<4;p++){
         const view=terrainPlane(terrain,p);if(!view||p>0&&!terrain.floorMaterials)continue;
@@ -246,6 +250,45 @@ export function buildTerrainScene(terrain){
         for(const b of mesh.textured.values())texturedBatches.push({level:b.level,texture:b.texture,vertices:new Float32Array(b.numbers)});
     }
     return {vertices:new Float32Array(levels.flat()),levelCounts:levels.map(v=>v.length/6),texturedBatches};
+}
+
+export function combineRegionMeshes(scenes){
+    const levels=Array.from({length:4},()=>[]),texturedBatches=[];
+    const shift=(vertices,dx,dy)=>{const out=vertices.slice();for(let i=0;i<out.length;i+=6){out[i]+=dx;out[i+2]+=dy;}return out;};
+    for(const {scene,dx=0,dy=0} of scenes){
+        let start=0;
+        for(let level=0;level<4;level++){
+            const count=(scene.levelCounts?.[level]??(level===0?scene.vertices.length/6:0))*6;
+            levels[level].push(shift(scene.vertices.subarray(start,start+count),dx,dy));start+=count;
+        }
+        for(const b of scene.texturedBatches??[])texturedBatches.push({...b,vertices:shift(b.vertices,dx,dy)});
+    }
+    const vertices=new Float32Array(levels.flat().reduce((n,v)=>n+v.length,0));let at=0;
+    for(const v of levels.flat()){vertices.set(v,at);at+=v.length;}
+    return {vertices,levelCounts:levels.map(parts=>parts.reduce((n,v)=>n+v.length/6,0)),texturedBatches};
+}
+
+// Perspective-correct ground picking uses the same triangles/matrix as rendering.
+export function pickTerrainTile(vertices,matrix,nx,ny){
+    const project=(at)=>{
+        const x=vertices[at],y=vertices[at+1],z=vertices[at+2];
+        const p=[0,1,2,3].map(r=>matrix[r]*x+matrix[r+4]*y+matrix[r+8]*z+matrix[r+12]);
+        return p[3]>0?[p[0]/p[3],p[1]/p[3],p[2]/p[3],p[3]]:null;
+    };
+    let best=null,depth=Infinity;
+    for(let i=0;i<vertices.length;i+=18){
+        const a=project(i),b=project(i+6),c=project(i+12);if(!a||!b||!c)continue;
+        const d=(b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1]);if(Math.abs(d)<1e-10)continue;
+        const u=((b[1]-c[1])*(nx-c[0])+(c[0]-b[0])*(ny-c[1]))/d;
+        const v=((c[1]-a[1])*(nx-c[0])+(a[0]-c[0])*(ny-c[1]))/d,w=1-u-v;
+        if(u<0||v<0||w<0)continue;
+        const z=u*a[2]+v*b[2]+w*c[2];if(z< -1||z>1||z>=depth)continue;
+        const weights=[u/a[3],v/b[3],w/c[3]],sum=weights.reduce((n,v)=>n+v,0);
+        const x=weights.reduce((n,t,k)=>n+t*vertices[i+k*6],0)/sum;
+        const y=weights.reduce((n,t,k)=>n+t*vertices[i+k*6+2],0)/sum;
+        depth=z;best={x:Math.floor(x+31.5),y:Math.floor(y+31.5)};
+    }
+    return best;
 }
 
 export function terrainWireframe(vertices){
@@ -263,7 +306,7 @@ export function terrainWireframe(vertices){
     return lines;
 }
 export class NativeTerrainViewport {
-    constructor(canvas) {
+    constructor(canvas,{onDestination=()=>{}}={}) {
         this.canvas=canvas;
         this.gl=canvas.getContext("webgl",{antialias:true,alpha:false}) ||
             canvas.getContext("experimental-webgl");
@@ -273,6 +316,7 @@ export class NativeTerrainViewport {
         this.textureProgram=program(gl,true);this.textures=new Map();this.terrainBatches=[];this.sceneryBatches=[];this.visibleLevel=0;
         this.buf=gl.createBuffer();
         this.sceneryBuf=gl.createBuffer();this.sceneryCount=0;
+        this.actorBuf=gl.createBuffer();this.actorCount=0;this.actorBatches=[];this.onDestination=onDestination;
         this.palette=gl.createTexture();
         const pixels=new Uint8Array(65536*4);
         for(let i=0;i<HSL_PALETTE.length;i++){
@@ -290,15 +334,26 @@ export class NativeTerrainViewport {
         this.target=[0,10,0];
         this.pointer=null;
         this.disposed=false;
-        this.onPointerDown=e=>{this.pointer={id:e.pointerId,x:e.clientX,y:e.clientY};
+        this.onPointerDown=e=>{this.pointer={id:e.pointerId,x:e.clientX,y:e.clientY,startX:e.clientX,startY:e.clientY,dragged:false,button:e.button};
             canvas.setPointerCapture?.(e.pointerId);};
         this.onPointerMove=e=>{
             if(!this.pointer||this.pointer.id!==e.pointerId)return;
             const dx=e.clientX-this.pointer.x,dy=e.clientY-this.pointer.y;
+            this.pointer.dragged ||=Math.hypot(e.clientX-this.pointer.startX,e.clientY-this.pointer.startY)>6;
+            if(!this.pointer.dragged)return;
             this.yaw+=dx*.007;this.pitch=Math.max(.18,Math.min(1.38,this.pitch+dy*.007));
             this.pointer.x=e.clientX;this.pointer.y=e.clientY;
         };
-        this.onPointerUp=e=>{if(this.pointer?.id===e.pointerId)this.pointer=null;};
+        this.onPointerUp=e=>{
+            if(this.pointer?.id!==e.pointerId)return;
+            const pointer=this.pointer;this.pointer=null;
+            if(e.type==="pointercancel"||pointer.dragged||pointer.button!==0||!this.pickVertices)return;
+            const rect=canvas.getBoundingClientRect(),nx=2*(e.clientX-rect.left)/rect.width-1,ny=1-2*(e.clientY-rect.top)/rect.height;
+            const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,rect.width/rect.height);
+            const count=this.pickLevelCounts.slice(0,this.visibleLevel+1).reduce((a,b)=>a+b,0)*6;
+            const tile=pickTerrainTile(this.pickVertices.subarray(0,count),matrix,nx,ny);
+            if(tile)this.onDestination({...tile,run:e.shiftKey});
+        };
         this.onWheel=e=>{e.preventDefault();this.distance=Math.max(18,Math.min(170,this.distance*Math.exp(e.deltaY*.001)));};
         this.onKey=e=>{
             if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName||""))return;
@@ -326,6 +381,7 @@ export class NativeTerrainViewport {
     setTerrain(terrain,{resetCamera=true}={}){
         const gl=this.gl;
         const scene=buildTerrainScene(terrain),mesh=scene.vertices;
+        this.pickVertices=mesh;this.pickLevelCounts=scene.levelCounts;
         this.drawMode=terrain.floorMaterials?gl.TRIANGLES:gl.LINES;
         const vertices=terrain.floorMaterials?mesh:terrainWireframe(mesh);
         gl.bindBuffer(gl.ARRAY_BUFFER,this.buf);
@@ -348,8 +404,12 @@ export class NativeTerrainViewport {
         this.replaceBatches("sceneryBatches",scene?.texturedBatches??[]);
         for(const texture of this.textures.values())this.gl.deleteTexture(texture);
         this.textures.clear();
+        this.addTextures(scene?.textures??new Map());
+    }
+    addTextures(textures){
         const gl=this.gl;
-        for(const [id,data] of scene?.textures??[]){
+        for(const [id,data] of textures){
+            if(this.textures.has(id))continue;
             if((data.size!==64&&data.size!==128)||data.pixels?.length!==data.size*data.size*4)throw new Error("Invalid scene texture");
             const texture=gl.createTexture();this.textures.set(id,texture);
             gl.bindTexture(gl.TEXTURE_2D,texture);
@@ -359,6 +419,14 @@ export class NativeTerrainViewport {
             gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
             gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,data.size,data.size,0,gl.RGBA,gl.UNSIGNED_BYTE,data.pixels);
         }
+    }
+    setActors(scene){
+        const vertices=scene?.vertices??new Float32Array();
+        if(!(vertices instanceof Float32Array)||vertices.length%18)throw new Error("Invalid player mesh");
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER,this.actorBuf);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER,vertices,this.gl.DYNAMIC_DRAW);this.actorCount=vertices.length/6;
+        this.replaceBatches("actorBatches",scene?.texturedBatches??[]);
+        this.addTextures(scene?.textures??new Map());
     }
     setSceneLevel(level){validateSceneLevel(level);this.visibleLevel=level;}
     replaceBatches(name,batches){
@@ -397,12 +465,18 @@ export class NativeTerrainViewport {
             gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
             gl.drawArrays(gl.TRIANGLES,0,this.sceneryLevelCounts.slice(0,this.visibleLevel+1).reduce((a,b)=>a+b,0));
         }
+        if(this.actorCount){
+            gl.uniform1i(gl.getUniformLocation(this.program,"u_wireframe"),0);
+            gl.bindBuffer(gl.ARRAY_BUFFER,this.actorBuf);
+            gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
+            gl.drawArrays(gl.TRIANGLES,0,this.actorCount);
+        }
         gl.useProgram(this.textureProgram);
         gl.uniformMatrix4fv(gl.getUniformLocation(this.textureProgram,"u_mvp"),false,matrix);
         gl.uniform1i(gl.getUniformLocation(this.textureProgram,"u_texture"),0);
         const ta=gl.getAttribLocation(this.textureProgram,"a_position"),tc=gl.getAttribLocation(this.textureProgram,"a_color");
         gl.enableVertexAttribArray(ta);gl.enableVertexAttribArray(tc);
-        for(const batch of [...this.terrainBatches,...this.sceneryBatches]){
+        for(const batch of [...this.terrainBatches,...this.sceneryBatches,...this.actorBatches]){
             const texture=this.textures.get(batch.texture);if(!texture||batch.level>this.visibleLevel)continue;
             gl.bindTexture(gl.TEXTURE_2D,texture);gl.bindBuffer(gl.ARRAY_BUFFER,batch.buffer);
             gl.vertexAttribPointer(ta,3,gl.FLOAT,false,24,0);gl.vertexAttribPointer(tc,3,gl.FLOAT,false,24,12);
@@ -416,10 +490,10 @@ export class NativeTerrainViewport {
             this.canvas.removeEventListener(name,fn);
         }
         window.removeEventListener("keydown",this.onKey);
-        this.gl.deleteBuffer(this.buf);this.gl.deleteBuffer(this.sceneryBuf);this.gl.deleteTexture(this.palette);
+        this.gl.deleteBuffer(this.buf);this.gl.deleteBuffer(this.sceneryBuf);this.gl.deleteBuffer(this.actorBuf);this.gl.deleteTexture(this.palette);
         this.gl.deleteProgram(this.program);
         this.gl.deleteProgram(this.textureProgram);
         for(const texture of this.textures.values())this.gl.deleteTexture(texture);
-        for(const batch of [...this.terrainBatches,...this.sceneryBatches])this.gl.deleteBuffer(batch.buffer);
+        for(const batch of [...this.terrainBatches,...this.sceneryBatches,...this.actorBatches])this.gl.deleteBuffer(batch.buffer);
     }
 }

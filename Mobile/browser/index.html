@@ -17,7 +17,7 @@
   <div class="coordinates"><label for="map-x">Region X<input id="map-x" type="number" min="0" max="255" value="50"></label><label for="map-y">Region Y<input id="map-y" type="number" min="0" max="255" value="50"></label><button id="load-world" type="button">Travel</button></div>
  </div>
  <div class="loading" id="loading" aria-live="polite"><div class="loading-ring"></div><strong>Opening SoloScape world</strong><span id="loading-detail">Loading revision-240 terrain from your local server…</span></div>
- <div class="controls-note">Drag to orbit · Scroll / pinch controls coming later · WASD / arrows to pan</div>
+ <div class="controls-note">Click / tap ground to move after login · Drag to orbit · Scroll to zoom · Shift-click to run</div>
  <div class="map-status" id="map-status" role="status"></div>
 </main>
 <aside class="sidebar">
@@ -39,6 +39,7 @@
   <button id="login-submit" type="submit" class="login" disabled>Loading login configuration…</button>
   <button id="login-disconnect" type="button" class="login" hidden>Disconnect</button>
  </form>
+ <label class="floor-view"><input id="run-movement" type="checkbox"> Run when moving</label>
  <p id="login-status" role="status" aria-live="polite">Checking native login configuration…</p>
  <p class="disclaimer">Development build. Terrain and static models use verified SoloScape cache data and client HSL colours. Full scene rendering and playable sessions remain in development.</p>
  <a href="/diagnostics" class="diag">Developer cache inspector</a>
