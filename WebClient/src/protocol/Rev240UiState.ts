@@ -1,4 +1,5 @@
 import type { ServerGamePacket } from './GamePacketFramer';
+import type { Js5VarBitDefinition } from '../cache/Js5StartupAssets';
 
 /** Revision-240 wire formats follow blurite/rsprot osrs-240-desktop codecs. */
 export interface UiSubInterface {
@@ -43,12 +44,29 @@ export class Rev240UiState {
   readonly inventories = new Map<number, UiInventory>();
   readonly skills = new Map<number, UiSkill>();
   readonly varps = new Map<number, number>();
+  readonly varbitDefinitions = new Map<number, Js5VarBitDefinition>();
   readonly interfaceEvents = new Map<number, ReadonlyArray<{start: number; end: number; events1: number; events2: number}>>();
   runEnergy: number | null = null;
   onChange: (() => void) | null = null;
   private revision = 0;
 
   get version(): number { return this.revision; }
+
+  setVarbitDefinitions(definitions: ReadonlyMap<number, Js5VarBitDefinition>): void {
+    this.varbitDefinitions.clear();
+    for (const [key, value] of definitions) this.varbitDefinitions.set(key, value);
+    this.emit();
+  }
+
+  varbit(id: number): number | null {
+    const definition = this.varbitDefinitions.get(id);
+    if (!definition) return null;
+    const value = this.varps.get(definition.baseVar);
+    if (value === undefined) return null;
+    const width = definition.endBit - definition.startBit;
+    if (width < 0 || width > 31) return null;
+    return (value >>> definition.startBit) & (width === 31 ? 0x7fffffff : (1 << (width + 1)) - 1);
+  }
 
   reset(): void {
     this.topLevelInterface = null;
