@@ -32,9 +32,23 @@ import { prepareFloorLighting, adjustFloorLight, HSL_PALETTE, sampleTerrain } fr
 import {SceneTileModel} from "./tsps-runtime/rs-scene-SceneTileModel.mjs";
 import {terrainPlane,sceneLevel,validateSceneLevel} from "./scene-planes.mjs";
 import {NpcLongPress} from "./npc-pointer.mjs";
+import {nativeRoofPlaneLimit} from "./native-roof-adapter.mjs";
+import {isKnownWaterTextureId,ANIM_DIRECTION_UV} from "./tsps-runtime/common-world-WaterTextureIds.mjs";
+import {resolveFogRange,HD_AUTO_FOG_DEPTH_FACTOR} from "./tsps-runtime/render-RenderDistancePolicy.mjs";
 // Native scene distances are tiles, unlike RuneLite's client zoom values.
 export const GAME_CAMERA_ZOOM=Object.freeze({default:12,min:6,max:24});
 export const CLASSIC_DRAW_DISTANCE=25;
+
+// Pinned TSPS SpriteTextureLoader ANIM_DIRECTION_UV and main.vert.glsl
+// classic texture animation: one 1/128 UV step per 20 ms client tick.
+export function textureAnimationOffset(def,elapsedMs){
+    const direction=def?.animationDirection??0,speed=def?.animationSpeed??0;
+    if(!Number.isInteger(direction)||direction<0||direction>4||!Number.isFinite(speed)||
+        !Number.isFinite(elapsedMs)||elapsedMs<0)return [0,0];
+    const [u,v]=ANIM_DIRECTION_UV[direction];
+    const steps=elapsedMs/20*speed/128;
+    return [(u*steps)%1,(v*steps)%1];
+}
 
 export function sceneDrawBounds(target,yaw,pitch,distance){
     // Classic visibility is a square of tiles around the camera, not its focal point.
@@ -87,7 +101,13 @@ void main(){
 uniform sampler2D u_palette;
 uniform bool u_wireframe;
 uniform sampler2D u_texture;
+uniform vec2 u_textureShift;
 uniform vec4 u_drawBounds;
+uniform vec2 u_fogPlayer;
+uniform float u_fogDepth;
+uniform float u_fogEnd;
+uniform vec3 u_fogColor;
+uniform float u_fogEnabled;
 varying highp float v_hsl_w;
 varying highp float v_w;
 varying highp vec2 v_uv;
@@ -95,14 +115,20 @@ varying highp vec2 v_scenePosition;
 void main(){
     if(v_scenePosition.x<u_drawBounds.x||v_scenePosition.y<u_drawBounds.y||
         v_scenePosition.x>=u_drawBounds.z||v_scenePosition.y>=u_drawBounds.w)discard;
-    ${textured?`vec4 texel=texture2D(u_texture,v_uv);
+    ${textured?`vec4 texel=texture2D(u_texture,v_uv+u_textureShift);
     if(texel.a<0.1)discard;
     float light=clamp(v_hsl_w/v_w,2.0,126.0)/128.0;
-    gl_FragColor=vec4(texel.rgb*light,1.0);return;`:""}
+    gl_FragColor=vec4(texel.rgb*light,1.0);`:""}
     if(u_wireframe){gl_FragColor=vec4(1.0);return;}
     float hsl=clamp(floor(v_hsl_w/v_w+0.01),0.0,65535.0);
     vec2 cell=vec2(mod(hsl,256.0),floor(hsl/256.0));
-    gl_FragColor=texture2D(u_palette,(cell+0.5)/256.0);
+    if(!${textured?"true":"false"})gl_FragColor=texture2D(u_palette,(cell+0.5)/256.0);
+    vec2 delta=abs(v_scenePosition-u_fogPlayer);
+    float d=max(delta.x,delta.y)-u_fogEnd;
+    float ramp=max(0.0001,u_fogEnd-u_fogDepth);
+    float fog=clamp(d/ramp+1.0,0.0,1.0);
+    fog=fog*fog*(3.0-2.0*fog)*u_fogEnabled;
+    gl_FragColor=vec4(mix(gl_FragColor.rgb,u_fogColor,fog),gl_FragColor.a);
 }`);
     const p=gl.createProgram();
     gl.attachShader(p,vs);gl.attachShader(p,fs);gl.linkProgram(p);
@@ -411,7 +437,7 @@ export class NativeTerrainViewport {
         if(!this.gl)throw new Error("WebGL not supported on this device");
         const gl=this.gl;
         this.program=program(gl);
-        this.textureProgram=program(gl,true);this.textures=new Map();this.terrainBatches=[];this.sceneryBatches=[];this.visibleLevel=0;
+        this.textureProgram=program(gl,true);this.textures=new Map();this.textureMeta=new Map();this.textureClock=performance.now();this.terrainBatches=[];this.sceneryBatches=[];this.visibleLevel=0;
         this.buf=gl.createBuffer();
         this.sceneryBuf=gl.createBuffer();this.sceneryCount=0;
         this.actorBuf=gl.createBuffer();this.actorCount=0;this.actorBatches=[];this.actorPickMeshes=[];this.onDestination=onDestination;
@@ -477,7 +503,7 @@ export class NativeTerrainViewport {
             }
             this.onNpcCancel();
             if(pointer.button!==0||!this.pickVertices)return;
-            const count=this.pickLevelCounts.slice(0,this.visibleLevel+1).reduce((a,b)=>a+b,0)*6;
+            const count=this.pickLevelCounts.slice(0,this.visibleRoofLevel()+1).reduce((a,b)=>a+b,0)*6;
             const tile=pickTerrainTile(this.pickVertices.subarray(0,count),matrix,nx,ny,this.drawBounds());
             if(tile)this.onDestination({...tile,run:e.shiftKey});
         };
@@ -494,7 +520,7 @@ export class NativeTerrainViewport {
                 if(!this.pickVertices||!rect.width||!rect.height)return null;
                 const nx=2*(clientX-rect.left)/rect.width-1,ny=1-2*(clientY-rect.top)/rect.height;
                 const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,rect.width/rect.height);
-                const count=this.pickLevelCounts.slice(0,this.visibleLevel+1).reduce((a,b)=>a+b,0)*6;
+                const count=this.pickLevelCounts.slice(0,this.visibleRoofLevel()+1).reduce((a,b)=>a+b,0)*6;
                 const tile=pickTerrainTile(this.pickVertices.subarray(0,count),matrix,nx,ny,this.drawBounds());
                 return tile?{tile,x:clientX-rect.left,y:clientY-rect.top}:null;
             };
@@ -525,7 +551,8 @@ export class NativeTerrainViewport {
         canvas.addEventListener("wheel",this.onWheel,{passive:false});
         window.addEventListener("keydown",this.onKey);
         gl.enable(gl.DEPTH_TEST);
-        gl.clearColor(.045,.09,.12,1);
+        // TSPS default HD sky tint; shared with the distance-fog blending.
+        gl.clearColor(185/255,214/255,1,1);
         this.frame=()=>{if(this.disposed)return;this.render();this.raf=requestAnimationFrame(this.frame);};
         this.raf=requestAnimationFrame(this.frame);
     }
@@ -554,7 +581,7 @@ export class NativeTerrainViewport {
         this.sceneryLevelCounts=scene?.levelCounts??[this.sceneryCount,0,0,0];
         this.replaceBatches("sceneryBatches",scene?.texturedBatches??[]);
         for(const texture of this.textures.values())this.gl.deleteTexture(texture);
-        this.textures.clear();
+        this.textures.clear();this.textureMeta?.clear();
         this.addTextures(scene?.textures??new Map());
     }
     addTextures(textures){
@@ -563,6 +590,7 @@ export class NativeTerrainViewport {
             if(this.textures.has(id))continue;
             if((data.size!==64&&data.size!==128)||data.pixels?.length!==data.size*data.size*4)throw new Error("Invalid scene texture");
             const texture=gl.createTexture();this.textures.set(id,texture);
+            this.textureMeta?.set(id,data);
             gl.bindTexture(gl.TEXTURE_2D,texture);
             gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
             gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
@@ -580,14 +608,34 @@ export class NativeTerrainViewport {
         this.addTextures(scene?.textures??new Map());
     }
     setSceneLevel(level){validateSceneLevel(level);this.visibleLevel=level;}
+    setRoofContext(regions,origin,player){this.roofContext={regions,origin,player};}
+    visibleRoofLevel(){
+        const ctx=this.roofContext;
+        if(!ctx?.player)return this.visibleLevel;
+        return nativeRoofPlaneLimit(ctx.regions,{origin:ctx.origin,player:ctx.player,
+            position:this.target,yaw:this.yaw,pitch:this.pitch,distance:this.distance});
+    }
     drawBounds(){return sceneDrawBounds(this.target,this.yaw,this.pitch,this.distance);}
+    uploadFog(program){
+        const gl=this.gl,ctx=this.roofContext,active=!!ctx?.player&&!!ctx?.origin;
+        const x=active?ctx.player.x-ctx.origin.mapX*64-31.5:0;
+        const y=active?ctx.player.y-ctx.origin.mapY*64-31.5:0;
+        gl.uniform2f(gl.getUniformLocation(program,"u_fogPlayer"),x,y);
+        const {fogEnd,fogDepth}=resolveFogRange({renderDistance:CLASSIC_DRAW_DISTANCE,
+            autoFogDepth:true,autoFogDepthFactor:HD_AUTO_FOG_DEPTH_FACTOR,manualFogDepth:24});
+        gl.uniform1f(gl.getUniformLocation(program,"u_fogEnd"),fogEnd);
+        gl.uniform1f(gl.getUniformLocation(program,"u_fogDepth"),fogDepth);
+        gl.uniform3f(gl.getUniformLocation(program,"u_fogColor"),185/255,214/255,1);
+        gl.uniform1f(gl.getUniformLocation(program,"u_fogEnabled"),active?1:0);
+    }
     replaceBatches(name,batches){
         const gl=this.gl;
         for(const batch of this[name])gl.deleteBuffer(batch.buffer);
         this[name]=batches.map(b=>{
             if(!(b.vertices instanceof Float32Array)||b.vertices.length%18)throw new Error("Invalid textured mesh");
             const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,b.vertices,gl.STATIC_DRAW);
-            return {buffer,count:b.vertices.length/6,texture:b.texture,level:b.level};
+            return {buffer,count:b.vertices.length/6,texture:b.texture,level:b.level,
+                isWater:isKnownWaterTextureId(b.texture)};
         });
     }
     render(){
@@ -599,7 +647,8 @@ export class NativeTerrainViewport {
         gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
         if(!this.count&&!this.sceneryCount&&!this.terrainBatches.length&&!this.sceneryBatches.length)return;
         const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,w/h);
-        gl.useProgram(this.program);
+        const drawLevel=this.visibleRoofLevel();
+        gl.useProgram(this.program);this.uploadFog(this.program);
         const bounds=this.drawBounds();
         gl.uniform4fv(gl.getUniformLocation(this.program,"u_drawBounds"),bounds);
         gl.activeTexture(gl.TEXTURE0);
@@ -611,13 +660,13 @@ export class NativeTerrainViewport {
         const a=gl.getAttribLocation(this.program,"a_position"),c=gl.getAttribLocation(this.program,"a_color");
         gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);
         gl.enableVertexAttribArray(c);gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
-        gl.drawArrays(this.drawMode,0,this.terrainLevelCounts?.slice(0,this.visibleLevel+1).reduce((a,b)=>a+b,0)??this.count);
+        gl.drawArrays(this.drawMode,0,this.terrainLevelCounts?.slice(0,drawLevel+1).reduce((a,b)=>a+b,0)??this.count);
         if(this.sceneryCount){
             gl.uniform1i(gl.getUniformLocation(this.program,"u_wireframe"),0);
             gl.bindBuffer(gl.ARRAY_BUFFER,this.sceneryBuf);
             gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);
             gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
-            gl.drawArrays(gl.TRIANGLES,0,this.sceneryLevelCounts.slice(0,this.visibleLevel+1).reduce((a,b)=>a+b,0));
+            gl.drawArrays(gl.TRIANGLES,0,this.sceneryLevelCounts.slice(0,drawLevel+1).reduce((a,b)=>a+b,0));
         }
         if(this.actorCount){
             gl.uniform1i(gl.getUniformLocation(this.program,"u_wireframe"),0);
@@ -625,14 +674,19 @@ export class NativeTerrainViewport {
             gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
             gl.drawArrays(gl.TRIANGLES,0,this.actorCount);
         }
-        gl.useProgram(this.textureProgram);
+        gl.useProgram(this.textureProgram);this.uploadFog(this.textureProgram);
         gl.uniform4fv(gl.getUniformLocation(this.textureProgram,"u_drawBounds"),bounds);
         gl.uniformMatrix4fv(gl.getUniformLocation(this.textureProgram,"u_mvp"),false,matrix);
         gl.uniform1i(gl.getUniformLocation(this.textureProgram,"u_texture"),0);
         const ta=gl.getAttribLocation(this.textureProgram,"a_position"),tc=gl.getAttribLocation(this.textureProgram,"a_color");
         gl.enableVertexAttribArray(ta);gl.enableVertexAttribArray(tc);
         for(const batch of [...this.terrainBatches,...this.sceneryBatches,...this.actorBatches]){
-            const texture=this.textures.get(batch.texture);if(!texture||batch.level>this.visibleLevel)continue;
+            const texture=this.textures.get(batch.texture);if(!texture||batch.level>drawLevel)continue;
+            const meta=this.textureMeta?.get(batch.texture);
+            const offset=textureAnimationOffset(meta,performance.now()-this.textureClock);
+            gl.uniform2f(gl.getUniformLocation(this.textureProgram,"u_textureShift"),offset[0],offset[1]);
+            // Water IDs retain the pinned TSPS classification in batch metadata.
+            // Foam, normals and water-material passes are not yet ported.
             gl.bindTexture(gl.TEXTURE_2D,texture);gl.bindBuffer(gl.ARRAY_BUFFER,batch.buffer);
             gl.vertexAttribPointer(ta,3,gl.FLOAT,false,24,0);gl.vertexAttribPointer(tc,3,gl.FLOAT,false,24,12);
             gl.drawArrays(gl.TRIANGLES,0,batch.count);

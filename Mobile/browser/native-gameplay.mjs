@@ -343,6 +343,8 @@ export class NativeGameplay {
         };
         try{
             const player=this.playerController.sample(this.localServerId||this.sync?.localIndex||1),appearance=player?.appearance;
+        if(player&&this.viewport.setRoofContext)
+            this.viewport.setRoofContext(this.regions,this.origin,player);
             if(appearance&&!appearance.hidden&&now>=(this.drawBlockedUntil??0)){
                 const region=this.regions.get(`${player.x>>>6},${player.y>>>6}`);
                 if(region)try{
@@ -420,5 +422,5 @@ export class NativeGameplay {
         if(typeof this.session.stop==="function")this.session.stop(new Error(message));
         else this.session.close();
     }
-    close(){this.closed=true;this.generation++;clearInterval(this.timer);this.playerController.clear();this.interfaces?.close();this.clearNpcMenu();this.viewport.setActors(null);this.viewport.onDestination=()=>{};this.viewport.onNpc=()=>{};this.viewport.onNpcCancel=()=>{};this.viewport.onGroundMenu=()=>{};}
+    close(){this.closed=true;this.generation++;clearInterval(this.timer);this.playerController.clear();this.interfaces?.close();this.clearNpcMenu();this.viewport.setActors(null);this.viewport.setRoofContext?.(null,null,null);this.viewport.onDestination=()=>{};this.viewport.onNpc=()=>{};this.viewport.onNpcCancel=()=>{};this.viewport.onGroundMenu=()=>{};}
 }

@@ -1130,3 +1130,47 @@ Animated and transformed objects, instanced scenes, water and exact fog/roof
 shaders are still outside this migration. Do not claim pixel-identical
 RuneLite/OSRS graphics until those subsystems are integrated and compared
 against reference frames.
+
+### Pinned TSPS renderer migration — stage 2 (roofs, fog and animated textures)
+
+The native WebGL renderer now uses generated, pinned TSPS `RoofVisibility`,
+`TileRenderFlags` and `PlaneUtil` code for bridge-aware camera/player line-of-sight
+roof decisions, applied to the terrain, scenery, textured batches and ground
+picking. Region render flags are taken from the verified four-plane terrain
+arrays and translated through `native-roof-adapter.mjs`. The previous renderer
+unconditionally capped visible geometry at the player's plane; it now allows
+upper floors/roofs outdoors and hides them when the reference roof rules
+require it. The native orbit-camera pitch is *mapped* to RS pitch units rather
+than using a full RuneLite camera, so some camera-angle behavior may differ.
+
+The native WebGL1 fragment shaders now fade scene colours and textures into
+TSPS's 117HD default sky colour using its square/zero-rounded-corner OSRS
+fog-distance equation and smoothstep. The fog range comes from the generated
+TSPS `RenderDistancePolicy` and default HD auto-fog factor (0.85), with a
+25-tile render distance. The native fog is interpolated per pixel rather than
+the complete reference's per-vertex shader/scene/environment material stack.
+The loading overlay still performs its separate one-second reveal.
+
+Cache texture definitions now feed the *pinned* SpriteTextureLoader animation
+direction table and the classic TSPS 20 ms / 1/128 UV animation formula to
+the WebGL texture passes. Animated floor, scenery and actor textures now
+scroll without regenerating geometry. The pinned `WaterTextureIds` classifies
+water, swamp, ice and dark-water textures, preserving per-batch classification.
+This **does not** implement TSPS water material normals, foam, flowmap and
+caustics; those require the water textures/resources and GPU material passes.
+
+Regenerate directly from the pinned submodule and run the parity tests:
+
+```powershell
+cd Mobile
+npm run generate:tsps-roofs
+npm run generate:tsps-water
+node --test tests/pinned-roof-fog.test.mjs tests/pinned-water-animation.test.mjs
+npm test
+```
+
+The remaining renderer migrations include dynamic/varbit-transformed and
+animated locations, instanced map squares, original player/NPC skeletal model
+poses and actor normals, and the full TSPS water, reflection and GPU shader
+passes. No claim of pixel-identical RuneLite/OSRS rendering is made until those
+subsystems and authenticated reference frame comparisons are complete.
