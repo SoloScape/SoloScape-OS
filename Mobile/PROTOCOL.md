@@ -43,6 +43,10 @@ Inspected the upstream [rsprot `InitJs5RemoteConnectionDecoder.kt`](https://gith
 
 The user confirmed a local Java 21 process listening at `127.0.0.1:43594` and local `Server/game.yml` setting `game-port: 43594`, `revision: 240`. An initial **five-byte** probe timed out; repeat using the corrected **21-byte** probe before inferring anything about deployed JS5. This observation is not evidence that login works.
 
+## Native game-init pre-authentication framing
+
+The rsprot revision-240 [`LoginClientProt.kt`](https://github.com/blurite/rsprot/blob/master/protocol/osrs-240/osrs-240-shared/src/main/kotlin/net/rsprot/protocol/common/loginprot/incoming/prot/LoginClientProt.kt) defines `INIT_GAME_CONNECTION` as opcode **14**, fixed payload **0**. [`LoginChannelHandler.kt`](https://github.com/blurite/rsprot/blob/master/protocol/osrs-240/osrs-240-api/src/main/kotlin/net/rsprot/protocol/api/login/LoginChannelHandler.kt) issues `LoginResponse.Successful(sessionId)` after address validation. The revision-240 response encoder writes opcode **0** and then an **8-byte** session ID for this flow. `Mobile/gateway/game-probe.mjs` checks the full nine-byte response (including TCP fragmentation), never exposes the session ID, and never sends credentials. This probes a native TCP endpoint, not the TSPS custom WebSocket protocol. The server's live response must be tested separately from CI mocks.
+
 ## Required protocol adapter work (not implemented)
 
 1. **Choose a source-of-truth native client protocol.** Identify the exact SoloScape revision, RSA public modulus, current JS5/cache revision, ISAAC seeds, login block layout and inbound/outbound packet tables from the `rsprot` dependency and SoloScape generated files.

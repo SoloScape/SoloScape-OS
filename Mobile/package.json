@@ -11,7 +11,8 @@
     "build": "node scripts/run-client.mjs build",
     "test": "node --test",
     "gateway": "node gateway/cli.mjs",
-    "probe": "node gateway/probe-cli.mjs"
+    "probe": "node gateway/probe-cli.mjs",
+    "probe:game": "node gateway/game-probe-cli.mjs"
   },
   "dependencies": {
     "ws": "8.18.3"

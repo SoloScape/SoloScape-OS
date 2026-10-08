@@ -130,7 +130,30 @@ npm run probe
 
 After pulling the latest `feature/mobile` branch (for example, `git pull origin feature/mobile`), rerun `npm run probe` using these environment settings. If the response is still a timeout, inspect the game server logs and verify the deployed rsprot version; a successful TCP port check alone only confirms a listener.
 
-Use the actual `gamePort` and native cache **major revision** from your running SoloScape configuration. The example `240` follows the documented `240.2` version; do not assume it matches a deployed server. The rsprot revision-240 JS5 handshake is **21 bytes total**: native opcode `15`, a four-byte big-endian revision, and four four-byte seed integers (16 cryptographically random bytes). The old five-byte probe was incomplete and resulted in a timeout even with a running server. A response code `0` means the initial JS5 handshake was accepted, **not** that assets can be loaded or a player can log in. The Node integration tests use a mock TCP endpoint that explicitly waits for the entire 21-byte request; a live SoloScape result must still be verified.
+Use the actual `gamePort` and native cache **major revision** from your running SoloScape configuration. The example `240` follows the documented `240.2` version; do not assume it matches a deployed server. The rsprot revision-240 JS5 handshake is **21 bytes total**: native opcode `15`, a four-byte big-endian revision, and four four-byte seed integers (16 cryptographically random bytes). The old five-byte probe was incomplete and resulted in a timeout even with a running server. A response code `0` means the initial JS5 handshake was accepted, **not** that assets can be loaded or a player can log in. The Node integration tests use a mock TCP endpoint that explicitly waits for the entire 21-byte request. **Live result on 8 Oct 2026:** the user verified response code `0` against their local Java server at `127.0.0.1:43594` with `revision: 240`.
+
+### Credential-free native game connection check
+
+The next pre-authentication test is the OSRS `INIT_GAME_CONNECTION` handshake.
+Upstream rsprot revision 240 defines it as a **single byte, opcode 14**, with
+a server success reply of opcode 0 plus an **opaque eight-byte session ID**.
+The probe checks that all nine reply bytes arrive, discards the session ID
+without printing it, and closes the socket. **No username, password,
+native login block or gameplay packet is sent.**
+
+Run from the `Mobile` directory after pulling the latest `feature/mobile`:
+
+```powershell
+$env:SOLOSCAPE_GAME_TCP_PORT = '43594'
+npm run probe:game
+```
+
+`SOLOSCAPE_NATIVE_REVISION` is not needed for the one-byte game-init probe.
+The TCP port should match your own `Server/game.yml`; the code defaults to
+loopback host `127.0.0.1`. A successful result confirms **only** the game
+connection/session-ID stage, not account authentication. The session ID must
+never be logged or shared. This check currently runs **directly against the
+local native TCP server**, not through the browser WebSocket gateway.
 
 See [protocol compatibility notes](PROTOCOL.md) for the packet differences and further work.
 
