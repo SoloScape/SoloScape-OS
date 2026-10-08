@@ -15,6 +15,7 @@ import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
 import org.rsmod.game.interact.InteractionPlayerOp
+import org.rsmod.game.interact.InteractionPlayerT
 import org.rsmod.game.stat.PlayerSkillXPTable
 import org.rsmod.map.CoordGrid
 import org.rsmod.routefinder.RouteFinding
@@ -219,18 +220,26 @@ class BotPvpCombat @Inject constructor(
             }
         }
 
-        val eligible = opponents.filter {
-            it !== player && !teams.allied(player, it) && native.validTarget(player, it) &&
-                player.coords.chebyshevDistance(it.coords) <= state.profile.chaseDistanceTiles &&
-                (it in states || !areas.inArea("area.multiway", it.coords) ||
-                    state.target === it || states.values.count { bot -> bot.target === it } < 2)
+        val eligible = opponents.filter { opponent ->
+            val retaliating = isAttacking(player, opponent)
+            val committed = state.target === opponent
+            val range = BotPvpPolicy.engagementRange(
+                state.profile.chaseDistanceTiles,
+                retaliating || committed,
+            )
+            opponent !== player && !teams.allied(player, opponent) &&
+                native.validTarget(player, opponent) &&
+                player.coords.chebyshevDistance(opponent.coords) <= range &&
+                (opponent in states || retaliating ||
+                    !areas.inArea("area.multiway", opponent.coords) || committed ||
+                    states.values.count { bot -> bot.target === opponent } < 2)
         }
         val current = state.target
         if (current != null && current !in eligible) disengage(player, state)
         if (cycle >= state.nextTargetReview || state.target == null) {
             val indices = eligible.indices.toList()
             val retaliation = eligible.indices.filter {
-                (eligible[it].interaction as? InteractionPlayerOp)?.target === player
+                isAttacking(player, eligible[it])
             }.toSet()
             val selected = BotPvpPolicy.chooseTarget(
                 indices, eligible.indexOf(state.target).takeIf { it >= 0 }, retaliation,
@@ -414,6 +423,17 @@ class BotPvpCombat @Inject constructor(
             } else null,
         )
         return "fighting ${target.displayName} (${state.style})"
+    }
+
+    private fun isAttacking(defender: Player, opponent: Player): Boolean {
+        val activelyTargeting = when (val action = opponent.interaction) {
+            is InteractionPlayerOp -> action.target === defender
+            is InteractionPlayerT -> action.target === defender
+            else -> false
+        }
+        val recentAttacker = defender.isInPvpCombat() &&
+            defender.vars["varp.pk_predator1"] == opponent.uid.packed
+        return activelyTargeting || recentAttacker
     }
 
     private fun roamDestination(
