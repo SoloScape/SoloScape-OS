@@ -1,9 +1,10 @@
-// Loopback-only native WebGL world client. Does not proxy game data or handle login.
+// Loopback-only native WebGL world client; exposes only public login configuration.
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizeRegionKeys } from "./region-keys.mjs";
+import {loadPublicLoginConfig} from "../scripts/native-login-config.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const routes = new Map([
@@ -28,18 +29,31 @@ const routes = new Map([
     ["/native-js5.mjs", ["native-js5.mjs", "text/javascript; charset=utf-8"]],
     ["/tsps-cache-store.mjs", ["tsps-cache-store.mjs", "text/javascript; charset=utf-8"]],
     ["/sprite-preview.mjs", ["sprite-preview.mjs", "text/javascript; charset=utf-8"]],
+    ...["login-crypto","login-protocol","login-pow","native-login","game-protocol"].map(name=>
+        [`/${name}.mjs`,[`${name}.mjs`,"text/javascript; charset=utf-8"]]),
     ["/style.css", ["style.css", "text/css; charset=utf-8"]],
 ]);
 // An ephemeral loopback port is allowed solely for CI route smoke tests.
 const port = process.env.SOLOSCAPE_PREVIEW_PORT === "0" ? 0 : 3001;
 const keyPath=process.env.SOLOSCAPE_XTEA_FILE;
 let regionKeys={};
+let loginConfig;
+try{
+    loginConfig=await loadPublicLoginConfig({keyPath:process.env.SOLOSCAPE_RSA_PUBLIC_KEY_FILE,
+        gatewayUrl:process.env.SOLOSCAPE_NATIVE_GATEWAY_URL});
+}catch{
+    loginConfig={unavailable:true,message:"Native login needs the server's generated public client.key. Set SOLOSCAPE_RSA_PUBLIC_KEY_FILE and restart the preview."};
+}
 if(keyPath){
     const keyBytes=await readFile(keyPath);
     if(keyBytes.length>16*1024*1024)throw new Error("Local region key file exceeds limit");
     regionKeys=normalizeRegionKeys(JSON.parse(keyBytes.toString("utf8")));
 }
 const server = createServer(async (req, res) => {
+    if(req.method==="GET"&&req.url==="/login-config.json"){
+        res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});
+        res.end(JSON.stringify(loginConfig));return;
+    }
     if(req.method==="GET"&&req.url==="/region-keys.json"){
         res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});
         res.end(JSON.stringify(regionKeys));return;
@@ -56,7 +70,7 @@ const server = createServer(async (req, res) => {
             "Content-Type": route[1],
             "Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff",
-            "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' ws://127.0.0.1:43595; base-uri 'none'; form-action 'none'",
+            "Content-Security-Policy": `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' ws://127.0.0.1:43595 ${loginConfig.gatewayUrl?new URL(loginConfig.gatewayUrl).origin:""}; base-uri 'none'; form-action 'none'`,
         });
         res.end(bytes);
     } catch (error) {

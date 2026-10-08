@@ -96,6 +96,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
             "/world-webgl.mjs","/floor-materials.mjs","/floor-lighting.mjs","/world-startup.mjs",
             "/cache-reader.mjs","/model-codec.mjs","/object-definitions.mjs","/location-cache.mjs","/scenery-models.mjs",
             "/texture-cache.mjs","/texture-mapper.mjs","/scene-planes.mjs",
+            "/login-crypto.mjs","/login-protocol.mjs","/login-pow.mjs","/native-login.mjs","/game-protocol.mjs",
         ];
         for(const path of modules){
             const response=await fetch(root+path);
@@ -105,6 +106,11 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         }
         const keys=await fetch(root+"/region-keys.json");
         assert.equal(keys.status,200);assert.deepEqual(await keys.json(),{});
+        const login=await fetch(root+"/login-config.json");
+        assert.equal(login.status,200);assert.equal(login.headers.get("cache-control"),"no-store");
+        const loginConfig=await login.json();
+        assert.ok(loginConfig.unavailable||loginConfig.revision===240&&loginConfig.rsa.exponent);
+        const privateKey=await fetch(root+"/game.key");assert.equal(privateKey.status,404);
         const missing=await fetch(root+"/missing-module.mjs");
         assert.equal(missing.status,404);
     } finally {

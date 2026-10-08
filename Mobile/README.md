@@ -59,9 +59,9 @@ a real browser/live-server verification; GitHub CI uses synthetic map
 fixtures and validates mesh generation.
 
 **Important scope:** This is **real client/world renderer development**,
-not a playable native OSRS session: no loc models, floor textures,
-player entities, auth or native game packets yet. Native RSA/ISAAC and
-revision-240 packet mapping are later dedicated work. Do not ask users
+with static scenery, textures and native encrypted login. Player entities,
+movement and native game payload interpretation are still pending. Live
+account authentication remains to be verified. Do not ask users
 for credentials before trusted TLS and a reviewed native login path.
 The upstream TSPS revision-241 React/WebGL application is still
 available separately via `npm run dev:tsps` (requires its submodule
@@ -149,6 +149,65 @@ To run the updated client, stop the existing `npm run dev`,
 `http://localhost:3001/` (Ctrl+Shift+R). The new code still
 requires the native revision-240 Java server and origin-restricted
 loopback WebSocket gateway; it adds no credentials or probes.
+
+## Native revision-240 account login
+
+The world preview now includes a native login form with username, password and
+an optional six-digit authenticator code. The browser speaks the desktop
+revision-240 login format accepted by the Kotlin server, through the existing
+WebSocket gateway. Login does not yet place a visible player or enable movement.
+
+The preview reads **only** the generated public `Server/.data/client.key` and
+serves its exponent/modulus as `/login-config.json`. If the key is missing or
+invalid, the form stays disabled with an explanation. The private `game.key`
+stays on the game server. For a server installed elsewhere, set these before
+starting `npm run dev`:
+
+```powershell
+$env:SOLOSCAPE_RSA_PUBLIC_KEY_FILE = 'C:\path\to\server\.data\client.key'
+$env:SOLOSCAPE_NATIVE_GATEWAY_URL = 'ws://127.0.0.1:43595/'
+npm run dev
+```
+
+The Java server, its account service and the gateway must be running. Keep the
+gateway's fixed TCP upstream pointed at that server and allow the preview's
+exact Origin (`http://localhost:3001`). The login cache manifest is fetched from
+the same gateway as the account connection. Remote gateways require `wss://`;
+plaintext `ws://` is accepted only for loopback development.
+
+Login uses raw RSA for password/OTP and session seeds, XTEA for the remaining
+login block, the native SHA-256 challenge and independent ISAAC streams for game
+packet framing. The UI reports server rejection codes or authenticated status,
+then receives framed game packets and sends encrypted keepalives. Password/OTP
+fields are cleared on submit; credentials, trusted-computer tokens and account
+hashes are not saved or logged. Disconnect, timeout and page exit clear the
+session buffers. Cancellation during cache loading cannot open a stale session.
+
+Validation uses synthetic credentials and ephemeral RSA keys. The installed
+`rsprot` **1.0.0-ALPHA-20260912** JVM decoder accepted password and OTP packets,
+including every mixed-endian cache CRC, and all **151** generated server packet
+definitions match the installed library. The test suite also checks independent
+RSA decryption, XTEA/JVM ISAAC vectors, fragmented/coalesced native TCP through
+the actual gateway, rejection, cancellation and real Chrome login/keepalives.
+Run it with:
+
+```powershell
+$env:CHROME_BIN = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+npm test
+$env:JAVA_BIN = 'C:\path\to\jdk-21\bin\java.exe'
+npm run test:rsprot
+```
+
+The JVM check uses the existing server distribution's `lib` directory; override
+it with `SOLOSCAPE_RSPROT_LIB_DIR` if necessary. Normal tests need no Java or
+upstream TSPS build. `scripts/generate-native-protocol.mjs` reproducibly generates
+the framing table from pinned rsprot source and retains its MIT licence.
+
+**Live account login is unverified:** live revision-240 JS5/game-init handshakes,
+the 23-entry login CRC manifest and public RSA configuration passed through the
+local gateway, but successful account-service authentication still needs a test
+account. Player/region packet interpretation, movement, reconnect, token/SSO
+authentication and actual-phone validation remain outstanding.
 
 ## Source baseline
 

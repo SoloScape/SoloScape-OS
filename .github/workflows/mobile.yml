@@ -79,3 +79,11 @@ jobs:
           node --check Mobile/browser/texture-mapper.mjs
           node --check Mobile/browser/scene-planes.mjs
           node --check Mobile/scripts/adapt-texture-mapper.mjs
+          node --check Mobile/browser/login-crypto.mjs
+          node --check Mobile/browser/login-protocol.mjs
+          node --check Mobile/browser/login-pow.mjs
+          node --check Mobile/browser/native-login.mjs
+          node --check Mobile/browser/game-protocol.mjs
+          node --check Mobile/scripts/native-login-config.mjs
+          node --check Mobile/scripts/generate-native-protocol.mjs
+          node --check Mobile/scripts/verify-native-login.mjs

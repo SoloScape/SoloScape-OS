@@ -1,4 +1,4 @@
-// Actual native world viewport: no diagnostic buttons, mock logins or assets.
+// Cache-backed native world viewport and revision-240 account login.
 import { NativeJs5Cache } from "./native-js5.mjs";
 import { loadNativeTerrain, loadTerrainNeighbours } from "./terrain-world.mjs";
 import { NativeTerrainViewport } from "./world-webgl.mjs";
@@ -6,6 +6,8 @@ import { loadFloorMaterials } from "./floor-materials.mjs";
 import { displayTerrainProgressively } from "./world-startup.mjs";
 import { loadStaticScenery } from "./scenery-models.mjs";
 import {SceneTextures} from "./texture-cache.mjs";
+import {NativeGameSession} from "./native-login.mjs";
+import {loginCacheCrcs} from "./login-protocol.mjs";
 
 const byId=id=>document.getElementById(id);
 const details=byId("loading-detail"),loading=byId("loading"),status=byId("map-status");
@@ -139,5 +141,55 @@ async function enterWorld(allowFallback=false){
 }
 button.addEventListener("click",()=>enterWorld(false));
 levelSelector.addEventListener("change",()=>renderer?.setSceneLevel(Number(levelSelector.value)));
-window.addEventListener("pagehide",()=>renderer?.dispose(),{once:true});
+const loginForm=byId("login-form"),loginButton=byId("login-submit"),disconnect=byId("login-disconnect"),loginStatus=byId("login-status");
+let loginConfig=null,gameSession=null,loginBusy=false,sessionAttempt=0,packetCount=0;
+async function prepareLogin(){
+    try{
+        const response=await fetch("/login-config.json");
+        if(!response.ok)throw new Error("Native login configuration unavailable");
+        const config=await response.json();
+        if(config.unavailable)throw new Error(config.message);
+        loginConfig=config;loginButton.disabled=false;loginButton.textContent="Log in";
+        loginStatus.textContent="Native account login is ready. Player rendering and movement are still pending.";
+    }catch(error){loginButton.textContent="Login unavailable";loginStatus.textContent=error.message;}
+}
+loginForm.addEventListener("submit",async event=>{
+    event.preventDefault();if(loginBusy||gameSession?.connected||!loginConfig)return;
+    const sequence=++sessionAttempt;loginBusy=true;loginButton.disabled=true;disconnect.hidden=false;packetCount=0;
+    const credentials={username:byId("login-username").value,password:byId("login-password").value,otp:byId("login-otp").value};
+    byId("login-password").value="";byId("login-otp").value="";
+    loginStatus.textContent="Checking the login cache manifest…";
+    try{
+        // This must be the manifest from the same gateway/server as the account connection.
+        const loginCache=loginConfig.gatewayUrl===cache.url?cache:new NativeJs5Cache({url:loginConfig.gatewayUrl,revision:240});
+        const crcs=loginCacheCrcs(await loginCache.loadMaster());
+        if(sequence!==sessionAttempt)return;
+        gameSession=new NativeGameSession({url:loginConfig.gatewayUrl,
+            onStatus:message=>{if(sequence===sessionAttempt)loginStatus.textContent=message;},
+            onPacket:()=>{
+                if(sequence!==sessionAttempt)return;
+                packetCount++;
+                loginStatus.textContent=`Authenticated native session · ${packetCount} game packets received. Player rendering and movement are next.`;
+            },
+            onClose:message=>{
+                if(sequence!==sessionAttempt)return;
+                loginStatus.textContent=message;loginButton.disabled=false;disconnect.hidden=true;
+            },
+        });
+        const pending=gameSession.login(credentials,{...loginConfig,crcs,
+            width:Math.max(1,Math.min(65535,byId("world-canvas").clientWidth)),
+            height:Math.max(1,Math.min(65535,byId("world-canvas").clientHeight))});
+        credentials.password="";credentials.otp="";
+        const result=await pending;
+        if(sequence===sessionAttempt&&gameSession.connected)loginStatus.textContent=`Authenticated · player slot ${result.playerIndex}. Native game packets are connected; player rendering and movement are next.`;
+    }catch(error){
+        if(sequence===sessionAttempt){loginStatus.textContent=error.message;loginButton.disabled=false;disconnect.hidden=true;}
+    }finally{credentials.password="";credentials.otp="";if(sequence===sessionAttempt)loginBusy=false;}
+});
+disconnect.addEventListener("click",()=>{
+    sessionAttempt++;gameSession?.close();gameSession=null;loginBusy=false;
+    loginButton.disabled=!loginConfig;disconnect.hidden=true;loginStatus.textContent="Disconnected";
+});
+window.addEventListener("pagehide",()=>{sessionAttempt++;gameSession?.close();renderer?.dispose();},{once:true});
+void prepareLogin();
 enterWorld(true);

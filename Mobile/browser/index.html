@@ -31,8 +31,15 @@
  <div class="roadmap"><span class="ready">✓</span><div><strong>Static scenery</strong><small id="scenery-status" role="status">Loading verified location and model data…</small></div></div>
  <div class="roadmap"><span class="ready">✓</span><div><strong>Textures + upper planes</strong><small>Verified sprites, model UVs and bridge heights</small></div></div>
  <div class="floor-view"><label for="scene-level">Floor view</label><select id="scene-level"><option value="0">Ground + bridges</option><option value="1">Through first floor</option><option value="2">Through second floor</option><option value="3">All floors + roofs</option></select></div>
- <div class="roadmap"><span class="notyet">○</span><div><strong>Player session</strong><small>RSA/ISAAC and native packets not implemented</small></div></div>
- <button disabled class="login">Login unavailable — native protocol pending</button>
+ <div class="section-name border">Native login</div>
+ <form id="login-form" class="login-form">
+  <label for="login-username">Username<input id="login-username" name="username" autocomplete="username" maxlength="320" required></label>
+  <label for="login-password">Password<input id="login-password" name="password" type="password" autocomplete="current-password" maxlength="80" required></label>
+  <label for="login-otp">Authenticator code (if enabled)<input id="login-otp" name="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6"></label>
+  <button id="login-submit" type="submit" class="login" disabled>Loading login configuration…</button>
+  <button id="login-disconnect" type="button" class="login" hidden>Disconnect</button>
+ </form>
+ <p id="login-status" role="status" aria-live="polite">Checking native login configuration…</p>
  <p class="disclaimer">Development build. Terrain and static models use verified SoloScape cache data and client HSL colours. Full scene rendering and playable sessions remain in development.</p>
  <a href="/diagnostics" class="diag">Developer cache inspector</a>
 </aside>

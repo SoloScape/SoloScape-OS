@@ -1,6 +1,6 @@
 # TSPS → SoloScape protocol interoperability
 
-Status: **incompatible, network transport groundwork only**. This document records source-observed differences and the engineering requirements. It must not be treated as evidence of a successful login.
+Status: **native revision-240 browser login implemented; TSPS protocol remains incompatible**. The browser encoder is verified against the installed rsprot decoder and through the gateway with synthetic accounts. Authentication against the live SoloScape account service and playable entity updates remain unverified.
 
 ## Audited versions
 
@@ -59,7 +59,23 @@ Revision-240 rsprot [`Js5ClientProt.kt`](https://github.com/blurite/rsprot/blob/
 
 The `Mobile/gateway/js5-cache.mjs` implementation makes one **pre-authenticated** JS5 connection, requests the `255:255` master-index group (`01 ff 00 ff`), reassembles a bounded cache container and returns it **in memory only**. The CLI reports the length, compression and SHA-256, without writing cache files or decompressing/rendering them. Mock TCP↔WebSocket integration tests check segmented responses, wrong IDs, invalid continuation blocks, unsafe lengths, timeouts and Origin rejection. This is the first real *cache delivery* diagnostic but not a complete revision-240 asset loader. Live result still requires a running SoloScape server + gateway.
 
-**Native login remains intentionally unimplemented**: rsprot uses a server RSA key, a revision-specific binary login block, ISAAC game packet ciphers, and desktop-only client settings in `Server/api/net/.../NetworkFactory.kt`. These cannot be replaced by TSPS's plaintext proprietary `LOGIN=204` message. Do not transmit account passwords through the gateway until a reviewed native encoder/decoder exists and the connection uses trusted TLS.
+**Native browser login is now implemented** in `browser/native-login.mjs`, using the desktop revision-240 format accepted by `Server/api/net/.../NetworkFactory.kt`. It uses the generated public `client.key`, raw RSA password/OTP authentication, XTEA login fields and independent ISAAC game ciphers. The gateway remains a byte transport; TSPS's proprietary `LOGIN=204` is still incompatible. Plaintext WebSockets are limited to loopback; remote connections require `wss://`.
+
+### Native account login wire contract
+
+The source baseline is installed `net.rsprot` **1.0.0-ALPHA-20260912**, checked against [rsprot source 5144f569](https://github.com/blurite/rsprot/tree/5144f569d41a7c2cf77f2b44a8d6e5bca41366d0).
+
+1. Send opcode 14 and await response 0 plus the complete eight-byte session ID.
+2. Send opcode 16, u16 payload length, revision 240, subversion 1, server version 0, desktop client type 1, default platform 0 and external authenticator 0.
+3. The u16-length RSA block contains check byte 1, four cryptographically random seed words, the server session ID, OTP mode (none or untrusted six-digit code), and password authentication. Ciphertext includes Java BigInteger's positive sign byte when needed.
+4. XTEA encrypts complete blocks in the remaining payload, retaining an incomplete tail. Fields include username, resizable viewport dimensions, ephemeral 24-byte identifier, neutral platform statistics and the 23 cache-index CRCs from the same server's master manifest. CRC order and byte transforms match `DesktopLoginCrcDecoder`.
+5. Handle optional response 69 SHA-256 hashcash and reply 19 with an eight-byte nonce. Challenge type/version, size, difficulty, work duration and cancellation are bounded.
+6. Response 2 advertises size 37, followed by 34 bytes of account metadata. The next bytes are the first game packet header, not additional account metadata. Trusted-computer token bytes consume four inbound ISAAC words only when their flag is set; tokens and account hashes are not persisted.
+7. Client-to-server ISAAC uses the four original seeds; server-to-client ISAAC uses each seed plus 50. All 151 supported server opcodes use the generated revision-240 framing table, including encrypted one/two-byte smart headers and fixed/u8/u16 lengths. Unknown opcodes terminate the session. Payloads are delivered to a callback without interpreting player, map or interface state yet. Encrypted `NO_TIMEOUT` packets keep the connection alive; disconnect clears pending credentials and cipher buffers.
+
+`npm test` covers independent Node RSA decryption, known XTEA vectors, JVM ISAAC vectors across eight refills, real gateway fragmentation/coalescing, OTP token cipher alignment, SHA-256 challenges, rejection, timeout and cancellation. With `CHROME_BIN` set on Windows, a real Chrome session also completes this flow through the actual gateway using synthetic credentials. `npm run test:rsprot` runs both password and OTP packets through the installed JVM decoder and compares every generated packet definition. No production credentials, private keys or game payload captures are committed.
+
+Live revision-240 JS5 and game-init handshakes passed through the local gateway, and the live master manifest supplied all 23 login CRCs. The generated public RSA configuration also validated. The decoder oracle proves protocol interoperability, while the synthetic gateway/browser checks prove transport and session behavior. These checks do not prove a real account service accepted a login. Reconnect, token/SSO authentication, player/region payload interpretation and mobile gameplay remain subsequent work.
 
 ### Live cache-group result and metadata interpretation
 
@@ -138,8 +154,8 @@ A real renderer integration must adapt these **revision-240 verified
 containers** to those interfaces (and reconcile revision-specific
 decoding, metadata, XTEAs and asset formats); merely changing the TSPS
 game server URL to the raw WS gateway will not work. TSPS proprietary
-HELLO/LOGIN remain blocked. **Do not send login credentials** to this
-browser shell or gateway in its current development-only configuration.
+HELLO/LOGIN remain blocked. The separate native browser login flow above
+provides encrypted account authentication; the TSPS shell cannot use it directly.
 
 ### Typed-array cache store bridge for TSPS decoder integration
 
@@ -276,11 +292,11 @@ regions cannot overwrite a later Travel. Recolouring does not
 reset the user's camera target. This does not change the existing
 CRC/revision verification or make native RSA/ISAAC login available.
 
-## Required protocol adapter work (not implemented)
+## Remaining protocol and gameplay work
 
-1. **Choose a source-of-truth native client protocol.** Identify the exact SoloScape revision, RSA public modulus, current JS5/cache revision, ISAAC seeds, login block layout and inbound/outbound packet tables from the `rsprot` dependency and SoloScape generated files.
+1. **Verify live account login.** The native revision-240 encoder, public RSA config and ISAAC framing are implemented and decoder verified. Confirm account authentication against the running SoloScape server and account service.
 2. **Decide native protocol adapter placement.** Prefer implementing a native OSRS packet encoder/decoder within a client-compatible TSPS fork for fidelity. A server-side custom-to-native translator would need to maintain full ISAAC/RSA session state, re-encode scene/entity updates, maps, varps, interfaces and inventory; it is not a simple opcode remap.
-3. **Separate login from credentials.** Do not send TSPS high-level plaintext login frames through the raw OSRS gateway. Implement native authentication with correct encryption and secure `wss://` transport, using test-only accounts until reviewed. Fail closed on revision mismatch.
+3. **Extend native sessions.** Implement reconnect and token/SSO authentication if needed. Keep remote sessions on `wss://` and fail closed on revision mismatch. TSPS high-level login frames must not be forwarded as native packets.
 4. **Align assets.** Resolve cache 241 vs 240.2 and adjust JS5, client scripts, packet tables and map definitions consistently. Do not force the wrong revision value only to suppress the warning.
 5. **Game loop milestones.** Validate JS5 cache manifest, handshake, login response, initial region rebuild, player/NPC sync, click-to-walk, UI/inventory, chat and logout/reconnect. Use captured test data stripped of usernames/passwords/tokens.
 6. **Mobile verification.** Test viewport/touch/virtual keyboard on modern Android Chrome and iOS Safari after the core native session is stable.
