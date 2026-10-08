@@ -401,7 +401,9 @@ class BotPvpCombat @Inject constructor(
                 !teams.allied(player, opponent) &&
                 (playerLeader == null || defendingLeader || supportingLeader || retaliating) &&
                 (!waitingForTeamReply || retaliating) &&
-                (opponent !== declinedPlayer || retaliating) &&
+                BotPvpPolicy.canTargetDecliner(
+                    declined = opponent === declinedPlayer, retaliating = retaliating,
+                ) &&
                 BotPvpPolicy.canSquadEngage(
                     hasSquad = squad != null,
                     squadmate = squad?.members?.contains(opponent) == true,
