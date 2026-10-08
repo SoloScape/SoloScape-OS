@@ -1016,3 +1016,28 @@ for the optional run-route reconstruction. NPC V6s still use the native
 interpolator, and skeletal action models/forced-movement effects remain
 outside this parity change. Test in an authenticated browser and on a
 physical device before claiming full OSRS movement parity.
+
+### Authenticated login-to-world loading (revised)
+
+The native revision-240 login keeps the classic loading screen while the login
+challenge and the **required, CRC-verified four-plane terrain** finish. The
+world is now acknowledged with `MAP_BUILD_COMPLETE` once its terrain grid
+is available, and the first actor pass runs before revealing gameplay.
+Optional underlay/overlay material upgrades, texture sprites and location
+models load **after** that transition, rendering progressively; they do not
+hold the login screen. Pending work cannot paint a replaced region or a
+closed session. Missing optional scenery is reported without inventing data.
+
+The pinned TSPS client tracks handshake and map-data readiness separately,
+and streams map squares. It also has a 500 ms minimum loading-overlay display.
+SoloScape retains its native server's protocol rather than copying TSPS login
+packets. Mobile coalesces concurrent requests for the same JS5 group or index,
+while maintaining the original reference-index and group CRC checks.
+
+Use the browser developer console to distinguish `[native-login] Authenticated
+in ... ms` from `[native-login] First playable map in ... ms`. Those values
+contain no credentials. Cold logins can still be slower than warm runs because
+the browser cache service currently keeps verified groups only in memory and
+each distinct group uses its own authenticated native JS5 gateway connection.
+A persistent, multiplexed cache stream and disk caching remain future work;
+no specific live-account speedup is claimed without a measured walkthrough.

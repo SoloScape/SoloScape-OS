@@ -101,56 +101,105 @@ export class NativeGameplay {
         const generation=++this.generation,current=()=>!this.closed&&generation===this.generation;
         this.clearNpcMenu();this.npcs.reset();this.npcMotions.clear();this.npcDrawn=0;
         this.loading=true;this.modelReady=false;this.renderError=null;this.regions=new Map();this.viewport.setActors(null);this.viewport.setScenery(null);
-        this.onStatus("Loading your server location…");
-        // Rebuild is queued BEFORE teleport player info, so sync.local may still be in the old map.
+        const started=this.now();
+        this.onStatus("Loading server map data…");
+        // The rebuild packet can arrive before the follow-up player position update.
         const player=this.sync.local,origin={mapX:rebuild.zoneX>>>3,mapY:rebuild.zoneY>>>3};
         this.origin=origin;
-        const unavailable=[];
-        for(const {x,y} of rebuildRegions(rebuild,{x:origin.mapX*64,y:origin.mapY*64})){
+        const unavailable=[],targets=rebuildRegions(rebuild,{x:origin.mapX*64,y:origin.mapY*64});
+        // Prioritize the player's region. Remaining terrain groups can fetch
+        // concurrently; a missing neighbour must not block or invalidate the centre.
+        const loadRegion=async({x,y})=>{
             if(!current())return;
             try{
                 const region=await this.loadTerrain(this.cache,x,y);
-                if(!current())return;this.regions.set(`${x},${y}`,region);
-                // The confirmed player's region displays first. Other regions fill the build area.
-                if(x===origin.mapX&&y===origin.mapY){this.viewport.setTerrain(region);this.viewport.setSceneLevel(player.plane);this.onRegion(region);}
+                if(!current())return;
+                this.regions.set(`${x},${y}`,region);
+                if(x===origin.mapX&&y===origin.mapY){
+                    this.viewport.setTerrain(region);
+                    this.viewport.setSceneLevel(player.plane);
+                    this.onRegion(region);
+                }
             }catch(error){
+                if(!current())return;
                 if(x===origin.mapX&&y===origin.mapY)throw error;
                 unavailable.push(`${x},${y}`);
             }
-        }
-        const regions=[...this.regions.values()],textureSource=new SceneTextures(this.cache,{isCurrent:current});
-        for(const region of regions){
-            region.neighbours=new Map();
-            for(const other of regions)if(other!==region&&Math.abs(other.mapX-region.mapX)<=1&&Math.abs(other.mapY-region.mapY)<=1)
-                region.neighbours.set(`${other.mapX-region.mapX},${other.mapY-region.mapY}`,other);
-            region.floorMaterials=await this.loadMaterials(this.cache,region);
+        };
+        await loadRegion({x:origin.mapX,y:origin.mapY});
+        if(!current())return;
+        const neighbours=targets.filter(({x,y})=>x!==origin.mapX||y!==origin.mapY);
+        // Small bounded parallel batches prevent excessive gateway connections.
+        for(let i=0;i<neighbours.length;i+=3){
+            await Promise.all(neighbours.slice(i,i+3).map(loadRegion));
             if(!current())return;
-            for(const def of [...region.floorMaterials.underlays.values(),...region.floorMaterials.overlays.values()])
-                if(def.textureId>=0){await textureSource.load(def.textureId);if(!current())return;}
-            region.textures=textureSource.textures;
         }
         const center=this.regions.get(`${origin.mapX},${origin.mapY}`);
+        if(!center)throw new Error("Server map centre did not load");
+        const regions=[...this.regions.values()];
+        for(const region of regions){
+            region.neighbours=new Map();
+            for(const other of regions)
+                if(other!==region&&Math.abs(other.mapX-region.mapX)<=1&&Math.abs(other.mapY-region.mapY)<=1)
+                    region.neighbours.set(`${other.mapX-region.mapX},${other.mapY-region.mapY}`,other);
+        }
         this.viewport.setTerrain({...center,regions},{resetCamera:false});
+        // Classic client gates login on required map data, not optional every-object
+        // artwork. Texture, floor and scenery assets continue to stream afterwards.
+        this.session.sendGame(MAP_BUILD_COMPLETE);
+        this.loading=false;this.unavailable=unavailable;
+        this.report();
+        await this.drawActors();
+        if(!current())return;
+        this.onReady();
+        this.onStatus(`World ready in ${Math.round(this.now()-started)} ms; scenery streaming…`);
+        this.backgroundLoad=this.loadRebuildScenery({regions,center,origin,unavailable,current})
+            .catch(error=>{if(current())this.onStatus("Optional scenery unavailable: "+error.message);});
+    }
+    async loadRebuildScenery({regions,center,origin,unavailable,current}){
+        const textureSource=new SceneTextures(this.cache,{isCurrent:current});
+        // Optional floor and texture work never hold the authenticated login screen.
+        for(const region of regions){
+            if(!current())return;
+            try{
+                region.floorMaterials=await this.loadMaterials(this.cache,region);
+                if(!current())return;
+                for(const def of [...region.floorMaterials.underlays.values(),...region.floorMaterials.overlays.values()])
+                    if(def.textureId>=0){await textureSource.load(def.textureId);if(!current())return;}
+                region.textures=textureSource.textures;
+                this.viewport.addTextures(textureSource.textures);
+                this.viewport.setTerrain({...center,regions},{resetCamera:false});
+            }catch(error){
+                if(!current())return;
+                unavailable.push(`floors ${region.mapX},${region.mapY}`);
+            }
+        }
         const scenes=[],textures=new Map();
         let keys={};
         try{const response=await fetch("/region-keys.json");if(response.ok)keys=await response.json();}catch{}
         for(const region of regions){
             if(!current())return;
             let scene;
-            try{scene=await this.loadScenery(this.cache,region,{key:keys[region.mapX<<8|region.mapY],isCurrent:current,textureSource});}
-            catch(error){if(!current())return;unavailable.push(`scenery ${region.mapX},${region.mapY}`);continue;}
-            if(!current())return;if(!scene)continue;
+            try{
+                scene=await this.loadScenery(this.cache,region,{
+                    key:keys[region.mapX<<8|region.mapY],isCurrent:current,textureSource,
+                });
+            }catch(error){
+                if(!current())return;
+                unavailable.push(`scenery ${region.mapX},${region.mapY}`);
+                continue;
+            }
+            if(!current())return;
+            if(!scene)continue;
             region.scenery=scene;region.textures=scene.textures;
             scenes.push({scene,dx:(region.mapX-origin.mapX)*64,dy:(region.mapY-origin.mapY)*64});
             for(const [id,data] of scene.textures)textures.set(id,data);
+            this.viewport.addTextures(textureSource.textures);
             this.viewport.setScenery({...combineRegionMeshes(scenes),textures});
         }
         if(!current())return;
-        this.viewport.addTextures(textureSource.textures);
-        this.viewport.setTerrain({...center,regions},{resetCamera:false});
-        this.session.sendGame(MAP_BUILD_COMPLETE);this.loading=false;this.unavailable=unavailable;
-        this.report();await this.drawActors();
-        if(current())this.onReady();
+        this.unavailable=unavailable;
+        this.report();
     }
     showGroundMenu({tile,x,y,run=false}){
         this.clearNpcMenu();

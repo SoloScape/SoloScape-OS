@@ -174,7 +174,9 @@ export class NativeTitleScreen{
             if(this.mode==="welcome"){
                 this.text(ctx,"Welcome to RuneScape",382,251,"#ffff00");this.button(ctx,302,291,"New User");this.button(ctx,462,291,"Existing User");
             }else if(this.mode==="login"||this.mode==="connecting"){
-                const message=this.mode==="connecting"?"Connecting to server...":this.status.textContent;
+                // Reflect actual cache/authentication/map stages instead of always claiming
+                // the TCP handshake is still in progress after it has succeeded.
+                const message=this.status.textContent||"Connecting to server...";
                 const words=message.split(" "),rows=[];let line="";
                 for(const word of words){const next=line?line+" "+word:word;if(line&&(this.assets.font?.measure(next)??next.length*7)>320){rows.push(line);line=word;}else line=next;}if(line)rows.push(line);
                 rows.slice(0,3).forEach((row,i)=>this.text(ctx,row,382,211+i*15,"#ffff00"));

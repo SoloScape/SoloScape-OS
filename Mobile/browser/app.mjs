@@ -218,7 +218,7 @@ async function prepareLogin(){
 loginForm.addEventListener("submit",async event=>{
     event.preventDefault();if(loginBusy||gameSession?.connected||!loginConfig)return;
     if(!title.validateCredentials())return;
-    const sequence=++sessionAttempt;loginBusy=true;loginButton.disabled=true;disconnect.hidden=false;
+    const sequence=++sessionAttempt,loginStarted=performance.now();loginBusy=true;loginButton.disabled=true;disconnect.hidden=false;
     interfacePreview.close();lockInterfacePreview(true);
     examineResult.hidden=true;
     const credentials={username:byId("login-username").value,password:byId("login-password").value,otp:""};
@@ -238,7 +238,10 @@ loginForm.addEventListener("submit",async event=>{
         button.disabled=true;levelSelector.disabled=true;
         gameSession=new NativeGameSession({url:loginConfig.gatewayUrl,
             onStatus:message=>{if(sequence===sessionAttempt)loginStatus.textContent=message;},
-            onAuthenticated:account=>{gameplay.authenticated(account);},
+            onAuthenticated:account=>{
+                console.info(`[native-login] Authenticated in ${Math.round(performance.now()-loginStarted)} ms`);
+                gameplay.authenticated(account);
+            },
             onPacket:packet=>{
                 if(sequence!==sessionAttempt)return;
                 gameplay.handle(packet);
@@ -256,7 +259,12 @@ loginForm.addEventListener("submit",async event=>{
         interfaceStatus.textContent="Interfaces are controlled by the SoloScape server.";
         gameplay=new NativeGameplay({cache:loginCache,viewport:renderer,session:gameSession,interfaces:serverInterfaces,onNpcMenu:showNpcMenu,onExamine:showExamine,
             run:()=>byId("run-movement").checked,
-            onReady:()=>{if(sequence===sessionAttempt&&title.mode==="connecting")title.enterGame();},
+            onReady:()=>{
+                if(sequence===sessionAttempt&&title.mode==="connecting"){
+                    console.info(`[native-login] First playable map in ${Math.round(performance.now()-loginStarted)} ms`);
+                    title.enterGame();
+                }
+            },
             onStatus:message=>{if(sequence===sessionAttempt)loginStatus.textContent=message;},
             onRegion:region=>{
                 if(sequence!==sessionAttempt)return;

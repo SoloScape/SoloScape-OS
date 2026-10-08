@@ -246,6 +246,8 @@ export class NativeJs5Cache {
         // CacheIndexDat2.fromStore() -> store.read(255, indexId) path.
         this.referenceContainers = new Map();
         this.groups = new Map();
+        // Coalesce concurrent verified requests (e.g. nearby regions and actor models).
+        this.masterPending=null;this.indicesPending=new Map();this.groupsPending=new Map();
     }
 
     fetchRawGroup(archive, group) {
@@ -292,40 +294,54 @@ export class NativeJs5Cache {
     }
 
     async loadMaster() {
-        if (this.master) return this.master;
-        const result = await this.fetchRawGroup(255, 255);
-        this.master = decodeMasterIndex(result);
-        return this.master;
+        if(this.master)return this.master;
+        if(!this.masterPending){
+            this.masterPending=(async()=>{
+                const result=await this.fetchRawGroup(255,255);
+                this.master=decodeMasterIndex(result);
+                return this.master;
+            })().finally(()=>{this.masterPending=null;});
+        }
+        return this.masterPending;
     }
 
     async loadIndex(index) {
-        checkNumber(index, 254, "Archive index");
-        if (this.indices.has(index)) return this.indices.get(index);
-        const master = await this.loadMaster();
-        const entry = master[index];
-        if (!entry) throw new Error("Index is absent from the master index");
-        const ref = await this.fetchRawGroup(255, index);
-        if (crc32(ref.container) !== entry.crc) throw new Error("Reference-table CRC mismatch");
-        const data = await decodeCacheContainer(ref);
-        const catalog = decodeReferenceCatalog(data);
-        if (catalog.revision !== entry.revision) throw new Error("Reference-table revision mismatch");
-        const result = { index, revision: catalog.revision, groups: catalog.groups };
-        this.referenceContainers.set(index, ref.container.slice());
-        this.indices.set(index, result);
-        return result;
+        checkNumber(index,254,"Archive index");
+        if(this.indices.has(index))return this.indices.get(index);
+        if(!this.indicesPending.has(index)){
+            const pending=(async()=>{
+                const master=await this.loadMaster(),entry=master[index];
+                if(!entry)throw new Error("Index is absent from the master index");
+                const ref=await this.fetchRawGroup(255,index);
+                if(crc32(ref.container)!==entry.crc)throw new Error("Reference-table CRC mismatch");
+                const data=await decodeCacheContainer(ref),catalog=decodeReferenceCatalog(data);
+                if(catalog.revision!==entry.revision)throw new Error("Reference-table revision mismatch");
+                const result={index,revision:catalog.revision,groups:catalog.groups};
+                this.referenceContainers.set(index,ref.container.slice());
+                this.indices.set(index,result);
+                return result;
+            })().finally(()=>this.indicesPending.delete(index));
+            this.indicesPending.set(index,pending);
+        }
+        return this.indicesPending.get(index);
     }
 
     async loadGroup(index, group) {
-        checkNumber(index, 254, "Archive index");
-        checkNumber(group, 65535, "Group");
-        const catalog = await this.loadIndex(index);
-        const expectedCrc = catalog.groups.get(group);
-        if (expectedCrc === undefined) throw new Error("Group is absent from reference table");
-        const key = index + ":" + group;
-        if (this.groups.has(key)) return this.groups.get(key);
-        const payload = await this.fetchRawGroup(index, group);
-        if (crc32(payload.container) !== expectedCrc) throw new Error("Archive group CRC mismatch");
-        this.groups.set(key, payload.container);
-        return payload.container;
+        checkNumber(index,254,"Archive index");
+        checkNumber(group,65535,"Group");
+        const key=index+":"+group;
+        if(this.groups.has(key))return this.groups.get(key);
+        if(!this.groupsPending.has(key)){
+            const pending=(async()=>{
+                const catalog=await this.loadIndex(index),expectedCrc=catalog.groups.get(group);
+                if(expectedCrc===undefined)throw new Error("Group is absent from reference table");
+                const payload=await this.fetchRawGroup(index,group);
+                if(crc32(payload.container)!==expectedCrc)throw new Error("Archive group CRC mismatch");
+                this.groups.set(key,payload.container);
+                return payload.container;
+            })().finally(()=>this.groupsPending.delete(key));
+            this.groupsPending.set(key,pending);
+        }
+        return this.groupsPending.get(key);
     }
 }

@@ -90,3 +90,42 @@ test("normal rebuild loads around the rebuild zone even before teleport PLAYER_I
     assert.equal(ready,true);
     gameplay.close();
 });
+
+test("authenticated world becomes ready before optional floor and scenery assets",async()=>{
+    let finishFloor,seenScenery=0,ready=false,ack=false;
+    const floorWait=new Promise(resolve=>{finishFloor=resolve;});
+    const vp=viewport(),session={sendGame(op){if(op===27)ack=true;}};
+    const game=new NativeGameplay({cache:{},viewport:vp,session,now:()=>1000,
+        onReady:()=>{ready=true;},loadTerrain:async(_c,x,y)=>terrain(x,y),
+        loadMaterials:()=>floorWait,
+        loadScenery:async()=>{seenScenery++;return null;}});
+    const sync=new NativePlayerSync(1);sync.initialized=true;
+    sync.players[1]={x:3200,y:3200,plane:0,appearance:null};
+    game.sync=sync;
+    await game.loadRebuild({zoneX:400,zoneY:400});
+    assert.equal(ack,true,"client must acknowledge valid terrain");
+    assert.equal(ready,true,"login transition cannot wait for floor textures");
+    assert.equal(game.loading,false);
+    assert.equal(seenScenery,0);
+    finishFloor({underlays:new Map(),overlays:new Map()});
+    await game.backgroundLoad;
+    assert.ok(seenScenery>0,"scenery continues after login");
+    game.close();
+});
+
+test("obsolete optional world loads never paint after disconnect",async()=>{
+    let finishFloor,painted=0;
+    const floorWait=new Promise(resolve=>{finishFloor=resolve;});
+    const vp={...viewport(),setTerrain(){painted++;}};
+    const game=new NativeGameplay({cache:{},viewport:vp,session:{sendGame(){}},now:()=>1000,
+        loadTerrain:async(_c,x,y)=>terrain(x,y),loadMaterials:()=>floorWait,
+        loadScenery:async()=>{throw new Error("stale scenery should not run");}});
+    const sync=new NativePlayerSync(1);sync.initialized=true;
+    sync.players[1]={x:3200,y:3200,plane:0,appearance:null};game.sync=sync;
+    await game.loadRebuild({zoneX:400,zoneY:400});
+    const before=painted;
+    game.close();
+    finishFloor({underlays:new Map(),overlays:new Map()});
+    await game.backgroundLoad;
+    assert.equal(painted,before);
+});
