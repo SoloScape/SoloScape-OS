@@ -20,6 +20,25 @@ export interface CacheInterfaceComponent {
   readonly height: number;
   readonly parentId: number;
   readonly hidden: boolean;
+  readonly xAlignment: number;
+  readonly yAlignment: number;
+  readonly widthAlignment: number;
+  readonly heightAlignment: number;
+  readonly scrollWidth: number;
+  readonly scrollHeight: number;
+  readonly colour: number | null;
+  readonly filled: boolean;
+  readonly opacity: number;
+  readonly textXAlignment: number;
+  readonly textYAlignment: number;
+  readonly textLineHeight: number;
+  readonly textShadow: boolean;
+  readonly spriteAngle: number;
+  readonly spriteTiling: boolean;
+  readonly spriteFlipH: boolean;
+  readonly spriteFlipV: boolean;
+  readonly gridPaddingX: number;
+  readonly gridPaddingY: number;
   readonly spriteId: number | null;
   readonly fontId: number | null;
   readonly text: string | null;
@@ -73,9 +92,10 @@ export class CacheInterfaceStore {
 }
 
 /**
- * Decode the shared layout header of IF1 and IF3 widgets, plus IF3 text /
- * sprite properties used by a first-pass renderer. Remaining fields (CS1,
- * listeners, scripts, actions) are kept as raw data, NOT invented.
+ * Read widget layouts from the cache, not invented HTML slot definitions.
+ * IF3: containers, rectangles, text, sprites and lines. IF1: widget
+ * headers, CS1 blocks, containers and inventory-grid layout. Script and
+ * interaction fields are preserved in raw until handled explicitly.
  */
 export function decodeCacheInterfaceComponent(
   groupId: number,
@@ -84,7 +104,7 @@ export function decodeCacheInterfaceComponent(
 ): CacheInterfaceComponent {
   const reader = new Reader(data);
   const isIf3 = data[0] === 0xff;
-  if (isIf3) reader.u8(); // IF3 marker/version
+  if (isIf3) reader.u8(); // marker
   const type = reader.u8();
   if (!isIf3) reader.u8(); // legacy button type
   const contentType = reader.u16();
@@ -92,55 +112,142 @@ export function decodeCacheInterfaceComponent(
   const y = reader.i16();
   const width = reader.u16();
   const height = isIf3 && type === 9 ? reader.i16() : reader.u16();
-
-  let parentId: number;
+  let xAlignment = 0;
+  let yAlignment = 0;
+  let widthAlignment = 0;
+  let heightAlignment = 0;
+  let parentId = -1;
   let hidden = false;
+  let scrollWidth = width;
+  let scrollHeight = height;
+  let colour: number | null = null;
+  let filled = false;
+  let opacity = 0;
   let spriteId: number | null = null;
   let fontId: number | null = null;
   let text: string | null = null;
+  let textXAlignment = 0;
+  let textYAlignment = 0;
+  let textLineHeight = 0;
+  let textShadow = false;
+  let spriteAngle = 0;
+  let spriteTiling = false;
+  let spriteFlipH = false;
+  let spriteFlipV = false;
+  let gridPaddingX = 0;
+  let gridPaddingY = 0;
 
   if (isIf3) {
-    reader.i8(); // width alignment
-    reader.i8(); // height alignment
-    reader.i8(); // x alignment
-    reader.i8(); // y alignment
+    widthAlignment = reader.i8();
+    heightAlignment = reader.i8();
+    xAlignment = reader.i8();
+    yAlignment = reader.i8();
     parentId = reader.u16();
     hidden = reader.u8() !== 0;
-    if (type === 5) {
-      const sprite = reader.i32();
-      spriteId = sprite === -1 ? null : sprite;
-      reader.u16(); // sprite angle
-      reader.u8(); // tiling
-      reader.u8(); // alpha
-      reader.u8(); // outline
-      reader.i32(); // shadow
-      reader.u8(); // flip vertical
-      reader.u8(); // flip horizontal
-    } else if (type === 4) {
-      const font = reader.u16();
-      fontId = font === 0xffff ? null : font;
-      text = reader.str();
-      reader.u8(); // line height
-      reader.u8(); // horizontal alignment
-      reader.u8(); // vertical alignment
-      reader.u8(); // shadow
-      reader.i32(); // text colour
+
+    switch (type) {
+      case 0:
+        scrollWidth = reader.u16();
+        scrollHeight = reader.u16();
+        // noClickThrough is in newer IF3 cache revisions
+        break;
+      case 3:
+        colour = reader.i32() >>> 0;
+        filled = reader.u8() !== 0;
+        opacity = reader.u8();
+        break;
+      case 4: {
+        const font = reader.u16();
+        fontId = font === 0xffff ? null : font;
+        text = reader.str();
+        textLineHeight = reader.u8();
+        textXAlignment = reader.u8();
+        textYAlignment = reader.u8();
+        textShadow = reader.u8() !== 0;
+        colour = reader.i32() >>> 0;
+        break;
+      }
+      case 5: {
+        const sprite = reader.i32();
+        spriteId = sprite < 0 ? null : sprite;
+        spriteAngle = reader.u16();
+        spriteTiling = reader.u8() !== 0;
+        opacity = reader.u8();
+        reader.u8(); // outline
+        reader.i32(); // shadow
+        spriteFlipV = reader.u8() !== 0;
+        spriteFlipH = reader.u8() !== 0;
+        break;
+      }
+      case 9:
+        reader.u8(); // line width
+        colour = reader.i32() >>> 0;
+        break;
     }
   } else {
-    reader.u8(); // legacy transparency
+    opacity = reader.u8();
     parentId = reader.u16();
-    reader.u16(); // legacy mouseover redirect
-  }
+    reader.u16(); // mouseover redirect
 
+    // CS1 comparisons and instruction arrays precede the type payload.
+    const comparisons = reader.remaining ? reader.u8() : 0;
+    for (let i = 0; i < comparisons; i++) {
+      reader.u8();
+      reader.u16();
+    }
+    const instructions = reader.remaining ? reader.u8() : 0;
+    for (let i = 0; i < instructions; i++) {
+      const length = reader.u16();
+      for (let j = 0; j < length; j++) reader.u16();
+    }
+
+    if (type === 0 && reader.remaining >= 3) {
+      scrollHeight = reader.u16();
+      hidden = reader.u8() !== 0;
+    }
+    if (type === 2 && reader.remaining >= 6) {
+      // Dynamic item ids come from UPDATE_INV_* server packets, not cache.
+      reader.u8(); // has item options
+      reader.u8(); // draggable
+      reader.u8(); // has use option
+      reader.u8(); // replaces inventory on drag
+      gridPaddingX = reader.u8();
+      gridPaddingY = reader.u8();
+    }
+    if (type === 3 && reader.remaining >= 1) filled = reader.u8() !== 0;
+    if ((type === 1 || type === 4) && reader.remaining >= 5) {
+      textXAlignment = reader.u8();
+      textYAlignment = reader.u8();
+      textLineHeight = reader.u8();
+      const font = reader.u16();
+      fontId = font === 0xffff ? null : font;
+      if (reader.remaining) textShadow = reader.u8() !== 0;
+    }
+    if (type === 4 && reader.remaining) {
+      text = reader.str();
+      if (reader.remaining) reader.str(); // alternate legacy text
+    }
+    if ((type === 1 || type === 3 || type === 4) && reader.remaining >= 4) {
+      colour = reader.i32() >>> 0;
+    }
+    if (type === 5 && reader.remaining >= 8) {
+      reader.i32(); // alternate sprite
+      const sprite = reader.i32();
+      spriteId = sprite < 0 ? null : sprite;
+    }
+  }
   if (parentId === 0xffff) parentId = -1;
-  else parentId |= groupId << 16;
+  else parentId = (groupId << 16) | parentId;
 
   return {
-    id: (groupId << 16) | childId,
-    groupId,
-    childId,
-    format: isIf3 ? 'if3' : 'if1',
-    type, contentType, x, y, width, height, parentId, hidden,
+    id: (groupId << 16) | childId, groupId, childId,
+    format: isIf3 ? 'if3' : 'if1', type, contentType,
+    x, y, width, height, parentId, hidden,
+    xAlignment, yAlignment, widthAlignment, heightAlignment,
+    scrollWidth, scrollHeight, colour, filled, opacity,
+    textXAlignment, textYAlignment, textLineHeight, textShadow,
+    spriteAngle, spriteTiling, spriteFlipH, spriteFlipV,
+    gridPaddingX, gridPaddingY,
     spriteId, fontId, text, raw: data,
   };
 }
@@ -148,6 +255,10 @@ export function decodeCacheInterfaceComponent(
 class Reader {
   private offset = 0;
   constructor(private readonly data: Uint8Array) {}
+
+  get remaining(): number {
+    return this.data.length - this.offset;
+  }
 
   u8(): number {
     if (this.offset >= this.data.length) throw new Error('Truncated interface definition');
