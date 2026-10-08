@@ -89,7 +89,9 @@ class BotPopulation @Inject constructor(
     private val profiles = BotProfileStore()
     private val random = Random.Default
     private data class PlayerTeamInvitation(val player: Player, val expiresAt: Int)
+    private data class DeclinedPlayerTeam(val player: Player, val expiresAt: Int)
     private val playerTeamInvitations = LinkedHashMap<Player, PlayerTeamInvitation>()
+    private val declinedPlayerTeams = HashMap<Player, DeclinedPlayerTeam>()
     private val nextPlayerTeamOffer = HashMap<Player, Int>()
     private val nextOfferToPlayer = HashMap<Player, Int>()
     private var nextIdentity = 1
@@ -122,6 +124,9 @@ class BotPopulation @Inject constructor(
         playerTeamInvitations.remove(bot)
         if (!accepted) {
             bot.say("No worries.")
+            declinedPlayerTeams[bot] = DeclinedPlayerTeam(
+                player, cycle + PLAYER_TEAM_DECLINE_COOLDOWN,
+            )
             nextPlayerTeamOffer[bot] = cycle + PLAYER_TEAM_DECLINE_COOLDOWN
             nextOfferToPlayer[player] = cycle + PLAYER_TEAM_DECLINE_COOLDOWN
             return true
@@ -144,6 +149,10 @@ class BotPopulation @Inject constructor(
                 !pvpCombat.inWilderness(invite.player) ||
                 invite.player.coords.level != bot.coords.level ||
                 invite.player.coords.chebyshevDistance(bot.coords) > PLAYER_TEAM_INVITE_DISTANCE
+        }
+        declinedPlayerTeams.entries.removeAll { (bot, ignored) ->
+            !bot.isSlotAssigned || !ignored.player.isSlotAssigned ||
+                cycle >= ignored.expiresAt
         }
         nextPlayerTeamOffer.keys.removeIf { !it.isSlotAssigned }
         nextOfferToPlayer.keys.removeIf { !it.isSlotAssigned }
@@ -470,6 +479,7 @@ class BotPopulation @Inject constructor(
             wilderness,
             bot.patrol ?: CoordGrid(3224, 3682),
             waitingForTeamReply = player in playerTeamInvitations,
+            declinedPlayer = declinedPlayerTeams[player]?.player,
         )
         bot.status = status
         if (wilderness) watchPvpStall(bot, status)
@@ -616,6 +626,7 @@ class BotPopulation @Inject constructor(
     fun removeAll() {
         bots.keys.toList().forEach(::remove)
         playerTeamInvitations.clear()
+        declinedPlayerTeams.clear()
         nextPlayerTeamOffer.clear()
         nextOfferToPlayer.clear()
         minigames.removeAll()
@@ -641,6 +652,7 @@ class BotPopulation @Inject constructor(
     private fun remove(player: Player) {
         val bot = bots.remove(player)
         playerTeamInvitations.remove(player)
+        declinedPlayerTeams.remove(player)
         if (bot?.mode == BotMode.Progressive) save(bot)
         pvpCombat.remove(player)
         social.remove(player)
