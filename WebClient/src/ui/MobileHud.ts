@@ -1,5 +1,7 @@
 import './MobileHud.css';
 import type { LoadedMapSquare } from '../cache/MapSquareLoader';
+import type { SceneFloorMaterials } from '../cache/SceneMaterialLoader';
+import { paintCacheTerrainMinimap } from './CacheTerrainMinimap';
 import type { CacheGameUiAssets } from '../cache/CacheGameUiAssets';
 import { CacheBitmapFont } from './CacheBitmapFont';
 import type { Js5Client } from '../cache/Js5Client';
@@ -74,6 +76,10 @@ export interface MobileHudOptions {
  */
 export class MobileHud {
   private readonly minimap: HTMLCanvasElement;
+  private readonly mapSquares = new Map<number, LoadedMapSquare>();
+  private floorMaterials: SceneFloorMaterials | null = null;
+  private mapPlayer: {x: number; z: number; level: number; yaw: number} | null = null;
+  private minimapRenderKey = '';
   private readonly panel: HTMLElement;
   private readonly panelHeading: HTMLElement;
   private readonly panelBody: HTMLElement;
@@ -266,17 +272,44 @@ export class MobileHud {
       this.closePanel();
       this.require<HTMLFormElement>('#hud-chat-form').hidden = true;
       this.chatNotice.textContent = '';
+      this.mapPlayer = null;
+      this.minimapRenderKey = '';
     }
   }
 
   // Until the authentic minimap renderer is implemented, never invent
   // terrain colours, mapscene sprites or a player marker.
-  setMaps(_maps: readonly LoadedMapSquare[]): void {
+  setMaps(maps: readonly LoadedMapSquare[]): void {
+    this.mapSquares.clear();
+    for (const map of maps) this.mapSquares.set(map.mapSquare.id, map);
+    this.floorMaterials = null;
+    this.minimapRenderKey = '';
     this.clearMinimap();
   }
 
-  setPlayer(_position: { x: number; z: number; level: number; yaw: number } | null): void {
-    // No invented minimap or player-marker artwork.
+  setFloorMaterials(materials: SceneFloorMaterials | null): void {
+    this.floorMaterials = materials;
+    this.minimapRenderKey = '';
+    this.renderMinimap();
+  }
+
+  setPlayer(position: { x: number; z: number; level: number; yaw: number } | null): void {
+    this.mapPlayer = position;
+    const key = position
+      ? [position.x, position.z, position.level, Math.floor(position.yaw / 24)].join(':')
+      : 'none';
+    if (key === this.minimapRenderKey) return;
+    this.minimapRenderKey = key;
+    this.renderMinimap();
+  }
+
+  private renderMinimap(): void {
+    if (!this.floorMaterials) {
+      this.clearMinimap();
+      return;
+    }
+    paintCacheTerrainMinimap(this.minimap, this.mapSquares, this.floorMaterials,
+      this.mapPlayer);
   }
 
   private require<T extends Element>(selector: string): T {
