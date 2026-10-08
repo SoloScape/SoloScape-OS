@@ -124,6 +124,10 @@ object BotPvpCheck {
 
         val distance: (Int) -> Int = { if (it == 1) 2 else 10 }
         val free: (Int) -> Int = { 0 }
+        check(BotPvpPolicy.engagementRange(12, false) == 12)
+        check(BotPvpPolicy.engagementRange(12, true) == 32)
+        check(BotPvpPolicy.engagementRange(24, true) == 32)
+        check(BotPvpPolicy.engagementRange(40, true) == 40)
         check(BotPvpPolicy.chooseTarget(emptyList(), null, emptySet(), distance, free) == null)
         check(BotPvpPolicy.chooseTarget(listOf(1, 2), null, emptySet(), distance, free) == 1)
         check(BotPvpPolicy.chooseTarget(listOf(1, 2), 2, emptySet(), distance, free) == 2)
