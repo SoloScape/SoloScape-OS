@@ -1200,7 +1200,7 @@ js5.onBootstrapComplete = (index) => {
       void loadCacheGameUiAssets(js5, loadedTitleAssets, appendLog)
         .then((assets) => {
           if (generation !== bootGeneration) return;
-          mobileHud.setCacheAssets(assets);
+          mobileHud.setCacheAssets(assets, js5);
           (window as Window & {
             soloscapeCacheInterfaces?: CacheInterfaceStore;
           }).soloscapeCacheInterfaces = assets.interfaces;
