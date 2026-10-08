@@ -8,6 +8,32 @@ client, the rev-240 game-login handshake, server game-packet framing,
 normal/instanced region rebuild decoding, and the static terrain/loc/model
 asset pipeline for OSRS protocol revision 240 / client 240.2.
 
+## Mobile OSRS HUD (layout scaffold)
+
+Once the region scene is loaded, the browser now presents a landscape,
+edge-to-edge game HUD modelled on the November 2024 OSRS mobile redesign:
+
+- Five left-side hotkeys, with cycling PvM, Bossing and Skilling profiles.
+- Two columns of right-side Side Stones (collapse the secondary column),
+  with switching panels for inventory, skills, equipment, prayer, magic,
+  combat and the remaining main tabs.
+- Top-right circular minimap plus surrounding status orbs. The minimap draws
+  a **terrain-only approximation** from the live downloaded map-square
+  underlay/overlay ids, centred on the decoded local-player coordinates; it is
+  not yet the Jagex mapscene sprite renderer.
+- Camera compass and zoom controls, collapsible top-left chat/keyboard,
+  a bottom-left hidden/compact/full popout, and a connection-backed logout.
+
+This is the **OSRS mobile layout shell**, not pixel-perfect Jagex UI artwork
+or a complete game interface implementation. HUD icons are provisional
+vectors. Inventory items, actual skill levels, prayer points, hitpoints,
+special energy, chat sending, item actions and popout content need their
+relevant game-packet decoders/handlers before they can be functional. These
+unsynchronised values are deliberately shown as empty/unknown rather than
+pretending to contain live game data. Tap-to-drop/run toggles currently affect
+the UI only. The cache-backed title/login screen remains unchanged and the
+HUD is shown only after successfully entering the world.
+
 ## Current game-login flow
 
 Game login uses a second WebSocket/TCP connection after JS5 bootstrap:
