@@ -7,6 +7,8 @@ import kotlin.random.Random
 import org.rsmod.api.area.checker.AreaChecker
 import org.rsmod.api.area.checker.wildernessLevel
 import org.rsmod.api.player.isInCombat
+import org.rsmod.api.player.isValidTarget
+import org.rsmod.api.player.isInPvpCombat
 import org.rsmod.api.player.protect.clearPendingAction
 import org.rsmod.api.player.stat.PlayerSkillXP
 import org.rsmod.api.player.stat.baseHitpointsLvl
@@ -15,6 +17,7 @@ import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
 import org.rsmod.game.interact.InteractionPlayerOp
+import org.rsmod.game.interact.InteractionPlayerT
 import org.rsmod.game.stat.PlayerSkillXPTable
 import org.rsmod.map.CoordGrid
 import org.rsmod.routefinder.RouteFinding
@@ -29,7 +32,16 @@ class BotPvpCombat @Inject constructor(
     private val events: EventBus,
     collision: CollisionFlagMap,
 ) {
+    private class WildernessSquad(
+        val members: MutableList<Player>,
+        var leader: Player,
+        val home: CoordGrid,
+    )
+
     private val states = LinkedHashMap<Player, BotPvpState>()
+    private val squads = LinkedHashMap<Player, WildernessSquad>()
+    /** Opt-in human-led teams are separate from bot-only Wilderness squads. */
+    private val playerLeaders = LinkedHashMap<Player, Player>()
     private val random = Random.Default
     private val routeFinding = RouteFinding(collision)
 
@@ -42,19 +54,73 @@ class BotPvpCombat @Inject constructor(
         reachablePoint(hotspot.anchor, hotspot, maxDistance = 58, attempts = 96)
             ?: hotspot.anchor
 
-    private fun reachableRoamPoint(source: CoordGrid, hotspot: BotPvpHotspot): CoordGrid =
-        reachablePoint(source, hotspot, maxDistance = 54, attempts = 64)
+    private fun reachableRoamPoint(
+        source: CoordGrid,
+        hotspot: BotPvpHotspot,
+        multiwayOnly: Boolean = false,
+    ): CoordGrid =
+        reachablePoint(source, hotspot, maxDistance = 54, attempts = 64, multiwayOnly = multiwayOnly)
             ?: source
+
+    /** Choose a reachable multi-combat tile before forming a Wilderness squad. */
+    fun multiwaySpawnPoint(hotspot: BotPvpHotspot): CoordGrid? {
+        val anchor = hotspot.anchor
+        val candidates = sequence {
+            yield(anchor)
+            repeat(96) { yield(hotspot.roam(random)) }
+        }
+        return candidates.firstOrNull { candidate ->
+            candidate.wildernessLevel(areas) > 0 &&
+                areas.inArea("area.multiway", candidate) &&
+                anchor.chebyshevDistance(candidate) <= 58 &&
+                (candidate == anchor || routeFinding.findRoute(
+                    level = anchor.level,
+                    srcX = anchor.x,
+                    srcZ = anchor.z,
+                    destX = candidate.x,
+                    destZ = candidate.z,
+                    moveNear = false,
+                ).success)
+        }
+    }
+
+    /** Start squadmates alongside their leader, never on an unreachable or single-way tile. */
+    fun squadSpawnPoint(leader: CoordGrid, hotspot: BotPvpHotspot): CoordGrid {
+        repeat(48) {
+            val candidate = CoordGrid(
+                leader.x + random.nextInt(-3, 4),
+                leader.z + random.nextInt(-3, 4),
+                leader.level,
+            )
+            if (candidate == leader || !hotspot.contains(candidate) ||
+                candidate.wildernessLevel(areas) <= 0 ||
+                !areas.inArea("area.multiway", candidate)
+            ) return@repeat
+            val route = routeFinding.findRoute(
+                level = leader.level,
+                srcX = leader.x,
+                srcZ = leader.z,
+                destX = candidate.x,
+                destZ = candidate.z,
+                moveNear = false,
+            )
+            if (route.success) return candidate
+        }
+        return leader
+    }
 
     private fun reachablePoint(
         source: CoordGrid,
         hotspot: BotPvpHotspot,
         maxDistance: Int,
         attempts: Int,
+        multiwayOnly: Boolean = false,
     ): CoordGrid? {
         repeat(attempts) {
             val candidate = hotspot.roam(random)
-            if (candidate.wildernessLevel(areas) <= 0) return@repeat
+            if (candidate.wildernessLevel(areas) <= 0 ||
+                (multiwayOnly && !areas.inArea("area.multiway", candidate))
+            ) return@repeat
             if (source.level != candidate.level ||
                 source.chebyshevDistance(candidate) > maxDistance
             ) return@repeat
@@ -110,13 +176,77 @@ class BotPvpCombat @Inject constructor(
         return true
     }
 
+    fun registerSquad(members: List<Player>, home: CoordGrid) {
+        require(members.size in 2..4 && members.distinct().size == members.size)
+        require(members.all { it in states && it !in squads })
+        val squad = WildernessSquad(members.toMutableList(), members.first(), home)
+        for (member in members) squads[member] = squad
+    }
+
+    fun inWilderness(player: Player): Boolean =
+        player.isValidTarget() && player.coords.wildernessLevel(areas) > 0
+
+    fun hasPlayerFollower(leader: Player): Boolean = playerLeaders.containsValue(leader)
+
+    fun canOfferPlayerTeam(bot: Player): Boolean {
+        val state = states[bot] ?: return false
+        return bot !in squads && bot !in playerLeaders && inWilderness(bot) &&
+            !bot.isInCombat() && !bot.isDelayed && !bot.isAccessProtected &&
+            state.target == null && !state.dead && !state.returning &&
+            state.retreatStartedAt < 0 && state.restockAt < 0
+    }
+
+    fun joinPlayerTeam(bot: Player, leader: Player): Boolean {
+        if (!canOfferPlayerTeam(bot) || !inWilderness(leader) ||
+            hasPlayerFollower(leader) || bot === leader
+        ) return false
+        val state = states.getValue(bot)
+        disengage(bot, state)
+        state.returning = false
+        playerLeaders[bot] = leader
+        // Native auto-retaliation must not override the player's chosen target or attack the
+        // leader by mistake. The bot controller still retaliates through legal PvP attacks.
+        VarPlayerIntMapSetter.set(bot, "varp.option_nodef", 1)
+        return true
+    }
+
+    fun leavePlayerTeam(bot: Player) {
+        if (playerLeaders.remove(bot) == null) return
+        states[bot]?.let { disengage(bot, it) }
+        VarPlayerIntMapSetter.set(bot, "varp.option_nodef", 0)
+    }
+
     fun remove(player: Player) {
+        leavePlayerTeam(player)
         states.remove(player)
+        val squad = squads.remove(player) ?: return
+        squad.members.remove(player)
+        if (squad.members.size < 2) {
+            squad.members.forEach { squads.remove(it) }
+        } else if (squad.leader === player) {
+            squad.leader = squad.members.first()
+        }
+    }
+
+    private fun activeLeader(squad: WildernessSquad): Player? {
+        fun available(member: Player): Boolean {
+            val state = states[member] ?: return false
+            return member.isValidTarget() && state.retreatStartedAt < 0 &&
+                state.restockAt < 0 && areas.inArea("area.multiway", member.coords)
+        }
+        if (available(squad.leader)) return squad.leader
+        val replacement = squad.members.firstOrNull(::available) ?: return null
+        squad.leader = replacement
+        return replacement
     }
 
     fun description(player: Player): String = states[player]?.let {
         "${it.profile.id}/${it.loadout.id}[${it.risk.tier}/${it.risk.role}]" +
-            (it.hotspotId?.let { hotspot -> "@$hotspot" } ?: "")
+            (it.hotspotId?.let { hotspot -> "@$hotspot" } ?: "") +
+            (squads[player]?.let { squad ->
+                " [squad ${squad.members.size} ${if (activeLeader(squad) === player) "leader" else "member"}]"
+            } ?: "") +
+            (playerLeaders[player]?.let { " [following ${it.displayName}]" } ?: "")
     } ?: ""
 
     fun riskTier(player: Player): BotPvpRiskTier? = states[player]?.risk?.tier
@@ -124,7 +254,16 @@ class BotPvpCombat @Inject constructor(
     fun recoverStuck(player: Player, hotspot: BotPvpHotspot): Boolean {
         if (player.isInCombat() || player.isDelayed || player.isAccessProtected) return false
         states[player]?.let { disengage(player, it) }
-        return native.relocate(player, spawnPoint(hotspot))
+        val squad = squads[player]
+        val leader = squad?.let(::activeLeader)
+        val destination = when {
+            squad == null -> spawnPoint(hotspot)
+            leader != null && leader !== player &&
+                areas.inArea("area.multiway", leader.coords) ->
+                squadSpawnPoint(leader.coords, hotspot)
+            else -> multiwaySpawnPoint(hotspot) ?: squad.home
+        }
+        return native.relocate(player, destination)
     }
 
     fun canUseHotspot(player: Player, hotspotId: String): Boolean = states[player]?.let { state ->
@@ -137,9 +276,19 @@ class BotPvpCombat @Inject constructor(
         opponents: List<Player>,
         wilderness: Boolean,
         patrol: CoordGrid,
+        waitingForTeamReply: Boolean = false,
+        declinedPlayer: Player? = null,
     ): String {
         val state = states[player] ?: return "unconfigured"
         val cycle = player.currentMapClock
+        val previousLeader = playerLeaders[player]
+        if (previousLeader != null && !BotPvpPolicy.playerTeamActive(
+                leaderInWilderness = inWilderness(previousLeader),
+                followerInWilderness = inWilderness(player),
+            )
+        ) {
+            leavePlayerTeam(player)
+        }
         if (player.hitpoints <= 0) {
             state.dead = true
             disengage(player, state)
@@ -167,7 +316,16 @@ class BotPvpCombat @Inject constructor(
                 state.restockAt = -1
                 state.retreatStartedAt = -1
                 state.returning = if (wilderness) {
-                    val destination = BotPvpHotspots.get(state.hotspotId)?.let(::spawnPoint) ?: patrol
+                    val squad = squads[player]
+                    val leader = squad?.let(::activeLeader)
+                    val hotspot = BotPvpHotspots.get(state.hotspotId)
+                    val destination = when {
+                        squad == null -> hotspot?.let(::spawnPoint) ?: patrol
+                        hotspot != null && leader != null && leader !== player &&
+                            areas.inArea("area.multiway", leader.coords) ->
+                            squadSpawnPoint(leader.coords, hotspot)
+                        else -> squad.home
+                    }
                     !native.relocate(player, destination)
                 } else {
                     true
@@ -206,42 +364,101 @@ class BotPvpCombat @Inject constructor(
         if (wilderness && (state.retreatStartedAt >= 0 ||
                 BotPvpPolicy.shouldRetreat(player.hitpoints, player.baseHitpointsLvl,
                     food, state.profile))) {
+            // A bot running out of food leaves its voluntary team instead of keeping
+            // the player reserved as a leader while retreating to restock.
+            leavePlayerTeam(player)
             return retreat(player, state, cycle)
         }
+        val squad = if (wilderness) squads[player] else null
+        val leader = squad?.let(::activeLeader)
+        val playerLeader = if (wilderness) playerLeaders[player] else null
+        val returnTo = when {
+            playerLeader != null -> playerLeader.coords
+            leader != null && leader !== player &&
+                areas.inArea("area.multiway", leader.coords) -> leader.coords
+            else -> squad?.home ?: patrol
+        }
         if (state.returning) {
-            if (player.coords.chebyshevDistance(patrol) <= 7) state.returning = false
+            if (player.coords.chebyshevDistance(returnTo) <= 7) state.returning = false
             else {
                 if (!player.frozen && cycle >= state.nextMove) {
-                    walkTowards(player, patrol)
+                    walkTowards(player, returnTo)
                     state.nextMove = cycle + 3
                 }
                 return "returning to Wilderness"
             }
         }
 
-        val eligible = opponents.filter {
-            it !== player && !teams.allied(player, it) && native.validTarget(player, it) &&
-                player.coords.chebyshevDistance(it.coords) <= state.profile.chaseDistanceTiles &&
-                (it in states || !areas.inArea("area.multiway", it.coords) ||
-                    state.target === it || states.values.count { bot -> bot.target === it } < 2)
+        val eligible = opponents.filter { opponent ->
+            val retaliating = isAttacking(player, opponent)
+            val committed = state.target === opponent
+            val range = BotPvpPolicy.engagementRange(
+                state.profile.chaseDistanceTiles,
+                retaliating || committed || squad != null || playerLeader != null,
+            )
+            val defendingLeader = playerLeader != null &&
+                isAttacking(playerLeader, opponent)
+            val supportingLeader = playerLeader != null &&
+                isAttacking(opponent, playerLeader)
+            opponent !== player && opponent !== playerLeader &&
+                !teams.allied(player, opponent) &&
+                (playerLeader == null || defendingLeader || supportingLeader || retaliating) &&
+                (!waitingForTeamReply || retaliating) &&
+                BotPvpPolicy.canTargetDecliner(
+                    declined = opponent === declinedPlayer, retaliating = retaliating,
+                ) &&
+                BotPvpPolicy.canSquadEngage(
+                    hasSquad = squad != null,
+                    squadmate = squad?.members?.contains(opponent) == true,
+                    attackerInMultiway = areas.inArea("area.multiway", player.coords),
+                    targetInMultiway = areas.inArea("area.multiway", opponent.coords),
+                ) &&
+                native.validTarget(player, opponent) &&
+                player.coords.chebyshevDistance(opponent.coords) <= range &&
+                (opponent in states || retaliating || squad != null || playerLeader != null ||
+                    !areas.inArea("area.multiway", opponent.coords) || committed ||
+                    states.values.count { bot -> bot.target === opponent } < 2)
         }
         val current = state.target
         if (current != null && current !in eligible) disengage(player, state)
-        if (cycle >= state.nextTargetReview || state.target == null) {
+        if (cycle >= state.nextTargetReview || state.target == null ||
+            squad != null || playerLeader != null) {
             val indices = eligible.indices.toList()
             val retaliation = eligible.indices.filter {
-                (eligible[it].interaction as? InteractionPlayerOp)?.target === player
+                isAttacking(player, eligible[it])
             }.toSet()
-            val selected = BotPvpPolicy.chooseTarget(
-                indices, eligible.indexOf(state.target).takeIf { it >= 0 }, retaliation,
-                { player.coords.chebyshevDistance(eligible[it].coords) },
-                { targetIndex -> states.values.count { it.target === eligible[targetIndex] } },
-                { targetIndex ->
-                    if (state.risk.preferUnskulled &&
-                        eligible[targetIndex].skullIcon != null
-                    ) 12 else 0
-                },
-            )?.let { eligible[it] }
+            // Any attack on a squadmate takes priority; otherwise adopt the leader's
+            // target so followers never pick unrelated fights in multi-combat.
+            val sharedThreat = squad?.members?.asSequence()?.filter { it.isValidTarget() }
+                ?.flatMap { member ->
+                    eligible.asSequence().filter { isAttacking(member, it) }
+                }?.firstOrNull()
+            val groupFocus = squad?.let { group ->
+                sequenceOf(group.leader).plus(group.members.asSequence())
+                    .mapNotNull { states[it]?.target }
+                    .firstOrNull { it in eligible }
+            }
+            val humanTeamTarget = playerLeader?.let { human ->
+                eligible.firstOrNull { isAttacking(human, it) }
+                    ?: eligible.firstOrNull { isAttacking(it, human) }
+                    ?: eligible.firstOrNull { isAttacking(player, it) }
+            }
+            val selected = if (playerLeader != null) {
+                humanTeamTarget
+            } else if (waitingForTeamReply) {
+                eligible.firstOrNull { isAttacking(player, it) }
+            } else {
+                sharedThreat ?: groupFocus ?: BotPvpPolicy.chooseTarget(
+                    indices, eligible.indexOf(state.target).takeIf { it >= 0 }, retaliation,
+                    { player.coords.chebyshevDistance(eligible[it].coords) },
+                    { targetIndex -> states.values.count { it.target === eligible[targetIndex] } },
+                    { targetIndex ->
+                        if (state.risk.preferUnskulled &&
+                            eligible[targetIndex].skullIcon != null
+                        ) 12 else 0
+                    },
+                )?.let { eligible[it] }
+            }
             if (selected !== state.target) {
                 state.target = selected
                 state.reaction.reset()
@@ -252,6 +469,23 @@ class BotPvpCombat @Inject constructor(
         val target = state.target
         if (target == null) {
             native.clearPrayers(player)
+            if (playerLeader != null) {
+                if (player.coords.chebyshevDistance(playerLeader.coords) > 2 &&
+                    cycle >= state.nextMove && !player.frozen) {
+                    walkTowards(player, playerLeader.coords)
+                    state.nextMove = cycle + 2
+                }
+                return "following ${playerLeader.displayName}"
+            }
+            if (waitingForTeamReply) return "awaiting team reply"
+            if (leader != null && leader !== player) {
+                if (player.coords.chebyshevDistance(leader.coords) > 3 &&
+                    cycle >= state.nextMove && !player.frozen) {
+                    walkTowards(player, leader.coords)
+                    state.nextMove = cycle + 2
+                }
+                return "following squad leader"
+            }
             if (cycle >= state.nextMove && !player.frozen && player.routeRequest == null) {
                 val dest = roamDestination(player, state, patrol)
                 walkTowards(player, dest)
@@ -416,6 +650,17 @@ class BotPvpCombat @Inject constructor(
         return "fighting ${target.displayName} (${state.style})"
     }
 
+    private fun isAttacking(defender: Player, opponent: Player): Boolean {
+        val activelyTargeting = when (val action = opponent.interaction) {
+            is InteractionPlayerOp -> action.target === defender
+            is InteractionPlayerT -> action.target === defender
+            else -> false
+        }
+        val recentAttacker = defender.isInPvpCombat() &&
+            defender.vars["varp.pk_predator1"] == opponent.uid.packed
+        return activelyTargeting || recentAttacker
+    }
+
     private fun roamDestination(
         player: Player,
         state: BotPvpState,
@@ -426,6 +671,10 @@ class BotPvpCombat @Inject constructor(
             patrol.z + random.nextInt(-7, 8),
             patrol.level,
         )
+        if (squads[player] != null) {
+            // Squad leaders roam inside multiway; followers trail them instead of scattering.
+            return reachableRoamPoint(player.coords, hotspot, multiwayOnly = true)
+        }
         if (hotspot.fixedHotspot) return reachableRoamPoint(player.coords, hotspot)
 
         var target = BotPvpHotspots.patrolTarget(state.identity, state.patrolStep)

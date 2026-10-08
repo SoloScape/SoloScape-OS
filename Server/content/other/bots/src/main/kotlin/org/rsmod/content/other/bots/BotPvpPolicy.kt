@@ -55,6 +55,36 @@ internal object BotPvpPolicy {
             (if (it == current) 20 else 0) - (if (it in retaliating) 40 else 0)
     }
 
+    /** Only explicit yes/no replies to an outstanding invitation have meaning. */
+    fun playerTeamReply(message: String): Boolean? = when (message.trim().lowercase()) {
+        "yes" -> true
+        "no" -> false
+        else -> null
+    }
+
+    fun playerTeamActive(leaderInWilderness: Boolean, followerInWilderness: Boolean): Boolean =
+        leaderInWilderness && followerInWilderness
+
+    /** A rejected invitation is not permission to hunt that player. */
+    fun canTargetDecliner(declined: Boolean, retaliating: Boolean): Boolean =
+        !declined || retaliating
+
+    /** One uniform roll across the sizes that fit the remaining Wilderness population. */
+    fun squadSize(remaining: Int, sizeRoll: Int): Int {
+        require(remaining >= 2)
+        return 2 + sizeRoll.coerceIn(0, minOf(2, remaining - 2))
+    }
+
+    fun canSquadEngage(
+        hasSquad: Boolean,
+        squadmate: Boolean,
+        attackerInMultiway: Boolean,
+        targetInMultiway: Boolean,
+    ): Boolean = !squadmate && (!hasSquad || (attackerInMultiway && targetInMultiway))
+
+    fun engagementRange(chaseDistance: Int, retaliatingOrCommitted: Boolean): Int =
+        if (retaliatingOrCommitted) maxOf(chaseDistance, 32) else chaseDistance
+
     fun shouldPreventSkull(risk: BotPvpRiskAssignment, roll: Double): Boolean =
         roll < risk.skullPreventionChance
 
