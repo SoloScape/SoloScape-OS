@@ -281,8 +281,10 @@ class BotPvpCombat @Inject constructor(
         val state = states[player] ?: return "unconfigured"
         val cycle = player.currentMapClock
         val previousLeader = playerLeaders[player]
-        if (previousLeader != null &&
-            (!inWilderness(previousLeader) || !inWilderness(player))
+        if (previousLeader != null && !BotPvpPolicy.playerTeamActive(
+                leaderInWilderness = inWilderness(previousLeader),
+                followerInWilderness = inWilderness(player),
+            )
         ) {
             leavePlayerTeam(player)
         }
@@ -406,7 +408,7 @@ class BotPvpCombat @Inject constructor(
                 ) &&
                 native.validTarget(player, opponent) &&
                 player.coords.chebyshevDistance(opponent.coords) <= range &&
-                (opponent in states || retaliating || squad != null ||
+                (opponent in states || retaliating || squad != null || playerLeader != null ||
                     !areas.inArea("area.multiway", opponent.coords) || committed ||
                     states.values.count { bot -> bot.target === opponent } < 2)
         }
