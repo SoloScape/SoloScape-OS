@@ -130,6 +130,7 @@ export interface MobileHudOptions {
   readonly onLogout: () => void;
   readonly onCameraNorth: () => void;
   readonly onZoom: (delta: number) => void;
+  readonly onCacheArtStatus?: (status: string) => void;
 }
 
 /**
@@ -275,8 +276,16 @@ export class MobileHud {
       // Only enable cache-native visuals if actual cached sprite artwork
       // could be decoded. The HTML controls remain for mouse/touch input.
       this.root.classList.toggle('hud-cache-art-active', loaded);
+      this.options.onCacheArtStatus?.(loaded
+        ? 'Cache-native mobile art enabled (archive-3 groups ' +
+          art.groups.join(',') + '; sprites=' + art.visibleSpriteCount +
+          '). Mobile widget actions/CS2 still require implementation.'
+        : 'Cache-native mobile frame 601 or usable sprite files unavailable; ' +
+          'keeping the interactive fallback HUD.');
     }).catch((error: unknown) => {
       if (this.cacheHudArt !== art) return;
+      const message = error instanceof Error ? error.message : String(error);
+      this.options.onCacheArtStatus?.('Cache-native mobile art unavailable: ' + message);
       console.warn('Unable to render cache-native mobile frame:', error);
       this.root.classList.remove('hud-cache-art-active');
     });
