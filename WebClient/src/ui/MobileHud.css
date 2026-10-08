@@ -403,7 +403,8 @@
   height: 100%;
   object-fit: fill;
   image-rendering: pixelated;
-  pointer-events: none;
+  /* Consume clicks where actual original HUD sprites cover the canvas. */
+  pointer-events: auto;
 }
 
 #mobile-hud .hud-map-cluster,
