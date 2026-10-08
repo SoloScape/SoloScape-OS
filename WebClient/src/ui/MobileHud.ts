@@ -194,6 +194,7 @@ export class MobileHud {
     artHost.setAttribute('aria-hidden', 'true');
     this.root.prepend(artHost);
     const art = new CacheMobileHudArt(this.root, artHost, js5, assets.interfaces);
+    if (this.serverUi) art.setServerState(this.serverUi);
     this.cacheHudArt = art;
     const sequence = ++this.cacheArtSequence;
     void art.load().then((loaded) => {
@@ -244,6 +245,7 @@ export class MobileHud {
 
   setServerUi(server: Rev240UiState): void {
     this.serverUi = server;
+    this.cacheHudArt?.setServerState(server);
   }
 
   refreshServerUi(): void {
@@ -254,6 +256,7 @@ export class MobileHud {
     orb.setAttribute('aria-label', orb.title);
     this.renderCachedOrbValue('health', this.serverUi?.skills.get(3)?.currentLevel);
     this.renderCachedOrbValue('prayer', this.serverUi?.skills.get(5)?.currentLevel);
+    this.cacheHudArt?.refreshServerVisibility();
     this.interfaceRenderer?.refreshServerState();
     if (this.selectedTab && this.serverUi) {
       const resolved = this.resolveTabInterface(this.selectedTab);
