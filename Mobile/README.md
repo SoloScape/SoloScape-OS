@@ -1,6 +1,6 @@
-# SoloScape Mobile (TSPS port)
+# SoloScape Mobile (native revision-240 WebGL client)
 
-> **Status: experimental TSPS integration, not yet a playable SoloScape client.** The pinned upstream source and a configurable dev/build launcher are present. A playable SoloScape mobile client has **not** been ported yet. The current `Client/` desktop RSProx launcher and `Server/` Kotlin game server remain unchanged.
+> **Primary reference: OpenOSRS revision 240.** The source in the sibling `../../Client` directory is the reference for future input, menus, game-state and renderer compatibility, replacing TSPS as the behavioral authority. See [REFERENCE_OPENOSRS.md](REFERENCE_OPENOSRS.md) for the source fingerprint, scope and migration plan. Current TSPS-derived modules remain active **until individually replaced and tested**. The standalone browser client is experimental and does not yet have complete RuneLite visual or interaction parity. The existing SoloScape `Client/` RSProx launcher and Kotlin server remain unchanged.
 
 This directory integrates the pinned upstream browser client as a Git submodule at `tsps-upstream/`, based on [RSPSApp/tsps](https://github.com/RSPSApp/tsps), which provides a React/TypeScript/WebGL OSRS-style game client. Track the work in [issue #32](https://github.com/SoloScape/SoloScape-OS/issues/32).
 

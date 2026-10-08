@@ -10,6 +10,7 @@
     "dev": "node browser/dev-server.mjs",
     "build": "node scripts/run-client.mjs build",
     "test": "node --test tests/*.test.mjs",
+    "verify:openosrs-reference": "node scripts/verify-openosrs-reference.mjs",
     "generate:tsps-movement": "node scripts/adapt-tsps-movement.mjs",
     "generate:tsps-loading": "node scripts/adapt-tsps-loading.mjs",
     "generate:tsps-scene": "node scripts/adapt-tsps-scene.mjs",

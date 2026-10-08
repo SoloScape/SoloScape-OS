@@ -1,0 +1,19 @@
+{
+  "name": "OpenOSRS",
+  "upstream": "https://github.com/OOSRS/OOSRS",
+  "localDefault": "../../Client",
+  "version": "1.2.0",
+  "protocolRevision": 240,
+  "gamepackVersion": "1.12.39",
+  "gamepackSha256": "25f42961c400bd9dfff1554402441c0ba6d1cffd011163cb9b0b4c42ae194f85",
+  "license": "BSD-2-Clause for repository source; game dependency separately licensed",
+  "sourceFiles": {
+    "gamepack.properties": "ac185bcf54200af48eb0bbb3f281e18b623ed514f4faa9fecb208bcb665f57d2",
+    "runelite-client/src/main/java/net/runelite/client/plugins/camera/CameraPlugin.java": "5ae59d1281048e2442a9a6ae10d6ec8b535aa0068b51ee1bfcc5335befeb689f",
+    "runelite-client/src/main/java/net/runelite/client/plugins/camera/CameraConfig.java": "7d3dacde420005e70c6e85662ca579ca2acd71d7f39cdd37c4356e2a28800bbe",
+    "runelite-client/src/main/java/net/runelite/client/menus/MenuManager.java": "7295f246162716fdb0c2ee29d80983610a4931016952d7fb42fce3e35cf2c302",
+    "runelite-client/src/main/java/net/runelite/client/plugins/gpu/SceneUploader.java": "a8ee331ba88e72448285c63e73f2fe9f052e969e8ce9099414b603518e5b191a",
+    "runelite-api/src/main/java/net/runelite/api/GameState.java": "d0bc8623d582741d2b4cb89098851dc80a3678f8a9351fd5a1ec057318d70eed",
+    "runelite-client/src/main/java/net/runelite/client/input/cursor/DestinationResolver.java": "c36eb472ceba8cd5c2f8611b9fa7927282fce0028fb3335127ad093bab1d4515"
+  }
+}
