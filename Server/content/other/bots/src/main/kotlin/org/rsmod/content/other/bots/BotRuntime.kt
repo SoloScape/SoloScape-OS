@@ -62,6 +62,15 @@ private class WorldBot(
     var needsPlan = true
 }
 
+private class PendingWildernessSquad(
+    val hotspot: BotPvpHotspot,
+    val home: CoordGrid,
+    val difficulty: BotPvpDifficulty,
+    val size: Int,
+) {
+    val members = mutableListOf<Player>()
+}
+
 @Singleton
 class BotPopulation @Inject constructor(
     private val registry: PlayerRegistry,
@@ -113,7 +122,11 @@ class BotPopulation @Inject constructor(
         val difficultySetting = configured.getProperty("pvp.difficulty", "mixed")
         val membersWorld = configured.getProperty("members", "true").toBoolean()
         var added = 0
-        repeat(requested.coerceIn(0, MAX_BOTS - bots.size)) {
+        val total = requested.coerceIn(0, MAX_BOTS - bots.size)
+        val squadChance = configured.getProperty("pvp.teams.chance", "0.25")
+            .toDoubleOrNull()?.coerceIn(0.0, 1.0) ?: 0.25
+        var pendingSquad: PendingWildernessSquad? = null
+        repeat(total) { index ->
             val slot = registry.nextFreeSlot() ?: return added
             if (registry.count() >= MAX_BOTS) return added
             val identity = freeIdentity()
@@ -125,15 +138,40 @@ class BotPopulation @Inject constructor(
             }
             val name = SourceBotCatalog.names[(identity - 1) % SourceBotCatalog.names.size]
             val initial = initialTask(mode) ?: return added
-            val hotspot = if (mode == BotMode.Wilderness) {
-                val occupancy = bots.values.asSequence()
+            val occupancy = if (mode == BotMode.Wilderness) {
+                bots.values.asSequence()
                     .filter { it.mode == BotMode.Wilderness }
                     .mapNotNull { it.hotspot?.id }
                     .groupingBy { it }
                     .eachCount()
-                BotPvpHotspots.choose(identity, membersWorld, difficulty, occupancy)
+            } else emptyMap()
+            if (mode == BotMode.Wilderness && pendingSquad == null &&
+                total - index >= 2 && random.nextDouble() < squadChance) {
+                val size = BotPvpPolicy.squadSize(
+                    remaining = total - index,
+                    sizeRoll = random.nextInt(minOf(3, total - index - 1)),
+                )
+                val candidates = BotPvpHotspots.available(membersWorld, difficulty)
+                    .filter { !it.fixedHotspot ||
+                        occupancy.getOrDefault(it.id, 0) + size <= it.maxBots }
+                    .sortedBy { occupancy.getOrDefault(it.id, 0) }
+                val location = candidates.firstNotNullOfOrNull { candidate ->
+                    pvpCombat.multiwaySpawnPoint(candidate)?.let { candidate to it }
+                }
+                if (location != null) {
+                    pendingSquad = PendingWildernessSquad(
+                        location.first, location.second, difficulty, size,
+                    )
+                }
+            }
+            val selectedSquad = pendingSquad
+            val effectiveDifficulty = selectedSquad?.difficulty ?: difficulty
+            val hotspot = if (mode == BotMode.Wilderness) {
+                selectedSquad?.hotspot ?: BotPvpHotspots.choose(
+                    identity, membersWorld, effectiveDifficulty, occupancy,
+                )
             } else null
-            val patrol = hotspot?.anchor
+            val patrol = selectedSquad?.home ?: hotspot?.anchor
             val player = Player().apply {
                 accountId = 0
                 characterId = 0
@@ -148,7 +186,13 @@ class BotPopulation @Inject constructor(
                 members = membersWorld
                 slotId = slot
                 coords = when (mode) {
-                    BotMode.Wilderness -> pvpCombat.spawnPoint(checkNotNull(hotspot))
+                    BotMode.Wilderness -> when {
+                        selectedSquad == null -> pvpCombat.spawnPoint(checkNotNull(hotspot))
+                        selectedSquad.members.isEmpty() -> selectedSquad.home
+                        else -> pvpCombat.squadSpawnPoint(
+                            selectedSquad.members.first().coords, checkNotNull(hotspot),
+                        )
+                    }
                     BotMode.ClanOne -> CoordGrid(3217, 3682)
                     BotMode.ClanTwo -> CoordGrid(3232, 3682)
                     else -> initial.start
@@ -163,7 +207,7 @@ class BotPopulation @Inject constructor(
             try {
                 initializeLevels(player, mode, initial)
                 if (mode.isPvp) {
-                    check(pvpCombat.register(player, identity, difficulty, hotspot?.id)) {
+                    check(pvpCombat.register(player, identity, effectiveDifficulty, hotspot?.id)) {
                         "Unable to seed PvP bot loadout"
                     }
                 } else supplies.seed(player, initial, mode == BotMode.Progressive)
@@ -185,12 +229,26 @@ class BotPopulation @Inject constructor(
                 player.rebuildAppearance()
                 added++
                 if (mode.isPvp) nextPvpPopulationIndex++
+                if (selectedSquad != null) {
+                    selectedSquad.members += player
+                    if (selectedSquad.members.size == selectedSquad.size) {
+                        pvpCombat.registerSquad(selectedSquad.members, selectedSquad.home)
+                        pendingSquad = null
+                    }
+                }
             } catch (error: Exception) {
                 logger.error(error) { "Could not initialize bot $name" }
                 bots.remove(player)
                 pvpCombat.remove(player)
                 registry.del(player)
                 sessions.detach(player)
+                // A failed spawn must not leave a squad waiting indefinitely for a member.
+                if (selectedSquad != null) {
+                    if (selectedSquad.members.size >= 2) {
+                        pvpCombat.registerSquad(selectedSquad.members, selectedSquad.home)
+                    }
+                    pendingSquad = null
+                }
             }
         }
         return added
@@ -348,7 +406,8 @@ class BotPopulation @Inject constructor(
 
     private fun watchPvpStall(bot: WorldBot, status: String) {
         val player = bot.player
-        val movingState = status == "seeking opponent" || status == "returning to Wilderness"
+        val movingState = status == "seeking opponent" ||
+            status == "following squad leader" || status == "returning to Wilderness"
         if (!movingState || player.coords != bot.previousCoords) {
             bot.stalled = 0
         } else {
