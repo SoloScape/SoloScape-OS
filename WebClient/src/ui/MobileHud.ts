@@ -49,7 +49,7 @@ const STONES = [...MAIN_STONES, ...EXTRA_STONES];
 const CACHE_TAB_GROUPS: Partial<Record<TabId, number>> = {
   combat: 593, inventory: 149, equipment: 387, prayer: 541,
   magic: 218, quests: 629, journal: 629, skills: 320,
-  friends: 429, clan: 707, emotes: 216, music: 239,
+  friends: 429, clan: 7, emotes: 216, music: 239,
   settings: 116, account: 109,
 };
 
@@ -59,6 +59,19 @@ const CACHE_SIDE_ICON: Readonly<Record<string, number>> = {
   combat: 0, skills: 1, quests: 2, inventory: 3, equipment: 4,
   prayer: 5, magic: 6, clan: 7, friends: 8, settings: 11,
   emotes: 12, music: 13,
+};
+
+/**
+ * xrsps reference: server/src/widgets/viewport/mobile.ts (toplevel_osm).
+ * Destinations identify which server-OPENED interface belongs to a tab.
+ * Unlike a historical groupId, the destination is authoritative in mobile
+ * root 601 and survives replacement with bank/shop/other group content.
+ */
+const MOBILE_TAB_DESTINATIONS: Partial<Record<TabId, number>> = {
+  combat: 116, skills: 117, quests: 118, journal: 118,
+  inventory: 119, equipment: 120, prayer: 121, magic: 122,
+  clan: 123, account: 124, friends: 125,
+  settings: 127, emotes: 128, music: 129,
 };
 
 const HOTKEY_PROFILES: readonly { name: string; keys: readonly HotkeyId[] }[] = [
@@ -303,17 +316,9 @@ export class MobileHud {
     this.interfaceRenderer?.refreshServerState();
     if (this.selectedTab === 'skills') this.renderLiveSkills();
     if (this.selectedTab && this.serverUi) {
-      const hinted = CACHE_TAB_GROUPS[this.selectedTab];
-      const manuallyOpened = this.manuallySelectedGroup !== null &&
-        [...this.serverUi.subInterfaces.values()].some(
-          (sub) => sub.groupId === this.manuallySelectedGroup);
-      const desired = manuallyOpened ? this.manuallySelectedGroup : hinted;
-      const confirmed = desired !== undefined && desired !== null &&
-        [...this.serverUi.subInterfaces.values()].some((sub) => sub.groupId === desired);
-      const group = desired !== undefined && desired !== null &&
-        this.interfaceGroupIds.has(desired) ? desired : null;
-      if (group !== this.activePanelGroup ||
-        confirmed !== this.activeServerConfirmed) {
+      const resolved = this.resolveTabInterface(this.selectedTab);
+      if (resolved.groupId !== this.activePanelGroup ||
+        resolved.confirmed !== this.activeServerConfirmed) {
         this.renderCachedPanel(this.selectedTab);
       }
     }
@@ -550,20 +555,42 @@ export class MobileHud {
    * Actual sidebar content is downloaded from cache archive 3. No HTML
    * inventory / prayer / skills slots are fabricated when it is missing.
    */
-  private renderCachedPanel(tab: TabId): void {
-    const hintedId = CACHE_TAB_GROUPS[tab];
+  private resolveTabInterface(tab: TabId): {
+    groupId: number | null;
+    confirmed: boolean;
+  } {
+    const known = CACHE_TAB_GROUPS[tab];
     const open = [...(this.serverUi?.subInterfaces.values() ?? [])]
-      .filter((value) => this.interfaceGroupIds.has(value.groupId));
-    const manuallyOpened = this.manuallySelectedGroup !== null
-      ? open.find((value) => value.groupId === this.manuallySelectedGroup)
-      : undefined;
-    const matchingOpen = manuallyOpened ??
-      open.find((value) => value.groupId === hintedId);
-    const groupId = matchingOpen?.groupId ??
-      (hintedId !== undefined && this.interfaceGroupIds.has(hintedId)
-        ? hintedId : null);
+      .filter((entry) => this.interfaceGroupIds.has(entry.groupId));
+    if (this.manuallySelectedGroup !== null) {
+      const manual = open.find((entry) => entry.groupId === this.manuallySelectedGroup);
+      if (manual) return { groupId: manual.groupId, confirmed: true };
+    }
+    // In mobile mode the destination UID, not the mounted group ID,
+    // determines which panel the server has opened for this tab.
+    const child = MOBILE_TAB_DESTINATIONS[tab];
+    if (this.serverUi?.topLevelInterface === 601 && child !== undefined) {
+      const mounted = this.serverUi.subInterfaces.get((601 << 16) | child);
+      if (mounted && this.interfaceGroupIds.has(mounted.groupId)) {
+        return { groupId: mounted.groupId, confirmed: true };
+      }
+    }
+    const matched = open.find((entry) => entry.groupId === known);
+    if (matched) return { groupId: matched.groupId, confirmed: true };
+    return {
+      groupId: known !== undefined && this.interfaceGroupIds.has(known)
+        ? known : null,
+      confirmed: false,
+    };
+  }
+
+  private renderCachedPanel(tab: TabId): void {
+    const open = [...(this.serverUi?.subInterfaces.values() ?? [])]
+      .filter((entry) => this.interfaceGroupIds.has(entry.groupId));
+    const resolved = this.resolveTabInterface(tab);
+    const groupId = resolved.groupId;
     this.activePanelGroup = groupId;
-    this.activeServerConfirmed = Boolean(matchingOpen);
+    this.activeServerConfirmed = resolved.confirmed;
 
     if (!this.interfaceRenderer) {
       this.panelBody.textContent = 'Loading original game interfaces from cache...';
@@ -580,7 +607,7 @@ export class MobileHud {
     const renderer = this.interfaceRenderer;
     void renderer.show(groupId, this.panelBody).then(() => {
       if (this.selectedTab !== tab || this.activePanelGroup !== groupId) return;
-      if (!matchingOpen) {
+      if (!resolved.confirmed) {
         const status = document.createElement('small');
         status.className = 'hud-cache-unverified';
         status.textContent = 'Historic interface ' + groupId +
