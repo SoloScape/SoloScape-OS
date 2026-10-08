@@ -268,7 +268,7 @@ constructor(
 
         val remaining = loot.mapIndexedNotNull { slot, item ->
             val left = item.count - (amounts[slot] ?: 0)
-            if (left > 0) InvObj(item.id, left, item.vars) else null
+            if (left > 0) InvObj(getInvObj(item), left, item.vars) else null
         }
 
         if (toBank) {
@@ -331,7 +331,7 @@ constructor(
         val loot = store.get(key.vars) ?: return
         val remaining = loot.mapIndexedNotNull { slot, item ->
             val deleted = (requested[slot] ?: 0).coerceIn(0, item.count)
-            if (deleted < item.count) InvObj(item.id, item.count - deleted, item.vars) else null
+            if (deleted < item.count) InvObj(getInvObj(item), item.count - deleted, item.vars) else null
         }
         if (remaining.size == loot.size && remaining.zip(loot).all { it.first.count == it.second.count }) {
             return
