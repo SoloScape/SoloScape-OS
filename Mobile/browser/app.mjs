@@ -222,6 +222,7 @@ loginForm.addEventListener("submit",async event=>{
     interfacePreview.close();lockInterfacePreview(true);
     examineResult.hidden=true;
     const credentials={username:byId("login-username").value,password:byId("login-password").value,otp:""};
+    title.beginConnecting();
     byId("login-password").value="";
     loginStatus.textContent="Checking the login cache manifest…";
     try{
@@ -237,7 +238,7 @@ loginForm.addEventListener("submit",async event=>{
         button.disabled=true;levelSelector.disabled=true;
         gameSession=new NativeGameSession({url:loginConfig.gatewayUrl,
             onStatus:message=>{if(sequence===sessionAttempt)loginStatus.textContent=message;},
-            onAuthenticated:account=>{title.enterGame();loading.hidden=false;details.textContent="Loading your server location…";gameplay.authenticated(account);},
+            onAuthenticated:account=>{gameplay.authenticated(account);},
             onPacket:packet=>{
                 if(sequence!==sessionAttempt)return;
                 gameplay.handle(packet);
@@ -255,6 +256,7 @@ loginForm.addEventListener("submit",async event=>{
         interfaceStatus.textContent="Interfaces are controlled by the SoloScape server.";
         gameplay=new NativeGameplay({cache:loginCache,viewport:renderer,session:gameSession,interfaces:serverInterfaces,onNpcMenu:showNpcMenu,onExamine:showExamine,
             run:()=>byId("run-movement").checked,
+            onReady:()=>{if(sequence===sessionAttempt&&title.mode==="connecting")title.enterGame();},
             onStatus:message=>{if(sequence===sessionAttempt)loginStatus.textContent=message;},
             onRegion:region=>{
                 if(sequence!==sessionAttempt)return;

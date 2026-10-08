@@ -28,7 +28,10 @@ ported TSPS MIDI synthesizer with index-15 patches and index-4/14 samples.
 Browser autoplay rules require the first click/tap/key before music starts;
 the cache mute button controls it. Music stops on entering the game.
 
-Login switches to a full-viewport game; disconnect returns to the title.
+Login retains the cache title artwork and masked fields while connecting,
+with a small top-left "Loading... Please wait" badge. The login buttons are
+hidden while connecting. The initial map build completes before switching
+to the full-viewport game; disconnect returns to the title.
 The top bar, sidebar and development overlays are hidden in ordinary play.
 **F10** opens the developer panel with region travel, floor controls,
 disconnect, cache-interface preview and diagnostics. No terrain preview

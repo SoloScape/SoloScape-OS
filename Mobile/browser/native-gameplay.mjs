@@ -25,11 +25,12 @@ export function interpolatePlayer(motion,now){
 }
 
 export class NativeGameplay {
-    constructor({cache,viewport,session,interfaces=null,onStatus=()=>{},onRegion=()=>{},onNpcMenu=()=>{},onExamine=()=>{},run=()=>false,
+    constructor({cache,viewport,session,interfaces=null,onStatus=()=>{},onRegion=()=>{},onReady=()=>{},onNpcMenu=()=>{},onExamine=()=>{},run=()=>false,
         loadTerrain=loadNativeTerrain,loadMaterials=loadFloorMaterials,loadScenery=loadStaticScenery,
         models=new NativePlayerModels(cache),now=()=>performance.now()}={}){
         this.cache=cache;this.viewport=viewport;this.session=session;this.onStatus=onStatus;this.onRegion=onRegion;this.onNpcMenu=onNpcMenu;this.onExamine=onExamine;this.run=run;
         this.interfaces=interfaces;
+        this.onReady=onReady;
         this.loadTerrain=loadTerrain;this.loadMaterials=loadMaterials;this.loadScenery=loadScenery;this.models=models;this.now=now;
         this.generation=0;this.closed=false;this.regions=new Map();this.packetCount=0;this.animationStarted=now();
         this.npcs=new NativeNpcSync();this.npcModels=new NativeNpcModels(models);this.npcMotions=new Map();this.npcDrawn=0;this.selectionToken=0;this.selectedNpc=null;
@@ -136,6 +137,7 @@ export class NativeGameplay {
         this.viewport.setTerrain({...center,regions},{resetCamera:false});
         this.session.sendGame(MAP_BUILD_COMPLETE);this.loading=false;this.unavailable=unavailable;
         this.report();await this.drawActors();
+        if(current())this.onReady();
     }
     showGroundMenu({tile,x,y,run=false}){
         this.clearNpcMenu();

@@ -112,6 +112,10 @@ export class NativeTitleScreen{
         document.getElementById("login-password").value="";
         this.music?.show();this.syncControls();this.restart();document.getElementById("login-username").focus();
     }
+    beginConnecting(){
+        this.connectingPasswordLength=document.getElementById("login-password").value.length;
+        this.mode="connecting";this.status.textContent="Connecting to server...";this.syncControls();this.paint();
+    }
     enterGame(){this.visible=false;document.body.classList.add("in-game");cancelAnimationFrame(this.animation);this.music?.hide();this.syncControls();}
     validateCredentials(){
         for(const [id,label] of [["login-username","username/email"],["login-password","password"]]){
@@ -169,15 +173,15 @@ export class NativeTitleScreen{
             const box=this.assets.sprites.get("titlebox")?.[0];if(box)ctx.drawImage(box,202,170);
             if(this.mode==="welcome"){
                 this.text(ctx,"Welcome to RuneScape",382,251,"#ffff00");this.button(ctx,302,291,"New User");this.button(ctx,462,291,"Existing User");
-            }else if(this.mode==="login"){
-                const message=this.status.textContent;
+            }else if(this.mode==="login"||this.mode==="connecting"){
+                const message=this.mode==="connecting"?"Connecting to server...":this.status.textContent;
                 const words=message.split(" "),rows=[];let line="";
                 for(const word of words){const next=line?line+" "+word:word;if(line&&(this.assets.font?.measure(next)??next.length*7)>320){rows.push(line);line=word;}else line=next;}if(line)rows.push(line);
                 rows.slice(0,3).forEach((row,i)=>this.text(ctx,row,382,211+i*15,"#ffff00"));
                 const font=this.assets.font,fields=[["Login:","login-username",253,false],["Password:","login-password",268,true]];
                 for(const [label,id,y,masked] of fields){
-                    const input=document.getElementById(id),value=masked?"*".repeat(input.value.length):input.value;
-                    const active=document.activeElement===input,field=titleFieldLayout(font,value,input.selectionStart,input.selectionEnd,active);
+                    const input=document.getElementById(id),value=masked?"*".repeat(this.mode==="connecting"?this.connectingPasswordLength:input.value.length):input.value;
+                    const active=this.mode==="login"&&document.activeElement===input,field=titleFieldLayout(font,value,input.selectionStart,input.selectionEnd,active);
                     this.fieldLayouts.set(input,field);
                     const x=274+font.measure(label);
                     input.style.left=x+"px";
@@ -185,10 +189,15 @@ export class NativeTitleScreen{
                     font.draw(ctx,field.text,x,y,"#ffffff",true);
                     if(active&&Math.floor(performance.now()/500)%2===0)font.draw(ctx,"|",x+field.caret,y,"#ffffff",true);
                 }
-                this.button(ctx,302,321,document.getElementById("login-submit").disabled?"Please wait...":"Login");this.button(ctx,462,321,"Cancel");
+                if(this.mode==="login"){this.button(ctx,302,321,document.getElementById("login-submit").disabled?"Please wait...":"Login");this.button(ctx,462,321,"Cancel");}
             }
         }
         ctx.restore();
+        if(this.mode==="connecting"){
+            const message="Loading... Please wait",font=this.assets.small,w=font.measure(message)+8;
+            ctx.fillStyle="#000000";ctx.fillRect(6,6,w,21);ctx.strokeStyle="#ffffff";ctx.lineWidth=1;ctx.strokeRect(6.5,6.5,w-1,20);
+            font.draw(ctx,message,10,21,"#ffffff");
+        }
         if(!this.mute.hidden){
             this.mute.style.left=controls.muteX+"px";this.mute.style.top=controls.muteY+"px";
             this.mute.style.width=this.mute.style.height=36*controls.scale+"px";

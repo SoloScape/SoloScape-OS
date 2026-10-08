@@ -25,12 +25,15 @@ test("interpolation moves between authoritative server positions",()=>{
 });
 test("normal rebuild loads around the rebuild zone even before teleport PLAYER_INFO",async()=>{
     const loaded=[],vp=viewport(),session={sendGame(op,payload){session.sent=[op,payload];}};
+    let ready=false;
     const gameplay=new NativeGameplay({cache:{},viewport:vp,session,now:()=>1000,
+        onRegion:()=>assert.equal(ready,false),onReady:()=>{assert.equal(gameplay.loading,false);assert.equal(session.sent[0],27);ready=true;},
         loadTerrain:async(_cache,mapX,mapY)=>{loaded.push([mapX,mapY]);return terrain(mapX,mapY);},
         loadMaterials:async()=>({underlays:new Map(),overlays:new Map()}),loadScenery:async()=>null});
     const sync=new NativePlayerSync(1);sync.initialized=true;sync.players[1]={x:100,y:100,plane:0,appearance:null,moving:false};gameplay.sync=sync;
     await gameplay.loadRebuild({zoneX:400,zoneY:400});
     assert.ok(loaded.some(([x,y])=>x===50&&y===50));
     assert.equal(session.sent[0],27);
+    assert.equal(ready,true);
     gameplay.close();
 });

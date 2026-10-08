@@ -280,7 +280,10 @@ try{
     let highlighted=false;for(let i=0;i<titlePixels.length;i+=4)if(titlePixels[i]===49&&titlePixels[i+1]===106&&titlePixels[i+2]===197){highlighted=true;break;}
     if(highlighted)throw new Error("Login text must not have a selection highlight");
     titleInput.dispatchEvent(new Event("select"));if(titleInput.selectionStart!==titleInput.selectionEnd)throw new Error("Login text selection was not collapsed");
-    screen.querySelector("#login-password").value="synthetic";title.enterGame();
+    screen.querySelector("#login-password").value="synthetic";title.beginConnecting();screen.querySelector("#login-password").value="";title.paint();
+    if(screen.hidden||document.body.classList.contains("in-game")||!screen.querySelector("form").hidden)throw new Error("Connecting must retain title artwork and hide login controls");
+    if(!titleText.includes("Loading... Please wait")||!titleText.includes("Connecting to server...")||!titleText.includes("*********"))throw new Error("Connecting title missed loading badge or masked password");
+    title.enterGame();
     if(!screen.hidden||!document.body.classList.contains("in-game"))throw new Error("Title remained over authenticated game");
     title.showLogin("Disconnected");
     if(screen.hidden||screen.querySelector("#login-password").value||document.body.classList.contains("in-game"))throw new Error("Disconnect did not restore clean login screen");
