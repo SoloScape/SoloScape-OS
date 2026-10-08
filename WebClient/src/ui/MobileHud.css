@@ -567,3 +567,78 @@
   color: #f9d77c;
   text-shadow: 1px 1px #000;
 }
+
+/*
+ * Actual OSRS mobile artwork from archive-3 widget groups (601/892/160/728)
+ * and archive-8 sprite files. The controls remain transparent click targets.
+ * If the revision lacks the cache groups, the pre-existing shell stays usable.
+ */
+#mobile-hud .hud-cache-art {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  overflow: hidden;
+}
+
+#mobile-hud .hud-cache-art-stage {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+#mobile-hud .hud-cache-art-sprite {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+#mobile-hud.hud-cache-art-active .hud-stone,
+#mobile-hud.hud-cache-art-active .hud-hotkey,
+#mobile-hud.hud-cache-art-active .hud-profile {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+#mobile-hud.hud-cache-art-active .hud-stone svg,
+#mobile-hud.hud-cache-art-active .hud-stone img.cache-hud-icon,
+#mobile-hud.hud-cache-art-active .hud-orb svg {
+  visibility: hidden;
+}
+
+#mobile-hud.hud-cache-art-active .hud-hotkeys,
+#mobile-hud.hud-cache-art-active .hud-side-stones,
+#mobile-hud.hud-cache-art-active .hud-orb {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+#mobile-hud.hud-cache-art-active .hud-map-frame {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+#mobile-hud.hud-cache-art-active .hud-panel,
+#mobile-hud.hud-cache-art-active .hud-chat-form,
+#mobile-hud.hud-cache-art-active .hud-chat-controls,
+#mobile-hud.hud-cache-art-active .hud-popout,
+#mobile-hud.hud-cache-art-active button,
+#mobile-hud.hud-cache-art-active .hud-hotkey-rail,
+#mobile-hud.hud-cache-art-active .hud-side-stones,
+#mobile-hud.hud-cache-art-active .hud-map-cluster {
+  z-index: 6;
+}
+
+#mobile-hud.hud-cache-art-active .hud-panel {
+  z-index: 8;
+}
+
+#mobile-hud.hud-cache-art-active .hud-stone:focus-visible {
+  outline: 2px solid #e9c96e;
+  outline-offset: 1px;
+}
