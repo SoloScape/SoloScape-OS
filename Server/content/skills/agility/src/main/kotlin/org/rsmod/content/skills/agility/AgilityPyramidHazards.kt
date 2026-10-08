@@ -66,14 +66,16 @@ internal data class PyramidBlockSpec(
             }
 
     val extendedTiles: Set<CoordGrid>
-        get() =
-            buildSet {
-                for (dx in 0..1) {
-                    for (dz in 0..1) {
-                        add(CoordGrid(extended.x + dx, extended.z + dz, extended.level))
-                    }
+        get() = occupiedTiles(extended)
+
+    fun occupiedTiles(anchor: CoordGrid): Set<CoordGrid> =
+        buildSet {
+            for (dx in 0..1) {
+                for (dz in 0..1) {
+                    add(CoordGrid(anchor.x + dx, anchor.z + dz, anchor.level))
                 }
             }
+        }
 
     fun pushDestination(player: CoordGrid): CoordGrid =
         when (axis) {
@@ -335,19 +337,19 @@ constructor(
                 }
 
         when (state.phase) {
-            BLOCK_EXTEND_PHASE -> {
-                npc.walk(state.spec.extended)
-                pushPlayers(state.spec)
-            }
-            BLOCK_SECOND_PUSH_CHECK -> pushPlayers(state.spec)
+            BLOCK_EXTEND_PHASE -> npc.walk(state.spec.extended)
+            BLOCK_FIRST_PUSH_CHECK,
+            BLOCK_SECOND_PUSH_CHECK,
+            -> pushPlayers(npc, state.spec)
             BLOCK_RETRACT_PHASE -> npc.walk(state.spec.spawn)
         }
         state.phase = (state.phase + 1) % BLOCK_CYCLE_TICKS
     }
 
-    private fun pushPlayers(spec: PyramidBlockSpec) {
+    private fun pushPlayers(npc: Npc, spec: PyramidBlockSpec) {
+        val occupied = spec.occupiedTiles(npc.coords)
         for (player in players) {
-            if (player.coords !in spec.extendedTiles) {
+            if (player.coords !in occupied) {
                 continue
             }
             val cooldown = pushCooldowns[player] ?: -1
@@ -368,17 +370,17 @@ constructor(
         if (start.level != args.destination.level) {
             return
         }
-        faceSquare(args.destination)
-        anim(BLOCK_PUSH_SEQ)
+        val pushTicks = start.chebyshevDistance(args.destination).coerceAtLeast(1)
+        anim(if (pushTicks == 1) BLOCK_PUSH_SHORT_SEQ else BLOCK_PUSH_LONG_SEQ)
         exactMove(
             start,
             args.destination,
             0,
-            CLIENT_CYCLES_PER_TICK,
-            facing(start, args.destination),
+            pushTicks * CLIENT_CYCLES_PER_TICK,
+            facing(args.destination, start),
             TeleportType.Exempt,
         )
-        delay(1)
+        delay(pushTicks)
         telejump(
             AgilityPyramidObstacleData.dropOneLayer(args.destination),
             TeleportType.Exempt,
@@ -405,11 +407,13 @@ constructor(
         const val STONE_FAIL_SEQ = "seq.agility_pyramid_tilt_fall"
 
         const val BLOCK_PUSH_DAMAGE = 6
-        const val BLOCK_PUSH_SEQ = "seq.agility_pyramid_block_push_2"
+        const val BLOCK_PUSH_SHORT_SEQ = "seq.agility_pyramid_block_push_1"
+        const val BLOCK_PUSH_LONG_SEQ = "seq.agility_pyramid_block_push_2"
         const val BLOCK_PUSH_COOLDOWN = 4
-        const val BLOCK_CYCLE_TICKS = 19
+        const val BLOCK_CYCLE_TICKS = 16
         const val BLOCK_EXTEND_PHASE = 0
-        const val BLOCK_SECOND_PUSH_CHECK = 1
+        const val BLOCK_FIRST_PUSH_CHECK = 1
+        const val BLOCK_SECOND_PUSH_CHECK = 2
         const val BLOCK_RETRACT_PHASE = 6
 
         fun facing(from: CoordGrid, to: CoordGrid): Int {

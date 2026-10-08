@@ -57,6 +57,15 @@ class AgilityPyramidHazardDataTest {
             block.extendedTiles,
         )
         assertEquals(
+            setOf(
+                CoordGrid(3373, 2847, 1),
+                CoordGrid(3373, 2848, 1),
+                CoordGrid(3374, 2847, 1),
+                CoordGrid(3374, 2848, 1),
+            ),
+            block.occupiedTiles(CoordGrid(3373, 2847, 1)),
+        )
+        assertEquals(
             CoordGrid(3376, 2848, 1),
             block.pushDestination(CoordGrid(3375, 2848, 1)),
         )
