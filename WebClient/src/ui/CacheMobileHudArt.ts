@@ -3,6 +3,7 @@ import type {
   CacheInterfaceComponent, CacheInterfaceStore,
 } from '../cache/CacheInterfaceDefinitions';
 import { cacheSpriteCanvas, loadInterfaceSprite } from '../cache/CacheGameUiAssets';
+import type { Rev240UiState } from '../protocol/Rev240UiState';
 
 /**
  * Cache-native mobile HUD artwork.
@@ -81,6 +82,7 @@ export class CacheMobileHudArt {
   private readonly images = new Set<HTMLImageElement>();
   private readonly shells = new Map<number, WidgetNode>();
   private resizeObserver: ResizeObserver | null = null;
+  private serverState: Rev240UiState | null = null;
   private destroyed = false;
   private rendering = false;
   private generation = 0;
@@ -145,6 +147,18 @@ export class CacheMobileHudArt {
     this.shells.clear();
   }
 
+  setServerState(state: Rev240UiState): void {
+    this.serverState = state;
+    this.refreshServerVisibility();
+  }
+
+  refreshServerVisibility(): void {
+    for (const [id, node] of this.shells) {
+      node.element.hidden = this.serverState?.widgetChanges.get(id >>> 0)?.hidden ??
+        node.component.hidden;
+    }
+  }
+
   get visibleSpriteCount(): number {
     return [...this.images].filter((img) => Boolean(img.getAttribute('src'))).length;
   }
@@ -180,6 +194,7 @@ export class CacheMobileHudArt {
     }
 
     this.rendering = false;
+    this.refreshServerVisibility();
   }
 
   private layoutGroup(
@@ -204,7 +219,7 @@ export class CacheMobileHudArt {
       pw: number, ph: number, depth: number): void => {
       if (depth > 32) return;
       for (const widget of byParent.get(parentId) ?? []) {
-        if (widget.hidden || drawn.has(widget.id)) continue;
+        if (drawn.has(widget.id)) continue;
         drawn.add(widget.id);
         const w = size(widget.width, widget.widthAlignment, pw);
         const h = size(widget.height, widget.heightAlignment, ph);
@@ -217,6 +232,8 @@ export class CacheMobileHudArt {
         el.style.width = w + 'px';
         el.style.height = h + 'px';
         parent.append(el);
+        el.hidden = this.serverState?.widgetChanges.get(widget.id >>> 0)?.hidden ??
+          widget.hidden;
         this.shells.set(widget.id, { element: el, component: widget, width: w, height: h });
 
         const bounds = el.getBoundingClientRect();
