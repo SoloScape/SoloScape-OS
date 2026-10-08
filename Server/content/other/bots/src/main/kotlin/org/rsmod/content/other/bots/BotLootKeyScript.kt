@@ -5,6 +5,7 @@ import dev.openrune.types.aconverted.interf.IfButtonOp
 import jakarta.inject.Inject
 import org.rsmod.api.invtx.add as txAdd
 import org.rsmod.api.invtx.delete as txDelete
+import org.rsmod.api.invtx.invDel
 import org.rsmod.api.invtx.invTransaction
 import org.rsmod.api.invtx.select
 import org.rsmod.api.market.MarketPrices
