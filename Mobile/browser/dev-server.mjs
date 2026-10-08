@@ -38,6 +38,9 @@ const routes = new Map([
         [`/${name}.mjs`,[`${name}.mjs`,"text/javascript; charset=utf-8"]]),
     ["/style.css", ["style.css", "text/css; charset=utf-8"]],
 ]);
+routes.set("/tsps-game-controller.mjs",["tsps-game-controller.mjs","text/javascript; charset=utf-8"]);
+for(const name of (await readdir(join(root,"tsps-runtime"))).filter(name=>/^[a-zA-Z0-9-]+\.mjs$/.test(name)))
+    routes.set("/tsps-runtime/"+name,[join("tsps-runtime",name),"text/javascript; charset=utf-8"]);
 for(const name of ["title-screen.mjs","title-music.mjs","title-fire.mjs","title-music-worklet.mjs",...(await readdir(root)).filter(name=>/^title-audio-[a-z0-9-]+\.mjs$/.test(name))])
     routes.set("/"+name,[name,"text/javascript; charset=utf-8"]);
 const {host, port, tls} = previewEnvironment(process.env);

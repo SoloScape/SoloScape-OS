@@ -1,4 +1,5 @@
 import {NativePlayerSync} from "./player-sync.mjs";
+import {NativeTspsPlayerController} from "./tsps-game-controller.mjs";
 import {NativeNpcSync} from "./npc-sync.mjs";
 import {NativeNpcModels} from "./npc-models.mjs";
 import {encodeNpcInteraction,encodeNpcExamine,npcActionOptions} from "./npc-interactions.mjs";
@@ -43,7 +44,8 @@ export class NativeGameplay {
         this.onReady=onReady;
         this.loadTerrain=loadTerrain;this.loadMaterials=loadMaterials;this.loadScenery=loadScenery;this.models=models;this.now=now;
         this.generation=0;this.closed=false;this.regions=new Map();this.packetCount=0;this.animationStarted=now();
-        this.movementFrames={};this.sequenceStarted=this.animationStarted;
+        this.playerController=new NativeTspsPlayerController(this.models.animations,now);
+        this.localServerId=0;this.movementFrames={};this.sequenceStarted=this.animationStarted;
         this.npcs=new NativeNpcSync();this.npcModels=new NativeNpcModels(models);this.npcMotions=new Map();this.npcDrawn=0;this.selectionToken=0;this.selectedNpc=null;
         this.viewport.onDestination=tile=>this.move(tile);
         this.viewport.onNpc=hit=>void this.selectNpc(hit);
@@ -52,10 +54,11 @@ export class NativeGameplay {
     }
     authenticated(account){
         this.sync=new NativePlayerSync(account.playerIndex);
+        this.localServerId=account.playerIndex;
         this.viewport.distance=GAME_CAMERA_ZOOM.default;this.viewport.pitch=.65;
         const c=this.viewport.canvas;
         this.session.sendGame(WINDOW_STATUS,encodeWindowStatus(Math.max(1,Math.min(65535,c.clientWidth)),Math.max(1,Math.min(65535,c.clientHeight))));
-        this.timer=setInterval(()=>void this.drawActors(),20);
+        this.timer=setInterval(()=>{this.playerController.advance(this.now());void this.drawActors();},20);
     }
     handle(packet){
         if(this.closed)return;this.packetCount++;
@@ -85,13 +88,10 @@ export class NativeGameplay {
     }
     updateMotion(player){
         if(!player)return;
-        const now=this.now(),previous=this.motion?.target;
-        if(!previous||previous.x!==player.x||previous.y!==player.y||previous.plane!==player.plane){
-            const snap=!previous||player.teleported||previous.plane!==player.plane||Math.max(Math.abs(previous.x-player.x),Math.abs(previous.y-player.y))>2;
-            this.motion={from:snap?{x:player.x,y:player.y}:interpolatePlayer(this.motion,now),target:{...player},started:now,
-                speed:player.temporaryMoveSpeed??player.moveSpeed??1};
-        }else this.motion.target={...player};
-        if(player.sequence?.id!==previous?.sequence?.id||player.sequence?.delay!==previous?.sequence?.delay)this.sequenceStarted=now;
+        const previous=this.motion?.target;
+        this.playerController.accept(this.localServerId||this.sync?.localIndex||1,player);
+        // Renderer consumes the TSPS ECS simulation, never the protocol endpoint.
+        this.motion={target:{...player}};
         if(player.appearance!==previous?.appearance){
             this.renderError=null;this.drawBlockedUntil=0;this.modelReady=false;this.interfaces?.refreshPortraits?.();
         }
@@ -246,23 +246,16 @@ export class NativeGameplay {
             meshes.push(mesh);
         };
         try{
-            const player=this.motion&&interpolatePlayer(this.motion,now),appearance=player?.appearance;
+            const player=this.playerController.sample(this.localServerId||this.sync?.localIndex||1),appearance=player?.appearance;
             if(appearance&&!appearance.hidden&&now>=(this.drawBlockedUntil??0)){
                 const region=this.regions.get(`${player.x>>>6},${player.y>>>6}`);
                 if(region)try{
                     const model=await this.models.composition(appearance),animations=appearance.animations;
-                    const locomotion=player.moving?(movementUnits(this.motion)>=8&&animations.run>=0?animations.run:animations.walk):animations.idle;
-                    let id=locomotion,elapsed=now-this.animationStarted;
-                    let action=false;
-                    if(player.sequence?.id>=0){
-                        const actionElapsed=Math.max(0,now-this.sequenceStarted-(player.sequence.delay??0)*20);
-                        try{
-                            const sequence=await this.models.animations.sequence(player.sequence.id);
-                            const duration=sequence.frameLengths.reduce((sum,length)=>sum+Math.max(1,length),0)*20*Math.max(1,sequence.maxLoops??99);
-                            if(now-this.sequenceStarted>=(player.sequence.delay??0)*20&&actionElapsed<duration){id=player.sequence.id;elapsed=actionElapsed;action=true;}
-                        }catch{}
-                    }
-                    const posed=id>=0?await this.models.animations.pose(model,id,elapsed,action?null:this.movementFrames):model;
+                    const locomotion=player.locomotionId>=0?player.locomotionId:animations.idle;
+                    const action=player.actionId>=0;
+                    const id=action?player.actionId:locomotion;
+                    const frame=action?player.actionFrame:player.locomotionFrame;
+                    const posed=id>=0?await this.models.animations.poseFrame(model,id,frame):model;
                     add(buildPlayerMesh(posed,region,player,{textures:this.models.textures.textures}),region);
                     const ground=playerGroundHeight(region,player.x-region.mapX*64+.5,player.y-region.mapY*64+.5,player.plane);
                     this.viewport.target=[player.x-this.origin.mapX*64-31,-ground.height/128+1,player.y-this.origin.mapY*64-31];
@@ -308,5 +301,5 @@ export class NativeGameplay {
             (this.unavailable?.length?` · ${this.unavailable.length} map edges unavailable`:""));
     }
     fail(error){if(!this.closed){this.onStatus("Native scene failed: "+error.message);this.session.close();}}
-    close(){this.closed=true;this.generation++;clearInterval(this.timer);this.interfaces?.close();this.clearNpcMenu();this.viewport.setActors(null);this.viewport.onDestination=()=>{};this.viewport.onNpc=()=>{};this.viewport.onNpcCancel=()=>{};this.viewport.onGroundMenu=()=>{};}
+    close(){this.closed=true;this.generation++;clearInterval(this.timer);this.playerController.clear();this.interfaces?.close();this.clearNpcMenu();this.viewport.setActors(null);this.viewport.onDestination=()=>{};this.viewport.onNpc=()=>{};this.viewport.onNpcCancel=()=>{};this.viewport.onGroundMenu=()=>{};}
 }

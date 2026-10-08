@@ -3,6 +3,7 @@ import {test} from "node:test";
 import {NativeGameplay,interpolatePlayer,rebuildRegions} from "../browser/native-gameplay.mjs";
 import {decodeRebuild,encodeMoveDestination,encodeWindowStatus} from "../browser/player-protocol.mjs";
 import {NativePlayerSync} from "../browser/player-sync.mjs";
+import {NativeTspsPlayerController} from "../browser/tsps-game-controller.mjs";
 
 const terrain=(mapX,mapY)=>({mapX,mapY,side:64,heights:new Int32Array(4096),underlays:new Uint8Array(4096),overlays:new Uint8Array(4096),
     overlayShapes:new Uint8Array(4096),overlayRotations:new Uint8Array(4096),planes:Array.from({length:4},()=>({heights:new Int32Array(4096),renderFlags:new Uint8Array(4096)}))});
@@ -31,38 +32,48 @@ test("running doubles axis speed and idle packets retain locomotion until arriva
     assert.equal(interpolatePlayer({...motion,target:{...motion.target,temporaryMoveSpeed:0}},1320).x,100.25);
 });
 
-test("copied action state in PLAYER_INFO does not restart action or locomotion clocks",()=>{
-    let now=1000;
-    const gameplay=new NativeGameplay({cache:{},viewport:viewport(),session:{},now:()=>now});
-    const player={x:100,y:200,plane:0,moving:false,sequence:{id:123,delay:0}};
-    gameplay.updateMotion(player);now=1600;
-    gameplay.updateMotion({...player,sequence:{...player.sequence}});
-    assert.equal(gameplay.sequenceStarted,1000);assert.equal(gameplay.animationStarted,1000);
-    gameplay.updateMotion({...player,sequence:{id:124,delay:0}});
-    assert.equal(gameplay.sequenceStarted,1600);
+test("identical server action snapshots do not restart TSPS action frames",async()=>{
+    let now=0;
+    const cache={sequence:async()=>({frameIds:[0,1,2],frameLengths:[3,3,3],frameStep:3,maxLoops:99})};
+    const controller=new NativeTspsPlayerController(cache,()=>now);
+    const player={x:100,y:200,plane:0,moveSpeed:1,sequence:{id:123,delay:0}};
+    controller.accept(1,player);
+    await Promise.all(controller.pendingSeqs.values());
+    now=100;controller.advance(now);
+    const before={...controller.anim.getSequenceState(1)};
+    controller.accept(1,{...player,sequence:{...player.sequence}});
+    assert.deepEqual(controller.anim.getSequenceState(1),before);
+    controller.accept(1,{...player,sequence:{id:124,delay:0},sequenceUpdated:true});
+    assert.equal(controller.anim.getSequenceState(1)?.seqId,124);
+    assert.equal(controller.anim.getSequenceState(1)?.frame,0);
 });
 
-test("one-tick run override survives a stationary packet until the segment finishes",()=>{
+test("run traversals stay in the TSPS queue after a stationary packet",()=>{
     let now=0;
-    const gameplay=new NativeGameplay({cache:{},viewport:viewport(),session:{},now:()=>now});
-    const player={x:100,y:200,plane:0,moveSpeed:1,moving:false};
-    gameplay.updateMotion(player);
-    gameplay.updateMotion({...player,x:102,moving:true,temporaryMoveSpeed:2});
-    now=600;gameplay.updateMotion({...player,x:102,temporaryMoveSpeed:null});
-    assert.equal(interpolatePlayer(gameplay.motion,now).x,101.875);
-    assert.equal(interpolatePlayer(gameplay.motion,640).moving,false);
+    const controller=new NativeTspsPlayerController({sequence:async()=>({})},()=>now);
+    const player={x:100,y:200,plane:0,moveSpeed:1,orientation:1536};
+    controller.accept(1,player);
+    controller.accept(1,{...player,x:102,runStep:true,temporaryMoveSpeed:2});
+    now=320;controller.advance(now);
+    const mid=controller.sample(1);
+    assert.ok(mid.x>100&&mid.x<102);
+    controller.accept(1,{...player,x:102,temporaryMoveSpeed:null});
+    now=640;controller.advance(now);
+    assert.ok(controller.sample(1).x>mid.x);
+    assert.equal(controller.ecs.isRunVisual(0),true);
 });
 
-test("continuous 600 ms server walking updates catch up rather than accumulate permanent lag",()=>{
+test("successive 600 ms GPI updates extend the server movement queue",()=>{
     let now=0;
-    const gameplay=new NativeGameplay({cache:{},viewport:viewport(),session:{},now:()=>now});
-    const player={x:100,y:200,plane:0,moveSpeed:1,moving:false};
-    gameplay.updateMotion(player);
-    for(let step=1;step<=100;step++){
-        gameplay.updateMotion({...player,x:100+step,moving:true});
-        now+=600;
-        const shown=interpolatePlayer(gameplay.motion,now);
-        assert.ok(100+step-shown.x<1.1);
+    const controller=new NativeTspsPlayerController({sequence:async()=>({})},()=>now);
+    const player={x:100,y:200,plane:0,moveSpeed:1,orientation:1536};
+    controller.accept(1,player);
+    for(let step=1;step<=35;step++){
+        controller.accept(1,{...player,x:100+step,moving:true});
+        now+=600;controller.advance(now);
+        const visible=controller.sample(1);
+        assert.ok(visible.x>100+step-1.5&&visible.x<=100+step,
+            "queued step "+step+" visual x="+visible.x);
     }
 });
 test("normal rebuild loads around the rebuild zone even before teleport PLAYER_INFO",async()=>{

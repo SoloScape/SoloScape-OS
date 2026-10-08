@@ -182,7 +182,7 @@ export class NativePlayerSync {
         const previous = {players: this.players, regions: this.regions, appearances: this.appearances,
             flags: this.flags, high: this.high, low: this.low};
         this.players = this.players.map(player => player ? {...player, moving: false, teleported: false,
-            queuedMove: false, temporaryMoveSpeed: null} : null);
+            queuedMove: false, temporaryMoveSpeed: null, runStep: false, sequenceUpdated: false} : null);
         this.regions = this.regions.map(region => region ? {...region} : null);
         this.appearances = this.appearances.slice();
         this.flags = this.flags.slice();
@@ -240,6 +240,7 @@ export class NativePlayerSync {
         if (opcode === 1 || opcode === 2) {
             const [dx, dy] = (opcode === 1 ? WALK : RUN)[reader.bits(opcode === 1 ? 3 : 4)];
             this.move(player, player.x + dx, player.y + dy, player.plane, hasExtended);
+            player.runStep = opcode === 2;
         } else if (reader.bits(1) === 0) {
             const packed = reader.bits(12), dx = packed >>> 5 & 31, dy = packed & 31;
             this.move(player, player.x + (dx > 15 ? dx - 32 : dx), player.y + (dy > 15 ? dy - 32 : dy),
@@ -335,7 +336,10 @@ export class NativePlayerSync {
         }
         if (mask & 0x8000) player.exactMove = {dx1: reader.i8(), dy1: reader.i8(3), dx2: reader.i8(), dy2: reader.i8(),
             delay1: reader.u16(3), delay2: reader.u16(3), direction: reader.u16(3)};
-        if (mask & 0x10) player.sequence = {id: nullableId(reader.u16(3)), delay: reader.u8(1)};
+        if (mask & 0x10) {
+            player.sequence = {id: nullableId(reader.u16(3)), delay: reader.u8(1)};
+            player.sequenceUpdated = true;
+        }
         if (mask & 0x400) player.tinting = {start: reader.u16(1), end: reader.u16(3), hue: reader.i8(2),
             saturation: reader.i8(1), lightness: reader.i8(), weight: reader.u8(1)};
         if (mask & 8) player.reset = reader.u8(2);

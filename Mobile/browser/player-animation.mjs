@@ -111,17 +111,22 @@ export function applyAnimation(model,frame){
 
 /** Revision 240 sequence layout, including shifted skeletal/sound opcodes. */
 export function decodePlayerSequence(bytes){
-    const r=new ByteBuffer(bytes),seq={frameIds:[],frameLengths:[],frameStep:-1,maxLoops:99,skeletalId:-1};
+    const r=new ByteBuffer(bytes),seq={frameIds:[],frameLengths:[],frameStep:-1,maxLoops:99,skeletalId:-1,
+        forcedPriority:5,precedenceAnimating:-1,priority:-1,replyMode:2,hasInterleaveMask:false};
     for(let op;(op=r.readUnsignedByte())!==0;){
         if(op===1){
             const n=r.readUnsignedShort();seq.frameLengths=Array.from({length:n},()=>r.readUnsignedShort());
             seq.frameIds=Array.from({length:n},()=>r.readUnsignedShort());
             for(let i=0;i<n;i++)seq.frameIds[i]=(seq.frameIds[i]+r.readUnsignedShort()*65536)>>>0;
         }else if(op===2)seq.frameStep=r.readUnsignedShort();
-        else if(op===3){const n=r.readUnsignedByte();for(let i=0;i<n;i++)r.readUnsignedByte();}
+        else if(op===3){const n=r.readUnsignedByte();seq.hasInterleaveMask=true;for(let i=0;i<n;i++)r.readUnsignedByte();}
         else if(op===4||op===19){}
         else if(op===8){seq.maxLoops=r.readUnsignedByte();seq.looping=true;}
-        else if([5,9,10,11,16].includes(op))r.readUnsignedByte();
+        else if(op===5)seq.forcedPriority=r.readUnsignedByte();
+        else if(op===9)seq.precedenceAnimating=r.readUnsignedByte();
+        else if(op===10)seq.priority=r.readUnsignedByte();
+        else if(op===11)seq.replyMode=r.readUnsignedByte();
+        else if(op===16)r.readUnsignedByte();
         else if(op===6||op===7)r.readUnsignedShort();
         else if(op===12){const n=r.readUnsignedByte();for(let i=0;i<n*2;i++)r.readUnsignedShort();}
         else if(op===13)seq.skeletalId=r.readInt();
@@ -202,6 +207,12 @@ export class NativePlayerAnimations {
             this.frames.set(id,p);p.catch(()=>this.frames.delete(id));
         }
         return this.frames.get(id);
+    }
+    async poseFrame(model,id,index=0){
+        const sequence=await this.sequence(id);
+        if(sequence.skeletalId>=0)throw new Error(`Sequence ${id} requires skeletal animation`);
+        if(!sequence.frameIds.length)throw new Error(`Sequence ${id} has no classic frames`);
+        return applyAnimation(model,await this.frame(sequence.frameIds[Math.max(0,Math.min(index|0,sequence.frameIds.length-1))]));
     }
     async pose(model,id,timeMs=0,movementState=null){
         if(!Number.isFinite(timeMs)||timeMs<0)throw new Error("Invalid animation time");

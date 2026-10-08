@@ -10,6 +10,7 @@
     "dev": "node browser/dev-server.mjs",
     "build": "node scripts/run-client.mjs build",
     "test": "node --test tests/*.test.mjs",
+    "generate:tsps-movement": "node scripts/adapt-tsps-movement.mjs",
     "test:rsprot": "node scripts/verify-native-login.mjs",
     "test:interfaces:rsprot": "node scripts/verify-native-interfaces.mjs",
     "gateway": "node gateway/cli.mjs",

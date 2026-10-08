@@ -979,3 +979,40 @@ CRC rejection and stale Travel. The real Chrome WebGL check also proves lit
 texture pixels, upper-level visibility, transparent cutouts and GPU resource
 cleanup. On Windows, set `CHROME_BIN` to an installed Chrome executable to run
 that check locally; Linux CI runs it by default.
+
+### Native player movement: pinned TSPS controllers
+
+Authenticated revision-240 `PLAYER_INFO` and `REBUILD_NORMAL_V2` packets now feed
+the original pinned TSPS `PlayerMovementSync` and `PlayerEcs` queue.
+The same client's `PlayerAnimController` advances movement and action
+sequences. The simulation runs at fixed **20 ms client ticks**, independently
+of JS5/cache-loading promises and WebGL draw timing. The renderer samples
+the ECS's sub-tile location, stepped rotation, movement sequence and action
+frame; it never positions the local player directly at a new packet endpoint.
+
+Stationary GPI packets leave an active path segment intact; new server
+steps append to the queued path; teleports, region/plane changes and invalid
+displacements clear the path. Client animation sets come from the verified
+revision-240 appearance and sequence definitions. The renderer poses classic
+frames selected by the upstream animation controller. The existing
+revision-240 wire decoder, native login, path request encoding and NPC
+interaction packets remain unchanged.
+
+`browser/tsps-runtime/` is generated from the pinned TSPS submodule with
+Node's TypeScript transformer, **not manually maintained**. Regenerate with:
+
+```powershell
+cd Mobile
+npm run generate:tsps-movement
+npm test
+```
+
+The original TSPS BSD-2-Clause licence remains in the pinned submodule,
+and the generated files identify their upstream sources. This integrates
+the pinned **player** controller rules, not the entire reference client:
+revision-240 GPI endpoints do not always transmit the intermediate order
+of two-tile run steps, and mobile does not yet supply TSPS's collision flags
+for the optional run-route reconstruction. NPC V6s still use the native
+interpolator, and skeletal action models/forced-movement effects remain
+outside this parity change. Test in an authenticated browser and on a
+physical device before claiming full OSRS movement parity.
