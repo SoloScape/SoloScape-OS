@@ -77,21 +77,23 @@ export function playerGroundHeight(terrain,x,y,plane){
     if(h.some(n=>n===undefined))throw new Error("Player terrain heights are unavailable");
     return {height:(h[0]*(1-fx)+h[1]*fx)*(1-fy)+(h[2]*(1-fx)+h[3]*fx)*fy,view};
 }
-export function buildPlayerMesh(model,terrain,player,{textures=new Map()}={}){
+export function buildPlayerMesh(model,terrain,player,{textures=new Map(),size=1,ambient=0,contrast=82}={}){
+    if(!Number.isInteger(size)||size<1||size>8)throw new Error("Invalid actor footprint");
     const x=player.x-terrain.mapX*64,y=player.y-terrain.mapY*64;
-    const tx=Math.floor(x),ty=Math.floor(y),ground=playerGroundHeight(terrain,x+.5,y+.5,player.plane);
+    const tx=Math.floor(x),ty=Math.floor(y),ground=playerGroundHeight(terrain,x+size/2,y+size/2,player.plane);
     const angle=(player.orientation??0)*Math.PI/1024,sin=Math.sin(angle),cos=Math.cos(angle);
     const rotated={...model,verticesX:new Int32Array(model.verticesCount),verticesZ:new Int32Array(model.verticesCount)};
     for(let i=0;i<model.verticesCount;i++){
         rotated.verticesX[i]=Math.trunc(model.verticesX[i]*cos+model.verticesZ[i]*sin);
         rotated.verticesZ[i]=Math.trunc(model.verticesZ[i]*cos-model.verticesX[i]*sin);
     }
-    const h=[[tx,ty],[tx+1,ty],[tx,ty+1],[tx+1,ty+1]].map(([a,b])=>sampleTerrain(ground.view,"heights",a,b));
+    const sx=tx+(size>>1),ex=tx+((size+1)>>1),sy=ty+(size>>1),ey=ty+((size+1)>>1);
+    const h=[[sx,sy],[ex,sy],[sx,ey],[ex,ey]].map(([a,b])=>sampleTerrain(ground.view,"heights",a,b));
     if(h.some(n=>n===undefined))throw new Error("Player footprint terrain is unavailable");
     const center=(h[0]+h[1]+h[2]+h[3])>>2;
     const mesh=buildObjectMesh(ground.view,{x:tx,y:ty,rotation:0},
-        {sizeX:1,sizeY:1,isRotated:false,modelSizeX:128,modelSizeHeight:128,modelSizeY:128,offsetX:0,offsetHeight:0,offsetY:0,
-            ambient:0,contrast:82,recolors:[],retextures:[],contour:-1},
+        {sizeX:size,sizeY:size,isRotated:false,modelSizeX:128,modelSizeHeight:128,modelSizeY:128,offsetX:0,offsetHeight:0,offsetY:0,
+            ambient,contrast,recolors:[],retextures:[],contour:-1},
         {type:10,rotation:0,dx:0,dy:0},[rotated],{textures});
     const shift=vertices=>{for(let i=0;i<vertices.length;i+=6){vertices[i]+=x-tx;vertices[i+1]-=(ground.height-center)/128;vertices[i+2]+=y-ty;}};
     shift(mesh.vertices);for(const v of mesh.texturedBatches.values())shift(v);

@@ -63,9 +63,35 @@ with static scenery, textures, native encrypted login, server-authoritative
 player rendering and click-to-move. Revision-240 global player updates,
 appearance composition, classic locomotion animation, collision-owned
 movement requests, rebuilds and plane changes are decoded from the live
-game stream. Instanced region templates, NPCs, interfaces and chat remain
-outside this milestone. Do not ask users
+game stream. The native client also decodes revision-240 NPC V6 updates,
+loads verified
+NPC cache definitions/models and renders nearby NPCs using classic idle/walk/run
+and action animation. Instanced regions, dynamic NPC transforms and specialised
+customisation, interfaces and chat remain
+incomplete; live authenticated NPC rendering still needs browser verification. Do not ask users
 for credentials before trusted TLS and a reviewed native login path.
+
+### Native NPC V6 synchronization and rendering
+
+The authenticated native scene consumes `SET_NPC_UPDATE_ORIGIN` and
+`NPC_INFO_SMALL_V6` / `NPC_INFO_LARGE_V6` from rsprot revision 240.
+NPCs spawn at server-supplied world coordinates, step, run/crawl, turn,
+change definition and despawn; malformed packets do not partially replace
+the previous NPC state. Cache index 2/group 9 provides NPC definitions,
+and verified index 7 models share the player's texture and classic
+animation loaders. Up to 48 nearby NPCs in loaded map regions are drawn
+alongside the local player. The login status reports synchronized and
+rendered NPC counts.
+
+A real login and visual NPC inspection remain outstanding for this
+milestone. Dynamic varbit/varp-driven NPC morphs, specialised model
+customisation, skeletal sequences, effects, interaction menus and NPCs
+in instanced worlds are not yet supported. Missing/unsupported models
+are skipped, never replaced with fabricated geometry. Run
+`npm test` from `Mobile/` for fixture and gateway integration checks;
+set `CHROME_BIN` to an accessible Chrome executable to enable the
+separate Chrome/WebGL smoke tests.
+
 The upstream TSPS revision-241 React/WebGL application is still
 available separately via `npm run dev:tsps` (requires its submodule
 setup), but does **not** speak SoloScape's native protocol and is

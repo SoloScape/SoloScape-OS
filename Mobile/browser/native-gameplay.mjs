@@ -1,4 +1,6 @@
 import {NativePlayerSync} from "./player-sync.mjs";
+import {NativeNpcSync} from "./npc-sync.mjs";
+import {NativeNpcModels} from "./npc-models.mjs";
 import {decodeRebuild,encodeMoveDestination,encodeWindowStatus,MOVE_GAMECLICK,MAP_BUILD_COMPLETE,WINDOW_STATUS} from "./player-protocol.mjs";
 import {loadNativeTerrain} from "./terrain-world.mjs";
 import {loadFloorMaterials} from "./floor-materials.mjs";
@@ -28,13 +30,14 @@ export class NativeGameplay {
         this.cache=cache;this.viewport=viewport;this.session=session;this.onStatus=onStatus;this.onRegion=onRegion;this.run=run;
         this.loadTerrain=loadTerrain;this.loadMaterials=loadMaterials;this.loadScenery=loadScenery;this.models=models;this.now=now;
         this.generation=0;this.closed=false;this.regions=new Map();this.packetCount=0;this.animationStarted=now();
+        this.npcs=new NativeNpcSync();this.npcModels=new NativeNpcModels(models);this.npcMotions=new Map();this.npcDrawn=0;
         this.viewport.onDestination=tile=>this.move(tile);
     }
     authenticated(account){
         this.sync=new NativePlayerSync(account.playerIndex);
         const c=this.viewport.canvas;
         this.session.sendGame(WINDOW_STATUS,encodeWindowStatus(Math.max(1,Math.min(65535,c.clientWidth)),Math.max(1,Math.min(65535,c.clientHeight))));
-        this.timer=setInterval(()=>void this.drawPlayer(),50);
+        this.timer=setInterval(()=>void this.drawActors(),50);
     }
     handle(packet){
         if(this.closed)return;this.packetCount++;
@@ -47,6 +50,12 @@ export class NativeGameplay {
             const local=this.sync.decode(packet.payload);this.updateMotion(local);
             if(local.plane!==this.viewport.visibleLevel)this.viewport.setSceneLevel(local.plane);
             this.report();
+        }else if(packet.name==="SET_NPC_UPDATE_ORIGIN"){
+            if(!this.rebuild)throw new Error("NPC origin before map rebuild");
+            this.npcs.setOrigin(packet.payload,this.rebuild.baseX,this.rebuild.baseY);
+        }else if(packet.name==="NPC_INFO_SMALL_V6"||packet.name==="NPC_INFO_LARGE_V6"){
+            this.npcs.decode(packet.payload,{large:packet.name==="NPC_INFO_LARGE_V6",plane:this.sync.local?.plane??0});
+            this.updateNpcMotions();this.report();
         }else if(packet.name==="REBUILD_REGION_V2"||packet.name.startsWith("REBUILD_WORLDENTITY")){
             // Never place an instanced player into the preceding overworld geometry.
             throw new Error("Instanced region rendering is not yet supported");
@@ -65,6 +74,7 @@ export class NativeGameplay {
     }
     async loadRebuild(rebuild){
         const generation=++this.generation,current=()=>!this.closed&&generation===this.generation;
+        this.npcs.reset();this.npcMotions.clear();this.npcDrawn=0;
         this.loading=true;this.modelReady=false;this.renderError=null;this.regions=new Map();this.viewport.setActors(null);this.viewport.setScenery(null);
         this.onStatus("Loading your server location…");
         // Rebuild is queued BEFORE teleport player info, so sync.local may still be in the old map.
@@ -114,7 +124,7 @@ export class NativeGameplay {
         this.viewport.addTextures(textureSource.textures);
         this.viewport.setTerrain({...center,regions},{resetCamera:false});
         this.session.sendGame(MAP_BUILD_COMPLETE);this.loading=false;this.unavailable=unavailable;
-        this.report();await this.drawPlayer();
+        this.report();await this.drawActors();
     }
     move(tile){
         if(this.closed||this.loading||!this.sync?.local||!this.origin)return;
@@ -129,44 +139,90 @@ export class NativeGameplay {
             this.destination={x,y};this.report();
         }catch(error){this.onStatus("Movement unavailable: "+error.message);}
     }
-    async drawPlayer(){
-        if(this.closed||this.loading||this.drawing||!this.motion||!this.origin||this.now()<(this.drawBlockedUntil??0))return;
-        const player=interpolatePlayer(this.motion,this.now()),appearance=player.appearance;
-        if(!appearance||appearance.hidden){this.viewport.setActors(null);return;}
-        const region=this.regions.get(`${Math.floor(player.x/64)},${Math.floor(player.y/64)}`);if(!region)return;
-        const generation=this.generation;this.drawing=true;
-        try{
-            const model=await this.models.composition(appearance),animations=appearance.animations;
-            const speed=player.temporaryMoveSpeed??player.moveSpeed;
-            const locomotion=player.moving?(speed===2?animations.run:animations.walk):animations.idle;
-            let id=locomotion,actionElapsed=0;
-            if(player.sequence?.id>=0){
-                actionElapsed=Math.max(0,this.now()-this.animationStarted-(player.sequence.delay??0)*20);
-                try{
-                    const sequence=await this.models.animations.sequence(player.sequence.id);
-                    const duration=sequence.frameLengths.reduce((sum,length)=>sum+Math.max(1,length),0)*20*Math.max(1,sequence.maxLoops??99);
-                    if(actionElapsed<duration)id=player.sequence.id;
-                }catch{}
-            }
-            if(id!==this.animationId){this.animationId=id;this.animationStarted=this.now();}
-            const posed=id>=0?await this.models.animations.pose(model,id,actionElapsed):model;
-            const mesh=buildPlayerMesh(posed,region,player,{textures:this.models.textures.textures});
+    updateNpcMotions(){
+        const now=this.now();
+        for(const [index,motion] of this.npcMotions)if(!this.npcs.npcs.has(index))this.npcMotions.delete(index);
+        for(const [index,npc] of this.npcs.npcs){
+            const previous=this.npcMotions.get(index),target={...npc},old=previous?.target;
+            const changed=!old||old.x!==npc.x||old.y!==npc.y||old.plane!==npc.plane||old.type!==npc.type;
+            const snap=!old||npc.teleported||old.plane!==npc.plane||old.type!==npc.type||
+                Math.max(Math.abs(old.x-npc.x),Math.abs(old.y-npc.y))>2;
+            const from=changed?(snap?{x:npc.x,y:npc.y}:interpolatePlayer(previous,now)):previous.from;
+            const sequenceChanged=old?.sequence?.id!==npc.sequence?.id||old?.sequence?.delay!==npc.sequence?.delay;
+            this.npcMotions.set(index,{from,target,started:changed?now:previous.started,
+                animationStarted:!previous||old?.moving!==npc.moving?now:previous.animationStarted,
+                sequenceStarted:!previous||sequenceChanged?now:previous.sequenceStarted});
+        }
+    }
+    async drawActors(){
+        if(this.closed||this.loading||this.drawing||!this.origin)return;
+        const generation=this.generation,now=this.now(),meshes=[];
+        this.drawing=true;
+        const add=(mesh,region)=>{
             const dx=(region.mapX-this.origin.mapX)*64,dy=(region.mapY-this.origin.mapY)*64;
-            for(const v of [mesh.vertices,...mesh.texturedBatches.map(b=>b.vertices)])for(let i=0;i<v.length;i+=6){v[i]+=dx;v[i+2]+=dy;}
+            for(const v of [mesh.vertices,...mesh.texturedBatches.map(b=>b.vertices)])
+                for(let i=0;i<v.length;i+=6){v[i]+=dx;v[i+2]+=dy;}
+            meshes.push(mesh);
+        };
+        try{
+            const player=this.motion&&interpolatePlayer(this.motion,now),appearance=player?.appearance;
+            if(appearance&&!appearance.hidden&&now>=(this.drawBlockedUntil??0)){
+                const region=this.regions.get(`${player.x>>>6},${player.y>>>6}`);
+                if(region)try{
+                    const model=await this.models.composition(appearance),animations=appearance.animations;
+                    const speed=player.temporaryMoveSpeed??player.moveSpeed;
+                    const locomotion=player.moving?(speed===2?animations.run:animations.walk):animations.idle;
+                    let id=locomotion,elapsed=now-this.animationStarted;
+                    if(player.sequence?.id>=0){
+                        const actionElapsed=Math.max(0,now-this.animationStarted-(player.sequence.delay??0)*20);
+                        try{
+                            const sequence=await this.models.animations.sequence(player.sequence.id);
+                            const duration=sequence.frameLengths.reduce((sum,length)=>sum+Math.max(1,length),0)*20*Math.max(1,sequence.maxLoops??99);
+                            if(actionElapsed<duration){id=player.sequence.id;elapsed=actionElapsed;}
+                        }catch{}
+                    }
+                    if(id!==this.animationId){this.animationId=id;this.animationStarted=now;elapsed=0;}
+                    const posed=id>=0?await this.models.animations.pose(model,id,elapsed):model;
+                    add(buildPlayerMesh(posed,region,player,{textures:this.models.textures.textures}),region);
+                    const ground=playerGroundHeight(region,player.x-region.mapX*64+.5,player.y-region.mapY*64+.5,player.plane);
+                    this.viewport.target=[player.x-this.origin.mapX*64-31,-ground.height/128+1,player.y-this.origin.mapY*64-31];
+                    if(!this.cameraSet){this.viewport.distance=22;this.viewport.pitch=.65;this.cameraSet=true;}
+                    this.modelReady=true;this.renderError=null;
+                }catch(error){this.modelReady=false;this.renderError=error.message;this.drawBlockedUntil=now+5000;}
+            }
+            let drawn=0,missing=0;
+            const nearby=[...this.npcMotions.values()].filter(m=>
+                m.target.plane===this.sync?.local?.plane&&this.regions.has(`${m.target.x>>>6},${m.target.y>>>6}`))
+                .sort((a,b)=>Math.hypot(a.target.x-(player?.x??0),a.target.y-(player?.y??0))-
+                    Math.hypot(b.target.x-(player?.x??0),b.target.y-(player?.y??0))).slice(0,48);
+            for(const motion of nearby){
+                if(this.closed||generation!==this.generation)return;
+                const npc=interpolatePlayer(motion,now),region=this.regions.get(`${npc.x>>>6},${npc.y>>>6}`);
+                if(!region){missing++;continue;}
+                try{
+                    const mesh=await this.npcModels.mesh(npc,region,{
+                        elapsed:Math.max(0,now-motion.animationStarted),
+                        sequenceElapsed:Math.max(0,now-motion.sequenceStarted-(npc.sequence?.delay??0)*20)});
+                    add(mesh,region);drawn++;
+                }catch{missing++;}
+            }
             if(this.closed||generation!==this.generation)return;
-            this.viewport.setActors(mesh);
-            const ground=playerGroundHeight(region,player.x-region.mapX*64+.5,player.y-region.mapY*64+.5,player.plane);
-            this.viewport.target=[player.x-this.origin.mapX*64-31,-ground.height/128+1,player.y-this.origin.mapY*64-31];
-            if(!this.cameraSet){this.viewport.distance=22;this.viewport.pitch=.65;this.cameraSet=true;}
-            this.modelReady=true;this.renderError=null;this.report();
-        }catch(error){if(!this.closed&&generation===this.generation){this.viewport.setActors(null);this.modelReady=false;this.renderError=error.message;this.drawBlockedUntil=this.now()+5000;this.report();}}
-        finally{this.drawing=false;}
+            const length=meshes.reduce((n,m)=>n+m.vertices.length,0),vertices=new Float32Array(length);
+            let offset=0;for(const mesh of meshes){vertices.set(mesh.vertices,offset);offset+=mesh.vertices.length;}
+            this.viewport.setActors({vertices,texturedBatches:meshes.flatMap(m=>m.texturedBatches),
+                textures:this.models.textures.textures});
+            if(this.npcDrawn!==drawn||this.npcMissing!==missing){this.npcDrawn=drawn;this.npcMissing=missing;this.report();}
+        }catch(error){
+            if(!this.closed&&generation===this.generation)this.onStatus("Actor drawing unavailable: "+error.message);
+        }finally{this.drawing=false;}
     }
     report(){
         if(this.closed||this.loading||!this.sync?.local)return;
         const p=this.sync.local;
         this.onStatus(`Authenticated · tile ${p.x}, ${p.y} · plane ${p.plane}`+
             (this.renderError?" · Player rendering unavailable: "+this.renderError:this.modelReady?" · Click/tap ground to move":" · Loading player appearance…")+
+            ` · NPCs ${this.npcDrawn}/${this.npcs.npcs.size} rendered`+
+            (this.npcMissing?` (${this.npcMissing} models pending/unavailable)`:"")+
             (this.destination?` · Destination ${this.destination.x}, ${this.destination.y}`:"")+
             (this.unavailable?.length?` · ${this.unavailable.length} map edges unavailable`:""));
     }

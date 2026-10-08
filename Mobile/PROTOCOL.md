@@ -1,6 +1,6 @@
 # TSPS → SoloScape protocol interoperability
 
-Status: **native revision-240 browser login implemented; TSPS protocol remains incompatible**. The browser encoder is verified against the installed rsprot decoder and through the gateway with synthetic accounts. Authentication against the live SoloScape account service and playable entity updates remain unverified.
+Status: **native revision-240 browser login and native player/NPC update decoding implemented; TSPS protocol remains incompatible**. Synthetic account login is verified against the installed rsprot decoder and gateway. A real local authentication and game packet stream were previously observed, but NPC models and movement still require live authenticated browser verification.
 
 ## Audited versions
 
