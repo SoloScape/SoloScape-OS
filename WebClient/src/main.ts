@@ -71,6 +71,7 @@ import {
 } from './ui/CacheTitleScreenRenderer';
 import { ClientBootRenderer } from './ui/ClientBootRenderer';
 import { applyLoginKey } from './ui/LoginInput';
+import { MobileHud } from './ui/MobileHud';
 
 const CLIENT_VIEWPORT_WIDTH = 765;
 const CLIENT_VIEWPORT_HEIGHT = 503;
@@ -123,6 +124,27 @@ const playerModelLoader = new PlayerModelAssetLoader(js5, appendLog);
 const playerAnimationLoader =
   new PlayerAnimationAssetLoader(js5, appendLog);
 const bootRenderer = new ClientBootRenderer(clientUiCanvas);
+const mobileHud = new MobileHud(
+  requireElement<HTMLElement>('#mobile-hud'),
+  {
+    onLogout: () => {
+      if (titleMode === 'game') {
+        gameLogin.disconnect();
+      }
+    },
+    onCameraNorth: () => {
+      const player = playerInfo?.getLocalPlayer();
+      if (!player || !currentScene) return;
+      orbitCamera.reset(
+        player.coord.x * SCENE_TILE_SIZE -
+          currentScene.originTileX * SCENE_TILE_SIZE + SCENE_TILE_SIZE / 2,
+        currentScene.originTileZ * SCENE_TILE_SIZE -
+          player.coord.z * SCENE_TILE_SIZE - SCENE_TILE_SIZE / 2,
+      );
+    },
+    onZoom: (delta) => orbitCamera.queueZoom(delta),
+  },
+);
 
 let sceneRenderer: WebGlSceneRenderer | null = null;
 let browserGameLoop: BrowserGameLoop | null = null;
@@ -698,6 +720,7 @@ async function connectJs5(): Promise<void> {
   titleMode = 'bootstrap';
   clientUiCanvas.hidden = false;
   resetSceneDebug();
+  mobileHud.setVisible(false);
 
   (window as SoloScapeDebugWindow).soloscapeTitleAssets = undefined;
   (window as SoloScapeDebugWindow).soloscapeStartupAssets = undefined;
@@ -765,6 +788,13 @@ browserGameLoop = new BrowserGameLoop({
       syncLocalPlayerRender(interpolationAlpha);
       syncOrbitCameraRender(interpolationAlpha);
       sceneRenderer?.renderFrame(interpolationAlpha);
+      const player = playerInfo?.getLocalPlayer();
+      mobileHud.setPlayer(player ? {
+        x: player.coord.x,
+        z: player.coord.z,
+        level: player.coord.level,
+        yaw: currentOrbitCameraRenderState?.yaw ?? 0,
+      } : null);
     }
   },
 });
@@ -826,6 +856,15 @@ gameLogin.onStateChange = (state) => {
   };
 
   loginStatus.textContent = labels[state];
+
+  if (titleMode === 'game' && (state === 'closed' || state === 'error')) {
+    mobileHud.setVisible(false);
+    resetSceneDebug();
+    playerInfo = null;
+    selectedLoginField = 'password';
+    renderLoginScreen('Disconnected from the game.');
+    return;
+  }
 
   if (!titleRenderer || titleMode === 'game') {
     return;
@@ -953,6 +992,7 @@ gameLogin.onGamePacket = (packet) => {
   currentScene = null;
   currentSceneMaps = null;
   currentTerrainSampler = null;
+  mobileHud.setMaps([]);
 
   renderGameLoading(100, 'Loading - please wait.');
 
@@ -964,6 +1004,7 @@ gameLogin.onGamePacket = (packet) => {
 
       currentSceneMaps = maps;
       currentTerrainSampler = new SceneTerrainSampler(maps);
+      mobileHud.setMaps(maps);
       (window as SoloScapeDebugWindow).soloscapeSceneMaps = maps;
       const locationCount = maps.reduce(
         (sum, map) => sum + map.locations.length,
@@ -1054,6 +1095,7 @@ gameLogin.onGamePacket = (packet) => {
 
       titleMode = 'game';
       clientUiCanvas.hidden = true;
+      mobileHud.setVisible(true);
       browserGameLoop?.start();
 
       const local = playerInfo?.getLocalPlayer();
