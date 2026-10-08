@@ -11,7 +11,7 @@ import {NativeTitleMusic} from "./title-music.mjs";
 export function titleLayout(width,height){
     const scale=Math.min(width/765,height/503,1);
     const x=(width-765*scale)/2,y=(height-503*scale)/2;
-    return {scale,x:x+.5*scale,y,panelOffset:-18.5,
+    return {scale,x,y,panelOffset:-18,
         backgroundScale:scale,bx:x-162*scale,by:y,
         muteX:x+725*scale,muteY:y+463*scale};
 }
@@ -131,17 +131,19 @@ export class NativeTitleScreen{
     }
     text(ctx,text,x,y,color="#ffffff",small=false){
         const font=small?this.assets.small:this.assets.font;
-        if(font){font.draw(ctx,text,x-font.measure(text)/2+1,y+1,"#000000");font.draw(ctx,text,x-font.measure(text)/2,y,color);}
+        if(font){font.draw(ctx,text,x-Math.floor(font.measure(text)/2),y,color,true);}
         else{ctx.font="bold 13px Arial";ctx.textAlign="center";ctx.fillStyle=color;ctx.fillText(text,x,y);}
     }
     button(ctx,x,y,label){const sprite=this.assets.sprites.get("titlebutton")?.[0];if(sprite)ctx.drawImage(sprite,Math.floor(x-sprite.width/2),Math.floor(y-sprite.height/2));this.text(ctx,label,x,y+5);}
     paint(){
         if(!this.visible)return;
         const bounds=this.canvas.parentElement.getBoundingClientRect();
-        const width=bounds.width,height=bounds.height,ratio=Math.min(3,window.devicePixelRatio||1),ctx=this.canvas.getContext("2d");
-        if(this.canvas.width!==Math.round(width*ratio)||this.canvas.height!==Math.round(height*ratio)){this.canvas.width=Math.round(width*ratio);this.canvas.height=Math.round(height*ratio);}
-        this.canvas.style.height=height+"px";ctx.setTransform(ratio,0,0,ratio,0,0);ctx.fillStyle="#000000";ctx.fillRect(0,0,width,height);ctx.imageSmoothingEnabled=false;
-        const l=titleLayout(width,height),{background}=this.assets;
+        const ctx=this.canvas.getContext("2d");
+        // Rasterize once in native client pixels. Device density and small
+        // viewports scale only the finished image, never individual glyphs.
+        if(this.canvas.width!==765||this.canvas.height!==503){this.canvas.width=765;this.canvas.height=503;}
+        ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle="#000000";ctx.fillRect(0,0,765,503);ctx.imageSmoothingEnabled=false;
+        const l=titleLayout(765,503),controls=titleLayout(bounds.width,bounds.height),{background}=this.assets;
         if(background){
             ctx.save();ctx.translate(l.bx,l.by);ctx.scale(l.backgroundScale,l.backgroundScale);
             ctx.drawImage(background,0,0);ctx.translate(1089,0);ctx.scale(-1,1);ctx.drawImage(background,0,0);ctx.restore();
@@ -154,7 +156,7 @@ export class NativeTitleScreen{
                 ctx.drawImage(fire,l.bx+821*l.backgroundScale,l.by,fw,fh);
             }
         }
-        this.stage.style.transform=`translate(${l.x}px,${l.y+l.panelOffset*l.scale}px) scale(${l.scale})`;
+        this.stage.style.transform=`translate(${controls.x}px,${controls.y+controls.panelOffset*controls.scale}px) scale(${controls.scale})`;
         ctx.save();ctx.translate(l.x,l.y);ctx.scale(l.scale,l.scale);
         const logo=this.assets.sprites.get("logo")?.[0];if(logo)ctx.drawImage(logo,382-Math.floor(logo.width/2),18);
         if(this.mode==="loading"||this.mode==="error"){
@@ -188,10 +190,9 @@ export class NativeTitleScreen{
         }
         ctx.restore();
         if(!this.mute.hidden){
-            const mx=l.muteX,my=l.muteY;
-            this.mute.style.left=mx+"px";this.mute.style.top=my+"px";
-            this.mute.style.width=this.mute.style.height=36*l.scale+"px";
-            const sprite=this.assets.sprites.get("title_mute")?.[this.music?.muted?1:0];if(sprite)ctx.drawImage(sprite,mx,my,36*l.scale,36*l.scale);
+            this.mute.style.left=controls.muteX+"px";this.mute.style.top=controls.muteY+"px";
+            this.mute.style.width=this.mute.style.height=36*controls.scale+"px";
+            const sprite=this.assets.sprites.get("title_mute")?.[this.music?.muted?1:0];if(sprite)ctx.drawImage(sprite,l.muteX,l.muteY);
         }
     }
     dispose(){cancelAnimationFrame(this.animation);for(const [input,type,handler] of this.fieldListeners)input.removeEventListener(type,handler);window.removeEventListener("resize",this.resize);window.visualViewport?.removeEventListener("resize",this.resize);document.removeEventListener("pointerup",this.gesture,true);document.removeEventListener("keydown",this.gesture,true);this.fire?.destroy();this.music?.dispose();this.assets.background?.close();}

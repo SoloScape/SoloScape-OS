@@ -18,10 +18,10 @@ test("title controls fit desktop, portrait and landscape without resizing the ga
 
 test("fixed 765 by 503 title centres the panel and anchors mute bottom-right",()=>{
     const l=titleLayout(765,503);
-    assert.equal(l.scale,1);assert.equal(l.y,0);assert.equal(l.x,.5);
+    assert.equal(l.scale,1);assert.equal(l.y,0);assert.equal(l.x,0);
     assert.equal(l.backgroundScale,1);assert.equal(l.bx,-162);assert.equal(l.by,0);
-    assert.equal(170+l.panelOffset+200/2,503/2);
-    assert.equal(l.x+202+360/2,765/2);
+    assert.ok(Math.abs(170+l.panelOffset+200/2-503/2)<=.5);
+    assert.ok(Math.abs(l.x+202+360/2-765/2)<=.5);
     assert.equal(l.muteX,725);assert.equal(l.muteY,463);
     const desktop=titleLayout(1920,1080);
     assert.equal(desktop.scale,1);assert.equal(desktop.y,(1080-503)/2);

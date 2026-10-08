@@ -14,7 +14,9 @@ The landing page is now the classic title screen. It uses the server's
 1089×671 artwork cropped to the classic 765×503 title screen, plus the cache
 logo, title box, buttons and fonts. The title screen is centred in the browser,
 with the stone login panel centred within it and mute in its bottom-right
-corner. It scales down proportionally only when the viewport is smaller.
+corner. It draws into a native 765×503 framebuffer at integer coordinates,
+with one-pixel font shadows. Only the finished image scales down proportionally
+when the viewport is smaller; device density does not resample individual glyphs.
 The red loading bar advances as those verified assets and music metadata
 finish loading. **New User** is intentionally inactive. **Existing User** opens
 the ordinary login/password form; the authenticator field is removed from this

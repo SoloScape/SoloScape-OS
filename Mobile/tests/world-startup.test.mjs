@@ -261,6 +261,9 @@ try{
     const titleText=[];
     title.assets.font=title.assets.small={measure:s=>s.length*5,draw(ctx,text){titleText.push(text);}};
     title.showWelcome();
+    if(screen.querySelector("canvas").width!==765||screen.querySelector("canvas").height!==503)throw new Error("Title framebuffer must remain native 765 by 503 pixels");
+    const titleTransform=screen.querySelector("canvas").getContext("2d").getTransform();
+    if(titleTransform.a!==1||titleTransform.d!==1||titleTransform.e!==0||titleTransform.f!==0)throw new Error("Title rasterization introduced device or fractional scaling");
     if(!screen.querySelector("form").hidden||screen.querySelector("#title-login").hidden)throw new Error("Welcome shows login form too early");
     screen.querySelector("#title-new-account").click();
     if(title.mode!=="welcome"||!screen.querySelector("form").hidden)throw new Error("New User must remain inactive");
