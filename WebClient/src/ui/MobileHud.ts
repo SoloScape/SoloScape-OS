@@ -279,11 +279,12 @@ export class MobileHud {
     if (this.selectedTab === 'skills') this.renderLiveSkills();
     if (this.selectedTab && this.serverUi) {
       const hinted = CACHE_TAB_GROUPS[this.selectedTab];
-      const group = hinted !== undefined &&
-        [...this.serverUi.subInterfaces.values()].some((s) => s.groupId === hinted)
+      const confirmed = hinted !== undefined &&
+        [...this.serverUi.subInterfaces.values()].some((sub) => sub.groupId === hinted);
+      const group = hinted !== undefined && this.interfaceGroupIds.has(hinted)
         ? hinted : null;
       if (group !== this.activePanelGroup ||
-        (group !== null) !== this.activeServerConfirmed) {
+        confirmed !== this.activeServerConfirmed) {
         this.renderCachedPanel(this.selectedTab);
       }
     }
