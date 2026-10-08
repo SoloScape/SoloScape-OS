@@ -112,3 +112,35 @@ test('legacy inventory layout derives its real grid size and padding from cache'
   assert.equal(component.gridPaddingX, 2);
   assert.equal(component.gridPaddingY, 3);
 });
+
+test('IF3 model widgets preserve the actual cache model definition', () => {
+  const component = decodeCacheInterfaceComponent(410, 6, new Uint8Array([
+    0xff, 6, 0, 0, 0, 0, 0, 0, 0, 50, 0, 50,
+    0, 0, 0, 0, 0xff, 0xff, 0,
+    0, 42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    2, 0, 0, 0, 0,
+  ]));
+  assert.equal(component.type, 6);
+  assert.equal(component.modelId, 42);
+  assert.equal(component.modelZoom, 512);
+});
+
+test('IF1 tooltip content comes from cached bytes', () => {
+  const component = decodeCacheInterfaceComponent(149, 8, new Uint8Array([
+    8, 0, 0, 0, 0, 0, 0, 0, 0, 50, 0, 20,
+    0, 0xff, 0xff, 0xff, 0xff, 0, 0,
+    72, 105, 0,
+  ]));
+  assert.equal(component.type, 8);
+  assert.equal(component.text, 'Hi');
+});
+
+test('legacy CS1 programs remain available for live cache text evaluation', () => {
+  const component = decodeCacheInterfaceComponent(149, 1, new Uint8Array([
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 120, 0, 30,
+    0, 0xff, 0xff, 0xff, 0xff, 0,
+    1, 0, 3, 0, 1, 0, 0, 0, 0,
+    0, 100, 0,
+  ]));
+  assert.deepEqual(component.cs1Programs, [[1, 0, 0]]);
+});
