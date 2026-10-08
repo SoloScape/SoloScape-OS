@@ -10,9 +10,11 @@ import org.rsmod.api.invtx.invTransaction
 import org.rsmod.api.invtx.select
 import org.rsmod.api.market.MarketPrices
 import org.rsmod.api.player.output.UpdateInventory
+import org.rsmod.api.player.output.runClientScript
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.ui.ifOpenMainModal
 import org.rsmod.api.player.ui.ifSetEvents
+import org.rsmod.api.player.ui.ifSetText
 import org.rsmod.api.player.vars.intVarBit
 import org.rsmod.api.script.advanced.onDestroyHeld
 import org.rsmod.api.script.onIfModalButton
@@ -66,7 +68,10 @@ constructor(
             }
         }
 
-        onIfOpen(LOOT_INTERFACE) { player.setupLootKeyButtons() }
+        onIfOpen(LOOT_INTERFACE) {
+            player.setupLootKeyButtons()
+            player.refreshLootKeyValues()
+        }
         onIfModalButton("${LOOT_COMPONENT}tabs") {
             if (it.op == IfButtonOp.Op1 && it.comsub in 0 until BotLootKeys.MAX_KEYS) {
                 player.selectedLootKeyTab = it.comsub
@@ -140,6 +145,22 @@ constructor(
             }
             UpdateInventory.updateInvFull(this, display)
         }
+    }
+
+    private fun Player.refreshLootKeyValues() {
+        val keys = heldKeys()
+        for (tab in 0 until BotLootKeys.MAX_KEYS) {
+            val value = keys.getOrNull(tab)?.second?.let { store.get(it.vars) }
+                ?.sumOf(::marketValue) ?: 0L
+            val formatted = when {
+                value >= 1_000_000 -> "${value / 1_000_000}m"
+                value >= 1_000 -> "${value / 1_000}k"
+                else -> value.toString()
+            }
+            runClientScript(8013, tab, if (value > 0) formatted else "")
+        }
+        ifSetText("${LOOT_COMPONENT}occupiedslots", bank.occupiedSpace().toString())
+        ifSetText("${LOOT_COMPONENT}capacity", bankCapacity.toString())
     }
 
     private fun ProtectedAccess.checkKey(slot: Int) {
@@ -302,6 +323,7 @@ constructor(
         }
         store.replace(key.vars, remaining)
         player.refreshLootKeyInventories()
+        player.refreshLootKeyValues()
     }
 
     private fun ProtectedAccess.destroyItems(tab: Int, requested: Map<Int, Int>) {
@@ -319,6 +341,7 @@ constructor(
         }
         store.replace(key.vars, remaining)
         player.refreshLootKeyInventories()
+        player.refreshLootKeyValues()
     }
 
     private fun ProtectedAccess.destroyTab(tab: Int) {
