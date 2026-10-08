@@ -8,6 +8,7 @@ import {
 } from '../cache/CacheGameUiAssets';
 import type { CacheFontAsset } from '../cache/TitleScreenAssets';
 import { CacheBitmapFont } from './CacheBitmapFont';
+import type { Rev240UiState } from '../protocol/Rev240UiState';
 
 /**
  * Render original JS5 archive-3 widget geometry. The mobile side-panel
@@ -19,12 +20,15 @@ export class CacheInterfaceRenderer {
   private readonly fontPromises = new Map<number, Promise<CacheBitmapFont>>();
   private readonly defaultFont: CacheBitmapFont;
   private observer: ResizeObserver | null = null;
+  private readonly widgetNodes = new Map<number, HTMLElement>();
+  private readonly originalWidgets = new Map<number, CacheInterfaceComponent>();
   private generation = 0;
 
   constructor(
     private readonly js5: Js5Client,
     private readonly interfaces: CacheInterfaceStore,
     defaultFont: CacheFontAsset,
+    private readonly server: Rev240UiState,
   ) {
     this.defaultFont = new CacheBitmapFont(defaultFont);
   }
@@ -33,6 +37,8 @@ export class CacheInterfaceRenderer {
     this.generation++;
     this.observer?.disconnect();
     this.observer = null;
+    this.widgetNodes.clear();
+    this.originalWidgets.clear();
   }
 
   async show(groupId: number, host: HTMLElement): Promise<void> {
@@ -49,6 +55,7 @@ export class CacheInterfaceRenderer {
         return;
       }
       this.drawGroup(groupId, components, host, generation);
+      this.refreshServerState();
     } catch (error: unknown) {
       if (generation !== this.generation) return;
       host.textContent = 'Cache interface ' + groupId + ' unavailable: ' +
@@ -165,6 +172,8 @@ export class CacheInterfaceRenderer {
           break;
       }
       parent.append(element);
+      this.widgetNodes.set(widget.id >>> 0, element);
+      this.originalWidgets.set(widget.id >>> 0, widget);
       for (const child of children.get(widget.id) ?? []) {
         build(child, element, width, height, depth + 1);
       }
@@ -193,6 +202,48 @@ export class CacheInterfaceRenderer {
     this.observer = observer;
     observer.observe(viewport);
     resize();
+  }
+
+  /** Apply incremental authoritative updates without rebuilding the cache tree. */
+  refreshServerState(): void {
+    for (const [id, node] of this.widgetNodes) {
+      const widget = this.originalWidgets.get(id)!;
+      const change = this.server.widgetChanges.get(id);
+      node.hidden = change?.hidden ?? widget.hidden;
+      if (change?.x !== undefined) node.style.left = change.x + 'px';
+      if (change?.y !== undefined) node.style.top = change.y + 'px';
+      if (change?.scrollPosition !== undefined) node.scrollTop = change.scrollPosition;
+      if (change?.colour !== undefined) {
+        if (widget.type === 3) {
+          node.style.backgroundColor = widget.filled ? cssColour(change.colour) : 'transparent';
+          if (!widget.filled) node.style.borderColor = cssColour(change.colour);
+        }
+      }
+      if (widget.type === 2 || widget.type === 7) {
+        const inventory = this.server.inventoryForWidget(id);
+        for (const slot of node.querySelectorAll<HTMLElement>(':scope > .cache-widget-item')) {
+          const index = Number(slot.dataset.slot);
+          const item = inventory?.items[index];
+          const live = item && item.id >= 0;
+          slot.textContent = live ? (item.count > 1 ? item.count.toLocaleString('en-GB') : '') : '';
+          slot.dataset.objectId = live ? String(item!.id) : '';
+          slot.setAttribute('aria-label', live ?
+            'Item ' + item!.id + ', quantity ' + item!.count : 'Empty slot ' + (index + 1));
+          slot.title = live ? 'Item id ' + item!.id + ' × ' + item!.count : '';
+        }
+      }
+      if (widget.type === 4 && change?.text !== undefined &&
+        node.dataset.currentText !== change.text) {
+        node.dataset.currentText = change.text;
+        node.querySelector(':scope > canvas.cache-widget-text')?.remove();
+        void this.drawText({ ...widget, text: change.text,
+          colour: change.colour ?? widget.colour }, node, this.generation);
+      }
+      if (change?.objectId !== undefined && change.objectId >= 0) {
+        node.dataset.objectId = String(change.objectId);
+        node.title = 'Game object ' + change.objectId + ' × ' + (change.objectCount ?? 1);
+      }
+    }
   }
 
   private async drawSprite(
