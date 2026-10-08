@@ -37,6 +37,21 @@ function plane(height=0){return {heights:new Int32Array(4096).fill(height),under
     overlayShapes:new Uint8Array(4096),overlayRotations:new Uint8Array(4096),renderFlags:new Uint8Array(4096)};}
 function terrain(){const data=plane();return {side:64,mapX:50,mapY:50,...data,planes:[data,plane(-240),plane(-480),plane(-720)]};}
 
+test("scenery retains per-face/default cache priorities without changing UVs or world geometry",()=>{
+    const d=decodeObjectDefinition(Uint8Array.of(0),1),m=model();
+    const loc={x:2,y:2,rotation:0,shape:4},part={type:4,rotation:0,dx:0,dy:0};
+    m.priority=3;
+    const first=buildObjectMesh(terrain(),loc,d,part,[m],{textures:new Map([[3,{}]])}).texturedBatches.get(3);
+    assert.equal(first[3],Math.floor(first[3])+5/32);
+    m.faceRenderPriorities=Int8Array.of(10);
+    const next=buildObjectMesh(terrain(),loc,d,part,[m],{textures:new Map([[3,{}]])}).texturedBatches.get(3);
+    assert.equal(next[3],Math.floor(next[3])+12/32);
+    for(let i=0;i<first.length;i++)if(i%6!==3)assert.equal(next[i],first[i]);
+    m.faceTextures=null;
+    const colored=buildObjectMesh(terrain(),{...loc,shape:22},d,part,[m]).vertices;
+    assert.equal(colored[3]%1,12/32);
+});
+
 test("mapping triangles yield non-default UVs that stay attached through mirror, scale, rotation and retexture",()=>{
     const m=model(),uv=computeTextureCoords({isSd:()=>true},m);
     assert.deepEqual([...uv].map(v=>v||0),[0,0,1,0,.5,.5]);

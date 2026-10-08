@@ -120,7 +120,7 @@ export function decodePlayerSequence(bytes){
         }else if(op===2)seq.frameStep=r.readUnsignedShort();
         else if(op===3){const n=r.readUnsignedByte();for(let i=0;i<n;i++)r.readUnsignedByte();}
         else if(op===4||op===19){}
-        else if(op===8)seq.maxLoops=r.readUnsignedByte();
+        else if(op===8){seq.maxLoops=r.readUnsignedByte();seq.looping=true;}
         else if([5,9,10,11,16].includes(op))r.readUnsignedByte();
         else if(op===6||op===7)r.readUnsignedShort();
         else if(op===12){const n=r.readUnsignedByte();for(let i=0;i<n*2;i++)r.readUnsignedShort();}
@@ -134,6 +134,36 @@ export function decodePlayerSequence(bytes){
     }
     if(r.offset!==r.length)throw new Error("Sequence has trailing data");
     return seq;
+}
+
+// TSPS PlayerAnimController: retain movement frames on sequence changes,
+// advance only after the frame length, and rewind by the sequence's loop tail.
+export function stepMovementFrames(sequence,state,cycles){
+    const count=sequence.frameIds.length;
+    const frameStep=sequence.frameStep??-1;
+    if(!count)throw new Error("Sequence has no classic frames");
+    const visited=cycles>1000?new Map():null;
+    for(let i=0;i<cycles;i++){
+        // Stateless NPC/portrait callers can supply hours of elapsed time.
+        // Skip whole repeated loops instead of replaying every client cycle.
+        if(visited&&state.cycle<=1){
+            const key=`${state.frame}:${state.cycle}:${state.loops??0}`,previous=visited.get(key);
+            if(previous!==undefined)i+=Math.floor((cycles-i-1)/(i-previous))*(i-previous);
+            else visited.set(key,i);
+        }
+        state.cycle++;
+        if(state.frame<count&&state.cycle>Math.max(1,sequence.frameLengths[state.frame])){
+            state.cycle=1;state.frame++;
+        }
+        if(state.frame>=count){
+            state.frame-=frameStep>0?frameStep:count;
+            if(sequence.looping)state.loops=(state.loops??0)+1;
+            if(frameStep<=0||state.frame<0||state.frame>=count||sequence.looping&&state.loops>=sequence.maxLoops){
+                state.frame=0;state.cycle=0;state.loops=0;
+            }
+        }
+    }
+    return state.frame;
 }
 
 /** Shared promises avoid repeated JS5 requests while a sequence is streaming. */
@@ -173,16 +203,21 @@ export class NativePlayerAnimations {
         }
         return this.frames.get(id);
     }
-    async pose(model,id,timeMs=0){
+    async pose(model,id,timeMs=0,movementState=null){
         if(!Number.isFinite(timeMs)||timeMs<0)throw new Error("Invalid animation time");
         const sequence=await this.sequence(id);
         if(sequence.skeletalId>=0)throw new Error(`Sequence ${id} requires skeletal animation`);
         if(!sequence.frameIds.length)throw new Error(`Sequence ${id} has no classic frames`);
-        // Client cycles are 20 ms. A zero duration still occupies one cycle.
-        const lengths=sequence.frameLengths.map(n=>Math.max(1,n));
-        const total=lengths.reduce((a,b)=>a+b,0);
-        let cycle=Math.floor(timeMs/20)%total,index=0;
-        while(cycle>=lengths[index])cycle-=lengths[index++];
+        if(movementState){
+            const tick=Math.floor(timeMs/20),cycles=Math.max(0,tick-(movementState.tick??tick));
+            movementState.frame??=0;movementState.cycle??=0;
+            stepMovementFrames(sequence,movementState,cycles);
+            // A newly selected shorter sequence may not contain the old frame.
+            if(movementState.frame>=sequence.frameIds.length){movementState.frame=0;movementState.cycle=0;}
+            movementState.tick=tick;
+            return applyAnimation(model,await this.frame(sequence.frameIds[movementState.frame]));
+        }
+        const index=stepMovementFrames(sequence,{frame:0,cycle:0},Math.floor(timeMs/20));
         return applyAnimation(model,await this.frame(sequence.frameIds[index]));
     }
 }

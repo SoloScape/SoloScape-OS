@@ -72,8 +72,12 @@ varying highp vec2 v_uv;
 varying highp vec2 v_scenePosition;
 void main(){
     vec4 v=u_mvp*vec4(a_position,1.0);
+    // Match TSPS's small view-depth priority layers without moving world
+    // geometry or UVs. Projection near/far are .2/350: -projection[3][2].
+    float layer=floor(fract(a_color.x)*32.0+0.5);
+    v.z-=0.4002287*0.001*layer/max(v.w,0.2);
     gl_Position=v;
-    v_hsl_w=a_color.x*v.w;
+    v_hsl_w=floor(a_color.x)*v.w;
     v_w=v.w;
     v_uv=a_color.yz;
     v_scenePosition=a_position.xz;
@@ -95,7 +99,7 @@ void main(){
     float light=clamp(v_hsl_w/v_w,2.0,126.0)/128.0;
     gl_FragColor=vec4(texel.rgb*light,1.0);return;`:""}
     if(u_wireframe){gl_FragColor=vec4(1.0);return;}
-    float hsl=clamp(floor(v_hsl_w/v_w),0.0,65535.0);
+    float hsl=clamp(floor(v_hsl_w/v_w+0.01),0.0,65535.0);
     vec2 cell=vec2(mod(hsl,256.0),floor(hsl/256.0));
     gl_FragColor=texture2D(u_palette,(cell+0.5)/256.0);
 }`);

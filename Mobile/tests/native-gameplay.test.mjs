@@ -18,10 +18,52 @@ test("rebuild region selection follows the server's six-zone build area",()=>{
     assert.ok(regions.every(({x,y})=>x>=49&&x<=50&&y>=49&&y<=50));
 });
 test("interpolation moves between authoritative server positions",()=>{
-    const motion={from:{x:100,y:200},target:{x:104,y:202},started:1000};
-    assert.deepEqual(interpolatePlayer(motion,1000),{x:100,y:200});
-    assert.deepEqual(interpolatePlayer(motion,1300),{x:102,y:201});
-    assert.deepEqual(interpolatePlayer(motion,2000),{x:104,y:202});
+    const motion={from:{x:100,y:200},target:{x:101,y:201},started:1000};
+    assert.deepEqual(interpolatePlayer(motion,1000),{x:100,y:200,moving:true});
+    assert.deepEqual(interpolatePlayer(motion,1320),{x:100.5,y:200.5,moving:true});
+    assert.deepEqual(interpolatePlayer(motion,1640),{x:101,y:201,moving:false});
+});
+
+test("running doubles axis speed and idle packets retain locomotion until arrival",()=>{
+    const motion={from:{x:100,y:200},target:{x:102,y:201,moveSpeed:2,moving:false},started:1000};
+    assert.deepEqual(interpolatePlayer(motion,1320),{x:101,y:201,moveSpeed:2,moving:true});
+    assert.equal(interpolatePlayer(motion,1640).moving,false);
+    assert.equal(interpolatePlayer({...motion,target:{...motion.target,temporaryMoveSpeed:0}},1320).x,100.25);
+});
+
+test("copied action state in PLAYER_INFO does not restart action or locomotion clocks",()=>{
+    let now=1000;
+    const gameplay=new NativeGameplay({cache:{},viewport:viewport(),session:{},now:()=>now});
+    const player={x:100,y:200,plane:0,moving:false,sequence:{id:123,delay:0}};
+    gameplay.updateMotion(player);now=1600;
+    gameplay.updateMotion({...player,sequence:{...player.sequence}});
+    assert.equal(gameplay.sequenceStarted,1000);assert.equal(gameplay.animationStarted,1000);
+    gameplay.updateMotion({...player,sequence:{id:124,delay:0}});
+    assert.equal(gameplay.sequenceStarted,1600);
+});
+
+test("one-tick run override survives a stationary packet until the segment finishes",()=>{
+    let now=0;
+    const gameplay=new NativeGameplay({cache:{},viewport:viewport(),session:{},now:()=>now});
+    const player={x:100,y:200,plane:0,moveSpeed:1,moving:false};
+    gameplay.updateMotion(player);
+    gameplay.updateMotion({...player,x:102,moving:true,temporaryMoveSpeed:2});
+    now=600;gameplay.updateMotion({...player,x:102,temporaryMoveSpeed:null});
+    assert.equal(interpolatePlayer(gameplay.motion,now).x,101.875);
+    assert.equal(interpolatePlayer(gameplay.motion,640).moving,false);
+});
+
+test("continuous 600 ms server walking updates catch up rather than accumulate permanent lag",()=>{
+    let now=0;
+    const gameplay=new NativeGameplay({cache:{},viewport:viewport(),session:{},now:()=>now});
+    const player={x:100,y:200,plane:0,moveSpeed:1,moving:false};
+    gameplay.updateMotion(player);
+    for(let step=1;step<=100;step++){
+        gameplay.updateMotion({...player,x:100+step,moving:true});
+        now+=600;
+        const shown=interpolatePlayer(gameplay.motion,now);
+        assert.ok(100+step-shown.x<1.1);
+    }
 });
 test("normal rebuild loads around the rebuild zone even before teleport PLAYER_INFO",async()=>{
     const loaded=[],vp=viewport(),session={sendGame(op,payload){session.sent=[op,payload];}};

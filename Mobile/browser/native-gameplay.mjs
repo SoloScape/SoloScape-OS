@@ -19,9 +19,19 @@ export function rebuildRegions(rebuild,player){
     regions.sort((a,b)=>Math.hypot(a.x-px,a.y-py)-Math.hypot(b.x-px,b.y-py));
     return regions;
 }
+function movementUnits(motion){
+    const speed=motion.speed??motion.target.temporaryMoveSpeed??motion.target.moveSpeed??1;
+    // Estimate remaining queued tiles from the authoritative endpoint. Like
+    // PlayerEcs, catch up when 600 ms server updates outrun 640 ms walk steps.
+    const pathLength=Math.ceil(Math.max(Math.abs(motion.target.x-motion.from.x),Math.abs(motion.target.y-motion.from.y)));
+    const base=pathLength>3?8:pathLength>2?6:4;
+    return base*(speed===2?2:speed===0?.5:1);
+}
 export function interpolatePlayer(motion,now){
-    const t=Math.max(0,Math.min(1,(now-motion.started)/600));
-    return {...motion.target,x:motion.from.x+(motion.target.x-motion.from.x)*t,y:motion.from.y+(motion.target.y-motion.from.y)*t};
+    const step=Math.max(0,now-motion.started)/20*movementUnits(motion)/128;
+    const axis=(from,to)=>from+Math.sign(to-from)*Math.min(Math.abs(to-from),step);
+    const x=axis(motion.from.x,motion.target.x),y=axis(motion.from.y,motion.target.y);
+    return {...motion.target,x,y,moving:x!==motion.target.x||y!==motion.target.y};
 }
 
 export class NativeGameplay {
@@ -33,6 +43,7 @@ export class NativeGameplay {
         this.onReady=onReady;
         this.loadTerrain=loadTerrain;this.loadMaterials=loadMaterials;this.loadScenery=loadScenery;this.models=models;this.now=now;
         this.generation=0;this.closed=false;this.regions=new Map();this.packetCount=0;this.animationStarted=now();
+        this.movementFrames={};this.sequenceStarted=this.animationStarted;
         this.npcs=new NativeNpcSync();this.npcModels=new NativeNpcModels(models);this.npcMotions=new Map();this.npcDrawn=0;this.selectionToken=0;this.selectedNpc=null;
         this.viewport.onDestination=tile=>this.move(tile);
         this.viewport.onNpc=hit=>void this.selectNpc(hit);
@@ -44,7 +55,7 @@ export class NativeGameplay {
         this.viewport.distance=GAME_CAMERA_ZOOM.default;this.viewport.pitch=.65;
         const c=this.viewport.canvas;
         this.session.sendGame(WINDOW_STATUS,encodeWindowStatus(Math.max(1,Math.min(65535,c.clientWidth)),Math.max(1,Math.min(65535,c.clientHeight))));
-        this.timer=setInterval(()=>void this.drawActors(),50);
+        this.timer=setInterval(()=>void this.drawActors(),20);
     }
     handle(packet){
         if(this.closed)return;this.packetCount++;
@@ -77,9 +88,10 @@ export class NativeGameplay {
         const now=this.now(),previous=this.motion?.target;
         if(!previous||previous.x!==player.x||previous.y!==player.y||previous.plane!==player.plane){
             const snap=!previous||player.teleported||previous.plane!==player.plane||Math.max(Math.abs(previous.x-player.x),Math.abs(previous.y-player.y))>2;
-            this.motion={from:snap?{x:player.x,y:player.y}:interpolatePlayer(this.motion,now),target:{...player},started:now};
+            this.motion={from:snap?{x:player.x,y:player.y}:interpolatePlayer(this.motion,now),target:{...player},started:now,
+                speed:player.temporaryMoveSpeed??player.moveSpeed??1};
         }else this.motion.target={...player};
-        if(player.moving!==previous?.moving||player.sequence!==previous?.sequence){this.animationStarted=now;this.animationId=null;}
+        if(player.sequence?.id!==previous?.sequence?.id||player.sequence?.delay!==previous?.sequence?.delay)this.sequenceStarted=now;
         if(player.appearance!==previous?.appearance){
             this.renderError=null;this.drawBlockedUntil=0;this.modelReady=false;this.interfaces?.refreshPortraits?.();
         }
@@ -218,6 +230,7 @@ export class NativeGameplay {
             const from=changed?(snap?{x:npc.x,y:npc.y}:interpolatePlayer(previous,now)):previous.from;
             const sequenceChanged=old?.sequence?.id!==npc.sequence?.id||old?.sequence?.delay!==npc.sequence?.delay;
             this.npcMotions.set(index,{from,target,started:changed?now:previous.started,
+                speed:changed?npc.moveSpeed:previous.speed,
                 animationStarted:!previous||old?.moving!==npc.moving?now:previous.animationStarted,
                 sequenceStarted:!previous||sequenceChanged?now:previous.sequenceStarted});
         }
@@ -238,19 +251,18 @@ export class NativeGameplay {
                 const region=this.regions.get(`${player.x>>>6},${player.y>>>6}`);
                 if(region)try{
                     const model=await this.models.composition(appearance),animations=appearance.animations;
-                    const speed=player.temporaryMoveSpeed??player.moveSpeed;
-                    const locomotion=player.moving?(speed===2?animations.run:animations.walk):animations.idle;
+                    const locomotion=player.moving?(movementUnits(this.motion)>=8&&animations.run>=0?animations.run:animations.walk):animations.idle;
                     let id=locomotion,elapsed=now-this.animationStarted;
+                    let action=false;
                     if(player.sequence?.id>=0){
-                        const actionElapsed=Math.max(0,now-this.animationStarted-(player.sequence.delay??0)*20);
+                        const actionElapsed=Math.max(0,now-this.sequenceStarted-(player.sequence.delay??0)*20);
                         try{
                             const sequence=await this.models.animations.sequence(player.sequence.id);
                             const duration=sequence.frameLengths.reduce((sum,length)=>sum+Math.max(1,length),0)*20*Math.max(1,sequence.maxLoops??99);
-                            if(actionElapsed<duration){id=player.sequence.id;elapsed=actionElapsed;}
+                            if(now-this.sequenceStarted>=(player.sequence.delay??0)*20&&actionElapsed<duration){id=player.sequence.id;elapsed=actionElapsed;action=true;}
                         }catch{}
                     }
-                    if(id!==this.animationId){this.animationId=id;this.animationStarted=now;elapsed=0;}
-                    const posed=id>=0?await this.models.animations.pose(model,id,elapsed):model;
+                    const posed=id>=0?await this.models.animations.pose(model,id,elapsed,action?null:this.movementFrames):model;
                     add(buildPlayerMesh(posed,region,player,{textures:this.models.textures.textures}),region);
                     const ground=playerGroundHeight(region,player.x-region.mapX*64+.5,player.y-region.mapY*64+.5,player.plane);
                     this.viewport.target=[player.x-this.origin.mapX*64-31,-ground.height/128+1,player.y-this.origin.mapY*64-31];

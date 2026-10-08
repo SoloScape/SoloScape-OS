@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {decodeSkeleton,decodeAnimationFrame,decodePlayerSequence,applyAnimation,NativePlayerAnimations} from "../browser/player-animation.mjs";
+import {decodeSkeleton,decodeAnimationFrame,decodePlayerSequence,applyAnimation,NativePlayerAnimations,stepMovementFrames} from "../browser/player-animation.mjs";
 
 const model=()=>({verticesCount:2,faceCount:1,verticesX:Int32Array.of(10,30),
     verticesY:Int32Array.of(0,0),verticesZ:Int32Array.of(0,0),vertexSkins:Int32Array.of(0,0),
@@ -49,9 +49,27 @@ test("loader chooses locomotion frames at 20 ms and reuses promises",async()=>{
     loader.sequence=async()=>sequence;const seen=[];
     loader.frame=async id=>{seen.push(id);return frame([1],[{group:0,x:id,y:0,z:0}]);};
     assert.equal((await loader.pose(model(),819,0)).verticesX[0],11);
-    assert.equal((await loader.pose(model(),819,40)).verticesX[0],12);
-    assert.equal((await loader.pose(model(),819,100)).verticesX[0],11);
-    assert.deepEqual(seen,[1,2,1]);
+    assert.equal((await loader.pose(model(),819,40)).verticesX[0],11);
+    assert.equal((await loader.pose(model(),819,60)).verticesX[0],12);
+    assert.equal((await loader.pose(model(),819,120)).verticesX[0],11);
+    assert.deepEqual(seen,[1,1,2,1]);
     loader.sequence=async()=>({skeletalId:2});
     await assert.rejects(loader.pose(model(),1,0),/skeletal/);
+});
+
+test("locomotion retains frame/cycle across sequence changes and loops only the tail",()=>{
+    const sequence={frameIds:[1,2,3],frameLengths:[2,2,2],frameStep:2};
+    const state={frame:0,cycle:0};
+    stepMovementFrames(sequence,state,2);assert.deepEqual(state,{frame:0,cycle:2});
+    stepMovementFrames(sequence,state,1);assert.deepEqual(state,{frame:1,cycle:1});
+    stepMovementFrames({...sequence,frameLengths:[5,5,5]},state,2);
+    assert.deepEqual(state,{frame:1,cycle:3});
+    stepMovementFrames(sequence,state,3);assert.equal(state.frame,1);
+});
+
+test("long elapsed animation times skip complete loops with identical final frame state",()=>{
+    const sequence={frameIds:[1,2],frameLengths:[2,3]},state={frame:0,cycle:0,loops:0};
+    stepMovementFrames(sequence,state,100000000);
+    const short={frame:0,cycle:0,loops:0};stepMovementFrames(sequence,short,100000000%6);
+    assert.deepEqual(state,short);
 });

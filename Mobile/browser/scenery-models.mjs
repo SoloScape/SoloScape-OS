@@ -115,6 +115,7 @@ function transformPart(model,d,part){
         let uv=uvs?Array.from(uvs.subarray(i*6,i*6+6)):null;
         if(mirror){indices.reverse();if(uv)uv=[...uv.slice(4,6),...uv.slice(2,4),...uv.slice(0,2)];}
         faces.push({indices,color:recolors.get(model.faceColors[i])??model.faceColors[i],
+            priority:model.faceRenderPriorities?.[i]??model.priority??0,
             type:model.faceRenderTypes?.[i]??0,alpha:model.faceAlphas?.[i]??0,texture,uv});
     }
     return {vertices,faces};
@@ -157,6 +158,9 @@ export function buildObjectMesh(terrain,loc,d,part,models,{textures=new Map()}={
     let omittedFaces=0;
     for(let i=0;i<faces.length;i++){
         const f=faces[i];
+        // Keep cache priority and a small scenery/decal layer in the otherwise
+        // unused fractional colour bits. Both shaders decode it before lighting.
+        const layer=1+(loc.shape>=4&&loc.shape<=8||loc.shape===22?1:0)+Math.max(0,Math.min(11,f.priority));
         if(f.alpha!==0||f.type>1||f.type<0||f.texture>=0&&
             (!textures.has(f.texture)||!f.uv?.every(Number.isFinite))){omittedFaces++;continue;}
         let target=out;
@@ -177,8 +181,8 @@ export function buildObjectMesh(terrain,loc,d,part,models,{textures=new Map()}={
             const denominator=f.type===1?intensity+(intensity>>1):intensity*Math.max(1,normal[3]);
             const light=ambient+Math.trunc(dot(normal)/denominator);
             target.push(x-31.5,-(centerHeight+vy+groundOffset)/128,z-31.5,
-                ...(f.texture>=0?[Math.max(2,Math.min(126,light)),f.uv[corner*2],f.uv[corner*2+1]]:
-                    [adjustFloorLight(f.color,light),0,0]));
+                ...(f.texture>=0?[Math.max(2,Math.min(126,light))+layer/32,f.uv[corner*2],f.uv[corner*2+1]]:
+                    [adjustFloorLight(f.color,light)+layer/32,0,0]));
         }
     }
     return {vertices:new Float32Array(out),texturedBatches:new Map(Array.from(textured,([id,v])=>[id,new Float32Array(v)])),omittedFaces};

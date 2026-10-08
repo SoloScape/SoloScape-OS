@@ -195,6 +195,35 @@ try{
     if(gl.isTexture(oldTexture)||gl.isBuffer(oldBuffer))throw new Error("Replacing texture scene leaked GPU resources");
     gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
     if(expected.some((v,i)=>v!==pixel[i]))throw new Error("Texture cutout obscured terrain");
+    // Coplanar floor and wall details must win at every camera yaw and zoom,
+    // for both shaders and either submission order, while nearer walls occlude.
+    const detailRgb=HSL_PALETTE[12000],detailExpected=[detailRgb>>>16&255,detailRgb>>>8&255,detailRgb&255,255];
+    for(const wall of [false,true])for(const useTexture of [false,true])for(const reverse of [false,true]){
+        const positions=wall?[[-4,-3,0],[4,-3,0],[-4,5,0],[4,-3,0],[4,5,0],[-4,5,0]]:
+            [[-4,0,-4],[4,0,-4],[-4,0,4],[4,0,-4],[4,0,4],[-4,0,4]];
+        const base=new Float32Array(positions.flatMap(p=>[...p,2000+1/32,0,0]));
+        const detail=new Float32Array(positions.flatMap(p=>[...p,(useTexture?64:12000)+12/32,.25,.25]));
+        const opaque=new Uint8Array(64*64*4);for(let i=0;i<opaque.length;i+=4)opaque.set([128,64,32,255],i);
+        const combined=new Float32Array([...(reverse?detail:base),...(reverse?base:detail)]);
+        const texturedBase=new Float32Array(positions.flatMap(p=>[...p,64+1/32,.25,.25]));
+        const basePixels=new Uint8Array(64*64*4);for(let i=0;i<basePixels.length;i+=4)basePixels.set([0,0,255,255],i);
+        const batches=[{level:0,texture:4,vertices:texturedBase},{level:0,texture:3,vertices:detail}];
+        viewport.setScenery(useTexture?{vertices:new Float32Array(),texturedBatches:reverse?batches.reverse():batches,
+            textures:new Map([[3,{size:64,pixels:opaque}],[4,{size:64,pixels:basePixels}]])}:{vertices:combined});
+        for(const yaw of [-.6,0,.6,Math.PI])for(const distance of [6,12,24]){
+            viewport.target=[0,wall?1:0,0];viewport.pitch=wall?.3:1;viewport.yaw=yaw;viewport.distance=distance;
+            viewport.render();gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+            const want=useTexture?[64,32,16,255]:detailExpected;
+            if(want.some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("Coplanar detail flickered: "+[wall,useTexture,reverse,yaw,distance,pixel]);
+        }
+        const occluder=new Float32Array(base);
+        for(let i=0;i<occluder.length;i+=6){occluder[i+1]+=.1;occluder[i+2]-=.1;}
+        viewport.setActors({vertices:occluder});viewport.yaw=0;viewport.render();
+        gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        if(objectExpected.some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("Priority detail leaked through nearer geometry");
+        viewport.setActors(null);
+    }
+    viewport.setScenery(texturedScene);
     const sceneTexture=viewport.textures.get(3),sceneBuffer=viewport.sceneryBatches[0].buffer;
     viewport.setTerrain(terrain);if(viewport.sceneryCount!==0)throw new Error("Travel retained obsolete scenery");
     if(gl.isTexture(sceneTexture)||gl.isBuffer(sceneBuffer)||viewport.sceneryBatches.length)throw new Error("Travel retained texture resources");
