@@ -1,6 +1,8 @@
 // rsprot SHA-256 hashcash challenge. See ../licenses/rsprot-MIT.txt.
+// The default generator includes 495 random bytes encoded as hexadecimal plus timestamp/world.
+export const MAX_PROOF_OF_WORK_SIZE=1024;
 export function decodeProofOfWork(bytes){
-    if(bytes.length<4||bytes.length>512||bytes[0]!==0||bytes[1]!==1||bytes[2]>22||bytes.at(-1)!==0||bytes.slice(3,-1).includes(0))
+    if(bytes.length<4||bytes.length>MAX_PROOF_OF_WORK_SIZE||bytes[0]!==0||bytes[1]!==1||bytes[2]>22||bytes.at(-1)!==0||bytes.slice(3,-1).includes(0))
         throw new Error("Unsupported native login proof of work");
     return {version:bytes[1],difficulty:bytes[2],salt:new TextDecoder("utf-8",{fatal:true}).decode(bytes.slice(3,-1))};
 }

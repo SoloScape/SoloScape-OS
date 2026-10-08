@@ -70,6 +70,16 @@ test("SHA-256 login challenge solves rsprot's hexadecimal base/nonce format and 
     const controller=new AbortController();controller.abort();
     await assert.rejects(solveProofOfWork(challenge,{signal:controller.signal}),/cancelled/);
 });
+test("proof-of-work decoder accepts bounded full-size salts and rejects oversized or malformed challenges",()=>{
+    for(const length of [4,513,1007,1024]){
+        const bytes=new Uint8Array(length).fill(97);bytes.set([0,1,8]);bytes[length-1]=0;
+        assert.equal(decodeProofOfWork(bytes).salt.length,length-4);
+    }
+    const challenge=new Uint8Array(1025).fill(97);challenge.set([0,1,8]);challenge[1024]=0;
+    assert.throws(()=>decodeProofOfWork(challenge),/Unsupported/);
+    for(const bytes of [Uint8Array.of(0,1,8),Uint8Array.of(0,1,8,97),Uint8Array.of(0,1,8,0,0),Uint8Array.of(0,1,23,0)])
+        assert.throws(()=>decodeProofOfWork(bytes),/Unsupported/);
+});
 test("preview configuration accepts only the public client.key, validates gateway and refuses PEM private keys",async()=>{
     const dir=await mkdtemp(join(tmpdir(),"soloscape-public-login-")),path=join(dir,"client.key");
     try{

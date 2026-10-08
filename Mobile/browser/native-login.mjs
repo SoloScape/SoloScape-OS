@@ -1,7 +1,7 @@
 import {validateNativeGatewayUrl} from "./native-js5.mjs";
 import {IsaacCipher,validateRsaPublicKey} from "./login-crypto.mjs";
 import {encodeLogin,decodeLoginSuccess,NativeLoginError,loginString,LOGIN_REVISION} from "./login-protocol.mjs";
-import {solveProofOfWork,encodeProofOfWorkReply} from "./login-pow.mjs";
+import {solveProofOfWork,encodeProofOfWorkReply,MAX_PROOF_OF_WORK_SIZE} from "./login-pow.mjs";
 import {SERVER_PACKETS,CLIENT_NO_TIMEOUT} from "./game-protocol.mjs";
 
 const MAX_BUFFER=1024*1024;
@@ -81,7 +81,7 @@ export class NativeGameSession {
                 if(code===69){
                     if(this.buffer.length<3)return;
                     const length=(this.buffer[1]<<8)|this.buffer[2];
-                    if(length<4||length>512)throw new Error("Invalid login proof of work size");
+                    if(length<4||length>MAX_PROOF_OF_WORK_SIZE)throw new Error("Invalid login proof of work size");
                     if(this.buffer.length<3+length)return;
                     this.take(3);const challenge=this.take(length);
                     if(this.solvedChallenge)throw new Error("Repeated login proof of work");

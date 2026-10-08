@@ -16,6 +16,8 @@ import {tmpdir} from "node:os";
 import {join,resolve,dirname,basename} from "node:path";
 
 const sessionId=Buffer.from("123456789abcdef0","hex");
+// Match the default rsprot generator's timestamp/world and 495 random bytes in hex.
+const powSalt="1a11c25670301"+"ab".repeat(495);
 function gamePacket(cipher,opcode,payload){
     const header=opcode<128?[(opcode+cipher.nextInt())&255]:
         [((opcode>>>8|128)+cipher.nextInt())&255,((opcode&255)+cipher.nextInt())&255];
@@ -24,7 +26,7 @@ function gamePacket(cipher,opcode,payload){
     if(size===-2)header.push(payload.length>>>8,payload.length&255);
     return Buffer.concat([Buffer.from(header),payload]);
 }
-async function mockNativeWorld({code=2,token=false,pow=false,stall=false,malformed=false,fragmentEveryByte=false}={}){
+async function mockNativeWorld({code=2,token=false,pow=false,powSize,stall=false,malformed=false,fragmentEveryByte=false}={}){
     const {rsa,privateKey}=fixtureKey(),sockets=new Set(),received=[],heartbeats=[];
     let fixtureError,parsed,serverCipher,clientCipher,stage="hello",input=Buffer.alloc(0),powSolved=false;
     const tcp=createServer(socket=>{
@@ -65,15 +67,20 @@ async function mockNativeWorld({code=2,token=false,pow=false,stall=false,malform
                     serverCipher=new IsaacCipher(parsed.seed.map(n=>(n+50)|0));clientCipher=new IsaacCipher(parsed.seed);
                     if(code!==2){socket.end(Buffer.from([code]));stage="rejected";return;}
                     if(pow){
-                        const challenge=Buffer.from([0,1,8,...Buffer.from("gateway-salt"),0]);
-                        stage="pow";socket.write(Buffer.from([69,0]));
-                        setTimeout(()=>socket.write(Buffer.concat([Buffer.from([challenge.length]),challenge])),2);
+                        const challenge=Buffer.from([0,1,8,...Buffer.from(powSalt),0]);
+                        const header=Buffer.alloc(3);header[0]=69;header.writeUInt16BE(powSize??challenge.length,1);
+                        const wire=Buffer.concat([header,challenge]);stage="pow";
+                        if(fragmentEveryByte){
+                            for(let i=0;i<wire.length;i++)setTimeout(()=>{if(!socket.destroyed)socket.write(wire.subarray(i,i+1));},i);
+                        }else{
+                            socket.write(wire.subarray(0,2));setTimeout(()=>socket.write(wire.subarray(2)),2);
+                        }
                     }else accepted();
                 }
                 if(stage==="pow"&&input.length>=11){
                     assert.deepEqual([...input.subarray(0,3)],[19,0,8]);
                     const nonce=input.readBigUInt64BE(3);
-                    assert.equal(createHash("sha256").update("18gateway-salt"+nonce.toString(16)).digest()[0],0);
+                    assert.equal(createHash("sha256").update("18"+powSalt+nonce.toString(16)).digest()[0],0);
                     input=input.subarray(11);powSolved=true;accepted();
                 }
                 if(stage==="game")for(const b of input)heartbeats.push((b-clientCipher.nextInt())&255);
@@ -132,6 +139,15 @@ test("native login fails closed on a mismatched success layout",async()=>{
     const world=await mockNativeWorld({malformed:true}),session=new NativeGameSession(world);
     try{await assert.rejects(session.login(credentials,config(world)),/success size/);}
     finally{session.close();await world.close();}
+});
+test("native login rejects out-of-bounds proof-of-work sizes before solving",async()=>{
+    for(const powSize of [3,1025]){
+        const world=await mockNativeWorld({pow:true,powSize}),session=new NativeGameSession(world);
+        try{
+            await assert.rejects(session.login(credentials,config(world)),/Invalid login proof of work size/);
+            assert.equal(world.powSolved,false);assert.equal(session.state,"closed");
+        }finally{session.close();await world.close();}
+    }
 });
 test("login refuses insecure remote gateway URLs and wrong revision before opening a socket",()=>{
     assert.throws(()=>new NativeGameSession({url:"ws://example.com/"}),/loopback/);
