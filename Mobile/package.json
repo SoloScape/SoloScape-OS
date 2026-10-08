@@ -10,7 +10,8 @@
     "dev": "node scripts/run-client.mjs dev",
     "build": "node scripts/run-client.mjs build",
     "test": "node --test",
-    "gateway": "node gateway/cli.mjs"
+    "gateway": "node gateway/cli.mjs",
+    "probe": "node gateway/probe-cli.mjs"
   },
   "dependencies": {
     "ws": "8.18.3"

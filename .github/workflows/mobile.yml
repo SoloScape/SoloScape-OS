@@ -40,3 +40,5 @@ jobs:
           node --check Mobile/gateway/config.mjs
           node --check Mobile/gateway/server.mjs
           node --check Mobile/gateway/cli.mjs
+          node --check Mobile/gateway/js5-probe.mjs
+          node --check Mobile/gateway/probe-cli.mjs
