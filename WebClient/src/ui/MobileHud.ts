@@ -132,7 +132,7 @@ export class MobileHud {
       '<div class="hud-stones-primary">',
       MAIN_STONES.map((stone) => button('tab:' + stone.id, stone.name)).join(''),
       '</div><div class="hud-stones-secondary" id="hud-extra-stones">',
-      EXTRA_STONES.map((stone) => button('tab:' + stone.id, stone.name, stone.icon)).join(''),
+      EXTRA_STONES.map((stone) => button('tab:' + stone.id, stone.name)).join(''),
       '</div>',
       button('stones-toggle', 'Collapse secondary tabs', 'hud-collapse'),
       '</div>',
