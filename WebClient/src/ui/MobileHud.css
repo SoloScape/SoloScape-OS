@@ -7,6 +7,8 @@
   aspect-ratio: auto;
 }
 
+.viewport { container-type: size; }
+
 #mobile-hud {
   --stone: clamp(31px, 7.5cqh, 42px);
   --map: clamp(105px, 29cqh, 155px);
