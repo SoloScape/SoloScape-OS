@@ -16,11 +16,11 @@ test("title controls fit desktop, portrait and landscape without resizing the ga
     }
 });
 
-test("fixed 765 by 503 title centres the panel and anchors mute bottom-right",()=>{
+test("fixed 765 by 503 title aligns reference panel top and mute bottom-right",()=>{
     const l=titleLayout(765,503);
     assert.equal(l.scale,1);assert.equal(l.y,0);assert.equal(l.x,0);
     assert.equal(l.backgroundScale,1);assert.equal(l.bx,-162);assert.equal(l.by,0);
-    assert.ok(Math.abs(170+l.panelOffset+200/2-503/2)<=.5);
+    assert.equal(170+l.panelOffset,170,"RuneScape titlebox top follows the OpenOSRS reference");
     assert.ok(Math.abs(l.x+202+360/2-765/2)<=.5);
     assert.equal(l.muteX,725);assert.equal(l.muteY,463);
     const desktop=titleLayout(1920,1080);
@@ -84,7 +84,7 @@ test("OpenOSRS rev-240 in-game title uses cache b12_full, p11_full and original 
 test("title form draws original cache labels and works with optional remembered/hidden username",()=>{
     const saved=Object.fromEntries(["document","window","localStorage","requestAnimationFrame","cancelAnimationFrame"]
         .map(k=>[k,globalThis[k]]));
-    const stored=new Map(),drawn=[],elements=new Map();
+    const stored=new Map(),drawn=[],smallDrawn=[],circles=[],elements=new Map();
     const el=id=>{
         const node={id,style:{},hidden:false,value:"",selectionStart:0,selectionEnd:0,
             handlers:{},attributes:new Map(),
@@ -98,10 +98,12 @@ test("title form draws original cache labels and works with optional remembered/
         elements.set(id,node);return node;
     };
     const ids=["title-new-account","title-login","title-cancel","title-mute",
-        "title-remember","title-hide-username","title-login-help","login-username",
+        "title-remember","title-hide-username","title-login-help",
+        "title-world-switch","title-world-current","title-world-back","login-username",
         "login-password","login-submit"];
     for(const id of ids)el(id);
     const ctx={setTransform(){},fillRect(){},strokeRect(){},drawImage(){},
+        beginPath(){},arc(...args){circles.push(args);},stroke(){},fill(){},moveTo(){},lineTo(){},
         save(){},restore(){},translate(){},scale(){},fillText(){}};
     const canvas={width:0,height:0,getContext:()=>ctx,
         parentElement:{hidden:false,getBoundingClientRect:()=>({width:765,height:503})}};
@@ -121,17 +123,40 @@ test("title form draws original cache labels and works with optional remembered/
         globalThis.cancelAnimationFrame=()=>{};
         const title=new NativeTitleScreen({canvas,stage,form,status});
         const font={measure:s=>s.length*6,draw:(_ctx,str)=>drawn.push(str)};
-        title.assets.font=font;title.assets.small=font;
+        title.assets.font=font;
+        title.assets.small={measure:s=>s.length*5,draw:(_ctx,str)=>{drawn.push(str);smallDrawn.push(str);}};
         title.showWelcome();
         assert.ok(drawn.includes(OSRS_TITLE_COPY.welcome));
+        assert.ok(drawn.includes("World 255"));
+        assert.ok(drawn.includes("Click to switch"));
+        assert.equal(elements.get("title-world-switch").hidden,false);
+        elements.get("title-world-switch").click();
+        assert.equal(title.mode,"world-select");
+        assert.ok(drawn.includes("Select a world"));
+        assert.equal(elements.get("title-world-switch").hidden,true);
+        assert.equal(elements.get("title-world-current").hidden,false);
+        elements.get("title-world-current").click();
+        assert.equal(title.mode,"welcome");
+        assert.equal(elements.get("title-world-current").hidden,true);
         drawn.length=0;
         elements.get("title-login").click();
         assert.equal(status.textContent,OSRS_TITLE_COPY.loginPrompt);
+        assert.deepEqual(circles.slice(-2).map(args=>args.slice(0,3)),
+            [[273,284,6],[414,284,6]],"checkboxes must be left-side circles");
+        assert.ok(smallDrawn.includes("Remember username"));
+        assert.ok(smallDrawn.includes("Hide username"));
+        assert.ok(smallDrawn.includes("Can't login? Click here."));
         for(const str of ["Login:","Password:","Remember username","Hide username",
             "Can't login? Click here.","Login","Cancel"])
             assert.ok(drawn.includes(str),"missing authentic title text "+str);
         const user=elements.get("login-username"),pass=elements.get("login-password");
         user.value="PlayerOne";user.selectionEnd=9;pass.value="sensitive password";
+        elements.get("title-world-switch").click();
+        assert.equal(title.mode,"world-select");
+        elements.get("title-world-back").click();
+        assert.equal(title.mode,"login");
+        assert.equal(user.value,"PlayerOne");
+        assert.equal(pass.value,"sensitive password","switcher must not discard entered credentials");
         user.handlers.input();
         assert.equal(stored.size,0,"username retention must require opt-in");
         elements.get("title-remember").click();

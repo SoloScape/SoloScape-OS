@@ -12,9 +12,14 @@
 /* Native OSRS title option art/text are painted on the cache canvas; these
    accessible hit targets follow the same 765x503 title-space coordinates. */
 .title-option,.title-help{position:absolute;padding:0;border:0;background:transparent;color:transparent;font-size:0;cursor:default;pointer-events:auto}
-#title-remember{left:273px;top:275px;width:151px;height:22px}
-#title-hide-username{left:427px;top:275px;width:126px;height:22px}
-#title-login-help{left:284px;top:337px;width:196px;height:24px}
+#title-remember{left:266px;top:274px;width:138px;height:22px}
+#title-hide-username{left:406px;top:274px;width:128px;height:22px}
+#title-login-help{left:284px;top:340px;width:196px;height:24px}
+.title-world-switch,.title-world-choice{position:absolute;padding:0;border:0;background:transparent;color:transparent;font-size:0;pointer-events:auto;cursor:pointer}
+.title-world-switch{left:5px;top:463px;width:100px;height:35px}
+.title-world-choice{left:320px;top:251px;width:125px;height:44px}
+.title-world-back{left:308.5px;top:300.5px}
+.title-world-switch:focus-visible,.title-world-choice:focus-visible{outline:2px solid #ffff00;outline-offset:1px}
 .title-option:focus-visible,.title-help:focus-visible{outline:2px solid #ffff00;outline-offset:1px}
 #login-form{position:absolute;inset:0;pointer-events:none}
 #login-form input{position:absolute;width:192px;height:15px;margin:0;padding:0;border:0;border-radius:0;background:transparent;color:transparent;caret-color:transparent;font-size:16px;pointer-events:auto;outline:none}

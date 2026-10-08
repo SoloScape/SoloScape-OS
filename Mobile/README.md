@@ -1235,3 +1235,20 @@ username persistence and controls. Jagex account login, authenticator, world
 selection and recovery screens are not implemented. Pixel-exact parity still
 requires a live reference screenshot because OpenOSRS's original game renderer
 comes from a separately distributed injected game client.
+
+### Revision-240 title-screen alignment corrections
+
+The in-game title was aligned against provided 765x503 OpenOSRS reference screenshots:
+the welcome/login titlebox now starts at title-space y=170 (previously 152),
+without shifting the background or logo. The login prompt is at baseline y=214
+and the Login label starts 2px farther left. Remember/Hide username uses the
+smaller p11 cache font and **left-aligned circular controls** with a green
+tick; both checkboxes retain functional pointer and keyboard targets.
+
+The original **World 255 / Click to switch** button returns at title-space
+x=5, y=463, using the revision-240 sl_button sprite when available, with a
+safe fallback. Clicking opens a single-world selector with World 255 and a
+Back button; it does **not** offer unconfigured servers or change any login
+endpoint. Returning to login preserves entered fields. The World button is
+hidden while connecting and after authentication. Tests cover geometry,
+small-font drawing, circle coordinates and world-switch interactions.

@@ -22,7 +22,7 @@ export const OSRS_TITLE_COPY=Object.freeze({
 export function titleLayout(width,height){
     const scale=Math.min(width/765,height/503,1);
     const x=(width-765*scale)/2,y=(height-503*scale)/2;
-    return {scale,x,y,panelOffset:-18,
+    return {scale,x,y,panelOffset:0,
         backgroundScale:scale,bx:x-162*scale,by:y,
         muteX:x+725*scale,muteY:y+463*scale};
 }
@@ -66,6 +66,10 @@ export class NativeTitleScreen{
         this.remember=document.getElementById("title-remember");
         this.hideUsername=document.getElementById("title-hide-username");
         this.help=document.getElementById("title-login-help");
+        this.worldButton=document.getElementById("title-world-switch");
+        this.worldCurrent=document.getElementById("title-world-current");
+        this.worldBack=document.getElementById("title-world-back");
+        this.worldId=255;this.worldReturnMode="welcome";
         this.remembered=false;this.usernameHidden=false;
         this.optionHover={remember:false,hide:false,help:false};
         try{
@@ -114,6 +118,9 @@ export class NativeTitleScreen{
         });
         this.usernameInput= document.getElementById("login-username");
         this.usernameInput.addEventListener("input",this.saveUsername=()=>this.persistRememberedUsername());
+        this.worldButton?.addEventListener("click",()=>this.showWorldSelect());
+        this.worldCurrent?.addEventListener("click",()=>this.closeWorldSelect());
+        this.worldBack?.addEventListener("click",()=>this.closeWorldSelect());
         this.back.addEventListener("click",()=>{this.onCancel();this.showWelcome();});
         this.mute.addEventListener("click",()=>{this.music?.toggle();this.mute.setAttribute("aria-pressed",String(this.music?.muted??false));});
         this.gesture=()=>void this.music?.unlock();
@@ -131,13 +138,13 @@ export class NativeTitleScreen{
                 this.assets.background=await createImageBitmap(new Blob([bytes],{type:"image/jpeg"}));
                 if(this.assets.background.width!==545||this.assets.background.height!==671)throw new Error("Unexpected revision-240 wide title dimensions");
             }],
-            ...["logo","titlebox","titlebutton","runes","title_mute","options_radio_buttons"].map(name=>["Loading sprites - ",async()=>{
+            ...["logo","titlebox","titlebutton","runes","title_mute","sl_button"].map(name=>["Loading sprites - ",async()=>{
                 let frames;
                 try{frames=decodeIndexedSprites(await namedTitleFile(cache,8,name));}
                 catch(error){
                     // The OSRS option sprite is decorative: use drawn radio boxes
                     // if this optional archive is absent; never break login.
-                    if(name==="options_radio_buttons")return;
+                    if(name==="sl_button")return;
                     throw error;
                 }
                 this.assets.sprites.set(name,frames.map(spriteCanvas));
@@ -169,6 +176,16 @@ export class NativeTitleScreen{
             }
         }catch{} // Storage might be unavailable in private browsing.
     }
+    showWorldSelect(){
+        if(!["welcome","login"].includes(this.mode))return;
+        this.worldReturnMode=this.mode;
+        this.mode="world-select";this.syncControls();this.paint();
+    }
+    closeWorldSelect(){
+        if(this.mode!=="world-select")return;
+        this.mode=this.worldReturnMode;
+        this.syncControls();this.paint();
+    }
     showWelcome(){this.mode="welcome";this.visible=true;document.body.classList.remove("in-game");this.status.textContent="";this.music?.show();this.syncControls();this.restart();}
     showLogin(message=""){
         this.mode="login";this.visible=true;document.body.classList.remove("in-game");this.status.textContent=message;
@@ -194,6 +211,9 @@ export class NativeTitleScreen{
         this.newAccount.hidden=this.login.hidden=this.mode!=="welcome";
         this.form.hidden=this.mode!=="login";this.back.hidden=this.mode!=="login";
         this.mute.hidden=["loading","error"].includes(this.mode)||!this.visible;
+        if(this.worldButton)this.worldButton.hidden=!this.visible||!["welcome","login"].includes(this.mode);
+        if(this.worldCurrent)this.worldCurrent.hidden=this.mode!=="world-select";
+        if(this.worldBack)this.worldBack.hidden=this.mode!=="world-select";
         this.canvas.parentElement.hidden=!this.visible;
     }
     text(ctx,text,x,y,color="#ffffff",small=false){
@@ -203,17 +223,18 @@ export class NativeTitleScreen{
     }
     button(ctx,x,y,label){const sprite=this.assets.sprites.get("titlebutton")?.[0];if(sprite)ctx.drawImage(sprite,Math.floor(x-sprite.width/2),Math.floor(y-sprite.height/2));this.text(ctx,label,x,y+5);}
     option(ctx,{x,label,checked,hovered=false}){
-        const font=this.assets.font;if(!font)return;
-        font.draw(ctx,label,x,290,"#ffff00",true);
-        const frames=this.assets.sprites.get("options_radio_buttons");
-        const sprite=frames?.[checked?(hovered?6:2):(hovered?4:0)];
-        const left=x+font.measure(label)+6;
-        if(sprite)ctx.drawImage(sprite,left,278);
-        else{
-            // Keep the option visible if an optional sprite fails to decode.
-            ctx.strokeStyle="#d6ad57";ctx.strokeRect(left+.5,278.5,12,12);
-            if(checked){ctx.fillStyle="#ffff00";ctx.fillRect(left+3,281,7,7);}
+        const font=this.assets.small??this.assets.font;if(!font)return;
+        // OpenOSRS login reference displays dark circular toggles with a green
+        // tick when checked. The cache option sprite in this build is square.
+        ctx.beginPath();ctx.fillStyle=hovered?"#50351b":"#2d1d11";
+        ctx.arc(x+6,284,6,0,Math.PI*2);ctx.fill();
+        ctx.strokeStyle="#0b0604";ctx.lineWidth=1.2;ctx.stroke();
+        if(checked){
+            ctx.beginPath();ctx.moveTo(x+2,284);ctx.lineTo(x+5,287);
+            ctx.lineTo(x+10,280);ctx.strokeStyle="#36ce74";ctx.lineWidth=2;
+            ctx.stroke();
         }
+        font.draw(ctx,label,x+17,290,"#ffff00",true);
     }
     paint(){
         if(!this.visible)return;
@@ -249,27 +270,32 @@ export class NativeTitleScreen{
             const box=this.assets.sprites.get("titlebox")?.[0];if(box)ctx.drawImage(box,202,170);
             if(this.mode==="welcome"){
                 this.text(ctx,OSRS_TITLE_COPY.welcome,382,251,"#ffff00");this.button(ctx,302,291,OSRS_TITLE_COPY.newUser);this.button(ctx,462,291,OSRS_TITLE_COPY.existingUser);
+            }else if(this.mode==="world-select"){
+                this.text(ctx,"Select a world",382,219,"#ffff00");
+                this.text(ctx,`World ${this.worldId}`,382,267,"#ffffff");
+                this.text(ctx,"Current world - only world configured",382,286,"#ffff00",true);
+                this.button(ctx,382,321,"Back");
             }else if(this.mode==="login"||this.mode==="connecting"){
                 // Reflect actual cache/authentication/map stages instead of always claiming
                 // the TCP handshake is still in progress after it has succeeded.
                 const message=this.status.textContent||"Connecting to server...";
                 const words=message.split(" "),rows=[];let line="";
                 for(const word of words){const next=line?line+" "+word:word;if(line&&(this.assets.font?.measure(next)??next.length*7)>320){rows.push(line);line=word;}else line=next;}if(line)rows.push(line);
-                rows.slice(0,3).forEach((row,i)=>this.text(ctx,row,382,201+i*15,"#ffff00"));
+                rows.slice(0,3).forEach((row,i)=>this.text(ctx,row,382,214+i*15,"#ffff00"));
                 const font=this.assets.font,fields=[[OSRS_TITLE_COPY.loginLabel,"login-username",253,false],[OSRS_TITLE_COPY.passwordLabel,"login-password",268,true]];
                 for(const [label,id,y,masked] of fields){
                     const input=document.getElementById(id),value=masked||this.usernameHidden?"*".repeat(masked&&this.mode==="connecting"?this.connectingPasswordLength:input.value.length):input.value;
                     const active=this.mode==="login"&&document.activeElement===input,field=titleFieldLayout(font,value,input.selectionStart,input.selectionEnd,active);
                     this.fieldLayouts.set(input,field);
-                    const x=274+font.measure(label);
+                    const x=272+font.measure(label);
                     input.style.left=x+"px";
-                    font.draw(ctx,label,274,y,"#ffffff",true);
+                    font.draw(ctx,label,272,y,"#ffffff",true);
                     font.draw(ctx,field.text,x,y,"#ffffff",true);
                     if(active&&Math.floor(performance.now()/500)%2===0)font.draw(ctx,"|",x+field.caret,y,"#ffffff",true);
                 }
                 if(this.mode==="login"){
-                    this.option(ctx,{x:274,label:OSRS_TITLE_COPY.remember,checked:this.remembered,hovered:this.optionHover.remember});
-                    this.option(ctx,{x:430,label:OSRS_TITLE_COPY.hide,checked:this.usernameHidden,hovered:this.optionHover.hide});
+                    this.option(ctx,{x:267,label:OSRS_TITLE_COPY.remember,checked:this.remembered,hovered:this.optionHover.remember});
+                    this.option(ctx,{x:408,label:OSRS_TITLE_COPY.hide,checked:this.usernameHidden,hovered:this.optionHover.hide});
                     this.button(ctx,302,321,OSRS_TITLE_COPY.login);
                     this.button(ctx,462,321,OSRS_TITLE_COPY.cancel);
                     this.text(ctx,OSRS_TITLE_COPY.help,382,357,this.optionHover.help?"#ffff00":"#ffffff",true);
@@ -277,6 +303,25 @@ export class NativeTitleScreen{
             }
         }
         ctx.restore();
+        if(this.worldButton&&!this.worldButton.hidden){
+            // Rev-240 world-select button at the fixed bottom-left. This is
+            // outside the titlebox transform, like the original client.
+            const sprite=this.assets.sprites.get("sl_button")?.[0];
+            if(sprite)ctx.drawImage(sprite,5,463);
+            else{
+                ctx.fillStyle="#3b2b20";ctx.fillRect(5,463,100,35);
+                ctx.strokeStyle="#000000";ctx.strokeRect(5.5,463.5,99,34);
+            }
+            const font=this.assets.font,small=this.assets.small??font;
+            if(font){
+                const name=`World ${this.worldId}`;
+                font.draw(ctx,name,55-Math.floor(font.measure(name)/2),477,"#ffffff",true);
+            }
+            if(small){
+                const prompt="Click to switch";
+                small.draw(ctx,prompt,55-Math.floor(small.measure(prompt)/2),491,"#ffffff",true);
+            }
+        }
         if(!this.mute.hidden){
             this.mute.style.left=controls.muteX+"px";this.mute.style.top=controls.muteY+"px";
             this.mute.style.width=this.mute.style.height=36*controls.scale+"px";
