@@ -11,7 +11,6 @@ type TabId =
   | 'combat' | 'inventory' | 'equipment' | 'prayer' | 'magic'
   | 'quests' | 'journal' | 'skills' | 'friends' | 'clan'
   | 'emotes' | 'music' | 'settings' | 'account';
-type HotkeyId = TabId | 'run' | 'special' | 'drop';
 
 interface HudAction {
   readonly id: TabId;
@@ -37,18 +36,6 @@ const EXTRA_STONES: readonly HudAction[] = [
   { id: 'account', name: 'Account' },
 ];
 const STONES = [...MAIN_STONES, ...EXTRA_STONES];
-
-/**
- * Classic OSRS interface group ids (verified against archive 3 on demand).
- * These are the cache widget groups, not synthetic web-panel templates.
- * Server IF_OPENSUB bindings will eventually supersede the default map.
- */
-const CACHE_TAB_GROUPS: Partial<Record<TabId, number>> = {
-  combat: 593, inventory: 149, equipment: 387, prayer: 541,
-  magic: 218, quests: 629, journal: 629, skills: 320,
-  friends: 429, clan: 7, emotes: 216, music: 239,
-  settings: 116, account: 109,
-};
 
 /**
  * xrsps reference: server/src/widgets/viewport/mobile.ts (toplevel_osm).
@@ -240,44 +227,12 @@ export class MobileHud {
       ? 'Run energy unavailable' : 'Run energy ' + energy + ' / 10000';
     orb.setAttribute('aria-label', orb.title);
     this.interfaceRenderer?.refreshServerState();
-    if (this.selectedTab === 'skills') this.renderLiveSkills();
     if (this.selectedTab && this.serverUi) {
       const resolved = this.resolveTabInterface(this.selectedTab);
       if (resolved.groupId !== this.activePanelGroup ||
         resolved.confirmed !== this.activeServerConfirmed) {
         this.renderCachedPanel(this.selectedTab);
       }
-    }
-  }
-
-  private renderLiveSkills(): void {
-    if (this.selectedTab !== 'skills') return;
-    let view = this.panelBody.querySelector<HTMLElement>('.hud-live-skills');
-    if (!view) {
-      view = document.createElement('div');
-      view.className = 'hud-live-skills';
-      this.panelBody.append(view);
-    }
-    const skills = this.serverUi?.skills;
-    view.replaceChildren();
-    if (!skills?.size) {
-      view.textContent = 'Waiting for UPDATE_STAT_V2 packets.';
-      return;
-    }
-    const names = [
-      'Attack', 'Defence', 'Strength', 'Hitpoints', 'Ranged', 'Prayer',
-      'Magic', 'Cooking', 'Woodcutting', 'Fletching', 'Fishing',
-      'Firemaking', 'Crafting', 'Smithing', 'Mining', 'Herblore',
-      'Agility', 'Thieving', 'Slayer', 'Farming', 'Runecraft',
-      'Hunter', 'Construction', 'Sailing',
-    ];
-    view.setAttribute('aria-label', 'Live server skill levels');
-    for (const [id, stat] of [...skills].sort((a, b) => a[0] - b[0])) {
-      const cell = document.createElement('span');
-      cell.className = 'hud-live-skill';
-      cell.textContent = (names[id] ?? 'Skill ' + id) + ': ' +
-        stat.currentLevel + ' (' + stat.experience.toLocaleString('en-GB') + ' XP)';
-      view.append(cell);
     }
   }
 
@@ -318,7 +273,7 @@ export class MobileHud {
   }
 
   setPlayer(_position: { x: number; z: number; level: number; yaw: number } | null): void {
-    this.clearMinimap();
+    // No invented minimap or player-marker artwork.
   }
 
   private require<T extends Element>(selector: string): T {
@@ -425,15 +380,14 @@ export class MobileHud {
     groupId: number | null;
     confirmed: boolean;
   } {
-    const known = CACHE_TAB_GROUPS[tab];
     const open = [...(this.serverUi?.subInterfaces.values() ?? [])]
       .filter((entry) => this.interfaceGroupIds.has(entry.groupId));
     if (this.manuallySelectedGroup !== null) {
       const manual = open.find((entry) => entry.groupId === this.manuallySelectedGroup);
       if (manual) return { groupId: manual.groupId, confirmed: true };
     }
-    // In mobile mode the destination UID, not the mounted group ID,
-    // determines which panel the server has opened for this tab.
+    // Only live revision-240 server destination attachments determine
+    // the widget group, never historical default group ids.
     const child = MOBILE_TAB_DESTINATIONS[tab];
     if (this.serverUi?.topLevelInterface === 601 && child !== undefined) {
       const mounted = this.serverUi.subInterfaces.get((601 << 16) | child);
@@ -441,13 +395,7 @@ export class MobileHud {
         return { groupId: mounted.groupId, confirmed: true };
       }
     }
-    const matched = open.find((entry) => entry.groupId === known);
-    if (matched) return { groupId: matched.groupId, confirmed: true };
-    return {
-      groupId: known !== undefined && this.interfaceGroupIds.has(known)
-        ? known : null,
-      confirmed: false,
-    };
+    return { groupId: null, confirmed: false };
   }
 
   private renderCachedPanel(tab: TabId): void {
@@ -465,24 +413,13 @@ export class MobileHud {
     if (groupId === null) {
       this.panelBody.replaceChildren();
       const notice = document.createElement('p');
-      notice.textContent = 'No confirmed cache group for this tab.';
+      notice.textContent = 'No server-opened cache interface for this tab.';
       this.panelBody.append(notice);
       this.offerAttachedInterfaceChoices(open);
       return;
     }
     const renderer = this.interfaceRenderer;
-    void renderer.show(groupId, this.panelBody).then(() => {
-      if (this.selectedTab !== tab || this.activePanelGroup !== groupId) return;
-      if (!resolved.confirmed) {
-        const status = document.createElement('small');
-        status.className = 'hud-cache-unverified';
-        status.textContent = 'Historic interface ' + groupId +
-          ' — not yet confirmed by server interface binding.';
-        this.panelBody.prepend(status);
-        this.offerAttachedInterfaceChoices(open);
-      }
-      if (tab === 'skills') this.renderLiveSkills();
-    });
+    void renderer.show(groupId, this.panelBody);
   }
 
   private offerAttachedInterfaceChoices(open: ReadonlyArray<{groupId: number; destination: number}>): void {
