@@ -8,40 +8,32 @@ client, the rev-240 game-login handshake, server game-packet framing,
 normal/instanced region rebuild decoding, and the static terrain/loc/model
 asset pipeline for OSRS protocol revision 240 / client 240.2.
 
-## Mobile OSRS HUD (layout scaffold)
+## Cache-only mobile HUD
 
-Once the region scene is loaded, the browser now presents a landscape,
-edge-to-edge game HUD modelled on the November 2024 OSRS mobile redesign:
+All visible RuneScape HUD graphics must come from the connected validated
+revision-240.2 JS5 cache. The client loads original archive-3 widget groups
+and their archive-8 sprite references, using archive-8 glyphs and archive-13
+font metrics. Any game UI without a verified asset is left visually absent.
 
-- Five left-side hotkeys, with cycling PvM, Bossing and Skilling profiles.
-- Two columns of right-side Side Stones (collapse the secondary column),
-  with switching panels for inventory, skills, equipment, prayer, magic,
-  combat and the remaining main tabs.
-- Top-right circular minimap plus surrounding status orbs. The minimap draws
-  a **terrain-only approximation** from the live downloaded map-square
-  underlay/overlay ids, centred on the decoded local-player coordinates; it is
-  not yet the Jagex mapscene sprite renderer.
-- Camera compass and zoom controls, collapsible top-left chat/keyboard,
-  a bottom-left hidden/compact/full popout, and a connection-backed logout.
+**The former handmade placeholder HUD has been removed.** No custom SVG
+icon path table, guessed `sideicons` frame-to-tab table, fake hotkey
+profiles, invented status-orb art, CSS stone/metal gradients, bevel effects,
+generated game-chat placeholder, or approximate minimap terrain colouring
+is used. HTML controls remain transparent, focusable hit targets with
+accessible labels. The 3D game view is never obscured by a large cache
+gameframe background sprite.
 
-This is an OSRS mobile *layout shell* with **cache-driven archive-3 game
-panels** rather than fabricated inventory, skills, equipment, prayer and
-spell grids. Widget sprites and text are drawn from the validated cache where
-the supported widget types allow it. HUD chrome and certain icons are still
-provisional. Actual inventory items, skill levels, prayer points, hitpoints,
-special energy, chat, item actions and popout data require the corresponding
-server-packet handlers. Tap-to-drop/run toggles currently affect only the
-UI. The cache-backed title/login screen remains unchanged, and the HUD
-appears only after entering the world.
+The minimap canvas is intentionally transparent until accurate original
+mapscene/minimap rendering exists. The current UI does not pretend to
+render the map using guessed terrain colours or a fake player marker.
+
+Panels are opened only from actual server `IF_OPENSUB` or `IF_RESYNC_V2`
+destination attachments and available archive-3 groups. If no verified
+server mount exists, no invented inventory/skills/combat panel is drawn.
+An explicit diagnostic and a selector for *actually server-opened* cache
+groups are available. The login/title screen remains cache-backed.
 
 ## Cache-backed game UI assets
-
-The game HUD now requests the original `sideicons` sprite group from JS5
-archive 8 and uses the existing cache-8 glyphs / cache-13 metrics for
-bitmap-font panel headings. Validated sprites replace the corresponding
-hand-drawn SVG tab icons when the cache sheet has those frames. The
-classic sideicons frame index table is provisional and must be checked
-against the rev-240 cache for correct tab artwork.
 
 `CacheInterfaceStore` exposes archive-3 interface component groups as
 an on-demand, validated API. For debugging after connecting:
@@ -67,15 +59,14 @@ Unrendered 3D widget models retain their actual cache model ids; these are
 Server widget overrides update active panel nodes without rerendering all
 cache geometry. Inventory widgets show server-supplied object IDs and stack
 counts as accessible metadata/text **until item-model sprite rendering is
-implemented**. Server skill levels/experience are shown from real packets,
-and legacy CS1 text substitutions use real skill, varp and varbit state.
+implemented**. Server skill levels and experience feed cache widget CS1 expressions;
+no separate synthetic skills panel is drawn.
 
-The historic tab-group candidates remain guarded by the connected cache
-archive-3 reference table. An actual matching IF_OPENSUB/IF_RESYNC attachment
-marks a candidate as server-confirmed. Otherwise the tab explicitly identifies
-the candidate as unverified and offers a selector of *actually server-opened*
-interface groups, so a new revision does not silently masquerade as a known
-classic layout.
+For mobile root 601, the cache-backed tab group is chosen from the live
+server attachment at the corresponding destination child (116-129).
+Historic group IDs are **not** used as default substitutes. Only decoded
+cache assets and server-provided state can produce game visuals.
+
 
 Remaining gaps before pixel-perfect playable UI include 3D interface models,
 item icon generation and item-click packet routing, other CS1/CS2 opcodes,
@@ -88,40 +79,25 @@ protocol coverage but cannot certify live UI correspondence.
 
 ## Cache-native mobile frame (reference: xrsps)
 
-The mobile UI artwork loader now uses the actual revision-240 mobile root
-archive-3 interface **601** (`toplevel_osm`). It attaches the matching
-archive-3 mobile interface groups **892** (hotkeys) at `601:40`,
-**160** (minimap/orbs) at `601:22`, and **728** (popout) at `601:134`.
-These are drawn as original archive-8 sprite images at their cached
-widget positions rather than being reimplemented as SVG icon paths.
+The mobile art renderer reads cache archive-3 group 601 and validated
+related widget groups when available, resolving their original archive-8
+sprite references. These assets are positioned using decoded cache widget
+geometry, while only small edge sprites may render over the 3D scene.
+Original UI controls such as hotkeys require complete widget and CS2
+input handling to become interactive; no made-up artwork is used as a
+replacement. When artwork is unavailable, transparent accessible controls
+remain, not a visually fabricated fallback.
 
-The mapping is cross-checked against
-[xrsps/xrsps-typescript](https://github.com/xrsps/xrsps-typescript)
-[`server/src/widgets/viewport/mobile.ts`](https://github.com/xrsps/xrsps-typescript/blob/main/server/src/widgets/viewport/mobile.ts).
-The reference is BSD 2-Clause licensed and was used to identify interface
-destinations and cache loading behavior; its source and image assets were
-not copied into the SoloScape bundle.
+The [xrsps open-source client](https://github.com/xrsps/xrsps-typescript)
+provides examples of archive decoding and mobile widget destinations.
+It is a reference for understanding cache formats, **not the source of
+assets or a guarantee that an ID matches SoloScape's connected cache**.
 
-IF3 widget sprite IDs are now resolved as **(sprite group, file)** when
-packed; the previous group-only lookup could silently fail even when
-original sprites were present. Sprite sheet offsets are retained in
-normalized canvas images. At bootstrap, the browser verifies that usable
-mobile-root sprite data actually exists before switching off its SVG/CSS
-fallback; caches without the mobile root keep the existing controls. The
-cache images are decorative while the original HTML buttons remain
-functional hit targets.
+Regression tests reject handmade SVG markup, CSS fake game chrome,
+artificial minimap shading and guessed sideicon frame mapping. A live
+revision-240 browser/server test is still needed to confirm visual and
+interactive fidelity.
 
-In mobile root **601**, server-opened interface groups are now selected by
-destination child `116–129` (combat through music), rather than assuming
-that a historic tab group ID identifies its destination. In other roots
-the guarded historic candidates still act as a compatibility fallback.
-
-**Known limitation:** this provides authentic static cache sprite artwork,
-not full OSRS mobile CS2/widget execution. Some layout/hidden state needs
-Jagex client scripts and live server varbits; actual pixel-perfect behavior,
-all button hit regions and all mobile HUD state transitions must still be
-checked on an authentic rev-240 cache/server. It has not been verified in a
-live browser session here.
 
 ## Current game-login flow
 
