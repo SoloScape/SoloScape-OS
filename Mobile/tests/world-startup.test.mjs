@@ -132,9 +132,9 @@ test("real WebGL shader renders client HSL palette pixels and releases palette t
     const browserResult=new Promise(resolve=>{reportResult=resolve;});
     const html=`<!doctype html><html><body><canvas id="scene" style="width:128px;height:128px"></canvas>
 <script type="module">
-import {NativeTerrainViewport} from "/world-webgl.mjs";
-import {HSL_PALETTE} from "/floor-lighting.mjs";
 try{
+    const {NativeTerrainViewport}=await import("/world-webgl.mjs");
+    const {HSL_PALETTE}=await import("/floor-lighting.mjs");
     const viewport=new NativeTerrainViewport(document.getElementById("scene"));
     const terrain={side:64,heights:new Int32Array(4096),
         underlays:new Uint16Array(4096).fill(1),overlays:new Int16Array(4096),
@@ -212,7 +212,7 @@ await fetch("/result?status="+encodeURIComponent(document.body.dataset.result));
                 res.writeHead(200);res.end("received");
             }else if(req.url==="/"){
                 res.writeHead(200,{"Content-Type":"text/html"});res.end(html);
-            }else if(["/world-webgl.mjs","/floor-lighting.mjs","/scene-planes.mjs"].includes(req.url)){
+            }else if(["/world-webgl.mjs","/floor-lighting.mjs","/scene-planes.mjs","/npc-pointer.mjs"].includes(req.url)){
                 res.writeHead(200,{"Content-Type":"text/javascript"});
                 res.end(await readFile(new URL(req.url.slice(1),browserRoot)));
             }else{res.writeHead(404);res.end();}
