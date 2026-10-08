@@ -48,27 +48,42 @@ an on-demand, validated API. For debugging after connecting:
 
     const widgets = await window.soloscapeCacheInterfaces.load(149)
 
-The decoder supports IF1 component headers and inventory-grid dimensions,
-and IF3 container, rectangle, bitmap text, sprite and line properties.
-`CacheInterfaceRenderer` builds a parent/child widget tree, retains original
-cache positions and widget sizes (scaled to the mobile side panel), and
-resolves sprites and matching archive-13 font metrics on demand. Unsupported
-widget types retain raw cache bytes rather than invented substitute artwork.
-Old handcrafted inventory, skills, equipment, prayer, magic and combat grids
-have been deleted.
+The cache decoder covers IF1 layout/CS1, inventory-grid dimensions,
+tooltips and text grids; IF3 containers, rectangles, fonts, text, sprites,
+lines and model metadata. `CacheInterfaceRenderer` positions actual
+parent/child cache widgets and downloads their sprites and fonts through JS5.
+Unrendered 3D widget models retain their actual cache model ids; these are
+**not** replaced with fabricated artwork.
 
-The default tab-to-interface IDs are **classic OSRS candidate mappings**:
-inventory 149, equipment 387, prayer 541, spellbook 218, skills 320, etc.
-Each target is checked against the actual connected archive-3 reference
-table before loading. A group missing in the current cache displays an
-explicit error instead of a fake panel. These historic IDs have not been
-verified live against SoloScape's revision-240 instance; routing by
-server IF_OPENSUB/IF_RESYNC packets is the remaining correct binding step.
-Item containers and dynamic widget state are likewise not synchronized
-until the UPDATE_INV_*/IF_SET*/VARP/UPDATE_STAT packet decoders are wired.
+`Rev240UiState` now processes the exact revision-240 desktop encodings for:
 
-The sideicons group is optional: missing artwork is reported but does not
-prevent archive-3 game interfaces from loading.
+- `IF_OPENTOP`, `IF_OPENSUB`, `IF_RESYNC_V2`, `IF_MOVESUB` and
+  `IF_CLOSESUB`, retaining actual server top/sub interface attachments.
+- `IF_SETTEXT`, `IF_SETHIDE`, `IF_SETSCROLLPOS`, `IF_SETCOLOUR`,
+  `IF_SETPOSITION`, `IF_SETOBJECT`, `IF_SETMODEL_V2` and `IF_CLEARINV`.
+- `UPDATE_INV_FULL`, `UPDATE_INV_PARTIAL`, `UPDATE_INV_STOPTRANSMIT`,
+  `UPDATE_STAT_V2`, `UPDATE_RUNENERGY` and `VARP_*` updates.
+
+Server widget overrides update active panel nodes without rerendering all
+cache geometry. Inventory widgets show server-supplied object IDs and stack
+counts as accessible metadata/text **until item-model sprite rendering is
+implemented**. Server skill levels/experience are shown from real packets,
+and legacy CS1 text substitutions use real skill, varp and varbit state.
+
+The historic tab-group candidates remain guarded by the connected cache
+archive-3 reference table. An actual matching IF_OPENSUB/IF_RESYNC attachment
+marks a candidate as server-confirmed. Otherwise the tab explicitly identifies
+the candidate as unverified and offers a selector of *actually server-opened*
+interface groups, so a new revision does not silently masquerade as a known
+classic layout.
+
+Remaining gaps before pixel-perfect playable UI include 3D interface models,
+item icon generation and item-click packet routing, other CS1/CS2 opcodes,
+dynamic sprites and interface-event interaction masks. Most importantly, a
+live SoloScape revision-240 browser/server session must confirm the real
+mobile tab-to-destination bindings; no local game-server/cache connection was
+available during this change. GitHub Actions tests provide deterministic
+protocol coverage but cannot certify live UI correspondence.
 
 
 ## Current game-login flow
