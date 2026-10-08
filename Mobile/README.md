@@ -15,7 +15,10 @@ The landing page is now the classic title screen. It uses the server's
 The red loading bar advances as those verified assets and music metadata
 finish loading. **New User** is intentionally inactive. **Existing User** opens
 the ordinary login/password form; the authenticator field is removed from this
-screen. Original TSPS rune-fire code drives
+screen. The form requests no browser autofill and supplies password-manager
+ignore hints; browser extensions can override these. Native selection and
+editing remain available, with highlights and the caret painted in cache-font
+coordinates. Original TSPS rune-fire code drives
 the animation. **Scape Main** comes from cache index 6 and plays through the
 ported TSPS MIDI synthesizer with index-15 patches and index-4/14 samples.
 Browser autoplay rules require the first click/tap/key before music starts;

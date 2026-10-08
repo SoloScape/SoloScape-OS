@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {titleLayout} from "../browser/title-screen.mjs";
+import {titleLayout,titleFieldLayout} from "../browser/title-screen.mjs";
 import {NativeAudioCache,retryOnMissingGroup} from "../browser/title-audio-cache.mjs";
 import {NativeTitleMusic} from "../browser/title-music.mjs";
 import {RealtimeMidiSynth} from "../browser/title-audio-realtime-midi-synth.mjs";
@@ -20,6 +20,19 @@ test("OSRS reference keeps native title controls top-aligned over the wide cache
     assert.equal(l.scale,1);assert.equal(l.y,0);assert.equal(l.x,162.5);
     assert.equal(l.backgroundScale,1);assert.equal(l.bx,0);assert.equal(l.by,0);
     assert.equal(titleLayout(1920,1080).scale,1);
+});
+
+test("cache-font selection and caret follow native input offsets through scrolling",()=>{
+    const font={measure:text=>text.length*5};
+    const field=titleFieldLayout(font,"Alice",1,4,true);
+    assert.deepEqual(field.selection,[5,20]);assert.equal(field.caret,20);
+    assert.equal(field.indexAt(6),1);assert.equal(field.indexAt(9),2);
+    assert.equal(titleFieldLayout(font,"Alice",2,2,true).caret,10);
+    assert.equal(titleFieldLayout(font,"Alice",1,4,false).selection,null);
+    const scrolled=titleFieldLayout(font,"abcdefghij",8,10,true,20);
+    assert.equal(scrolled.text,"ghij");assert.deepEqual(scrolled.selection,[10,20]);
+    assert.equal(scrolled.indexAt(0),6);assert.equal(scrolled.indexAt(100),10);
+    assert.deepEqual(titleFieldLayout(font,"*****",1,4,true).selection,[5,20]);
 });
 
 test("music cache bridge waits for one verified group and preserves decoded bytes",async()=>{

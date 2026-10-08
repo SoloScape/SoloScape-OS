@@ -14,6 +14,23 @@ export function titleLayout(width,height){
     return {scale,x:width/2-382*scale,y:0,
         backgroundScale,bx:(width-1089*backgroundScale)/2,by:(height-671*backgroundScale)/2};
 }
+// Native input selection indexes map onto the cache font, including masked
+// passwords and horizontally scrolled text. Never paint the password itself.
+export function titleFieldLayout(font,value,selectionStart,selectionEnd,active,width=185){
+    const advances=Array.from({length:value.length+1},(_,i)=>font.measure(value.slice(0,i)));
+    const caret=selectionEnd??value.length;
+    let start=0;
+    while(start<caret&&advances[caret]-advances[start]>width)start++;
+    let end=start;
+    while(end<value.length&&advances[end+1]-advances[start]<=width)end++;
+    const x=index=>advances[Math.max(start,Math.min(end,index))]-advances[start];
+    return {start,end,text:value.slice(start,end),caret:x(caret),
+        selection:active&&selectionStart!==selectionEnd?[x(selectionStart),x(selectionEnd)]:null,
+        indexAt:position=>{
+            let index=start;while(index<end&&position>(advances[index]+advances[index+1])/2-advances[start])index++;
+            return index;
+        }};
+}
 export async function namedTitleFile(cache,index,name){
     const catalog=await verifiedCatalog(cache,index),group=catalog.names.get(djb2(name));
     if(group===undefined)throw new Error("Cache title asset missing: "+name);
@@ -33,6 +50,34 @@ export class NativeTitleScreen{
         this.mode="loading";this.percent=0;this.message="Connecting to update server";this.assets={sprites:new Map()};this.visible=true;
         this.newAccount=document.getElementById("title-new-account");this.login=document.getElementById("title-login");
         this.back=document.getElementById("title-cancel");this.mute=document.getElementById("title-mute");
+        this.fieldLayouts=new Map();this.fieldListeners=[];
+        for(const input of [document.getElementById("login-username"),document.getElementById("login-password")]){
+            let anchor=null;
+            const indexAt=event=>{
+                const rect=input.getBoundingClientRect();
+                return this.fieldLayouts.get(input)?.indexAt((event.clientX-rect.left)*192/rect.width)??0;
+            };
+            const down=event=>{
+                if(event.pointerType==="touch"||event.button!==0)return;
+                event.preventDefault();input.focus();anchor=event.shiftKey?(input.selectionStart??0):indexAt(event);
+                const end=indexAt(event);input.setSelectionRange(Math.min(anchor,end),Math.max(anchor,end),end<anchor?"backward":"forward");
+                input.setPointerCapture(event.pointerId);this.paint();
+            };
+            const move=event=>{
+                if(anchor===null)return;const end=indexAt(event);
+                input.setSelectionRange(Math.min(anchor,end),Math.max(anchor,end),end<anchor?"backward":"forward");this.paint();
+            };
+            const up=()=>{anchor=null;};
+            const double=event=>{
+                const index=indexAt(event),value=input.value;let start=index,end=index;
+                while(start>0&&!/\s/.test(value[start-1]))start--;
+                while(end<value.length&&!/\s/.test(value[end]))end++;
+                input.setSelectionRange(start,end);this.paint();
+            };
+            for(const [type,handler] of [["pointerdown",down],["pointermove",move],["pointerup",up],["pointercancel",up],["lostpointercapture",up],["dblclick",double]]){
+                input.addEventListener(type,handler);this.fieldListeners.push([input,type,handler]);
+            }
+        }
         this.login.addEventListener("click",()=>this.showLogin("Enter your username/email & password."));
         this.back.addEventListener("click",()=>{this.onCancel();this.showWelcome();});
         this.mute.addEventListener("click",()=>{this.music?.toggle();this.mute.setAttribute("aria-pressed",String(this.music?.muted??false));});
@@ -126,10 +171,14 @@ export class NativeTitleScreen{
                 const font=this.assets.small,fields=[["Login:","login-username",253,false],["Password:","login-password",268,true]];
                 for(const [label,id,y,masked] of fields){
                     const input=document.getElementById(id),value=masked?"*".repeat(input.value.length):input.value;
-                    let display=value;while(display.length&&font.measure(display)>185)display=display.slice(1);
+                    const active=document.activeElement===input,field=titleFieldLayout(font,value,input.selectionStart,input.selectionEnd,active);
+                    this.fieldLayouts.set(input,field);
                     const x=274+font.measure(label);
                     input.style.left=x+"px";
-                    font.draw(ctx,label,274,y,"#ffffff",true);font.draw(ctx,display+(document.activeElement===input&&Math.floor(performance.now()/500)%2===0?"|":""),x,y,"#ffffff",true);
+                    font.draw(ctx,label,274,y,"#ffffff",true);
+                    if(field.selection){ctx.fillStyle="#316ac5";ctx.fillRect(x+field.selection[0],y-12,field.selection[1]-field.selection[0],15);}
+                    font.draw(ctx,field.text,x,y,"#ffffff",true);
+                    if(active&&!field.selection&&Math.floor(performance.now()/500)%2===0)font.draw(ctx,"|",x+field.caret,y,"#ffffff",true);
                 }
                 this.button(ctx,302,321,document.getElementById("login-submit").disabled?"Please wait...":"Login");this.button(ctx,462,321,"Cancel");
             }
@@ -141,5 +190,5 @@ export class NativeTitleScreen{
             const sprite=this.assets.sprites.get("title_mute")?.[this.music?.muted?1:0];if(sprite)ctx.drawImage(sprite,mx,my,36*l.scale,36*l.scale);
         }
     }
-    dispose(){cancelAnimationFrame(this.animation);window.removeEventListener("resize",this.resize);window.visualViewport?.removeEventListener("resize",this.resize);document.removeEventListener("pointerup",this.gesture,true);document.removeEventListener("keydown",this.gesture,true);this.fire?.destroy();this.music?.dispose();this.assets.background?.close();}
+    dispose(){cancelAnimationFrame(this.animation);for(const [input,type,handler] of this.fieldListeners)input.removeEventListener(type,handler);window.removeEventListener("resize",this.resize);window.visualViewport?.removeEventListener("resize",this.resize);document.removeEventListener("pointerup",this.gesture,true);document.removeEventListener("keydown",this.gesture,true);this.fire?.destroy();this.music?.dispose();this.assets.background?.close();}
 }

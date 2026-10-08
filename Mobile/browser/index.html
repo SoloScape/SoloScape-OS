@@ -48,9 +48,9 @@
  <div id="title-controls">
   <button id="title-new-account" class="title-button welcome-new" type="button" aria-disabled="true" hidden>New User</button>
   <button id="title-login" class="title-button welcome-login" type="button" hidden>Existing User</button>
-  <form id="login-form" hidden>
-   <label class="sr-only" for="login-username">Login</label><input id="login-username" name="username" autocomplete="username" maxlength="320" spellcheck="false" autocapitalize="none" required>
-   <label class="sr-only" for="login-password">Password</label><input id="login-password" name="password" type="password" autocomplete="current-password" maxlength="80" required>
+  <form id="login-form" autocomplete="off" hidden>
+   <label class="sr-only" for="login-username">Login</label><input id="login-username" name="login-entry" autocomplete="off" data-lpignore="true" data-1p-ignore maxlength="320" spellcheck="false" autocapitalize="none" required>
+   <label class="sr-only" for="login-password">Password</label><input id="login-password" name="secret-entry" type="password" autocomplete="off" data-lpignore="true" data-1p-ignore maxlength="80" required>
    <button id="login-submit" class="title-button form-login" type="submit" disabled>Login</button>
   </form>
   <button id="title-cancel" class="title-button form-cancel" type="button" hidden>Cancel</button>

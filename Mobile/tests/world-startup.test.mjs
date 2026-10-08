@@ -268,6 +268,10 @@ try{
     if(screen.querySelector("form").hidden||screen.querySelector("p").textContent!=="Enter your username/email & password.")throw new Error("Existing User did not open OSRS login form");
     for(const label of ["Welcome to RuneScape","New User","Existing User","Login:","Password:"])if(!titleText.includes(label))throw new Error("Missing OSRS title label: "+label);
     if(titleText.includes("Code:")||screen.querySelector("#login-otp"))throw new Error("Authenticator field remains on ordinary login");
+    const titleInput=screen.querySelector("#login-username");titleInput.value="Alice";titleInput.focus();titleInput.setSelectionRange(1,4);title.paint();
+    const titlePixels=screen.querySelector("canvas").getContext("2d").getImageData(0,0,screen.querySelector("canvas").width,screen.querySelector("canvas").height).data;
+    let highlighted=false;for(let i=0;i<titlePixels.length;i+=4)if(titlePixels[i]===49&&titlePixels[i+1]===106&&titlePixels[i+2]===197){highlighted=true;break;}
+    if(!highlighted)throw new Error("Native input selection has no visible cache-font highlight");
     screen.querySelector("#login-password").value="synthetic";title.enterGame();
     if(!screen.hidden||!document.body.classList.contains("in-game"))throw new Error("Title remained over authenticated game");
     title.showLogin("Disconnected");
