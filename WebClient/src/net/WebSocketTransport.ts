@@ -8,6 +8,7 @@ export class WebSocketTransport {
   onText: ((text: string) => void) | null = null;
   onStateChange: ((state: TransportState) => void) | null = null;
   onError: ((error: Event) => void) | null = null;
+  onClose: ((code: number, reason: string) => void) | null = null;
 
   async connect(url: string): Promise<void> {
     this.disconnect();
@@ -50,9 +51,10 @@ export class WebSocketTransport {
         }
       });
 
-      socket.addEventListener('close', () => {
+      socket.addEventListener('close', (event) => {
         if (this.socket === socket) {
           this.socket = null;
+          this.onClose?.(event.code, event.reason);
           this.state = 'closed';
           this.onStateChange?.(this.state);
         }
