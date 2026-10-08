@@ -14,7 +14,7 @@ function smart(n) {
         return b;
     }
     const b = Buffer.alloc(4);
-    b.writeUInt32BE(n | 0x80000000);
+    b.writeUInt32BE((n | 0x80000000) >>> 0);
     return b;
 }
 
