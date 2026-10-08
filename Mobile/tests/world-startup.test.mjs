@@ -184,6 +184,8 @@ await fetch("/result?status="+encodeURIComponent(document.body.dataset.result));
             child.kill("SIGKILL");await once(child,"exit");
         }
         await new Promise(resolve=>server.close(resolve));
-        await rm(profile,{recursive:true,force:true});
+        // Chrome helpers may finish writing briefly after the parent exits.
+        // Retry ENOTEMPTY/EBUSY cleanup without hiding a persistent failure.
+        await rm(profile,{recursive:true,force:true,maxRetries:10,retryDelay:100});
     }
 });
