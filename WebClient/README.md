@@ -23,12 +23,14 @@ is used. HTML controls remain transparent, focusable hit targets with
 accessible labels. The 3D game view is never obscured by a large cache
 gameframe background sprite.
 
-The minimap now paints terrain using the **actual decoded cache floor
-underlay/overlay RGB definitions** from the same scene-material loader as
-the 3D world, and the server's real player coordinates. Tiles without
-resolvable cache colour remain transparent: no guessed terrain palette or
-fake player-marker sprite. Full original mapscene icon/shape rendering is
-still pending.
+The minimap now rasterizes the **actual assembled 3D scene terrain
+triangles** into a north-up terrain image, preserving the original decoded
+floor shape geometry and per-vertex lighting. Cached texture colours are
+used when supplied by the validated scene-material archive; unknown
+texture tiles remain transparent. The view follows the server player's
+real coordinates and camera yaw. This replaces the incorrect raw-floor-RGB
+grid renderer. True cache mapscene sprite layers, wall markers, player
+marker sprites and CS2-driven minimap modes remain to be implemented.
 
 Panels are opened only from actual server `IF_OPENSUB` or `IF_RESYNC_V2`
 destination attachments and available archive-3 groups. If no verified
@@ -49,9 +51,11 @@ groups are available. The login/title screen remains cache-backed.
   become world-walk clicks. Server game-WebSocket close codes/reasons are
   included in the debug log.
 - The compass is loaded from an actual verified named `compass` sprite group
-  when present in the connected archive 8. HP and Prayer levels come only
-  from server `UPDATE_STAT_V2` packets and appear in the original cached
-  bitmap font. No server value means no fabricated displayed number.
+  when present in connected archive 8. Hitpoints and Prayer levels come
+  from server `UPDATE_STAT_V2` packets; run energy comes from the server
+  `UPDATE_RUNENERGY` packet. All three numeric readouts use the original
+  cached bitmap font, with percent conversion only for the server-provided
+  0–10000 run-energy scale. Missing server values are not fabricated.
 - Original cache widgets now honour `IF_SETHIDE` server visibility updates.
   Full CS2-based pressed/highlight state and icon action binding remain
   future work; static default cache sprites are not proof of active state.
