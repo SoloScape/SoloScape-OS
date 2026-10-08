@@ -55,6 +55,16 @@ internal object BotPvpPolicy {
             (if (it == current) 20 else 0) - (if (it in retaliating) 40 else 0)
     }
 
+    /** Only explicit yes/no replies to an outstanding invitation have meaning. */
+    fun playerTeamReply(message: String): Boolean? = when (message.trim().lowercase()) {
+        "yes" -> true
+        "no" -> false
+        else -> null
+    }
+
+    fun playerTeamActive(leaderInWilderness: Boolean, followerInWilderness: Boolean): Boolean =
+        leaderInWilderness && followerInWilderness
+
     /** One uniform roll across the sizes that fit the remaining Wilderness population. */
     fun squadSize(remaining: Int, sizeRoll: Int): Int {
         require(remaining >= 2)
