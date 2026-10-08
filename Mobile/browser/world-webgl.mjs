@@ -195,7 +195,7 @@ export function buildTerrainMesh(terrain){
         for(const face of buildTileGeometry(shape,rotation,heights,colors)){
             if(lighting&&(face.isOverlay?overlayHsl:underlay)===-1)continue;
             for(const [vx,vy,h,hsl] of face.vertices) {
-                numbers.push(x+vx-31.5,-h/32,y+vy-31.5,hsl??0,0,0);
+                numbers.push(x+vx-31.5,-h/128,y+vy-31.5,hsl??0,0,0);
             }
         }
     }
@@ -225,6 +225,7 @@ export class NativeTerrainViewport {
         const gl=this.gl;
         this.program=program(gl);
         this.buf=gl.createBuffer();
+        this.sceneryBuf=gl.createBuffer();this.sceneryCount=0;
         this.palette=gl.createTexture();
         const pixels=new Uint8Array(65536*4);
         for(let i=0;i<HSL_PALETTE.length;i++){
@@ -283,7 +284,17 @@ export class NativeTerrainViewport {
         gl.bindBuffer(gl.ARRAY_BUFFER,this.buf);
         gl.bufferData(gl.ARRAY_BUFFER,vertices,gl.STATIC_DRAW);
         this.count=vertices.length/6;
-        if(resetCamera)this.target=[0,8,0];
+        if(resetCamera){
+            this.target=[0,-terrain.heights[32*64+32]/128,0];
+            this.setScenery(null);
+        }
+    }
+    setScenery(scene){
+        const vertices=scene?.vertices??new Float32Array();
+        if(!(vertices instanceof Float32Array)||vertices.length%18)throw new Error("Invalid scenery mesh");
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER,this.sceneryBuf);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER,vertices,this.gl.STATIC_DRAW);
+        this.sceneryCount=vertices.length/6;
     }
     render(){
         const gl=this.gl,canvas=this.canvas;
@@ -311,6 +322,13 @@ export class NativeTerrainViewport {
         gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);
         gl.enableVertexAttribArray(c);gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
         gl.drawArrays(this.drawMode,0,this.count);
+        if(this.sceneryCount){
+            gl.uniform1i(gl.getUniformLocation(this.program,"u_wireframe"),0);
+            gl.bindBuffer(gl.ARRAY_BUFFER,this.sceneryBuf);
+            gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);
+            gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
+            gl.drawArrays(gl.TRIANGLES,0,this.sceneryCount);
+        }
     }
     dispose(){
         this.disposed=true;cancelAnimationFrame(this.raf);
@@ -319,7 +337,7 @@ export class NativeTerrainViewport {
             this.canvas.removeEventListener(name,fn);
         }
         window.removeEventListener("keydown",this.onKey);
-        this.gl.deleteBuffer(this.buf);this.gl.deleteTexture(this.palette);
+        this.gl.deleteBuffer(this.buf);this.gl.deleteBuffer(this.sceneryBuf);this.gl.deleteTexture(this.palette);
         this.gl.deleteProgram(this.program);
     }
 }

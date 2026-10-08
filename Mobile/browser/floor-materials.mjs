@@ -12,9 +12,10 @@ const MAX_CHUNKS=128;
 const u32=(bytes,off)=>new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength).getUint32(off,false);
 
 /** Unpack selected file IDs using the native JS5 chunk table (TSPS Archive.decode). */
-export function unpackArchiveFiles(payload,fileIds,requested) {
+export function unpackArchiveFiles(payload,fileIds,requested,{maxFiles=MAX_FILES}={}) {
     if(!(payload instanceof Uint8Array)||payload.length>MAX_DATA||
-        !Array.isArray(fileIds)||fileIds.length<1||fileIds.length>MAX_FILES||
+        !Number.isInteger(maxFiles)||maxFiles<1||maxFiles>100000||
+        !Array.isArray(fileIds)||fileIds.length<1||fileIds.length>maxFiles||
         fileIds.some((id,i)=>!Number.isInteger(id)||id<0||id>0x7fffffff||
             i>0&&id<=fileIds[i-1])){
         throw new Error("Invalid floor archive metadata");

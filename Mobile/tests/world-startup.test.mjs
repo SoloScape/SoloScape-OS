@@ -94,6 +94,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         const modules=[
             "/app.mjs","/native-js5.mjs","/terrain-world.mjs",
             "/world-webgl.mjs","/floor-materials.mjs","/floor-lighting.mjs","/world-startup.mjs",
+            "/cache-reader.mjs","/model-codec.mjs","/object-definitions.mjs","/location-cache.mjs","/scenery-models.mjs",
         ];
         for(const path of modules){
             const response=await fetch(root+path);
@@ -101,6 +102,8 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
             assert.match(response.headers.get("content-type")??"",/text\/javascript/,path);
             assert.ok((await response.text()).length>50,path);
         }
+        const keys=await fetch(root+"/region-keys.json");
+        assert.equal(keys.status,200);assert.deepEqual(await keys.json(),{});
         const missing=await fetch(root+"/missing-module.mjs");
         assert.equal(missing.status,404);
     } finally {
@@ -135,10 +138,22 @@ try{
     const rgb=HSL_PALETTE[937];
     const expected=[rgb>>>16&255,rgb>>>8&255,rgb&255,255];
     if(expected.some((v,i)=>v!==pixel[i]))throw new Error("Pixel "+pixel+" expected "+expected);
+    // A separate object buffer must draw above terrain, then survive recolouring
+    // and clear only when Travel resets the scene.
+    const object=new Float32Array([-8,.5,-8,2000,0,0, 8,.5,-8,2000,0,0,
+        -8,.5,8,2000,0,0, 8,.5,-8,2000,0,0, 8,.5,8,2000,0,0, -8,.5,8,2000,0,0]);
+    viewport.setScenery({vertices:object});
+    viewport.setTerrain(terrain,{resetCamera:false});viewport.render();
+    gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    const objectRgb=HSL_PALETTE[2000],objectExpected=[objectRgb>>>16&255,objectRgb>>>8&255,objectRgb&255,255];
+    if(objectExpected.some((v,i)=>v!==pixel[i]))throw new Error("Scenery pixel "+pixel+" expected "+objectExpected);
+    viewport.setTerrain(terrain);if(viewport.sceneryCount!==0)throw new Error("Travel retained obsolete scenery");
     if(gl.getError()!==gl.NO_ERROR)throw new Error("WebGL error");
     const palette=viewport.palette;
+    const sceneryBuffer=viewport.sceneryBuf;
     viewport.dispose();
     if(gl.isTexture(palette))throw new Error("Palette texture was not disposed");
+    if(gl.isBuffer(sceneryBuffer))throw new Error("Scenery buffer was not disposed");
     document.body.dataset.result="webgl-hsl-pass";
 }catch(error){document.body.dataset.result="webgl-hsl-fail: "+error.message;}
 await fetch("/result?status="+encodeURIComponent(document.body.dataset.result));

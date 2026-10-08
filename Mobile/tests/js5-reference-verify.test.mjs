@@ -106,11 +106,13 @@ async function mockMetadataCache({ corrupted = false } = {}) {
                 const wire = wrapJs5Group(payload, group);
                 socket.write(wire.subarray(0, 128));
                 setTimeout(() => {
-                    if (!socket.destroyed) socket.write(wire.subarray(128, 450));
+                    if (socket.destroyed) return;
+                    socket.write(wire.subarray(128, 450));
+                    // Schedule the next fragment only after this one has been queued.
+                    setTimeout(() => {
+                        if (!socket.destroyed) socket.write(wire.subarray(450));
+                    }, 5);
                 }, 5);
-                setTimeout(() => {
-                    if (!socket.destroyed) socket.write(wire.subarray(450));
-                }, 10);
             }
         });
     });

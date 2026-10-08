@@ -4,12 +4,14 @@ import { loadNativeTerrain, loadTerrainNeighbours } from "./terrain-world.mjs";
 import { NativeTerrainViewport } from "./world-webgl.mjs";
 import { loadFloorMaterials } from "./floor-materials.mjs";
 import { displayTerrainProgressively } from "./world-startup.mjs";
+import { loadStaticScenery } from "./scenery-models.mjs";
 
 const byId=id=>document.getElementById(id);
 const details=byId("loading-detail"),loading=byId("loading"),status=byId("map-status");
 const button=byId("load-world"),x=byId("map-x"),y=byId("map-y");
 const network=byId("network"),dot=byId("network-dot");
 const worldLabel=byId("world-label");
+const sceneryStatus=byId("scenery-status");
 const cache=new NativeJs5Cache({revision:240});
 let renderer=null,attempt=0;
 
@@ -26,6 +28,7 @@ async function enterWorld(allowFallback=false){
     loading.hidden=false;
     details.textContent="Loading a real revision-240 map from SoloScape…";
     status.textContent="";
+    sceneryStatus.textContent="Waiting for terrain before loading scenery…";
     dot.classList.remove("failed","ready");
     try{
         const mapX=Number(x.value),mapY=Number(y.value);
@@ -45,6 +48,7 @@ async function enterWorld(allowFallback=false){
             `Terrain: ${region.terrainFormat} tile opcodes, `+
             `${region.consumedBytes.toLocaleString()} consumed, `+
             `${region.trailingBytes.toLocaleString()} trailing bytes (not interpreted). `;
+        let displayedTerrain=region;
         void displayTerrainProgressively({
             terrain:region,
             isCurrent:()=>sequence===attempt,
@@ -59,10 +63,11 @@ async function enterWorld(allowFallback=false){
                 }
                 worldLabel.textContent=`Region ${scene.mapX}, ${scene.mapY}`;
                 status.textContent=sceneDescription+
-                    "Cache geometry wireframe displayed. Loading floor definitions and neighbouring terrain. No objects or players yet.";
+                    "Cache geometry wireframe displayed. Loading floor definitions and neighbouring terrain. Scenery follows; no players yet.";
             },
             fetchNeighbours:scene=>loadTerrainNeighbours(cache,scene,{isCurrent:()=>sequence===attempt}),
             applyNeighbours:scene=>{
+                displayedTerrain=scene;
                 renderer.setTerrain(scene,{resetCamera:false});
                 status.textContent=sceneDescription+
                     `${scene.neighbours.size}/8 neighbouring regions loaded. Updating edge floor colours. `+
@@ -81,13 +86,37 @@ async function enterWorld(allowFallback=false){
                     (scene.neighbours?`${scene.neighbours.size}/8 neighbouring regions supply edge heights, normals and blend colours. `:
                         "Neighbouring terrain is still loading. ")+
                     (scene.unavailableNeighbours?.length?"Unavailable neighbours leave incomplete edges. ":"")+
-                    "Missing, textured and transparent floor faces are not drawn. Object shadows, textures, objects and players are not implemented.";
+                    "Missing, textured and transparent floor faces are not drawn. Object shadows, textures and players are not implemented.";
             },
             onMaterialError:error=>{
                 status.textContent=sceneDescription+
                     "Verified terrain remains displayed. Floor configuration unavailable ("+
-                    (error?.message??String(error))+"). No objects or players yet.";
+                    (error?.message??String(error))+"). Scenery loads separately; no players yet.";
             },
+        }).then(async()=>{
+            if(sequence!==attempt)return;
+            sceneryStatus.textContent="Loading cache-backed static scenery…";
+            // Optional local map decryption keys; no keys are logged or committed.
+            let key;
+            const response=await fetch("/region-keys.json");
+            if(!response.ok)throw new Error("Local region key configuration unavailable");
+            const keys=await response.json();key=keys[(region.mapX<<8)|region.mapY];
+            const scenery=await loadStaticScenery(cache,displayedTerrain,{key,
+                isCurrent:()=>sequence===attempt,
+                onProgress:progress=>{
+                    if(sequence===attempt)sceneryStatus.textContent=
+                        `Loading scenery: ${progress.rendered} placements prepared, ${progress.models} models loaded…`;
+                },
+            });
+            if(!scenery||sequence!==attempt)return;
+            renderer.setScenery(scenery);
+            sceneryStatus.textContent=`Static scenery: ${scenery.rendered} ground-plane placements, `+
+                `${scenery.models} verified models; ${scenery.skipped} placements and ${scenery.omittedFaces} faces omitted. `+
+                `${scenery.upperPlaneLocations} upper-plane locations are not drawn. `+
+                "Animated/state-dependent objects, textures and alpha faces remain unsupported."+
+                (scenery.errors.length?` ${scenery.errors.length} asset/placement errors; first: ${scenery.errors[0].reason}.`:"");
+        }).catch(error=>{
+            if(sequence===attempt)sceneryStatus.textContent="Static scenery unavailable: "+error.message+". Terrain remains visible.";
         });
     }catch(error){
         if(sequence===attempt){

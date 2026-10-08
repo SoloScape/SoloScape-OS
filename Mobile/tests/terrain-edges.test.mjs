@@ -31,7 +31,7 @@ test("adjacent meshes share exact world-space boundary heights and normals",()=>
         assert.equal(mesh.length,64*64*36,"All 4096 tiles include the last row/column");
         for(let i=0;i<mesh.length;i+=6){
             const x=mesh[i]+31.5+center.mapX*64,y=mesh[i+2]+31.5+center.mapY*64;
-            assert.equal(mesh[i+1],-(x*8+y*16)/32);
+            assert.equal(mesh[i+1],-(x*8+y*16)/128);
         }
     }
     const a=calculateVertexLights(west,65),b=calculateVertexLights(east,65);

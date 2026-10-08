@@ -136,8 +136,12 @@ async function mockCache({ corruptAsset = false } = {}) {
                 const wire = js5Wire(a, g, payload);
                 // Simulate real TCP segments that do not align with JS5 or WS frames.
                 socket.write(wire.subarray(0, 145));
-                setTimeout(() => { if (!socket.destroyed) socket.write(wire.subarray(145, 512)); }, 5);
-                setTimeout(() => { if (!socket.destroyed) socket.write(wire.subarray(512)); }, 10);
+                setTimeout(() => {
+                    if (socket.destroyed) return;
+                    socket.write(wire.subarray(145, 512));
+                    // Preserve TCP byte order even when the platform coalesces timer deadlines.
+                    setTimeout(() => { if (!socket.destroyed) socket.write(wire.subarray(512)); }, 5);
+                }, 5);
             }
         });
     });

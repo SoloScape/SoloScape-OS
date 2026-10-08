@@ -68,3 +68,10 @@ jobs:
           node --check Mobile/browser/world-startup.mjs
           node --check Mobile/browser/diagnostics-app.mjs
           node --check Mobile/browser/app.mjs
+          node --check Mobile/browser/cache-reader.mjs
+          node --check Mobile/browser/location-cache.mjs
+          node --check Mobile/browser/object-definitions.mjs
+          node --check Mobile/browser/model-codec.mjs
+          node --check Mobile/browser/scenery-models.mjs
+          node --check Mobile/browser/region-keys.mjs
+          node --check Mobile/scripts/adapt-model-codec.mjs

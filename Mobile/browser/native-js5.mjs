@@ -115,7 +115,11 @@ export class Js5GroupReader {
         }
         if (dst !== raw.length) throw new Error("Bad JS5 block boundaries");
         const container = raw.slice(3);
-        this.uncompressedBytes = this.compression === 0 ? u32(container, 1) : u32(container, 5);
+        // Index-5 XTEA begins at byte 5, including the expansion-length word.
+        // Defer that bound to decodeCacheContainer after CRC verification and
+        // optional decryption; the clear compressed size remains bounded here.
+        this.uncompressedBytes = this.archive===5&&this.compression!==0 ? null :
+            (this.compression === 0 ? u32(container, 1) : u32(container, 5));
         if (this.uncompressedBytes > MAX_DECODED) throw new Error("Unsafe uncompressed group size");
         this.done = true;
         this.parts = [];

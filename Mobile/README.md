@@ -662,3 +662,56 @@ normals, and weighted blends against an independent radius-five reference. They
 also verify CRC rejection, missing neighbours, diagonal corners, cancellation and
 late material responses. Live visual confirmation of this edge implementation
 against the running SoloScape server is still required.
+
+### Cache-backed static scenery (8 October 2026)
+
+After initial terrain and neighbour loading, the native viewport reads location
+data from a named `lX_Y` group, or file 1 of a combined `mX_Y` group. Delta-coded
+object IDs, four-plane positions, shapes and rotations are bounds checked. Object
+definitions come from verified index 2 group 6; models come from verified index 7.
+Only definitions and models needed by the selected region's ground plane are
+decoded. Missing or corrupt assets are omitted and counted rather than replaced.
+
+`model-codec.mjs` adapts the four decoder formats from the pinned BSD-2-Clause
+TSPS `ModelData`, retaining its licence. Its strict byte reader rejects invalid
+offsets/truncation, and face indices are checked before use. The checked-in
+decoder has no upstream runtime dependencies. To reproduce it with the pinned
+submodule present, run `node scripts/adapt-model-codec.mjs` from `Mobile`.
+
+Placement selects models by shape, swaps footprints on odd orientations, handles
+mirroring and corner/decoration pairs, and applies recolour/retexture mappings,
+scale, offsets, integer rotations, footprint-centre height and supported ground
+contouring. Multipart coincident vertices share lighting normals. Opaque,
+untextured faces use client integer normal lighting and packed HSL palette
+colours. Both terrain heights and models now use **128 units per tile**, removing
+the earlier fourfold terrain-height exaggeration. Scenery has a separate WebGL
+buffer; recolouring preserves it, Travel clears it, and late loads are discarded.
+
+For encrypted location archives, set `SOLOSCAPE_XTEA_FILE` to a local JSON file
+before starting `npm run dev`. Accepted layouts are a region-ID-to-four-word-key
+object, or arrays containing `mapsquare`/`key` or `region`/`keys`. The loopback
+preview exposes these configured keys at `/region-keys.json`, with no-store
+headers; do not configure a credential file or commit map keys. No keys are
+downloaded automatically. With no file, the mapping is empty. CRC validation is
+performed on encrypted bytes before XTEA decrypts complete blocks starting at
+container offset 5, including the expansion-length word. Decompression bounds
+are enforced after decryption. A zero key means unencrypted data; a missing or
+wrong required key leaves scenery unavailable while terrain remains visible.
+
+Live verification against the local revision-240 server decoded **4,726 locations**
+in `m50_50`, using combined JS5 group `5:12850` without a key. The browser rendered
+**2,839 static ground-plane placements from 224 models**, with no asset/placement
+errors. The running desktop client was inspected alongside the browser's
+Lumbridge castle area. This was a limited visual comparison, not parity: textured
+castle walls and foliage, 1,559 upper-plane locations, 328 unsupported/dynamic
+placements and 12,341 textured/alpha/unsupported faces remain omitted. Animation,
+varp/varbit transforms, bridges, cross-object normal merging, object shadows,
+textures, alpha sorting and software-rasterizer priority ordering still need work.
+The user-selected courtyard is the ongoing comparison target. No login or
+gameplay session has been implemented. Encrypted-region handling is fixture
+verified; this live region did not require XTEA.
+
+Tests cover all four model formats, signed vertex deltas, strict locations and
+definitions, XTEA header/tail handling, native CRC rejection, shape/rotation
+mapping, footprint heights and contouring, stale Travel results, omitted material
+paths, and actual headless WebGL scenery depth, recolouring and buffer disposal.

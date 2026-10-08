@@ -99,7 +99,7 @@ test("real height field produces correct bounded WebGL triangle geometry",()=>{
     const mesh=buildTerrainMesh(region);
     assert.equal(mesh.length,63*63*6*6);
     assert.ok(mesh.every(Number.isFinite));
-    assert.deepEqual(Array.from(mesh.subarray(0,3)),[-30.5,2.5,-31.5]);
+    assert.deepEqual(Array.from(mesh.subarray(0,3)),[-30.5,.625,-31.5]);
     assert.throws(()=>buildTerrainMesh({side:64,heights:new Int32Array(40)}),/Invalid/);
 });
 
