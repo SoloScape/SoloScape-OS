@@ -44,3 +44,5 @@ jobs:
           node --check Mobile/gateway/probe-cli.mjs
           node --check Mobile/gateway/game-probe.mjs
           node --check Mobile/gateway/game-probe-cli.mjs
+          node --check Mobile/gateway/gateway-probe.mjs
+          node --check Mobile/gateway/gateway-probe-cli.mjs

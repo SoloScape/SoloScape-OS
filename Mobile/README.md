@@ -157,6 +157,26 @@ local native TCP server**, not through the browser WebSocket gateway.
 
 See [protocol compatibility notes](PROTOCOL.md) for the packet differences and further work.
 
+### Credential-free WebSocket gateway pre-login test
+
+The native TCP probes above prove the local game server's pre-login endpoints work. To test that **the WebSocket gateway carries the same native handshakes**, start the gateway in one PowerShell window (from `Mobile/`):
+
+```powershell
+$env:SOLOSCAPE_GATEWAY_ENABLE_NATIVE = '1'
+$env:SOLOSCAPE_GAME_TCP_PORT = '43594'
+$env:SOLOSCAPE_GATEWAY_ALLOWED_ORIGINS = 'http://localhost:3001'
+npm run gateway
+```
+
+Then, in a **second** PowerShell window, from `Mobile/`, run:
+
+```powershell
+$env:SOLOSCAPE_NATIVE_REVISION = '240'
+npm run probe:gateway
+```
+
+This uses `ws://127.0.0.1:43595/` and `Origin: http://localhost:3001` by default. You can override these using `SOLOSCAPE_GATEWAY_URL` and `SOLOSCAPE_GATEWAY_ORIGIN`; the Origin must match the gateway allowlist. The probe refuses non-loopback plaintext WebSockets. It sends a full native JS5 request (15 plus revision and four random seed integers), opens a **separate connection** to send native game-init (14), verifies response 0 and the full session response, and never reveals the session ID. It does **not** send TSPS packets, passwords or a native game login block. Even when both pass, **TSPS compatibility is not yet implemented**.
+
 ## Known incompatibilities / next engineering work
 
 - TSPS upstream revision **241** versus SoloScape's documented **240.2**: align supported protocol, game packets, cache ids and interface definitions.
