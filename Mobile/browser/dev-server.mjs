@@ -10,25 +10,16 @@ import {previewEnvironment} from "../scripts/tls-config.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const routes = new Map([
-    // The homepage is the native TeaVM/OpenOSRS development client.
-    // The existing working renderer remains independently accessible at /legacy.
+    // Single user-facing client page. /teavm remains a home alias.
     ["/", ["../teavm-poc/site/title.html", "text/html; charset=utf-8"]],
-    ["/legacy", ["index.html", "text/html; charset=utf-8"]],
-    ["/diagnostics", ["diagnostics.html", "text/html; charset=utf-8"]],
-    // Isolated TeaVM feasibility experiment; no gamepack or Java source served.
+    // TeaVM bytecode module is an internal dependency, not a public demo page.
     ["/teavm", ["../teavm-poc/site/title.html", "text/html; charset=utf-8"]],
-    ["/teavm/lab", ["../teavm-poc/site/index.html", "text/html; charset=utf-8"]],
     ["/teavm/title-client.mjs", ["../teavm-poc/site/title-client.mjs", "text/javascript; charset=utf-8"]],
     ["/title-login-session.mjs", ["title-login-session.mjs", "text/javascript; charset=utf-8"]],
     ["/teavm-world.mjs", ["teavm-world.mjs", "text/javascript; charset=utf-8"]],
     ["/teavm/title-assets.mjs", ["../teavm-poc/site/title-assets.mjs", "text/javascript; charset=utf-8"]],
     ["/teavm/title-client.css", ["../teavm-poc/site/title-client.css", "text/css; charset=utf-8"]],
-    ["/teavm/probe.mjs", ["../teavm-poc/site/probe.mjs", "text/javascript; charset=utf-8"]],
-    ["/teavm/model-viewer.mjs", ["../teavm-poc/site/model-viewer.mjs", "text/javascript; charset=utf-8"]],
-    ["/teavm/model-payload.mjs", ["../teavm-poc/site/model-payload.mjs", "text/javascript; charset=utf-8"]],
-    ["/teavm/probe.css", ["../teavm-poc/site/probe.css", "text/css; charset=utf-8"]],
     ["/teavm/bridge.js", ["../teavm-poc/target/javascript/bridge.js", "text/javascript; charset=utf-8"]],
-    ["/diagnostics-app.mjs", ["diagnostics-app.mjs", "text/javascript; charset=utf-8"]],
     ["/world.css", ["world.css", "text/css; charset=utf-8"]],
     ["/terrain-world.mjs", ["terrain-world.mjs", "text/javascript; charset=utf-8"]],
     ["/world-webgl.mjs", ["world-webgl.mjs", "text/javascript; charset=utf-8"]],
@@ -43,7 +34,6 @@ const routes = new Map([
     ["/texture-cache.mjs", ["texture-cache.mjs", "text/javascript; charset=utf-8"]],
     ["/texture-mapper.mjs", ["texture-mapper.mjs", "text/javascript; charset=utf-8"]],
     ["/scene-planes.mjs", ["scene-planes.mjs", "text/javascript; charset=utf-8"]],
-    ["/app.mjs", ["app.mjs", "text/javascript; charset=utf-8"]],
     ["/connection-config.mjs", ["connection-config.mjs", "text/javascript; charset=utf-8"]],
     ["/native-js5.mjs", ["native-js5.mjs", "text/javascript; charset=utf-8"]],
     ["/js5-persistent.mjs", ["js5-persistent.mjs", "text/javascript; charset=utf-8"]],
@@ -54,7 +44,6 @@ const routes = new Map([
         [`/${name}.mjs`,[`${name}.mjs`,"text/javascript; charset=utf-8"]]),
     ...["player-sync","player-protocol","player-config","player-colors","player-models","player-animation","native-gameplay","npc-sync","npc-models","npc-interactions","npc-pointer","native-menu","native-interfaces","interface-canvas","interface-protocol","server-interfaces","native-scripts","dialogue-models"].map(name=>
         [`/${name}.mjs`,[`${name}.mjs`,"text/javascript; charset=utf-8"]]),
-    ["/style.css", ["style.css", "text/css; charset=utf-8"]],
 ]);
 routes.set("/tsps-game-controller.mjs",["tsps-game-controller.mjs","text/javascript; charset=utf-8"]);
 routes.set("/native-loading-lifecycle.mjs",["native-loading-lifecycle.mjs","text/javascript; charset=utf-8"]);

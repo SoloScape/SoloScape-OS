@@ -19,21 +19,17 @@ node scripts\verify.mjs
 ```
 
 The generated module is `target/javascript/bridge.js` (not committed).
-On your LAN visit **https://192.168.0.129:3443/** for the new
-cache-backed title bootstrap. **/legacy** is the previous working native
-WebGL/mobile client. **/teavm/lab** hosts the previous rasterizer/model lab,
-and **/teavm** aliases the new homepage. The title screen needs the native JS5
-gateway; the old renderer lab works without a gateway (its live tests are optional).
-Only after you explicitly submit the login form, the browser sends a native
-RSA/XTEA-encrypted revision-240 login packet to SoloScape over the existing
-WSS-to-TCP gateway. The adapter reuses `NativeGameSession` and validates the
-same JS5 master CRC manifest as `/legacy`. Password and 2FA inputs are cleared
-on submission, and the session can be disconnected; no credentials are
-persisted in browser storage or sent to ChatGPT. Login success keeps an
-independent WebSocket session open and shows the server's player slot, **but
-the original Java OpenOSRS game loop and gameplay are not running**. To play,
-disconnect and log in separately via `/legacy`. The compiled Java gamepack is
-never bundled into Git.
+The public homepage **/** is now the fullscreen SoloScape client.
+It uses original cache-backed title assets, genuine encrypted native OSRS
+login and the same authenticated session for WebGL world and player display.
+The public `/legacy`, `/teavm/lab` and `/diagnostics` routes have been
+removed. The historic bytecode feasibility and model projects remain in the
+local source tree and are verified by `npm run test:teavm`, but are not pages
+served to users. The `/teavm` alias opens the same fullscreen client as `/`.
+
+The browser's native JS login/game networking and WebGL scene remain distinct
+from the original OpenOSRS Java scene renderer, which is not yet ported. The
+original gamepack and its derived artifacts must not be redistributed.
 
 ## Why this is not an OpenOSRS engine port
 
@@ -156,7 +152,7 @@ native viewer input and server movement protocol.
 **Porting boundary:** This is an integrated *native JavaScript/WebGL*
 rendering bridge under the TeaVM title shell, not yet OpenOSRS's Java
 `Rasterizer3D`, Java input handler, or full original game loop compiled by
-TeaVM. The isolated original renderer bytecode proof under `/teavm/lab`
+TeaVM. The isolated original renderer bytecode proof in the local source tree
 remains a separate milestone. This adapter intentionally doesn't try to
 reimplement unported server interface widgets or advanced menus. All models
 and assets must come from the real revision-240 cache, never from a fake

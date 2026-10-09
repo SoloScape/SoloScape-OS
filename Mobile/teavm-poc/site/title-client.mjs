@@ -89,12 +89,11 @@ export function paintTitle(){
             button(462,352,copy.cancel);
         }else if(mode===4){
             text("Connecting to SoloScape...",382,247,"#ffff00");
-            text("Authenticating with the revision-240 game server",382,277,"#ffffff",true);
+            text("Please wait...",382,277,"#ffffff",true);
             button(382,329,"Cancel");
         }else if(mode===3){
             text("Login successful",382,244,"#79ee96");
-            text("Player slot "+account?.playerIndex+" authenticated",382,265,"#ffffff",true);
-            text("TeaVM gameplay is not yet available",382,287,"#ffff00",true);
+            text("Entering world...",382,265,"#ffffff",true);
             button(382,329,"Disconnect");
         }
     }
@@ -126,16 +125,16 @@ async function boot(){
             throw new Error("TeaVM rev-240 title bridge missing; rebuild it");
         core.titleReset();
         paintTitle();
-        say("TeaVM Java initialized. Contacting revision-240 JS5 gateway…");
+        say("Connecting...");
         const config=await connectionConfig;
         if(!config.gatewayUrl)throw new Error(config.message||"Native JS5 gateway is unavailable");
         const cache=new NativeJs5Cache({revision:240,url:config.gatewayUrl,timeoutMs:12000});
         sessionCache=cache;
         await cache.loadMaster();
-        say("Verified JS5 master index. Loading original titlewide.jpg…");
+        say("Loading title screen...");
         background=await imageFromBytes(await namedTitleAsset(cache,10,"titlewide.jpg"));
         paintTitle();
-        say("Loading original revision-240 title sprites…");
+        say("Loading...");
         sprites=await loadTitleSprites(cache);
         // Show the welcome screen as soon as the mandatory original artwork
         // arrives. The optional cache font must never block first paint.
@@ -150,8 +149,7 @@ async function boot(){
                 username.value="";password.value="";otp.value="";
                 core.titleAuthenticated();
                 paintTitle();
-                say("Authenticated as player slot "+result.playerIndex+
-                    ". Loading server world and original cache-backed player model...");
+                say("Entering world...");
             },
             onDisconnected:message=>{
                 worldBridge?.dispose();worldBridge=null;
@@ -159,7 +157,7 @@ async function boot(){
                 core.titleBack();
                 core.titleExistingUser();
                 paintTitle();
-                say("Session ended: "+message+". You can log in again.");
+                say("Disconnected: "+message);
             },
             onGamePacket:packet=>worldBridge?.handle(packet),
             onPacket:({count})=>{
@@ -169,7 +167,7 @@ async function boot(){
         paintTitle();
         canvas.dataset.loaded="true";
         loading.hidden=true;
-        say("Original revision-240 title assets ready. Native encrypted login available. TeaVM gameplay is still in development.");
+        say("");
         void import("/native-menu.mjs")
             .then(({loadCacheMenuFont})=>loadCacheMenuFont(cache,496))
             .then(loaded=>{font=loaded;paintTitle();})
@@ -177,8 +175,7 @@ async function boot(){
     }catch(error){
         loading.hidden=true;
         paintTitle();
-        say("Title screen unavailable: "+(error?.message||String(error))+
-            ". Check JS5 gateway and run npm run build:teavm.");
+        say("Unable to load game: "+(error?.message||String(error)));
         console.error("[teavm-title]",error);
     }
 }
@@ -186,7 +183,7 @@ async function boot(){
 existing.addEventListener("click",()=>{
     if(core?.titleMode()!==1)return;
     core.titleExistingUser();paintTitle();
-    say("Log in using the native revision-240 encrypted protocol. Gameplay is not yet ported to TeaVM.");
+    say("");
     username.focus();
 });
 loginForm.addEventListener("submit",async event=>{
@@ -207,7 +204,7 @@ loginForm.addEventListener("submit",async event=>{
             cache:sessionCache,canvas:worldCanvas,stage:worldStage,title:canvas,
             overlay:worldOverlay,worldStatus,
             onStatus:message=>say(message),
-            onReady:()=>say("Your cache-backed world and character are visible. Touch to rotate, tap terrain to move. TeaVM Java game loop remains a separate port.")
+            onReady:()=>{worldStatus.textContent="";}
         });
         core.titleConnecting();
         paintTitle();
@@ -219,7 +216,7 @@ loginForm.addEventListener("submit",async event=>{
             worldBridge?.dispose();worldBridge=null;
             if(core?.titleMode()===4)core.titleLoginFailed();
             paintTitle();
-            say("Native world/login failed: "+(error?.message||String(error)));
+            say("Unable to log in: "+(error?.message||String(error)));
         }
     }finally{
         details.password="";details.otp="";
@@ -231,7 +228,7 @@ back.addEventListener("click",()=>{
     worldBridge?.dispose();worldBridge=null;
     submit.disabled=false;
     username.value="";password.value="";otp.value="";
-    core?.titleBack();paintTitle();say("Original revision-240 title assets ready.");
+    core?.titleBack();paintTitle();say("");
 });
 disconnect.addEventListener("click",()=>{
     ++attemptId;titleLogin?.disconnect();account=null;
@@ -239,11 +236,11 @@ disconnect.addEventListener("click",()=>{
     submit.disabled=false;
     username.value="";password.value="";otp.value="";
     core?.titleBack();paintTitle();
-    say("Disconnected from SoloScape. Password, username and session cleared.");
+    say("Logged out.");
 });
 worldDisconnect.addEventListener("click",()=>disconnect.click());
 newUser.addEventListener("click",()=>{
-    say("Account creation is not yet available in the TeaVM client. Use the working /legacy client.");
+    say("Account creation is not available yet.");
 });
 window.addEventListener("pagehide",()=>{
     ++attemptId;titleLogin?.disconnect();

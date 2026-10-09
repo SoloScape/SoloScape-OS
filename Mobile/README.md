@@ -214,8 +214,8 @@ separate Chrome/WebGL smoke tests.
 The upstream TSPS revision-241 React/WebGL application is still
 available separately via `npm run dev:tsps` (requires its submodule
 setup), but does **not** speak SoloScape's native protocol and is
-not the main development entry point. The old cache diagnostics are
-available only under `http://localhost:3001/diagnostics`.
+not the main development entry point. The public cache diagnostics route
+is no longer served; cache checks remain in automated tests.
 
 ### Terrain stream completeness: align with upstream SceneBuilder
 
@@ -1301,39 +1301,27 @@ bottleneck. Performance tests ensure concurrency is limited, asset order,
 CRC protection, stale-scene cancellation, and first playable state while
 optional NPC models are still pending.
 
-### TeaVM/OpenOSRS title-screen homepage
+### SoloScape game client
 
-The homepage (`/`) is the TeaVM/OpenOSRS browser development client. It loads
-the actual revision-240 titlewide.jpg, logo, titlebox and titlebutton sprites
-through the CRC-verified JS5 cache and uses the compiled Java title state
-bridge. The existing working native client remains at **`/legacy`**;
-**`/teavm/lab`** holds renderer/model experiments.
+`/` is the sole player-facing site. It shows the actual revision-240
+cache-backed RuneScape title screen and authentic native encrypted login.
+After login the same authenticated server session drives the local player
+and the map, which load genuine revision-240 JS5 terrain, objects, textures,
+equipment and animations. The world uses the existing native WebGL renderer
+while the original OpenOSRS 3D Java engine continues to be ported to TeaVM.
 
-Run `npm run build:teavm` (JDK 17+) and `npm run dev:lan -- 192.168.0.129`,
-then open `https://192.168.0.129:3443/`. Select **Existing User** to log in
-using the **same revision-240 RSA/XTEA encrypted protocol and native
-WebSocket-to-TCP gateway as /legacy**. Optional six-digit authenticator
-codes are supported. On acceptance the new title shows the authenticated
-player slot and holds a live game connection until Disconnect or navigation.
-Rejected logins remain on the title screen, and passwords/2FA inputs are
-cleared immediately after submission.
+The client fills the browser viewport with aspect-preserving black letterbox
+space; there is no site header, development dashboard, or alternate-client
+navigation. `/legacy`, `/diagnostics`, and `/teavm/lab` are removed from the
+server routes, but older source and tests remain in the repository for
+non-destructive development. `/teavm` is an alias to the same client for
+previously shared links.
 
-**Scope:** Native login is implemented by reusing the tested browser
-`NativeGameSession`, not by porting OpenOSRS Java's login engine. TeaVM Java
-owns the title UI state, but the original OpenOSRS Java game loop, server
-packet handling, scene and playable gameplay have **not yet been ported**.
-Disconnect before switching to `/legacy` to play; another login is required.
-No credentials are persisted in browser storage or sent to ChatGPT.
+Run `npm run build:teavm` (JDK 17+), start the SoloScape TCP game server,
+then `npm run dev:lan -- 192.168.0.129` and open
+`https://192.168.0.129:3443/`. Disconnect via the in-game Log out control.
+No login credentials are saved. The original binary gamepack, generated
+gamepack-derived JavaScript and extracted bytecode remain local and excluded
+from Git; redistribution rights must be verified.
 
-The extracted original gamepack-derived bytecode and generated TeaVM output
-remain local and excluded from Git. Redistribution rights must be verified.
-See [the TeaVM port notes](teavm-poc/README.md).
-After the new title authenticates, its **same encrypted session** now
-drives the server-authoritative native world scene and local player using
-revision-240 JS5 terrain, scenery, equipment and animation caches. The
-existing `NativeGameplay` / `NativeTerrainViewport` WebGL renderer is used
-for this integrated gameplay milestone; it is **not yet** the original
-OpenOSRS Java scene renderer transpiled through TeaVM. The world is revealed
-only once actual WebGL scenery and player pixels are ready. Tap ground to
-walk, drag to rotate, or press **Disconnect** to return to the title.
-No login credentials are saved. See [TeaVM port notes](teavm-poc/README.md).
+See [TeaVM port notes](teavm-poc/README.md) for implementation boundaries.

@@ -3,59 +3,46 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#080b10">
-<title>SoloScape — revision-240 browser client</title>
+<meta name="theme-color" content="#000000">
+<title>SoloScape</title>
 <link rel="stylesheet" href="/teavm/title-client.css">
 </head>
 <body>
 <main class="app">
-  <header class="top">
-    <div class="identity"><span class="brand">SoloScape</span><span class="edition">TeaVM title + native WebGL world · revision 240</span></div>
-    <a class="legacy" href="/legacy">Working client <span aria-hidden="true">↗</span></a>
-  </header>
-  <section class="player" aria-label="OpenOSRS browser port">
-    <div class="screen" id="screen">
-      <canvas id="osrs-title" width="765" height="503" aria-label="Revision-240 OSRS title loaded from verified JS5 cache"></canvas>
-      <div id="loading-overlay" class="overlay" aria-live="polite"><div class="spinner"></div><p>Loading original RuneScape title assets…</p></div>
-      <div id="welcome-controls" class="controls" hidden>
-        <button id="new-user" type="button" class="hotspot welcome-new">New User</button>
-        <button id="existing-user" type="button" class="hotspot welcome-existing">Existing User</button>
+  <div class="screen" id="screen">
+    <canvas id="osrs-title" width="765" height="503" aria-label="RuneScape title screen"></canvas>
+    <div id="loading-overlay" class="overlay" role="status" aria-live="polite">
+      <div class="spinner"></div><p>Loading RuneScape...</p>
+    </div>
+    <div id="welcome-controls" class="controls" hidden>
+      <button id="new-user" type="button" class="hotspot welcome-new" aria-label="New User">New User</button>
+      <button id="existing-user" type="button" class="hotspot welcome-existing" aria-label="Existing User">Existing User</button>
+    </div>
+    <form id="login-controls" class="controls" autocomplete="off" novalidate hidden>
+      <label class="sr-only" for="login-username">Username or email</label>
+      <input id="login-username" name="login-username" class="login-field username-field" maxlength="320" autocomplete="off" spellcheck="false" autocapitalize="none" autocorrect="off" required placeholder="Username / email">
+      <label class="sr-only" for="login-password">Password</label>
+      <input id="login-password" name="login-password" class="login-field password-field" type="password" maxlength="80" autocomplete="off" required placeholder="Password">
+      <label class="sr-only" for="login-otp">Six-digit authenticator code (only if enabled)</label>
+      <input id="login-otp" name="login-otp" class="login-field otp-field" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off" placeholder="2FA (optional)">
+      <button id="login-submit" class="hotspot login-submit" type="submit" aria-label="Login">Login</button>
+      <button id="login-back" type="button" class="hotspot login-back" aria-label="Cancel">Cancel</button>
+    </form>
+    <div id="session-controls" class="controls" hidden>
+      <button id="session-disconnect" type="button" class="hotspot session-disconnect" aria-label="Disconnect">Disconnect</button>
+    </div>
+    <div id="world-stage" class="world-stage" hidden>
+      <canvas id="world-canvas" width="765" height="503" aria-label="RuneScape world"></canvas>
+      <div class="world-hud">
+        <span id="world-status" role="status" aria-live="polite"></span>
+        <button type="button" id="world-disconnect">Log out</button>
       </div>
-      <form id="login-controls" class="controls" autocomplete="off" novalidate hidden>
-        <label class="sr-only" for="login-username">Username or email</label>
-        <input id="login-username" name="login-username" class="login-field username-field" maxlength="320" autocomplete="off" spellcheck="false" autocapitalize="none" autocorrect="off" required placeholder="Username / email">
-        <label class="sr-only" for="login-password">Password</label>
-        <input id="login-password" name="login-password" class="login-field password-field" type="password" maxlength="80" autocomplete="off" required placeholder="Password">
-        <label class="sr-only" for="login-otp">Six-digit authenticator code (only if enabled)</label>
-        <input id="login-otp" name="login-otp" class="login-field otp-field" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off" placeholder="2FA code (optional)">
-        <button id="login-submit" class="hotspot login-submit" type="submit" aria-label="Log in to SoloScape game server">Login</button>
-        <button id="login-back" type="button" class="hotspot login-back">Cancel</button>
-      </form>
-      <div id="session-controls" class="controls" hidden>
-        <button id="session-disconnect" type="button" class="hotspot session-disconnect">Disconnect</button>
-      </div>
-      <div id="world-stage" class="world-stage" hidden>
-        <canvas id="world-canvas" width="765" height="503" aria-label="Server-authoritative RuneScape world and your cache-derived character"></canvas>
-        <div class="world-hud">
-          <span id="world-status" role="status" aria-live="polite">Waiting for server map...</span>
-          <button type="button" id="world-disconnect">Disconnect</button>
-        </div>
-        <div id="world-loading-overlay" class="world-overlay" role="status" aria-live="polite">
-          <div class="spinner"></div>
-          <span>Loading the real revision-240 world and your character...</span>
-        </div>
+      <div id="world-loading-overlay" class="world-overlay" role="status" aria-live="polite">
+        <div class="spinner"></div><span>Loading world...</span>
       </div>
     </div>
-  </section>
-  <div class="foot">
-    <p id="client-status" role="status" aria-live="polite">Starting TeaVM runtime…</p>
-    <span class="milestone">TeaVM title shell · native WebGL world bridge</span>
+    <p id="client-status" class="client-status" role="status" aria-live="polite"></p>
   </div>
-  <details class="development">
-    <summary>Development tools and current progress</summary>
-    <p>This client runs TeaVM-compiled Java and loads the original revision-240 title images and sprites via a CRC-verified native JS5 gateway. The title uses TeaVM-compiled Java state, and authentic login uses SoloScape's native browser WebSocket protocol. After login, world/character rendering uses the existing WebGL client (real JS5 cache and server packets), <strong>not</strong> the original OpenOSRS Java game loop or Rasterizer3D.</p>
-    <nav><a href="/teavm/lab">TeaVM renderer and model lab</a><a href="/diagnostics">Cache diagnostics</a><a href="/legacy">Existing playable client</a></nav>
-  </details>
 </main>
 <script type="module" src="/teavm/title-client.mjs"></script>
 </body>

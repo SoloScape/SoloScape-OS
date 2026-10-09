@@ -95,18 +95,23 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         assert.match(htmlText,/id="session-disconnect"/,"authenticated session can be closed");
         assert.match(htmlText,/id="world-canvas"/,"same-session cache-backed world is mounted");
         assert.match(htmlText,/id="world-disconnect"/,"native world can be disconnected");
-        const legacy=await fetch(root+"/legacy");
-        assert.equal(legacy.status,200);
-        const legacyHtml=await legacy.text();
-        assert.match(legacyHtml,/src="\/app\.mjs"/,"prior browser client remains playable");
-        assert.match(legacyHtml,/id="osrs-menu-canvas"/);
-        assert.doesNotMatch(legacyHtml,/class="npc-menu"/);
+        assert.doesNotMatch(htmlText,/<header\b|<nav\b|class="development"|class="milestone"|href="\/legacy"/,
+            "the homepage contains only the client, with no site navigation or development chrome");
+        const clientCss=await (await fetch(root+"/teavm/title-client.css")).text();
+        assert.match(clientCss,/height:100dvh/,"game client occupies the viewport");
+        assert.match(clientCss,/aspect-ratio:765\/503/,"game title preserves its native layout");
+        assert.doesNotMatch(clientCss,/\.development|\.legacy|\.milestone|\.top\{/,
+            "old site chrome styles are removed");
+        for(const removed of ["/legacy","/diagnostics","/teavm/lab","/app.mjs","/diagnostics-app.mjs"]){
+            const response=await fetch(root+removed);
+            assert.equal(response.status,404,"obsolete site route should be gone: "+removed);
+        }
         // Regression: absent floor-materials.mjs used to leave the static
         // loading spinner displayed forever because the import graph failed.
         const modules=[
             "/teavm/title-client.mjs","/teavm/title-assets.mjs","/title-login-session.mjs",
             "/teavm-world.mjs",
-            "/app.mjs","/native-js5.mjs","/terrain-world.mjs",
+            "/native-js5.mjs","/terrain-world.mjs",
             "/world-webgl.mjs","/floor-materials.mjs","/floor-lighting.mjs","/world-startup.mjs",
             "/cache-reader.mjs","/model-codec.mjs","/object-definitions.mjs","/location-cache.mjs","/scenery-models.mjs",
             "/texture-cache.mjs","/texture-mapper.mjs","/scene-planes.mjs",
@@ -122,29 +127,19 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
             assert.match(response.headers.get("content-type")??"",/text\/javascript/,path);
             assert.ok((await response.text()).length>50,path);
         }
-        // TeaVM is isolated: only the probe page and original-source JS/CSS
-        // are served. No OpenOSRS gamepack bytes can be downloaded.
+        // Only the game page is exposed. The TeaVM JavaScript module remains
+        // an internal dependency and no original gamepack bytes are served.
         const titleAlias=await fetch(root+"/teavm");
         assert.equal(titleAlias.status,200);
         assert.match(await titleAlias.text(),/id="osrs-title"/);
-        const proof=await fetch(root+"/teavm/lab");
-        assert.equal(proof.status,200);
-        const proofHtml=await proof.text();
-        assert.match(proofHtml,/TeaVM:/);
-        assert.match(proofHtml,/src="\/teavm\/probe\.mjs"/);
-        assert.match(proofHtml,/id="genuine-raster"/,"authentic canvas probe mounted");
-        assert.match(proofHtml,/id="model-canvas"/,"real JS5 model viewer mounted");
         for(const path of ["/teavm/probe.mjs","/teavm/model-viewer.mjs","/teavm/model-payload.mjs","/teavm/probe.css"]){
             const response=await fetch(root+path);
-            assert.equal(response.status,200,path);
-            assert.ok((await response.text()).length>100);
+            assert.equal(response.status,404,path+" is not a public game page");
         }
         for(const url of ["/teavm/injected-client.oprs","/teavm/rasterizer2d.jar"]){
             const gamepack=await fetch(root+url);
             assert.equal(gamepack.status,404,"gamepack material must never be served directly");
         }
-        const teaModule=await fetch(root+"/teavm/probe.mjs");
-        assert.match(await teaModule.text(),/core\.renderHex\(\)/);
         const keys=await fetch(root+"/region-keys.json");
         assert.equal(keys.status,200);assert.deepEqual(await keys.json(),{});
         const login=await fetch(root+"/login-config.json");
