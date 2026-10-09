@@ -91,6 +91,7 @@ export class TeaVmWorldBridge {
             this.gameplay=this.createGameplay({
                 cache:this.cache,viewport:this.viewport,session,interfaces:this.interfaces,
                 onServerTick:timestamp=>{if(current())this.performanceOverlay?.tick(timestamp);},
+                onActorUpdate:ms=>{if(current())this.performanceOverlay?.actor(ms);},
                 onStatus:message=>{
                     if(!current())return;
                     this.onStatus(message);

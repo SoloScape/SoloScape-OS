@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {NativeGameplay,actorMeshInterval,interpolatePlayer,rebuildRegions} from "../browser/native-gameplay.mjs";
+import {NativeGameplay,actorMeshInterval,visibleNpcMotions,interpolatePlayer,rebuildRegions} from "../browser/native-gameplay.mjs";
 import {decodeRebuild,encodeMoveDestination,encodeWindowStatus,WINDOW_STATUS} from "../browser/player-protocol.mjs";
 import {NativePlayerSync} from "../browser/player-sync.mjs";
 import {NativeTspsPlayerController} from "../browser/tsps-game-controller.mjs";
@@ -336,8 +336,27 @@ test("landscape resize reports true mobile CSS viewport dimensions once per size
     assert.equal(sent.length,3,"closed session cannot send resize packets");
 });
 
-test("mobile actor mesh upload schedule is ~30Hz while desktop stays unchanged",()=>{
-    assert.equal(actorMeshInterval(true),33);
+test("mobile actor mesh upload schedule is ~20Hz while desktop stays unchanged",()=>{
+    assert.equal(actorMeshInterval(true),50);
     assert.equal(actorMeshInterval(false),20);
     assert.equal(actorMeshInterval(undefined),20);
+});
+test("OpenOSRS-style conservative actor visibility avoids rebuilding distant NPC meshes",()=>{
+    const origin={mapX:50,mapY:50};
+    const center=50*64+31;
+    const m=(index,x,y,plane=0)=>({target:{index,x,y,plane}});
+    const actors=[
+        m(1,center+3,center+4),
+        m(2,center+60,center+60),
+        m(3,center+27,center+27),
+        m(4,center+1,center+1,1),
+        m(5,center+6,center+8),
+    ];
+    const visible=visibleNpcMotions(actors,{x:center,y:center,plane:0},
+        [-25,-25,25,25],origin);
+    assert.deepEqual(visible.map(n=>n.target.index),[1,5,3]);
+    assert.equal(visibleNpcMotions(actors,{x:center,y:center,plane:0},
+        [-25,-25,25,25],origin,1).length,1);
+    // Fallback for headless test viewports without real camera geometry.
+    assert.equal(visibleNpcMotions(actors,{x:center,y:center,plane:0},null,origin).length,4);
 });

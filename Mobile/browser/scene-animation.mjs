@@ -37,7 +37,11 @@ export class NativeSceneAnimations {
             const radius=49+Math.max(definition.sizeX,definition.sizeY);
             if(entry.failed||Math.max(Math.abs(terrain.mapX*64+loc.x-player.x),Math.abs(terrain.mapY*64+loc.y-player.y))>radius)continue;
             try{
-                const sequence=await this.animations.sequence(definition.seqId);
+                if(!entry.sequence||entry.sequenceResolver!==this.animations.sequence){
+                    entry.sequence=await this.animations.sequence(definition.seqId);
+                    entry.sequenceResolver=this.animations.sequence;
+                }
+                const sequence=entry.sequence;
                 const frame=sceneSequenceFrame(sequence,Math.max(0,now-entry.started),{location:true});
                 if(!entry.mesh||frame!==entry.lastFrame){
                     const posed=frame<0?model:await this.animations.poseFrame(model,definition.seqId,frame);

@@ -104,7 +104,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         assert.doesNotMatch(htmlText,/id="login-otp"/,"ordinary login has only username and password");
         assert.match(htmlText,/id="world-canvas"/,"same-session cache-backed world is mounted");
         assert.match(htmlText,/id="world-performance"/,"gameplay performance HUD is mounted");
-        for(const metric of ["fps","ram","tick","ms","draw","net","gl"])
+        for(const metric of ["fps","ram","tick","ms","draw","net","gl","act"])
             assert.match(htmlText,new RegExp('data-perf="'+metric+'"'),"missing performance metric "+metric);
         assert.doesNotMatch(htmlText,/id="world-disconnect"|class="world-hud"/,
             "game viewport has no top logout/status overlay");

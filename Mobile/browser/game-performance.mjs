@@ -17,7 +17,7 @@ export class GamePerformanceMetrics {
     }
     reset(){
         this.previousFrame=null;this.previousTick=null;
-        this.frameIntervals=[];this.drawIntervals=[];this.tickIntervals=[];this.ticks=0;
+        this.frameIntervals=[];this.drawIntervals=[];this.actorIntervals=[];this.tickIntervals=[];this.ticks=0;
     }
     recordFrame(timestamp){
         if(!Number.isFinite(timestamp))return;
@@ -32,6 +32,9 @@ export class GamePerformanceMetrics {
             else if(delta>0)keep(this.frameIntervals,delta,45);
         }
         this.previousFrame=timestamp;
+    }
+    recordActor(duration){
+        if(Number.isFinite(duration)&&duration>=0)keep(this.actorIntervals,duration,12);
     }
     recordDraw(duration){
         if(Number.isFinite(duration)&&duration>=0)keep(this.drawIntervals,duration,30);
@@ -54,7 +57,8 @@ export class GamePerformanceMetrics {
             if(Number.isFinite(raw)&&raw>=0)heapBytes=raw;
         }catch{/* Memory use may be unavailable in Safari. */}
         return {fps:frameMs===null?null:1000/frameMs,frameMs,
-            heapBytes,ticks:this.ticks,tickMs:average(this.tickIntervals),drawMs:average(this.drawIntervals)};
+            heapBytes,ticks:this.ticks,tickMs:average(this.tickIntervals),
+            actorMs:average(this.actorIntervals),drawMs:average(this.drawIntervals)};
     }
 }
 export class GamePerformanceOverlay {
@@ -67,7 +71,7 @@ export class GamePerformanceOverlay {
         this.now=now;this.networkProbe=networkProbe;
         this.button=root.querySelector("#world-performance-toggle");
         this.details=root.querySelector("#world-performance-stats");
-        this.fields=Object.fromEntries(["fps","ram","tick","ms","draw","net","gl"].map(name=>
+        this.fields=Object.fromEntries(["fps","ram","tick","ms","draw","net","gl","act"].map(name=>
             [name,root.querySelector('[data-perf="'+name+'"]')]));
         if(!this.button||!this.details||Object.values(this.fields).some(value=>!value))
             throw new Error("Performance overlay elements unavailable");
@@ -89,6 +93,7 @@ export class GamePerformanceOverlay {
         this.timer=this.interval(()=>this.refresh(),1000);
     }
     frame(timestamp){if(this.running)this.metrics.recordFrame(timestamp);}
+    actor(duration){if(this.running)this.metrics.recordActor(duration);}
     draw(duration){if(this.running)this.metrics.recordDraw(duration);}
     drawCalls(count){if(this.running&&Number.isInteger(count)&&count>=0)this.calls=count;}
     tick(timestamp){if(this.running)this.metrics.recordTick(timestamp);}
@@ -106,7 +111,7 @@ export class GamePerformanceOverlay {
     }
     refresh(){
         if(!this.running)return;
-        const {fps,frameMs,heapBytes,ticks,tickMs,drawMs}=this.metrics.snapshot();
+        const {fps,frameMs,heapBytes,ticks,tickMs,drawMs,actorMs}=this.metrics.snapshot();
         const lastFrame=this.metrics.previousFrame;
         const stopped=(this.now()-(lastFrame??this.startedAt))>2500;
         this.fields.fps.textContent=stopped?"STOP":fps===null?"—":fps.toFixed(1);
@@ -114,6 +119,7 @@ export class GamePerformanceOverlay {
         this.fields.tick.textContent=tickMs===null?String(ticks):ticks+" / "+tickMs.toFixed(0)+" ms";
         this.fields.ms.textContent=stopped?"—":frameMs===null?"—":frameMs.toFixed(1);
         this.fields.draw.textContent=drawMs===null?"—":drawMs.toFixed(1);
+        this.fields.act.textContent=actorMs===null?"—":actorMs.toFixed(1);
         this.fields.gl.textContent=this.calls===null?"—":String(this.calls);
         this.fields.net.textContent=this.net===null?(this.netFailed?"ERR":"—"):this.net.toFixed(0)+" ms";
         // Never send a probe per frame. One same-origin HTTPS request every 5s.

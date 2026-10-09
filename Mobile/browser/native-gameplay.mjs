@@ -39,14 +39,39 @@ export function interpolatePlayer(motion,now){
     return {...motion.target,x,y,moving:x!==motion.target.x||y!==motion.target.y};
 }
 
-export const actorMeshInterval=touch=>touch?33:20;
+// Mobile sprite/model uploads are independent of the 600ms server tick and
+// the WebGL RAF. Limit model rebuilding to 20Hz on touch devices; the world
+// continues rendering at the browser's native display cadence.
+export const actorMeshInterval=touch=>touch?50:20;
+export function visibleNpcMotions(motions,player,bounds,origin,max=48){
+    const px=player?.x??0,py=player?.y??0;
+    const candidates=[];
+    for(const motion of motions){
+        const {x,y,plane}=motion.target;
+        if(player&&plane!==player.plane)continue;
+        if(bounds&&origin){
+            const localX=x-origin.mapX*64-31,localY=y-origin.mapY*64-31;
+            // Include large NPCs and movement beyond the shader's 25-tile
+            // bounds; exclude only clearly invisible actors.
+            const pad=10;
+            if(localX<bounds[0]-pad||localX>bounds[2]+pad||
+               localY<bounds[1]-pad||localY>bounds[3]+pad)continue;
+        }
+        candidates.push(motion);
+    }
+    candidates.sort((a,b)=>{
+        const ax=a.target.x-px,ay=a.target.y-py,bx=b.target.x-px,by=b.target.y-py;
+        return (ax*ax+ay*ay)-(bx*bx+by*by);
+    });
+    return candidates.slice(0,max);
+}
 export class NativeGameplay {
     constructor({cache,viewport,session,interfaces=null,onStatus=()=>{},onRegion=()=>{},onLoading=()=>{},onReady=()=>{},onNpcMenu=()=>{},onExamine=()=>{},run=()=>false,
         loadTerrain=loadNativeTerrain,loadMaterials=loadFloorMaterials,loadScenery=loadStaticScenery,
-        models=new NativePlayerModels(cache),now=()=>performance.now(),onServerTick=()=>{}}={}){
+        models=new NativePlayerModels(cache),now=()=>performance.now(),onServerTick=()=>{},onActorUpdate=()=>{}}={}){
         this.cache=cache;this.viewport=viewport;this.session=session;this.onStatus=onStatus;this.onRegion=onRegion;this.onNpcMenu=onNpcMenu;this.onExamine=onExamine;this.run=run;
         this.interfaces=interfaces;
-        this.onReady=onReady;this.onLoading=onLoading;this.onServerTick=onServerTick;
+        this.onReady=onReady;this.onLoading=onLoading;this.onServerTick=onServerTick;this.onActorUpdate=onActorUpdate;
         this.loadTerrain=loadTerrain;this.loadMaterials=loadMaterials;this.loadScenery=loadScenery;this.models=models;this.now=now;
         this.generation=0;this.closed=false;this.regions=new Map();this.packetCount=0;this.animationStarted=now();
         this.scenePrepared=false;this.ready=false;this.lastWindowSize=null;
@@ -66,7 +91,7 @@ export class NativeGameplay {
         this.localServerId=account.playerIndex;
         this.viewport.distance=GAME_CAMERA_ZOOM.default;this.viewport.pitch=.65;
         this.updateWindowStatus();
-        // Actor mesh rebuilding is CPU-heavy in mobile Safari. Update at ~30Hz
+        // Actor mesh rebuilding is CPU-heavy in mobile Safari. Update at ~20Hz
         // on touch devices rather than rebuilding every 20ms on top of WebGL.
         this.timer=setInterval(()=>{this.playerController.advance(this.now());void this.drawActors();},
             actorMeshInterval(this.viewport.touch));
@@ -473,10 +498,10 @@ export class NativeGameplay {
                 }
             }
             let drawn=0,missing=0;
-            const nearby=[...this.npcMotions.values()].filter(m=>
-                m.target.plane===this.sync?.local?.plane&&this.regions.has(`${m.target.x>>>6},${m.target.y>>>6}`))
-                .sort((a,b)=>Math.hypot(a.target.x-(player?.x??0),a.target.y-(player?.y??0))-
-                    Math.hypot(b.target.x-(player?.x??0),b.target.y-(player?.y??0))).slice(0,48);
+            const nearby=visibleNpcMotions(
+                [...this.npcMotions.values()].filter(m=>
+                    this.regions.has(`${m.target.x>>>6},${m.target.y>>>6}`)),
+                player??this.sync?.local,this.viewport.drawBounds?.(),this.origin);
             const npcResults=await mapBounded(nearby,6,async motion=>{
                 if(this.closed||generation!==this.generation)return null;
                 const npc=interpolatePlayer(motion,now),region=this.regions.get(`${npc.x>>>6},${npc.y>>>6}`);
@@ -520,7 +545,11 @@ export class NativeGameplay {
             }
         }catch(error){
             if(!this.closed&&generation===this.generation)this.onStatus("Actor drawing unavailable: "+error.message);
-        }finally{this.drawing=false;}
+        }finally{
+            this.drawing=false;
+            if(!this.closed&&generation===this.generation)
+                this.onActorUpdate(Math.max(0,this.now()-now));
+        }
     }
     report(){
         if(this.closed||this.loading||!this.sync?.local)return;

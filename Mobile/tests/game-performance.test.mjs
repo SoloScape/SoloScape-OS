@@ -13,7 +13,7 @@ function fixture(){
         click(){this.listeners.get("click")?.();}
     });
     const root=make(),button=make(),details=make();
-    const fields=Object.fromEntries(["fps","ram","tick","ms","draw","net","gl"].map(name=>[name,make()]));
+    const fields=Object.fromEntries(["fps","ram","tick","ms","draw","net","gl","act"].map(name=>[name,make()]));
     root.hidden=true;
     root.querySelector=selector=>selector==="#world-performance-toggle"?button:
         selector==="#world-performance-stats"?details:
@@ -76,7 +76,7 @@ test("performance HUD displays N/A for protected memory, samples cheaply and tog
 test("heap read errors never interrupt frames or world packet processing",()=>{
     const metrics=new GamePerformanceMetrics({memory:()=>{throw new Error("blocked");}});
     metrics.recordFrame(0);metrics.recordFrame(40);metrics.recordTick(100);
-    assert.deepEqual(metrics.snapshot(),{fps:25,frameMs:40,heapBytes:null,ticks:1,tickMs:null,drawMs:null});
+    assert.deepEqual(metrics.snapshot(),{fps:25,frameMs:40,heapBytes:null,ticks:1,tickMs:null,actorMs:null,drawMs:null});
 });
 
 test("native gameplay reports server ticks only after successfully decoded PLAYER_INFO",async()=>{
@@ -184,4 +184,22 @@ test("HTTPS network round-trip is labelled NET, measured sparsely, and never cal
     assert.equal(requests,2,"only one network probe every 5 refreshes");
     overlay.dispose();
     assert.equal(root.hidden,true);
+});
+
+test("actor update latency is measured separately from CPU WebGL submission",()=>{
+    const metrics=new GamePerformanceMetrics({memory:()=>null});
+    metrics.recordActor(32);metrics.recordActor(48);
+    metrics.recordDraw(11);
+    assert.equal(metrics.snapshot().actorMs,40);
+    assert.equal(metrics.snapshot().drawMs,11);
+    const {root,fields}=fixture();
+    const overlay=new GamePerformanceOverlay(root,{
+        metrics,interval:()=>1,clear:()=>{},now:()=>0
+    });
+    overlay.start();
+    overlay.actor(20);overlay.draw(10);
+    overlay.refresh();
+    assert.equal(fields.act.textContent,"20.0");
+    assert.equal(fields.draw.textContent,"10.0");
+    overlay.dispose();
 });

@@ -46,8 +46,8 @@ test("transparent faces sort across texture groups, reverse with camera and filt
 });
 
 test("animated scenery poses once per frame, retains world offsets and picking, and reports unsupported sequences",async()=>{
-    let poses=0;
-    const animations={sequence:async()=>seq,poseFrame:async(m,_id,index)=>{poses++;return {...m,verticesY:Int32Array.from(m.verticesY,y=>y-index*128)};}};
+    let poses=0,sequenceReads=0;
+    const animations={sequence:async()=>{sequenceReads++;return seq;},poseFrame:async(m,_id,index)=>{poses++;return {...m,verticesY:Int32Array.from(m.verticesY,y=>y-index*128)};}};
     const runtime=new NativeSceneAnimations(animations),t=terrain(),d=decodeObjectDefinition(Uint8Array.of(24,0,2,0),5);
     runtime.reset([{terrain:t,loc:{id:5,x:10,y:10,plane:0,rotation:0,shape:10},definition:d,
         part:{type:10,rotation:0,dx:0,dy:0},model:model(),level:0}],1000);
@@ -55,6 +55,7 @@ test("animated scenery poses once per frame, retains world offsets and picking, 
     const a=await runtime.scene(1000,origin,player,new Map());
     assert.equal(a.batches.length,1);assert.equal(a.pickMeshes[0].x,74);
     await runtime.scene(1020,origin,player,new Map());assert.equal(poses,1);
+    assert.equal(sequenceReads,1,"cached location sequence is reused across animation ticks");
     const b=await runtime.scene(1060,origin,player,new Map());assert.equal(poses,2);
     assert.equal(b.batches[0].vertices[1],a.batches[0].vertices[1]+1);
     animations.sequence=async()=>({...seq,skeletalId:1});
@@ -204,4 +205,27 @@ test("mobile scenery upload merges opaque textures but preserves alpha objects a
     assert.equal(desktop.get("sceneryBatches").length,3);
     assert.strictEqual(mobile.get("sceneryAlphaBatches")[0],scene.transparentBatches[0],
         "transparent alpha sorting must remain independent from opaque batching");
+});
+
+test("unchanged animated scenery bypasses redundant GPU uploads",()=>{
+    const vertices=new Float32Array(18),mesh={level:0,texture:5,vertices};
+    const pick={vertices};
+    const scene={batches:[mesh],transparentBatches:[],pickMeshes:[pick]};
+    let uploadCount=0,pickUpdates=0;
+    const fake={dynamicBatches:[],dynamicAlphaBatches:[],
+        replaceBatches(name,batches){uploadCount++;this[name]=batches.map(b=>({...b}));},
+        get dynamicPickMeshes(){return this._picks;},
+        set dynamicPickMeshes(value){pickUpdates++;this._picks=value;}
+    };
+    const update=NativeTerrainViewport.prototype.setDynamicScenery;
+    update.call(fake,scene);
+    assert.equal(uploadCount,2);assert.equal(pickUpdates,1);
+    update.call(fake,{batches:[mesh],transparentBatches:[],pickMeshes:[pick]});
+    assert.equal(uploadCount,2,"same posed buffers skip uploads despite new wrapper arrays");
+    assert.equal(pickUpdates,1,"identical scene does not repeatedly rebuild picking meshes");
+    update.call(fake,{batches:[{...mesh,vertices:new Float32Array(vertices)}],
+        transparentBatches:[],pickMeshes:[{vertices:new Float32Array(vertices)}]});
+    assert.equal(uploadCount,4,"changed animation poses still update the GPU");
+    update.call(fake,null);
+    assert.equal(fake.dynamicBatches.length,0,"scene unload removes stale dynamic geometry");
 });

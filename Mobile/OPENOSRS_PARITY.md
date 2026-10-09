@@ -30,6 +30,41 @@ reach that path rather than only the older `browser/app.mjs`.
 
 ## Work remaining before whole-client parity
 
+### Mobile performance comparison: original OpenOSRS GPU vs browser WebGL (9 October 2026)
+
+Source audited: the locally SHA-256-verified OpenOSRS 1.2.0 / revision-240
+`Client/runelite-client/src/main/java/net/runelite/client/plugins/gpu/GpuPlugin.java`
+and `SceneUploader.java` (see `REFERENCE_OPENOSRS.md`).
+This **does not** mean the WebGL renderer is running OpenOSRS Java code.
+
+| Concern | OpenOSRS desktop GPU | Active mobile WebGL |
+| --- | --- | --- |
+| Static world upload | Uploads zones, reuses initialized VBOs across scene rebuilds | Uploads cache terrain/scenery buffers; now retains unchanged animated scenery |
+| Dynamic actors | Uploads temporary/sorted model buffers during native engine render callbacks | Rebuilds player/NPC meshes in JavaScript on a separate timer; touch runs at ~20 Hz rather than 30 Hz |
+| Scene visibility | Uses scene zones, roof/level filtering, and draw-distance settings | Uses a 25-tile render window and now culls NPC model work conservatively beyond visible bounds (10-tile padding) |
+| Transparency | Keeps separate opaque/alpha buffers and handles sorted alpha models | Batches alpha per material on touch; ordering within batches remains approximate |
+| Opaque rendering | Larger static zone uploads and retained buffers | Groups repeated static texture/level batches; further texture-array/atlas or spatial-zone work is pending |
+| Rendering model | Native desktop OpenGL and game engine | iOS Safari WebGL 1 plus JavaScript/async model work; timings not directly comparable |
+
+**Measured user's iPhone samples, different views**:
+2.7 FPS / 532.3 ms DRAW initially; 24.2 FPS / 10.4 ms DRAW with
+mobile transparency batching; 18.1 FPS / 11.5 ms DRAW, 582 GL calls and
+55.1 ms RAF interval in a different camera view. These are not controlled
+benchmarks. Frame interval minus DRAW is *not* exclusively actor time:
+browser compositing, GPU stalls, timer callbacks and asset work also contribute.
+
+New performance HUD ACT is the rolling wall-clock time for asynchronous
+`NativeGameplay.drawActors()` (including awaited work), **not** CPU-only
+or network latency. TICK is server packet arrival interval, and NET is
+the browser preview HTTPS RTT, not the game's ping.
+
+Current incremental CPU optimizations: touch actor updates at ~20 Hz;
+skip rebuilding distant NPC models, cache stable scene animation sequence
+lookups, and avoid re-uploading dynamic scenery with identical mesh and pick
+references. Preserve gameplay/server tick cadence. Device screenshots and
+on-device profiling remain necessary to validate actual FPS gains and
+animation smoothness; lower actor cadence can make movement less fluid.
+
 ### JavaScript CS2 interpreter expansion (9 October 2026)
 
 The active browser interpreter (`browser/native-scripts.mjs`) now delegates

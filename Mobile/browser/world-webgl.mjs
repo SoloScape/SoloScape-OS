@@ -767,7 +767,17 @@ export class NativeTerrainViewport {
         this.addTextures(scene?.textures??new Map());
     }
     setDynamicScenery(scene){
-        this.replaceBatches("dynamicBatches",scene?.batches??[]);
+        const next=scene?.batches??[],alpha=scene?.transparentBatches??[],pick=scene?.pickMeshes??[];
+        const same=(old,incoming)=>old?.length===incoming.length&&old.every((b,i)=>
+            b.vertices===incoming[i].vertices&&b.texture===incoming[i].texture&&
+            b.level===incoming[i].level&&b.alpha===incoming[i].alpha);
+        // Keep unchanged animated zone buffers (as OpenOSRS does for
+        // unchanged static zones) instead of revisiting them every actor pass.
+        if(same(this.dynamicBatches,next)&&same(this.dynamicAlphaBatches,alpha)&&
+            this.dynamicPickSources?.length===pick.length&&
+            this.dynamicPickSources.every((source,i)=>source===pick[i]))return;
+        this.dynamicPickSources=pick;
+        this.replaceBatches("dynamicBatches",next);
         this.replaceBatches("dynamicAlphaBatches",scene?.transparentBatches??[]);
         this.dynamicPickMeshes=preparePickMeshes(scene?.pickMeshes??[]);
     }
