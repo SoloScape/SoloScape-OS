@@ -3,7 +3,7 @@ import {test} from "node:test";
 import {NativeSceneAnimations,sceneSequenceFrame,sceneVisibilityCell,sceneEntryVisible} from "../browser/scene-animation.mjs";
 import {NativeSpotEffects,decodeSpotEffect} from "../browser/spot-effects.mjs";
 import {mergePlayerModels,buildPlayerMesh} from "../browser/player-models.mjs";
-import {combineRegionMeshes,sortTransparentFaces,sortTransparentBatches,mergeOpaqueTextureBatches,partitionOpaqueScene,partitionColorScene,spatialBoundsOverlap,sceneCameraMatrix,worldRenderPixels,worldShaderSources,NativeTerrainViewport} from "../browser/world-webgl.mjs";
+import {combineRegionMeshes,sortTransparentFaces,sortTransparentBatches,transparentIndexRanges,mergeOpaqueTextureBatches,partitionOpaqueScene,partitionColorScene,spatialBoundsOverlap,sceneCameraMatrix,worldRenderPixels,worldShaderSources,NativeTerrainViewport} from "../browser/world-webgl.mjs";
 import {decodeObjectDefinition} from "../browser/object-definitions.mjs";
 
 const model=()=>({verticesCount:3,faceCount:1,verticesX:Int32Array.of(0,128,0),verticesY:Int32Array.of(0,0,-128),
@@ -129,17 +129,69 @@ test("mobile alpha render batches hundreds of transparent faces in one draw per 
     assert.equal(coarse[0].first,0);assert.equal(coarse[0].count,triangles*3);
     assert.equal(sortTransparentBatches([batch],matrix,-1).length,0,"invisible plane excluded");
     const calls=[],gl={BLEND:10,SRC_ALPHA:1,ONE_MINUS_SRC_ALPHA:2,
-        enable(){},disable(){},blendFunc(){},depthMask(){}};
+        enable(){},disable(){},blendFunc(){},depthMask(){},createBuffer:()=>({}),
+        bindBuffer(){},bindVertexArray(){},bufferData(){}};
     const fake={gl,touch:true,sceneryAlphaBatches:[batch],
+        prepareTransparentDraws:NativeTerrainViewport.prototype.prepareTransparentDraws,
         renderMaterialBatch:(b,first,count,_m,_bounds,opacity)=>calls.push({b,first,count,opacity})};
     NativeTerrainViewport.prototype.renderTransparent.call(fake,matrix,0,[0,0,64,64]);
-    assert.equal(calls.length,1,"iPhone submits one alpha draw for one mesh instead of 150 draws");
+    assert.equal(calls.length,1,"sorted element indices retain one draw for consecutive faces of one mesh");
     assert.equal(calls[0].count,450);
     assert.ok(Math.abs(calls[0].opacity-(1-128/255))<.00001);
     fake.touch=false;calls.length=0;
     NativeTerrainViewport.prototype.renderTransparent.call(fake,matrix,0,[0,0,64,64]);
     assert.equal(calls.length,triangles,"desktop maintains exact per-face alpha sorting");
     assert.ok(calls.every(c=>c.count===3));
+});
+
+test("alpha element ranges preserve face order across interleaved materials and camera reversal",()=>{
+    const tri=z=>Float32Array.of(-1,0,z,2000,0,0,1,0,z,2000,1,0,0,1,z,2000,0,1);
+    const far=tri(6),near=tri(-6),vertices=new Float32Array([...near,...far]);
+    const a={vertices,level:0,texture:3,alpha:128},b={vertices:tri(0),level:0,texture:-1,alpha:64};
+    const roof={...b,level:1};
+    const matrix=yaw=>sceneCameraMatrix([0,0,0],yaw,.5,12,1);
+    const ordered=transparentIndexRanges([a,b,roof],matrix(0),0);
+    assert.deepEqual([...ordered.indices.get(a)],[3,4,5,0,1,2]);
+    assert.deepEqual(ordered.draws.map(d=>[d.batch.texture,d.first,d.count]),[[3,0,3],[-1,0,3],[3,3,3]],
+        "another material must remain between the near and far faces");
+    assert.equal(ordered.indices.has(roof),false);
+    assert.deepEqual([...transparentIndexRanges([a,b],matrix(Math.PI),0).indices.get(a)],[0,1,2,3,4,5]);
+    const single=transparentIndexRanges([a],matrix(0),0);
+    assert.equal(single.draws.length,1);assert.equal(single.draws[0].count,6);
+    assert.deepEqual([...vertices],[...near,...far],"sorting preserves source vertices, colours and UVs");
+});
+
+test("mobile alpha index buffers cache ordering, reuse capacity and release with their source VBO",()=>{
+    const log=[],gl={ELEMENT_ARRAY_BUFFER:1,DYNAMIC_DRAW:2,
+        createBuffer(){const b={};log.push(["create",b]);return b;},
+        bindVertexArray(){},bindBuffer(){},bufferData(_t,indices){log.push(["data",[...indices]]);},
+        bufferSubData(_t,_at,indices){log.push(["subdata",[...indices]]);},
+        deleteBuffer:b=>log.push(["delete",b])};
+    const view={gl},buffer={},tri=z=>Float32Array.of(-1,0,z,2000,0,0,1,0,z,2000,1,0,0,1,z,2000,0,1),
+        batch={buffer,vertices:new Float32Array([...tri(-6),...tri(6)]),texture:3,alpha:128,level:0};
+    const prepare=NativeTerrainViewport.prototype.prepareTransparentDraws;
+    const matrix=sceneCameraMatrix([0,0,0],0,.5,12,1);
+    const first=prepare.call(view,[batch],matrix,0),ebo=first[0].batch.orderBuffer;
+    assert.equal(log.filter(c=>c[0]==="data").length,1);
+    const translated=matrix.slice();translated[15]+=5;
+    assert.strictEqual(prepare.call(view,[{...batch}],translated,0),first);
+    assert.equal(log.length,2,"same geometry and camera direction skip uploads and sorting");
+    const reversed=prepare.call(view,[batch],sceneCameraMatrix([0,0,0],Math.PI,.5,12,1),0);
+    assert.strictEqual(reversed[0].batch.orderBuffer,ebo);
+    assert.equal(log.filter(c=>c[0]==="subdata").length,1);
+    assert.deepEqual(prepare.call(view,[batch],matrix,-1),[],"roof changes remove hidden alpha draws");
+    const updated={...batch,vertices:new Float32Array([...tri(-7),...tri(7)])};
+    prepare.call(view,[updated],matrix,0);
+    assert.equal(log.filter(c=>c[0]==="subdata").length,2);
+    NativeTerrainViewport.prototype.releaseGeometry.call(view,buffer);
+    assert.deepEqual(log.at(-1),["delete",ebo]);assert.equal(view.transparentIndexBuffers.size,0);
+    assert.equal(view.transparentOrderCache,null);
+});
+
+test("indexed alpha draws count GL submissions and use byte offsets",()=>{
+    const calls=[],view={drawCallCount:0,gl:{UNSIGNED_INT:5125,drawElements:(...args)=>calls.push(args)}};
+    NativeTerrainViewport.prototype.drawElements.call(view,4,6,12);
+    assert.equal(view.drawCallCount,1);assert.deepEqual(calls,[[4,6,5125,12]]);
 });
 
 test("WebGL uniform locations are cached by program and name",()=>{

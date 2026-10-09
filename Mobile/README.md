@@ -35,6 +35,16 @@ Unchanged picking geometry also retains its cached bounds. This is an incrementa
 mobile renderer improvement; dynamic loc morphs and skeletal sequences remain
 unsupported, and on-device profiling is still needed.
 
+The rendering target is the pinned revision-240 RuneLite/OpenOSRS **built-in
+GPU renderer**, excluding HD and other visual plugins. Mobile transparency
+now sorts individual faces and streams retained WebGL 2 element buffers,
+following the reference `Zone` renderer's indexed-alpha approach. Consecutive
+faces from the same vertex buffer share a draw, while interleaved materials
+retain their order. Camera-direction, geometry and roof changes invalidate
+ordering; unchanged ordering skips index uploads. This replaces touch material
+centroid sorting. It does not yet reproduce RuneLite's complete zone/model
+ordering, integer depth buckets or special no-depth priority render modes.
+
 **Starting 8 October 2026**, `npm run dev` (also `npm run dev:native`)
 starts **SoloScape's own WebGL world client** at
 `http://localhost:3001/`, not the collection of JS5 diagnostic buttons.

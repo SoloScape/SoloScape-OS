@@ -302,6 +302,24 @@ try{
         if(objectExpected.some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("Alpha leaked through opaque actor");
         viewport.setActors(null);
     }
+    // Force the active touch path. Put nearer faces first inside one alpha
+    // VBO: material-centroid sorting cannot correct this reversed face order.
+    viewport.touch=true;viewport.setTerrain(terrain,{resetCamera:false});
+    const sameMaterial=new Float32Array([...planeAt(1,12000),...planeAt(.5,2000)]);
+    viewport.setScenery({vertices:new Float32Array(),transparentBatches:[
+        {level:0,texture:-1,alpha,vertices:sameMaterial}]});
+    viewport.render();gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    const sortedWant=alphaColor.map((v,i)=>v*opacity+(backColor[i]*opacity+expected[i]*(1-opacity))*(1-opacity));
+    if(sortedWant.some((v,i)=>Math.abs(v-pixel[i])>2))throw new Error("Touch intra-material alpha order incorrect: "+pixel+" expected "+sortedWant);
+    if(!gl.getParameter(gl.DEPTH_WRITEMASK)||gl.isEnabled(gl.BLEND))throw new Error("Indexed alpha pass leaked GL state");
+    const orderedEbo=[...viewport.transparentIndexBuffers.values()][0].buffer;
+    viewport.render();
+    if([...viewport.transparentIndexBuffers.values()][0].buffer!==orderedEbo)throw new Error("Unchanged alpha frame replaced EBO");
+    viewport.setScenery(null);
+    if(gl.isBuffer(orderedEbo)||viewport.transparentIndexBuffers.size)throw new Error("Alpha unload leaked EBO");
+    viewport.touch=false;viewport.setTerrain(terrain,{resetCamera:false});
+    viewport.setScenery({vertices:new Float32Array(),transparentBatches:[
+        {level:0,texture:-1,alpha,vertices:planeAt(1,12000)}]});
     const alphaBuffer=viewport.sceneryAlphaBatches[0].buffer;
     viewport.setScenery({vertices:new Float32Array(),transparentBatches:[{level:1,texture:-1,alpha,vertices:planeAt(1,12000)}]});
     if(gl.isBuffer(alphaBuffer))throw new Error("Alpha replacement leaked buffer");

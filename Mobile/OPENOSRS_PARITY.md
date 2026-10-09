@@ -5,6 +5,29 @@ Requested baseline: the local OpenOSRS revision-240 client recorded in
 connecting text, friendly offline error and black loading screen remain explicit
 SoloScape requirements. They take precedence over reference presentation.
 
+Rendering baseline clarified on 9 October 2026: the built-in RuneLite GPU
+renderer is included; HD and other visual plugins are excluded. Exact parity
+requires the same cache revision, scene state, camera, brightness and GPU
+settings, followed by reference image comparisons. Passing unit/browser tests
+alone is not evidence of whole-scene pixel parity.
+
+### Indexed mobile transparency (9 October 2026)
+
+The active touch renderer now sorts alpha triangles and uploads their order
+to retained element buffers, replacing whole-material centroid sorting.
+The local `gpu/Zone.java` sorts static alpha faces into `alphaElements` and
+uses `glDrawElements`; `ModelUploader.java` depth-sorts dynamic alpha models.
+SoloScape preserves its existing vertex and picking snapshots, merges only
+consecutive draws from the same VBO, and retains EBO capacity across ordering
+changes. Source VBO replacement/unload and viewport disposal release EBOs.
+Real Chrome WebGL pixels verify reversed faces within one material blend in
+the correct order on the touch path, with opaque depth and GL state retained.
+
+This is not the full reference renderer. Alpha still lacks reference zone/model
+submission order and integer depth buckets; special priority/no-depth render
+modes, GPU colour interpolation, object shadows and joined normals, skeletal
+animations, varp/varbit loc morphs and instanced worlds remain parity gaps.
+
 This is an implementation tracker, not a declaration that the browser runs the
 OpenOSRS engine. The active homepage uses `teavm-poc/site/title.html`,
 `title-client.mjs`, `TitleLoginSession` and `TeaVmWorldBridge`. Improvements must
@@ -44,7 +67,7 @@ This **does not** mean the WebGL renderer is running OpenOSRS Java code.
 | Static world upload | Uploads 8×8-tile zones, reuses initialized VAO/VBOs across scene rebuilds | WebGL 2 uses conservative 64×64-world-tile opaque spatial chunks grouped by material/level, culling offscreen bounding boxes while preserving picking and alpha buffers |
 | Dynamic actors | Uploads temporary/sorted model buffers during native engine render callbacks; `ModelUploader` retains reusable scratch arrays | Rebuilds player/NPC meshes and allocates geometry in JavaScript on a separate ~20 Hz touch timer; reference client cadence isn't directly equivalent |
 | Scene visibility | Uses scene zones, roof/level filtering, and draw-distance settings | Uses a 25-tile render window and now culls NPC model work conservatively beyond visible bounds (10-tile padding) |
-| Transparency | Keeps separate opaque/alpha buffers and handles sorted alpha models | Batches alpha per material on touch; ordering within batches remains approximate |
+| Transparency | Keeps separate opaque/alpha buffers, sorted alpha models and indexed static alpha | Touch sorts individual faces into retained EBOs and combines consecutive ranges; reference zone/model ordering and depth quantisation remain outstanding |
 | Opaque rendering | Retained per-zone VAO/VBOs and native OpenGL draw ranges | WebGL 2 now retains per-buffer/per-shader VAOs, culls opaque chunks and skips duplicate full-scene GPU uploads on mobile; 64×64 chunks trade coarser culling for fewer Safari draw calls |
 | Rendering model | Native desktop OpenGL and game engine | iOS Safari WebGL 2 (GLSL ES 3.00 only; no WebGL 1 fallback) plus JavaScript/async model work; timings not directly comparable |
 

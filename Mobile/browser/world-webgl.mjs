@@ -391,11 +391,24 @@ export function sortTransparentFaces(batches,matrix,drawLevel=3){
     return faces.sort((a,b)=>b.depth-a.depth);
 }
 
-// Low-overhead transparency sorting for mobile. The desktop renderer sorts
-// every alpha triangle for exact blending; on iOS that creates one draw call
-// plus uniforms/buffer bindings per face, often thousands every RAF. Sort
-// larger material/alpha batches instead: one GL draw per batch, at the cost of
-// approximate alpha ordering *inside* foliage, water and glass batches.
+// Keep triangle order while combining consecutive faces from the same VBO.
+// RuneLite's Zone renderer similarly streams sorted alpha element indices,
+// retaining the original vertex data rather than drawing once per triangle.
+export function transparentIndexRanges(batches,matrix,drawLevel=3){
+    const indices=new Map(),draws=[];
+    for(const {batch,first} of sortTransparentFaces(batches,matrix,drawLevel)){
+        if(!indices.has(batch))indices.set(batch,[]);
+        const elements=indices.get(batch),at=elements.length;
+        elements.push(first,first+1,first+2);
+        const last=draws.at(-1);
+        if(last?.batch===batch)last.count+=3;
+        else draws.push({batch,first:at,count:3});
+    }
+    return {draws,indices:new Map(Array.from(indices,([batch,values])=>[batch,new Uint32Array(values)]))};
+}
+
+// Legacy centroid ordering retained for comparison tests. The active touch
+// renderer uses sorted element ranges so faces within a material also sort.
 const alphaCenters=new WeakMap();
 export function sortTransparentBatches(batches,matrix,drawLevel=3){
     const visible=[];
@@ -1007,6 +1020,12 @@ export class NativeTerrainViewport {
         }
     }
     releaseGeometry(buffer){
+        const order=this.transparentIndexBuffers?.get(buffer);
+        if(order){
+            this.gl.deleteBuffer(order.buffer);
+            this.transparentIndexBuffers.delete(buffer);
+            this.transparentOrderCache=null;
+        }
         const programs=this.vertexArrays?.get(buffer);
         if(!programs)return;
         for(const vao of programs.values()){
@@ -1018,6 +1037,10 @@ export class NativeTerrainViewport {
     drawArrays(mode,first,count){
         this.drawCallCount++;
         this.gl.drawArrays(mode,first,count);
+    }
+    drawElements(mode,count,offset){
+        this.drawCallCount++;
+        this.gl.drawElements(mode,count,this.gl.UNSIGNED_INT,offset);
     }
     render(){
         const gl=this.gl,canvas=this.canvas;
@@ -1107,7 +1130,7 @@ export class NativeTerrainViewport {
     renderTransparent(matrix,drawLevel,bounds){
         const gl=this.gl;
         const batches=[...(this.sceneryAlphaBatches??[]),...(this.actorAlphaBatches??[]),...(this.dynamicAlphaBatches??[])];
-        const faces=this.touch?sortTransparentBatches(batches,matrix,drawLevel):
+        const faces=this.touch?this.prepareTransparentDraws(batches,matrix,drawLevel):
             sortTransparentFaces(batches,matrix,drawLevel);
         if(!faces.length)return;
         gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);
@@ -1116,6 +1139,42 @@ export class NativeTerrainViewport {
                 this.renderMaterialBatch(batch,first,count,matrix,bounds,1-batch.alpha/255);
             }
         }finally{gl.depthMask(true);gl.disable(gl.BLEND);}
+    }
+    prepareTransparentDraws(batches,matrix,drawLevel){
+        const previous=this.transparentOrderCache;
+        // Camera translation changes every face's depth by the same amount.
+        // Only its direction, geometry or roof visibility can change ordering.
+        if(previous&&previous.level===drawLevel&&
+            previous.direction.every((v,i)=>v===matrix[[3,7,11][i]])&&
+            previous.sources.length===batches.length&&previous.sources.every((b,i)=>
+                b.buffer===batches[i].buffer&&b.vertices===batches[i].vertices&&
+                b.level===batches[i].level&&b.texture===batches[i].texture&&b.alpha===batches[i].alpha))
+            return previous.draws;
+        const gl=this.gl,ordered=transparentIndexRanges(batches,matrix,drawLevel);
+        if(!this.transparentIndexBuffers)this.transparentIndexBuffers=new Map();
+        for(const [batch,indices] of ordered.indices){
+            let old=this.transparentIndexBuffers.get(batch.buffer);
+            if(old&&old.indices.length===indices.length&&old.indices.every((v,i)=>v===indices[i]))continue;
+            if(!old){
+                old={buffer:gl.createBuffer(),capacity:0};
+                this.transparentIndexBuffers.set(batch.buffer,old);
+            }
+            // ELEMENT_ARRAY_BUFFER belongs to the bound VAO. Upload with the
+            // default VAO so another shader's retained layout is not changed.
+            gl.bindVertexArray(null);this.boundVertexArray=null;
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,old.buffer);
+            if(old.capacity>=indices.byteLength)gl.bufferSubData(gl.ELEMENT_ARRAY_BUFFER,0,indices);
+            else{
+                gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,indices,gl.DYNAMIC_DRAW);
+                old.capacity=indices.byteLength;
+            }
+            old.indices=indices;
+        }
+        const draws=ordered.draws.map(({batch,first,count})=>({
+            batch:{...batch,orderBuffer:this.transparentIndexBuffers.get(batch.buffer).buffer},first,count}));
+        this.transparentOrderCache={level:drawLevel,direction:[matrix[3],matrix[7],matrix[11]],
+            sources:batches.map(b=>({...b})),draws};
+        return draws;
     }
     renderMaterialBatch(batch,first,count,matrix,bounds,opacity){
         const gl=this.gl,textured=batch.texture>=0,texture=this.textures.get(batch.texture);
@@ -1133,7 +1192,10 @@ export class NativeTerrainViewport {
             gl.uniform2f(this.uniform(p,"u_textureShift"),...offset);
         }
         this.bindGeometry(batch.buffer,p);
-        this.drawArrays(gl.TRIANGLES,first,count);
+        if(batch.orderBuffer){
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,batch.orderBuffer);
+            this.drawElements(gl.TRIANGLES,count,first*4);
+        }else this.drawArrays(gl.TRIANGLES,first,count);
     }
     dispose(){
         this.disposed=true;this.onSceneFrame=null;this.longPress.cancel();cancelAnimationFrame(this.raf);
@@ -1146,6 +1208,8 @@ export class NativeTerrainViewport {
         for(const programs of this.vertexArrays?.values()??[])
             for(const vao of programs.values())this.gl.deleteVertexArray(vao);
         this.vertexArrays?.clear();this.boundVertexArray=null;
+        for(const order of this.transparentIndexBuffers?.values()??[])this.gl.deleteBuffer(order.buffer);
+        this.transparentIndexBuffers?.clear();this.transparentOrderCache=null;
         this.gl.deleteBuffer(this.buf);this.gl.deleteBuffer(this.sceneryBuf);this.gl.deleteBuffer(this.actorBuf);this.gl.deleteTexture(this.palette);
         this.gl.deleteProgram(this.program);
         this.gl.deleteProgram(this.textureProgram);
