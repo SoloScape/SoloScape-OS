@@ -4,10 +4,49 @@ import {NativeGameplay,interpolatePlayer,rebuildRegions} from "../browser/native
 import {decodeRebuild,encodeMoveDestination,encodeWindowStatus} from "../browser/player-protocol.mjs";
 import {NativePlayerSync} from "../browser/player-sync.mjs";
 import {NativeTspsPlayerController} from "../browser/tsps-game-controller.mjs";
+import {NativePlayerAnimations} from "../browser/player-animation.mjs";
 
 const terrain=(mapX,mapY)=>({mapX,mapY,side:64,heights:new Int32Array(4096),underlays:new Uint8Array(4096),overlays:new Uint8Array(4096),
     overlayShapes:new Uint8Array(4096),overlayRotations:new Uint8Array(4096),planes:Array.from({length:4},()=>({heights:new Int32Array(4096),renderFlags:new Uint8Array(4096)}))});
 const viewport=()=>({canvas:{clientWidth:765,clientHeight:503},visibleLevel:0,onDestination:null,setActors(){},setScenery(){},setTerrain(){},setSceneLevel(){},addTextures(){}});
+
+test("player and loaded NPCs keep drawing during missing walk frames and new NPC downloads",async()=>{
+    let clock=1000,resolveFrame,resolveNpc;
+    const pendingFrame=new Promise(resolve=>{resolveFrame=resolve;});
+    const pendingNpc=new Promise(resolve=>{resolveNpc=resolve;});
+    const animations=new NativePlayerAnimations({});
+    const sequence=Promise.resolve({frameIds:[1],frameLengths:[2],skeletalId:-1});
+    animations.sequence=()=>sequence;animations.frame=()=>pendingFrame;
+    const model={verticesCount:3,faceCount:1,verticesX:Int32Array.of(0,128,0),
+        verticesY:Int32Array.of(0,0,128),verticesZ:Int32Array.of(0,0,0),
+        indices1:Int32Array.of(0),indices2:Int32Array.of(1),indices3:Int32Array.of(2),faceColors:Uint16Array.of(2000)};
+    const models={composition:async()=>model,textures:{textures:new Map()},animations};
+    const uploads=[],vp={...viewport(),setActors:scene=>{if(scene)uploads.push(scene);}};
+    const game=new NativeGameplay({cache:{},viewport:vp,models,session:{sendGame(){}},now:()=>clock});
+    try{
+        game.authenticated({playerIndex:1});
+        game.origin={mapX:50,mapY:50};game.regions.set("50,50",terrain(50,50));
+        game.scenePrepared=true;game.loading=false;game.ready=true;
+        const local={x:3201,y:3201,plane:0,orientation:0,appearance:{hidden:false,animations:{idle:10,walk:10}}};
+        game.sync.players[1]=local;game.updateMotion(local);
+        const loaded=Promise.resolve({model,definition:{size:1,ambient:0,contrast:0,idleSeqId:10,walkSeqId:10}});
+        game.npcModels.composition=id=>id===1?loaded:pendingNpc;
+        for(const [index,type] of [[5,1],[6,2]])game.npcMotions.set(index,{
+            from:{x:3202,y:3202},target:{x:3203,y:3202,plane:0,index,type,moveSpeed:1},
+            started:1000,animationStarted:1000,sequenceStarted:1000});
+        await game.drawActors();await game.drawActors();
+        assert.equal(game.drawing,false);assert.equal(game.npcDrawn,1);assert.equal(game.npcMissing,1);
+        const before=uploads.at(-1),playerX=before.vertices[0],npcX=before.npcPickMeshes[0].vertices[0];
+        game.updateMotion({...local,x:3202,moving:true,moveSpeed:1});
+        clock=1320;game.playerController.advance(clock);await game.drawActors();
+        const after=uploads.at(-1);
+        assert.ok(after.vertices[0]>playerX,"player movement uploads while the walk frame is pending");
+        assert.ok(after.npcPickMeshes[0].vertices[0]>npcX,"loaded NPC movement uploads while another NPC is pending");
+        assert.equal(game.drawing,false);
+        resolveNpc(await loaded);await Promise.resolve();await game.drawActors();
+        assert.equal(game.npcDrawn,2,"streamed NPC joins subsequent actor frames");
+    }finally{resolveFrame(null);resolveNpc(null);game.close();}
+});
 
 test("movement and window packets use revision-240 payload layouts",()=>{
     assert.deepEqual([...encodeWindowStatus(765,503)],[2,2,253,1,247]);

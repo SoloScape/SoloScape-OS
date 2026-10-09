@@ -427,7 +427,8 @@ export class NativeGameplay {
                     // appearance visible in bind pose rather than hiding the
                     // entire character behind an animation fetch failure.
                     let posed=model;
-                    if(id>=0)try{posed=await this.models.animations.poseFrame(model,id,frame);this.animationRenderError=null;}
+                    if(id>=0)try{posed=this.models.animations.poseFrameAvailable?
+                        this.models.animations.poseFrameAvailable(model,id,frame):await this.models.animations.poseFrame(model,id,frame);this.animationRenderError=null;}
                     catch(error){this.animationRenderError=error.message;}
                     const mesh=buildPlayerMesh(posed,region,player,{textures:this.models.textures.textures});
                     if(!mesh.vertices.length&&!mesh.texturedBatches.some(batch=>batch.vertices.length)&&!mesh.transparentBatches.some(batch=>batch.vertices.length))
@@ -466,8 +467,10 @@ export class NativeGameplay {
                 if(!region)return null;
                 try{
                     const mesh=await this.npcModels.mesh(npc,region,{
+                        waitForAssets:false,
                         elapsed:Math.max(0,now-motion.animationStarted),
                         sequenceElapsed:Math.max(0,now-motion.sequenceStarted-(npc.sequence?.delay??0)*20)});
+                    if(!mesh)return null;
                     const key=`npc:${npc.index}`,active=this.spotEffects.actors.get(key)?.slots.size;
                     const effects=active?await this.spotEffects.meshes(key,npc,region,now,(await this.npcModels.definition(npc.type)).size):[];
                     return {mesh,effects,region,index:motion.target.index};

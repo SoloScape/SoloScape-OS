@@ -172,6 +172,17 @@ export function stepMovementFrames(sequence,state,cycles){
 }
 
 /** Shared promises avoid repeated JS5 requests while a sequence is streaming. */
+const availableAssets=new WeakMap();
+export function availableAsset(promise){
+    let state=availableAssets.get(promise);
+    if(!state){
+        state={ready:false};availableAssets.set(promise,state);
+        promise.then(value=>{state.value=value;state.ready=true;},error=>{state.error=error;state.ready=true;});
+    }
+    if(state.error)throw state.error;
+    return state.ready?state.value:null;
+}
+
 export class NativePlayerAnimations {
     constructor(cache){this.cache=cache;this.files=new Map();this.sequences=new Map();this.frames=new Map();this.skeletons=new Map();}
     file(index,group,file){
@@ -213,6 +224,25 @@ export class NativePlayerAnimations {
         if(sequence.skeletalId>=0)throw new Error(`Sequence ${id} requires skeletal animation`);
         if(!sequence.frameIds.length)throw new Error(`Sequence ${id} has no classic frames`);
         return applyAnimation(model,await this.frame(sequence.frameIds[Math.max(0,Math.min(index|0,sequence.frameIds.length-1))]));
+    }
+    // World actors must keep moving while verified sequence/frame data streams.
+    // Use bind pose for missing assets; never hold the shared actor drawing lock.
+    poseFrameAvailable(model,id,index=0){
+        const sequence=availableAsset(this.sequence(id));
+        if(!sequence)return model;
+        if(sequence.skeletalId>=0)throw new Error(`Sequence ${id} requires skeletal animation`);
+        if(!sequence.frameIds.length)throw new Error(`Sequence ${id} has no classic frames`);
+        const frame=availableAsset(this.frame(sequence.frameIds[Math.max(0,Math.min(index|0,sequence.frameIds.length-1))]));
+        return frame?applyAnimation(model,frame):model;
+    }
+    poseAvailable(model,id,timeMs=0){
+        if(!Number.isFinite(timeMs)||timeMs<0)throw new Error("Invalid animation time");
+        const sequence=availableAsset(this.sequence(id));
+        if(!sequence)return model;
+        if(sequence.skeletalId>=0)throw new Error(`Sequence ${id} requires skeletal animation`);
+        if(!sequence.frameIds.length)throw new Error(`Sequence ${id} has no classic frames`);
+        const index=stepMovementFrames(sequence,{frame:0,cycle:0},Math.floor(timeMs/20));
+        return this.poseFrameAvailable(model,id,index);
     }
     async pose(model,id,timeMs=0,movementState=null){
         if(!Number.isFinite(timeMs)||timeMs<0)throw new Error("Invalid animation time");

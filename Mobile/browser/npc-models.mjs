@@ -2,6 +2,7 @@
 // TSPS NpcType (BSD-2-Clause; upstream licence retained in player-config.mjs).
 import {ByteBuffer} from "./cache-reader.mjs";
 import {mergePlayerModels,buildPlayerMesh} from "./player-models.mjs";
+import {availableAsset} from "./player-animation.mjs";
 
 const none=id=>id===65535?-1:id;
 const take=(r,count,method="readUnsignedShort")=>{
@@ -117,7 +118,7 @@ export class NativeNpcModels{
         }
         return this.definitions.get(id);
     }
-    async composition(id){
+    composition(id){
         if(!this.compositions.has(id)){
             if(this.compositions.size>=128)this.compositions.delete(this.compositions.keys().next().value);
             const p=(async()=>{
@@ -135,13 +136,17 @@ export class NativeNpcModels{
         }
         return this.compositions.get(id);
     }
-    async mesh(npc,terrain,{elapsed=0,sequenceElapsed=0}={}){
-        const {model,definition}=await this.composition(npc.type),animations=this.playerModels.animations;
+    async mesh(npc,terrain,{elapsed=0,sequenceElapsed=0,waitForAssets=true}={}){
+        const pending=this.composition(npc.type);
+        const composition=waitForAssets?await pending:availableAsset(pending);
+        if(!composition)return null;
+        const {model,definition}=composition,animations=this.playerModels.animations;
         let animId=npc.sequence?.id??-1,time=sequenceElapsed;
         if(animId<0){animId=npc.animationOverrides?.[npc.moving?(npc.moveSpeed===2?"run":"walk"):"idle"] ??
             (npc.moving?(npc.moveSpeed===2&&definition.runSeqId>=0?definition.runSeqId:definition.walkSeqId):definition.idleSeqId);time=elapsed;}
         let pose=model;
-        if(animId>=0){try{pose=await animations.pose(model,animId,time);}catch{pose=model;}}
+        if(animId>=0){try{pose=!waitForAssets&&animations.poseAvailable?
+            animations.poseAvailable(model,animId,time):await animations.pose(model,animId,time);}catch{pose=model;}}
         return buildPlayerMesh(pose,terrain,npc,{textures:this.playerModels.textures.textures,
             size:definition.size,ambient:definition.ambient,contrast:82+definition.contrast});
     }

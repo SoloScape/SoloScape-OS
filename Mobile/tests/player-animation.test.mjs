@@ -57,6 +57,29 @@ test("loader chooses locomotion frames at 20 ms and reuses promises",async()=>{
     await assert.rejects(loader.pose(model(),1,0),/skeletal/);
 });
 
+test("streaming poses never await a missing sequence or frame and animate once available",async()=>{
+    const loader=new NativePlayerAnimations({}),base=model();
+    let resolveSequence,resolveFrame;
+    const sequence=new Promise(resolve=>{resolveSequence=resolve;});
+    const pendingFrame=new Promise(resolve=>{resolveFrame=resolve;});
+    loader.sequence=()=>sequence;loader.frame=()=>pendingFrame;
+    assert.equal(loader.poseFrameAvailable(base,10),base);
+    resolveSequence({frameIds:[1],frameLengths:[2],skeletalId:-1});await Promise.resolve();
+    assert.equal(loader.poseFrameAvailable(base,10),base);
+    assert.equal(loader.poseAvailable(base,10,1000),base);
+    resolveFrame(frame([1],[{group:0,x:7,y:0,z:0}]));await Promise.resolve();
+    assert.equal(loader.poseFrameAvailable(base,10).verticesX[0],17);
+    assert.equal(loader.poseAvailable(base,10,1000).verticesX[0],17);
+    assert.equal(base.verticesX[0],10);
+});
+
+test("streaming asset failures are handled and reported without an unhandled rejection",async()=>{
+    const loader=new NativePlayerAnimations({}),base=model();
+    const failed=Promise.reject(new Error("missing sequence"));loader.sequence=()=>failed;
+    assert.equal(loader.poseFrameAvailable(base,10),base);await Promise.resolve();
+    assert.throws(()=>loader.poseFrameAvailable(base,10),/missing sequence/);
+});
+
 test("locomotion retains frame/cycle across sequence changes and loops only the tail",()=>{
     const sequence={frameIds:[1,2,3],frameLengths:[2,2,2],frameStep:2};
     const state={frame:0,cycle:0};
