@@ -45,6 +45,13 @@ ordering; unchanged ordering skips index uploads. This replaces touch material
 centroid sorting. It does not yet reproduce RuneLite's complete zone/model
 ordering, integer depth buckets or special no-depth priority render modes.
 
+Untextured world geometry now uses the reference GPU's float HSL-to-RGB
+conversion and perspective RGB interpolation (its default colour-banding
+removal setting), with brightness 0.8. Textured faces keep non-perspective
+lightness interpolation and discard non-opaque cutout texels. Reference GPU
+sorting, shaders and default-setting sources are SHA-256-pinned alongside the
+existing revision-240 reference. Whole-scene parity remains incomplete.
+
 **Starting 8 October 2026**, `npm run dev` (also `npm run dev:native`)
 starts **SoloScape's own WebGL world client** at
 `http://localhost:3001/`, not the collection of JS5 diagnostic buttons.

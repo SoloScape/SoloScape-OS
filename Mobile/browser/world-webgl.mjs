@@ -2,6 +2,7 @@
  * BSD 2-Clause License
  * 
  * Copyright (c) 2022-2026, dennisdev, xrsps
+ * GPU HSL conversion adapted from RuneLite, Copyright (c) 2018, Adam <Adam@sigterm.info>
  * All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
@@ -93,10 +94,32 @@ export function worldShaderSources(textured=false){
 in vec3 a_position;
 in vec3 a_color;
 uniform mat4 u_mvp;
+uniform float u_brightness;
+out highp vec3 v_rgb;
 out highp float v_hsl_w;
 out highp float v_w;
 out highp vec2 v_uv;
 out highp vec2 v_scenePosition;
+// RuneLite gpu/hsl_to_rgb.glsl: convert HSL and apply brightness before
+// perspective-correct RGB interpolation (default remove-colour-banding mode).
+float hueChannel(float t,float low,float high){
+    if(t>1.0)t-=1.0;
+    if(t<0.0)t+=1.0;
+    if(6.0*t<1.0)return low+(high-low)*6.0*t;
+    if(2.0*t<1.0)return high;
+    if(3.0*t<2.0)return low+(high-low)*(0.6666666666666666-t)*6.0;
+    return low;
+}
+vec3 gpuHslRgb(float packed){
+    int hsl=int(packed);
+    float hue=float((hsl>>10)&63)/64.0+0.0078125;
+    float sat=float((hsl>>7)&7)/8.0+0.0625;
+    float lum=float(hsl&127)/128.0;
+    float high=lum<0.5?lum*(1.0+sat):lum+sat-lum*sat;
+    float low=2.0*lum-high;
+    return pow(vec3(hueChannel(hue+0.3333333333333333,low,high),
+        hueChannel(hue,low,high),hueChannel(hue-0.3333333333333333,low,high)),vec3(u_brightness));
+}
 void main(){
     vec4 v=u_mvp*vec4(a_position,1.0);
     // Match TSPS's small view-depth priority layers without moving world
@@ -105,6 +128,7 @@ void main(){
     v.z-=0.4002287*0.001*layer/max(v.w,0.2);
     gl_Position=v;
     v_hsl_w=floor(a_color.x)*v.w;
+    v_rgb=gpuHslRgb(floor(a_color.x));
     v_w=v.w;
     v_uv=a_color.yz;
     v_scenePosition=a_position.xz;
@@ -126,18 +150,17 @@ in highp float v_hsl_w;
 in highp float v_w;
 in highp vec2 v_uv;
 in highp vec2 v_scenePosition;
+in highp vec3 v_rgb;
 out vec4 fragColor;
 void main(){
     if(v_scenePosition.x<u_drawBounds.x||v_scenePosition.y<u_drawBounds.y||
         v_scenePosition.x>=u_drawBounds.z||v_scenePosition.y>=u_drawBounds.w)discard;
     ${textured?`vec4 texel=texture(u_texture,v_uv+u_textureShift);
-    if(texel.a<0.1)discard;
+    if(texel.a<1.0)discard;
     float light=clamp(v_hsl_w/v_w,2.0,126.0)/127.0;
     fragColor=vec4(texel.rgb*light,1.0);`:""}
     if(u_wireframe){fragColor=vec4(1.0);return;}
-    float hsl=clamp(floor(v_hsl_w/v_w+0.01),0.0,65535.0);
-    vec2 cell=vec2(mod(hsl,256.0),floor(hsl/256.0));
-    if(!${textured?"true":"false"})fragColor=texture(u_palette,(cell+0.5)/256.0);
+    if(!${textured?"true":"false"})fragColor=vec4(v_rgb,1.0);
     vec2 delta=abs(v_scenePosition-u_fogPlayer);
     float d=max(delta.x,delta.y)-u_fogEnd;
     float ramp=max(0.0001,u_fogEnd-u_fogDepth);
@@ -936,6 +959,7 @@ export class NativeTerrainViewport {
         gl.uniform1i(this.uniform(program,"u_wireframe"),0);
         gl.uniform1i(this.uniform(program,program===this.textureProgram?"u_texture":"u_palette"),0);
         gl.uniform1f(this.uniform(program,"u_opacity"),1);
+        if(program===this.program)gl.uniform1f(this.uniform(program,"u_brightness"),0.8);
         this.framePreparedPrograms?.add(program);
         this.frameOpacity?.set(program,1);
     }

@@ -212,7 +212,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
     }
 });
 
-test("real WebGL shader renders client HSL palette pixels and releases palette texture",
+test("real WebGL shader renders RuneLite GPU colours, ordered alpha and releases resources",
     {timeout:60000,skip:process.platform!=="linux"&&!process.env.CHROME_BIN},async()=>{
     const chrome=process.env.CHROME_BIN||"/usr/bin/google-chrome";
     await access(chrome);
@@ -223,7 +223,19 @@ test("real WebGL shader renders client HSL palette pixels and releases palette t
 <script type="module">
 try{
     const {NativeTerrainViewport}=await import("/world-webgl.mjs");
-    const {HSL_PALETTE}=await import("/floor-lighting.mjs");
+    // Float HSL conversion oracle for the reference GPU's default brightness.
+    // The CPU palette truncates channels before gamma and is not its pixel oracle.
+    const gpuChannels=packed=>{
+        const h=(packed>>10&63)/64+1/128,s=(packed>>7&7)/8+1/16,l=(packed&127)/128;
+        const q=l<.5?l*(1+s):l+s-l*s,p=2*l-q;
+        const channel=t=>{
+            t=(t+1)%1;
+            const c=t<1/6?p+(q-p)*6*t:t<.5?q:t<2/3?p+(q-p)*(2/3-t)*6:p;
+            return Math.pow(c,.8);
+        };
+        return [channel(h+1/3),channel(h),channel(h-1/3)];
+    };
+    const gpuColor=packed=>gpuChannels(packed).map(c=>Math.round(c*255)).reduce((rgb,c)=>rgb*256+c,0);
     const viewport=new NativeTerrainViewport(document.getElementById("scene"));
     if(!(viewport.gl instanceof WebGL2RenderingContext))throw new Error("WebGL 2 context required");
     const terrain={side:64,heights:new Int32Array(4096),
@@ -236,7 +248,7 @@ try{
     const pixel=new Uint8Array(4);
     gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),
         1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
-    const rgb=HSL_PALETTE[937];
+    const rgb=gpuColor(937);
     const expected=[rgb>>>16&255,rgb>>>8&255,rgb&255,255];
     if(expected.some((v,i)=>v!==pixel[i]))throw new Error("Pixel "+pixel+" expected "+expected);
     // Asymmetric compass landmarks catch reflections in the actual GPU path.
@@ -252,7 +264,7 @@ try{
         const px=Math.floor(viewport.canvas.width*(.5+Math.sqrt(3)*east/depth/2));
         const py=Math.floor(viewport.canvas.height*(.5+Math.sqrt(3)*(.5*Math.cos(1.3)+north*Math.sin(1.3))/depth/2));
         gl.readPixels(px,py,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
-        const color=HSL_PALETTE[hsl],want=[color>>>16&255,color>>>8&255,color&255,255];
+        const color=gpuColor(hsl),want=[color>>>16&255,color>>>8&255,color&255,255];
         if(want.some((v,i)=>v!==pixel[i]))throw new Error("Mirrored compass landmark "+east+","+north+": "+pixel);
     }
     // A separate object buffer must draw above terrain, then survive recolouring
@@ -262,8 +274,25 @@ try{
     viewport.setScenery({vertices:object});
     viewport.setTerrain(terrain,{resetCamera:false});viewport.render();
     gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
-    const objectRgb=HSL_PALETTE[2000],objectExpected=[objectRgb>>>16&255,objectRgb>>>8&255,objectRgb&255,255];
+    const objectRgb=gpuColor(2000),objectExpected=[objectRgb>>>16&255,objectRgb>>>8&255,objectRgb&255,255];
     if(objectExpected.some((v,i)=>v!==pixel[i]))throw new Error("Scenery pixel "+pixel+" expected "+objectExpected);
+    // Different vertex hues catch packed-HSL interpolation: the GPU default
+    // interpolates gamma-adjusted RGB with perspective correction instead.
+    const gradientPositions=[[-8,.5,-8],[8,.5,-8],[0,.5,8]],gradientColors=[2000,12000,50000];
+    const gradient=new Float32Array(gradientPositions.flatMap((p,i)=>[...p,gradientColors[i],0,0]));
+    const gradientMatrix=(await import("/world-webgl.mjs")).sceneCameraMatrix(viewport.target,0,1.3,50,1);
+    viewport.setScenery({vertices:gradient});viewport.render();
+    const clip=gradientPositions.map(p=>[0,1,2,3].map(row=>[...p,1].reduce((n,v,col)=>n+gradientMatrix[col*4+row]*v,0)));
+    const projected=clip.map(c=>[viewport.canvas.width*(.5+c[0]/c[3]/2),viewport.canvas.height*(.5+c[1]/c[3]/2)]);
+    const px=Math.floor(projected.reduce((n,p)=>n+p[0],0)/3),py=Math.floor(projected.reduce((n,p)=>n+p[1],0)/3);
+    const [a,b,c]=projected,x=px+.5,y=py+.5,denom=(b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1]);
+    const wa=((b[1]-c[1])*(x-c[0])+(c[0]-b[0])*(y-c[1]))/denom;
+    const wb=((c[1]-a[1])*(x-c[0])+(a[0]-c[0])*(y-c[1]))/denom;
+    const weights=[wa,wb,1-wa-wb].map((w,i)=>w/clip[i][3]),sum=weights.reduce((n,w)=>n+w,0);
+    const colors=gradientColors.map(gpuChannels);
+    const gradientWant=[0,1,2].map(k=>255*weights.reduce((n,w,i)=>n+w*colors[i][k],0)/sum);
+    gl.readPixels(px,py,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    if(gradientWant.some((v,i)=>Math.abs(v-pixel[i])>2))throw new Error("GPU RGB gradient incorrect: "+pixel+" expected "+gradientWant+" at "+[px,py]+" camera "+[viewport.yaw,viewport.pitch,viewport.distance]+" projected "+projected);
     const texPixels=new Uint8Array(64*64*4);
     for(let i=0;i<texPixels.length;i+=4)texPixels.set([128,64,32,255],i);
     const textured=new Float32Array(object);
@@ -277,7 +306,7 @@ try{
     gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
     if([64,32,16,255].some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("Lit texture pixel "+pixel);
     const oldTexture=viewport.textures.get(3),oldBuffer=viewport.sceneryBatches[0].buffer;
-    for(let i=3;i<texPixels.length;i+=4)texPixels[i]=0;
+    for(let i=3;i<texPixels.length;i+=4)texPixels[i]=128;
     viewport.setScenery(texturedScene);viewport.render();
     if(gl.isTexture(oldTexture)||gl.isBuffer(oldBuffer))throw new Error("Replacing texture scene leaked GPU resources");
     gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
@@ -285,7 +314,7 @@ try{
     // Overlapping alpha materials must blend far-to-near across owners and
     // textures, preserve opaque depth, filter roofs and restore GL depth writes.
     const planeAt=(height,hsl)=>{const v=object.slice();for(let i=0;i<v.length;i+=6){v[i+1]=height;v[i+3]=hsl;}return v;};
-    const alphaRgb=HSL_PALETTE[12000],alphaColor=[alphaRgb>>>16&255,alphaRgb>>>8&255,alphaRgb&255];
+    const alphaRgb=gpuColor(12000),alphaColor=[alphaRgb>>>16&255,alphaRgb>>>8&255,alphaRgb&255];
     const backColor=[objectRgb>>>16&255,objectRgb>>>8&255,objectRgb&255];
     const alpha=128,opacity=1-alpha/255;
     viewport.setSceneLevel(0);
@@ -348,7 +377,7 @@ try{
     if(gl.isBuffer(dynamicBuffer))throw new Error("Dynamic scene cleanup leaked buffer");
     // Coplanar floor and wall details must win at every camera yaw and zoom,
     // for both shaders and either submission order, while nearer walls occlude.
-    const detailRgb=HSL_PALETTE[12000],detailExpected=[detailRgb>>>16&255,detailRgb>>>8&255,detailRgb&255,255];
+    const detailRgb=gpuColor(12000),detailExpected=[detailRgb>>>16&255,detailRgb>>>8&255,detailRgb&255,255];
     for(const wall of [false,true])for(const useTexture of [false,true])for(const reverse of [false,true]){
         const positions=wall?[[-4,-3,0],[4,-3,0],[-4,5,0],[4,-3,0],[4,5,0],[-4,5,0]]:
             [[-4,0,-4],[4,0,-4],[-4,0,4],[4,0,-4],[4,0,4],[-4,0,4]];

@@ -14,6 +14,12 @@
     "runelite-client/src/main/java/net/runelite/client/menus/MenuManager.java": "7295f246162716fdb0c2ee29d80983610a4931016952d7fb42fce3e35cf2c302",
     "runelite-client/src/main/java/net/runelite/client/plugins/gpu/SceneUploader.java": "a8ee331ba88e72448285c63e73f2fe9f052e969e8ce9099414b603518e5b191a",
     "runelite-api/src/main/java/net/runelite/api/GameState.java": "d0bc8623d582741d2b4cb89098851dc80a3678f8a9351fd5a1ec057318d70eed",
-    "runelite-client/src/main/java/net/runelite/client/input/cursor/DestinationResolver.java": "c36eb472ceba8cd5c2f8611b9fa7927282fce0028fb3335127ad093bab1d4515"
+    "runelite-client/src/main/java/net/runelite/client/input/cursor/DestinationResolver.java": "c36eb472ceba8cd5c2f8611b9fa7927282fce0028fb3335127ad093bab1d4515",
+    "runelite-client/src/main/java/net/runelite/client/plugins/gpu/Zone.java": "f54b9739b1622c2a0031ff3e37657a559f5e5ae7cf9753d317bd8098299b4f9d",
+    "runelite-client/src/main/java/net/runelite/client/plugins/gpu/ModelUploader.java": "79a3b1f9f6bd6aafcff7f2b5d21677c695828bdcb730d45f49b7dac35bd71047",
+    "runelite-client/src/main/java/net/runelite/client/plugins/gpu/GpuPluginConfig.java": "1d9fc492672061830d8a5817348a22e1b7a01a5af0a962459c0fa833feed39b9",
+    "runelite-client/src/main/resources/net/runelite/client/plugins/gpu/vert.glsl": "847dd6c2ad7330eda248d94b48bbe834574a1182ebc7773d4a2737f0f704fce3",
+    "runelite-client/src/main/resources/net/runelite/client/plugins/gpu/frag.glsl": "ea6b6f1160d2b0fb82cc72040a55467e5640255d865ae35bc702ce3fd57e1066",
+    "runelite-client/src/main/resources/net/runelite/client/plugins/gpu/hsl_to_rgb.glsl": "a052ec368216729acbbd8fdf2b0d81f47f911a00f85e3f0512085dfa7b433030"
   }
 }

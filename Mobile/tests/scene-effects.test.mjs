@@ -539,8 +539,12 @@ test("the native renderer uses WebGL 2 GLSL ES 3.00 for both palette and texture
         assert.match(fragment,/\bfragColor=vec4\(mix\(/);
         if(textured){
             assert.match(fragment,/texture\(u_texture,v_uv\+u_textureShift\)/);
-            assert.match(fragment,/if\(texel\.a<0\.1\)discard/);
-        }else assert.match(fragment,/texture\(u_palette,\(cell\+0\.5\)\/256\.0\)/);
+            assert.match(fragment,/if\(texel\.a<1\.0\)discard/);
+        }else{
+            assert.match(vertex,/v_rgb=gpuHslRgb\(floor\(a_color\.x\)\)/);
+            assert.match(fragment,/fragColor=vec4\(v_rgb,1\.0\)/);
+            assert.doesNotMatch(fragment,/floor\(v_hsl_w\/v_w/);
+        }
     }
 });
 

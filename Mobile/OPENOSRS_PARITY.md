@@ -25,8 +25,23 @@ the correct order on the touch path, with opaque depth and GL state retained.
 
 This is not the full reference renderer. Alpha still lacks reference zone/model
 submission order and integer depth buckets; special priority/no-depth render
-modes, GPU colour interpolation, object shadows and joined normals, skeletal
+modes, GPU settings parity, object shadows and joined normals, skeletal
 animations, varp/varbit loc morphs and instanced worlds remain parity gaps.
+
+### GPU colour interpolation (9 October 2026)
+
+The world shader now converts each untextured vertex's packed HSL into float
+RGB using the reference `hsl_to_rgb.glsl` hue/saturation offsets and brightness
+exponent, then interpolates RGB with perspective correction. This matches the
+reference's default `smoothBanding=true` path, replacing interpolated packed
+HSL and a quantised CPU palette lookup. The current brightness remains 0.8;
+server/game brightness settings and the alternate banding setting are not wired.
+Textured faces retain their separate non-perspective lightness interpolation,
+and cutout texels below full opacity are discarded as in the reference fragment
+shader. Chrome WebGL pixels verify flat colours against a float HSL oracle,
+a triangle with three different hues against perspective RGB interpolation,
+and partially transparent cutouts. This does not claim complete shader parity:
+reference fog, projection, face bias, mipmapping and texture settings still differ.
 
 This is an implementation tracker, not a declaration that the browser runs the
 OpenOSRS engine. The active homepage uses `teavm-poc/site/title.html`,
