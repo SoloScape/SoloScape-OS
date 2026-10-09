@@ -47,6 +47,9 @@ async function boot(){
                 worldBridge.activate(titleLogin.session,result);
                 core.titleAuthenticated();
                 title.enterGame();
+                // The landscape game viewport is laid out only after in-game
+                // styling is active. Send its actual size, not the title size.
+                worldBridge.resize?.();
                 password.value="";
             },
             onDisconnected:message=>{

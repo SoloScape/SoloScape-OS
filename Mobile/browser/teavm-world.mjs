@@ -34,7 +34,11 @@ export class TeaVmWorldBridge {
         this.performanceRoot=performanceRoot;this.createPerformanceOverlay=createPerformanceOverlay;this.performanceOverlay=null;
         this.createMenu=createMenu;this.createInterfaceView=createInterfaceView;this.createInterfaces=createInterfaces;
         this.menu=null;this.interfaces=null;
-        this.resize=()=>{if(this.interfaces?.view.active)this.interfaces.view.paint();this.menu?.render();};
+        this.resize=()=>{
+            this.gameplay?.updateWindowStatus?.();
+            if(this.interfaces?.view.active)this.interfaces.view.paint();
+            this.menu?.render();
+        };
         this.viewport=null;this.gameplay=null;this.session=null;this.active=false;
         this.generation=0;
     }
@@ -110,6 +114,7 @@ export class TeaVmWorldBridge {
             });
             this.active=true;
             globalThis.window?.addEventListener("resize",this.resize);
+            globalThis.window?.visualViewport?.addEventListener("resize",this.resize);
             this.gameplay.authenticated(account);
         }catch(error){
             this.dispose();
@@ -135,6 +140,7 @@ export class TeaVmWorldBridge {
         ++this.generation;
         this.active=false;
         globalThis.window?.removeEventListener("resize",this.resize);
+        globalThis.window?.visualViewport?.removeEventListener("resize",this.resize);
         try{this.gameplay?.close();}finally{
             this.gameplay=null;
             try{this.menu?.dispose();this.menu=null;this.interfaces?.close();this.interfaces=null;}finally{

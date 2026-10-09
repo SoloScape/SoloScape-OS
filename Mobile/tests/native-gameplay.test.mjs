@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
 import {NativeGameplay,interpolatePlayer,rebuildRegions} from "../browser/native-gameplay.mjs";
-import {decodeRebuild,encodeMoveDestination,encodeWindowStatus} from "../browser/player-protocol.mjs";
+import {decodeRebuild,encodeMoveDestination,encodeWindowStatus,WINDOW_STATUS} from "../browser/player-protocol.mjs";
 import {NativePlayerSync} from "../browser/player-sync.mjs";
 import {NativeTspsPlayerController} from "../browser/tsps-game-controller.mjs";
 import {NativePlayerAnimations} from "../browser/player-animation.mjs";
@@ -306,4 +306,32 @@ test("authenticated player becomes playable before optional NPC cache requests c
         assert.equal(game.npcDrawn,1);
         assert.ok(uploaded>=2,"NPC assets are added to the actor buffer later");
     }finally{resolveNpc();game.close();}
+});
+
+test("landscape resize reports true mobile CSS viewport dimensions once per size",()=>{
+    const vp=viewport(),sent=[];
+    const session={sendGame:(opcode,payload)=>sent.push([opcode,[...payload]])};
+    const game=new NativeGameplay({cache:{},viewport:vp,session});
+    try{
+        game.authenticated({playerIndex:5});
+        assert.deepEqual(sent,[[WINDOW_STATUS,[2,2,253,1,247]]]);
+        vp.canvas.clientWidth=748;vp.canvas.clientHeight=352;
+        game.updateWindowStatus();
+        game.updateWindowStatus();
+        assert.equal(sent.length,2,"visualViewport and window resize must not duplicate packets");
+        assert.deepEqual(sent[1],[WINDOW_STATUS,[2,2,236,1,96]]);
+        vp.canvas.clientWidth=0;
+        game.updateWindowStatus();
+        assert.equal(sent.length,2,"hidden or transient zero-size viewport must not overwrite server size");
+        vp.canvas.clientWidth=748;vp.canvas.clientHeight=352;
+        game.updateWindowStatus();
+        assert.equal(sent.length,2,"unchanged viewport must not transmit again");
+        vp.canvas.clientWidth=390;vp.canvas.clientHeight=844;
+        game.updateWindowStatus();
+        assert.deepEqual(sent.at(-1),[WINDOW_STATUS,[2,1,134,3,76]]);
+    }finally{
+        game.close();
+    }
+    game.updateWindowStatus();
+    assert.equal(sent.length,3,"closed session cannot send resize packets");
 });

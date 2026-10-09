@@ -107,10 +107,18 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         const clientCss=await (await fetch(root+"/teavm/title-client.css")).text();
         assert.match(clientCss,/height:100dvh/,"game client occupies the viewport");
         assert.match(clientCss,/#world-performance-toggle/,"touch-safe PERF toggle styles are served");
-        assert.match(clientCss,/aspect-ratio:765\/503/,"game title preserves its native layout");
+        assert.match(clientCss,/aspect-ratio:765\/503/,"desktop game preserves its native layout");
+        assert.match(clientCss,/@media \(pointer:coarse\) and \(orientation:landscape\)/,
+            "mobile landscape has a dedicated game fit mode");
+        assert.match(clientCss,/\.in-game \.app\{padding:env\(safe-area-inset-top/,
+            "notches and the home indicator cannot cover the landscape game");
+        assert.match(clientCss,/\.in-game \.screen\{width:100%;height:100%;aspect-ratio:auto/,
+            "mobile game fills the available landscape screen instead of letterboxing");
         assert.match(clientCss,/#title-controls/,"original native fixed-position title hit targets");
         const titleJs=await (await fetch(root+"/teavm/title-client.mjs")).text();
         assert.match(titleJs,/new NativeTitleScreen/,"homepage must use verified OpenOSRS-matched title renderer");
+        assert.match(titleJs,/worldBridge\.resize\?\.\(\)/,
+            "first authenticated frame reports post-layout game dimensions");
         assert.doesNotMatch(clientCss,/\.development|\.legacy|\.milestone|\.top\{/,
             "old site chrome styles are removed");
         for(const removed of ["/legacy","/diagnostics","/teavm/lab","/app.mjs","/diagnostics-app.mjs"]){

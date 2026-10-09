@@ -130,3 +130,33 @@ test("world performance HUD gets real RAF and server packet hooks, and stops on 
     gameplayOptions.onServerTick(700);
     assert.equal(calls.length,5,"disposed world must not collect more ticks");
 });
+
+test("iPhone rotation and visualViewport resize update world layout and remove listeners on logout",()=>{
+    const before=globalThis.window;
+    const listeners=new Map(),visualListeners=new Map();
+    const createTarget=map=>({
+        addEventListener:(name,fn)=>map.set(name,fn),
+        removeEventListener:(name,fn)=>{if(map.get(name)===fn)map.delete(name);}
+    });
+    const win=createTarget(listeners);win.visualViewport=createTarget(visualListeners);
+    globalThis.window=win;
+    try{
+        const elements=ui(),events=[],world=new TeaVmWorldBridge({...elements,
+            createViewport:()=>({dispose(){}}),
+            createGameplay:()=>({
+                authenticated(){},handle(){},close(){},
+                updateWindowStatus(){events.push("window status");}
+            })});
+        world.activate({connected:true},{playerIndex:7});
+        assert.equal(listeners.has("resize"),true);
+        assert.equal(visualListeners.has("resize"),true);
+        listeners.get("resize")();
+        visualListeners.get("resize")();
+        assert.deepEqual(events,["window status","window status"]);
+        world.dispose();
+        assert.equal(listeners.size,0);
+        assert.equal(visualListeners.size,0);
+    }finally{
+        if(before===undefined)delete globalThis.window;else globalThis.window=before;
+    }
+});

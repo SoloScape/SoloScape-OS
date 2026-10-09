@@ -48,7 +48,7 @@ export class NativeGameplay {
         this.onReady=onReady;this.onLoading=onLoading;this.onServerTick=onServerTick;
         this.loadTerrain=loadTerrain;this.loadMaterials=loadMaterials;this.loadScenery=loadScenery;this.models=models;this.now=now;
         this.generation=0;this.closed=false;this.regions=new Map();this.packetCount=0;this.animationStarted=now();
-        this.scenePrepared=false;this.ready=false;
+        this.scenePrepared=false;this.ready=false;this.lastWindowSize=null;
         this.playerController=new NativeTspsPlayerController(this.models.animations,now);
         this.sceneAnimations=new NativeSceneAnimations(this.models.animations);
         this.spotEffects=new NativeSpotEffects(this.models);
@@ -64,9 +64,21 @@ export class NativeGameplay {
         this.sync=new NativePlayerSync(account.playerIndex);
         this.localServerId=account.playerIndex;
         this.viewport.distance=GAME_CAMERA_ZOOM.default;this.viewport.pitch=.65;
-        const c=this.viewport.canvas;
-        this.session.sendGame(WINDOW_STATUS,encodeWindowStatus(Math.max(1,Math.min(65535,c.clientWidth)),Math.max(1,Math.min(65535,c.clientHeight))));
+        this.updateWindowStatus();
         this.timer=setInterval(()=>{this.playerController.advance(this.now());void this.drawActors();},20);
+    }
+    updateWindowStatus(){
+        // The iPhone viewport changes on rotation and Safari toolbar resize.
+        // Report the actual CSS world size, without redundant network packets.
+        if(this.closed||!this.sync||!this.session?.sendGame)return;
+        const canvas=this.viewport?.canvas;
+        if(!canvas?.clientWidth||!canvas?.clientHeight)return;
+        const width=Math.max(1,Math.min(65535,Math.round(canvas.clientWidth)));
+        const height=Math.max(1,Math.min(65535,Math.round(canvas.clientHeight)));
+        const size=width+":"+height;
+        if(size===this.lastWindowSize)return;
+        this.session.sendGame(WINDOW_STATUS,encodeWindowStatus(width,height));
+        this.lastWindowSize=size;
     }
     handle(packet){
         if(this.closed)return;this.packetCount++;
