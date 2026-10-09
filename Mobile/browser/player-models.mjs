@@ -43,31 +43,8 @@ export function recolourPlayerModel(source,definition,appearance,custom=null){
     return model;
 }
 
-// All body parts share skeleton pivots; weld BEFORE applying a frame.
-export function mergePlayerModels(parts){
-    const xyz=[[],[],[]],skins=[],faces=[[],[],[]],colors=[],textures=[],alphas=[],types=[],faceSkins=[],uvs=[],welded=new Map();
-    for(const part of parts){
-        const mapping=[];
-        for(let i=0;i<part.verticesCount;i++){
-            const coords=[part.verticesX[i],part.verticesY[i],part.verticesZ[i]],skin=part.vertexSkins?.[i]??-1;
-            const key=coords.join(",")+","+skin;let vertex=welded.get(key);
-            if(vertex===undefined){vertex=skins.length;welded.set(key,vertex);coords.forEach((n,k)=>xyz[k].push(n));skins.push(skin);}
-            mapping.push(vertex);
-        }
-        for(let i=0;i<part.faceCount;i++){
-            [part.indices1[i],part.indices2[i],part.indices3[i]].forEach((n,k)=>faces[k].push(mapping[n]));
-            colors.push(part.faceColors[i]);textures.push(part.faceTextures?.[i]??-1);alphas.push(part.faceAlphas?.[i]??0);
-            types.push(part.faceRenderTypes?.[i]??0);faceSkins.push(part.faceSkins?.[i]??-1);
-            uvs.push(...(part.textureUvs?.subarray(i*6,i*6+6)??[0,0,0,0,0,0]));
-        }
-    }
-    if(!skins.length||skins.length>65535||colors.length>65535)throw new Error("Invalid composed player model size");
-    return {verticesCount:skins.length,faceCount:colors.length,
-        verticesX:Int32Array.from(xyz[0]),verticesY:Int32Array.from(xyz[1]),verticesZ:Int32Array.from(xyz[2]),vertexSkins:Int32Array.from(skins),
-        indices1:Int32Array.from(faces[0]),indices2:Int32Array.from(faces[1]),indices3:Int32Array.from(faces[2]),
-        faceColors:Uint16Array.from(colors),faceTextures:Int16Array.from(textures),faceAlphas:Int32Array.from(alphas),
-        faceRenderTypes:Int8Array.from(types),faceSkins:Int32Array.from(faceSkins),textureUvs:Float32Array.from(uvs)};
-}
+export {mergePlayerModels} from "./model-composition.mjs";
+import {mergePlayerModels} from "./model-composition.mjs";
 
 export function playerGroundHeight(terrain,x,y,plane){
     const tx=Math.floor(x),ty=Math.floor(y),fx=x-tx,fy=y-ty;
@@ -98,7 +75,9 @@ export function buildPlayerMesh(model,terrain,player,{textures=new Map(),size=1,
         {type:10,rotation:0,dx:0,dy:0},[rotated],{textures});
     const shift=vertices=>{for(let i=0;i<vertices.length;i+=6){vertices[i]+=x-tx;vertices[i+1]-=(ground.height-center)/128;vertices[i+2]+=y-ty;}};
     shift(mesh.vertices);for(const v of mesh.texturedBatches.values())shift(v);
-    return {vertices:mesh.vertices,texturedBatches:Array.from(mesh.texturedBatches,([texture,vertices])=>({level:player.plane,texture,vertices})),textures};
+    for(const b of mesh.transparentBatches)shift(b.vertices);
+    return {vertices:mesh.vertices,texturedBatches:Array.from(mesh.texturedBatches,([texture,vertices])=>({level:player.plane,texture,vertices})),
+        transparentBatches:mesh.transparentBatches.map(b=>({...b,level:player.plane})),textures};
 }
 
 export class NativePlayerModels {

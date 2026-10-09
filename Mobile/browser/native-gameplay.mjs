@@ -12,6 +12,8 @@ import {combineRegionMeshes,GAME_CAMERA_ZOOM} from "./world-webgl.mjs";
 import {NativePlayerModels,buildPlayerMesh,playerGroundHeight} from "./player-models.mjs";
 import {SceneTextures} from "./texture-cache.mjs";
 import {mapBounded} from "./bounded-work.mjs";
+import {NativeSceneAnimations} from "./scene-animation.mjs";
+import {NativeSpotEffects} from "./spot-effects.mjs";
 
 export function rebuildRegions(rebuild,player){
     const regions=[];
@@ -48,6 +50,8 @@ export class NativeGameplay {
         this.generation=0;this.closed=false;this.regions=new Map();this.packetCount=0;this.animationStarted=now();
         this.scenePrepared=false;this.ready=false;
         this.playerController=new NativeTspsPlayerController(this.models.animations,now);
+        this.sceneAnimations=new NativeSceneAnimations(this.models.animations);
+        this.spotEffects=new NativeSpotEffects(this.models);
         this.localServerId=0;this.movementFrames={};this.sequenceStarted=this.animationStarted;
         this.npcs=new NativeNpcSync();this.npcModels=new NativeNpcModels(models);this.npcMotions=new Map();this.npcDrawn=0;this.selectionToken=0;this.selectedNpc=null;
         this.viewport.onDestination=tile=>this.move(tile);
@@ -92,6 +96,7 @@ export class NativeGameplay {
     }
     updateMotion(player){
         if(!player)return;
+        this.spotEffects.update("player",player.spotanims,this.now());
         const previous=this.motion?.target;
         this.playerController.accept(this.localServerId||this.sync?.localIndex||1,player);
         // Renderer consumes the TSPS ECS simulation, never the protocol endpoint.
@@ -108,6 +113,9 @@ export class NativeGameplay {
     async loadRebuild(rebuild){
         const generation=++this.generation,current=()=>!this.closed&&generation===this.generation;
         this.clearNpcMenu();this.npcs.reset();this.npcMotions.clear();this.npcDrawn=0;
+        this.sceneAnimations.reset();
+        this.spotEffects.reset();
+        this.spotEffects.update("player",this.sync.local?.spotanims,this.now());
         this.loading=true;this.scenePrepared=false;this.ready=false;this.modelReady=false;this.renderError=null;this.sceneWarnings=[];this.regions=new Map();this.viewport.setActors(null);this.viewport.setScenery(null);
         const started=this.now();this.loadStarted=started;this.loadCheckpoint=started;this.loadTimings=[];
         this.onLoading();
@@ -251,6 +259,12 @@ export class NativeGameplay {
             ...combineRegionMeshes(scenes.filter(Boolean)),
             textures:textureSource.textures,
         });
+        this.sceneAnimations.reset(scenes.filter(Boolean).flatMap(({scene})=>scene.animatedLocations??[]),this.now());
+        if(this.viewport.setDynamicScenery&&this.sync.local){
+            const dynamic=await this.sceneAnimations.scene(this.now(),origin,this.sync.local,textureSource.textures);
+            if(!current())return;
+            this.viewport.setDynamicScenery(dynamic);
+        }
         if(!current())return;
         this.unavailable=unavailable;
         this.recordStage("scenery meshes");
@@ -362,8 +376,11 @@ export class NativeGameplay {
             if(!npc||npc.type!==this.selectedNpc.type||npc.plane!==this.sync?.local?.plane||
                 npc.visibleOps!==undefined&&this.selectedNpc.slots.some(slot=>(npc.visibleOps&(1<<slot))===0))this.clearNpcMenu();
         }
-        for(const [index,motion] of this.npcMotions)if(!this.npcs.npcs.has(index))this.npcMotions.delete(index);
+        for(const [index,motion] of this.npcMotions)if(!this.npcs.npcs.has(index)){
+            this.npcMotions.delete(index);this.spotEffects.actors.delete(`npc:${index}`);
+        }
         for(const [index,npc] of this.npcs.npcs){
+            this.spotEffects.update(`npc:${index}`,npc.spotanims,now);
             const previous=this.npcMotions.get(index),target={...npc},old=previous?.target;
             const changed=!old||old.x!==npc.x||old.y!==npc.y||old.plane!==npc.plane||old.type!==npc.type;
             const snap=!old||npc.teleported||old.plane!==npc.plane||old.type!==npc.type||
@@ -390,7 +407,7 @@ export class NativeGameplay {
         this.drawing=true;
         const add=(mesh,region)=>{
             const dx=(region.mapX-this.origin.mapX)*64,dy=(region.mapY-this.origin.mapY)*64;
-            for(const v of [mesh.vertices,...mesh.texturedBatches.map(b=>b.vertices)])
+            for(const v of [mesh.vertices,...mesh.texturedBatches.map(b=>b.vertices),...(mesh.transparentBatches??[]).map(b=>b.vertices)])
                 for(let i=0;i<v.length;i+=6){v[i]+=dx;v[i+2]+=dy;}
             meshes.push(mesh);
         };
@@ -410,10 +427,10 @@ export class NativeGameplay {
                     // appearance visible in bind pose rather than hiding the
                     // entire character behind an animation fetch failure.
                     let posed=model;
-                    if(id>=0)try{posed=await this.models.animations.poseFrame(model,id,frame);}
+                    if(id>=0)try{posed=await this.models.animations.poseFrame(model,id,frame);this.animationRenderError=null;}
                     catch(error){this.animationRenderError=error.message;}
                     const mesh=buildPlayerMesh(posed,region,player,{textures:this.models.textures.textures});
-                    if(!mesh.vertices.length&&!mesh.texturedBatches.some(batch=>batch.vertices.length))
+                    if(!mesh.vertices.length&&!mesh.texturedBatches.some(batch=>batch.vertices.length)&&!mesh.transparentBatches.some(batch=>batch.vertices.length))
                         throw new Error("Local player model produced no visible triangles");
                     add(mesh,region);
                     if(this.closed||generation!==this.generation)return;
@@ -423,12 +440,14 @@ export class NativeGameplay {
                     if(this.scenePrepared&&!this.ready){
                         this.viewport.setActors({vertices:mesh.vertices,
                             texturedBatches:mesh.texturedBatches,
+                            transparentBatches:mesh.transparentBatches,
                             textures:this.models.textures.textures,npcPickMeshes:[]});
                     }
                     const ground=playerGroundHeight(region,player.x-region.mapX*64+.5,player.y-region.mapY*64+.5,player.plane);
                     this.viewport.target=[player.x-this.origin.mapX*64-31,-ground.height/128+1,player.y-this.origin.mapY*64-31];
                     this.modelReady=true;this.renderError=null;
                     if(this.scenePrepared&&!this.ready)this.maybeReady();
+                    for(const effect of await this.spotEffects.meshes("player",player,region,now))add(effect,region);
                 }catch(error){
                     this.modelReady=false;this.renderError=error.message;
                     this.drawBlockedUntil=now+5000;
@@ -449,24 +468,37 @@ export class NativeGameplay {
                     const mesh=await this.npcModels.mesh(npc,region,{
                         elapsed:Math.max(0,now-motion.animationStarted),
                         sequenceElapsed:Math.max(0,now-motion.sequenceStarted-(npc.sequence?.delay??0)*20)});
-                    return {mesh,region,index:motion.target.index};
+                    const key=`npc:${npc.index}`,active=this.spotEffects.actors.get(key)?.slots.size;
+                    const effects=active?await this.spotEffects.meshes(key,npc,region,now,(await this.npcModels.definition(npc.type)).size):[];
+                    return {mesh,effects,region,index:motion.target.index};
                 }catch{return null;}
             });
             if(this.closed||generation!==this.generation)return;
             for(const result of npcResults){
                 if(!result){missing++;continue;}
-                const {mesh,region,index}=result;
+                const {mesh,effects,region,index}=result;
                 add(mesh,region);drawn++;
+                for(const effect of effects)add(effect,region);
                 npcPickMeshes.push({index,vertices:mesh.vertices});
                 for(const batch of mesh.texturedBatches)npcPickMeshes.push({index,vertices:batch.vertices});
+                for(const batch of mesh.transparentBatches??[])npcPickMeshes.push({index,vertices:batch.vertices});
             }
             if(this.closed||generation!==this.generation)return;
             const length=meshes.reduce((n,m)=>n+m.vertices.length,0),vertices=new Float32Array(length);
             let offset=0;for(const mesh of meshes){vertices.set(mesh.vertices,offset);offset+=mesh.vertices.length;}
             this.viewport.setActors({vertices,texturedBatches:meshes.flatMap(m=>m.texturedBatches),
+                transparentBatches:meshes.flatMap(m=>m.transparentBatches??[]),
                 textures:this.models.textures.textures,npcPickMeshes});
+            if(player&&this.viewport.setDynamicScenery){
+                const dynamic=await this.sceneAnimations.scene(now,this.origin,player,this.viewport.textureMeta??new Map());
+                if(this.closed||generation!==this.generation)return;
+                this.viewport.setDynamicScenery(dynamic);
+            }
             this.maybeReady();
-            if(this.npcDrawn!==drawn||this.npcMissing!==missing){this.npcDrawn=drawn;this.npcMissing=missing;this.report();}
+            const renderWarnings=this.sceneAnimations.errors.length+this.spotEffects.errors.length;
+            if(this.npcDrawn!==drawn||this.npcMissing!==missing||this.renderWarnings!==renderWarnings){
+                this.npcDrawn=drawn;this.npcMissing=missing;this.renderWarnings=renderWarnings;this.report();
+            }
         }catch(error){
             if(!this.closed&&generation===this.generation)this.onStatus("Actor drawing unavailable: "+error.message);
         }finally{this.drawing=false;}
@@ -478,6 +510,9 @@ export class NativeGameplay {
             (this.renderError?" · Player rendering unavailable: "+this.renderError:this.modelReady?" · Click/tap ground to move":" · Loading player appearance…")+
             ` · NPCs ${this.npcDrawn}/${this.npcs.npcs.size} rendered`+
             (this.npcMissing?` (${this.npcMissing} models pending/unavailable)`:"")+
+            (this.sceneAnimations.errors.length?` · ${this.sceneAnimations.errors.length} location animations unsupported`:"")+
+            (this.spotEffects.errors.length?` · ${this.spotEffects.errors.length} spot effects unavailable`:"")+
+            (this.animationRenderError?` · Animation unavailable: ${this.animationRenderError}`:"")+
             (this.sceneWarnings?.length?` · ${this.sceneWarnings.length} scenery areas contain missing/unsupported objects`:"")+
             (this.destination?` · Destination ${this.destination.x}, ${this.destination.y}`:"")+
             (this.unavailable?.length?` · ${this.unavailable.length} map edges unavailable`:""));
@@ -491,5 +526,5 @@ export class NativeGameplay {
         if(typeof this.session.stop==="function")this.session.stop(new Error(message));
         else this.session.close();
     }
-    close(){this.closed=true;this.generation++;clearInterval(this.timer);this.playerController.clear();this.interfaces?.close();this.clearNpcMenu();this.viewport.setActors(null);this.viewport.setRoofContext?.(null,null,null);this.viewport.onDestination=()=>{};this.viewport.onNpc=()=>{};this.viewport.onObject=()=>{};this.viewport.onNpcCancel=()=>{};this.viewport.onGroundMenu=()=>{};}
+    close(){this.closed=true;this.generation++;clearInterval(this.timer);this.playerController.clear();this.sceneAnimations.reset();this.spotEffects.reset();this.viewport.setDynamicScenery?.(null);this.interfaces?.close();this.clearNpcMenu();this.viewport.setActors(null);this.viewport.setRoofContext?.(null,null,null);this.viewport.onDestination=()=>{};this.viewport.onNpc=()=>{};this.viewport.onObject=()=>{};this.viewport.onNpcCancel=()=>{};this.viewport.onGroundMenu=()=>{};}
 }

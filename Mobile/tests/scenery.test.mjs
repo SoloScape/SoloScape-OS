@@ -108,13 +108,19 @@ test("wall corners and decorations select both models with authentic rotation/di
     assert.equal(placementParts({shape:11,rotation:0},d)[0].diagonal,true);
 });
 
-test("textured and alpha faces are explicitly omitted instead of fabricated materials",()=>{
+test("missing textures are omitted while alpha faces retain their real material",()=>{
     const terrain=flatTerrain(),d=decodeObjectDefinition(Buffer.from([5,1,0,1,0]),1),loc={x:10,y:10,shape:10,rotation:0};
     const model=decodeModel(triangle());model.faceTextures=new Int16Array([3]);
     let mesh=buildObjectMesh(terrain,loc,d,placementParts(loc,d)[0],[model]);
     assert.equal(mesh.vertices.length,0);assert.equal(mesh.omittedFaces,1);
     model.faceTextures[0]=-1;model.faceAlphas=new Int8Array([127]);
-    mesh=buildObjectMesh(terrain,loc,d,placementParts(loc,d)[0],[model]);assert.equal(mesh.omittedFaces,1);
+    mesh=buildObjectMesh(terrain,loc,d,placementParts(loc,d)[0],[model]);assert.equal(mesh.omittedFaces,0);
+    assert.equal(mesh.vertices.length,0);assert.equal(mesh.transparentBatches.length,1);
+    assert.equal(mesh.transparentBatches[0].alpha,127);assert.equal(mesh.transparentBatches[0].vertices.length,18);
+    model.faceAlphas[0]=-128;
+    mesh=buildObjectMesh(terrain,loc,d,placementParts(loc,d)[0],[model]);assert.equal(mesh.transparentBatches[0].alpha,128);
+    model.faceAlphas[0]=-1;
+    mesh=buildObjectMesh(terrain,loc,d,placementParts(loc,d)[0],[model]);assert.equal(mesh.transparentBatches.length,0);
 });
 
 test("region-key configuration accepts known map-key layouts and rejects invalid words",()=>{
@@ -212,4 +218,15 @@ test("two concurrent map squares share one decoded verified model promise",async
     assert.equal((await shared.get(1)).verticesCount,3);
     assert.equal(requests.filter(r=>r==="7:1").length,1);
     assert.deepEqual([...a.vertices],[...b.vertices],"shared immutable models build identical meshes");
+});
+
+test("animated locations retain verified models and placement instead of disappearing from the scene",async()=>{
+    const {cache}=sceneCache(),load=cache.loadGroup.bind(cache);
+    cache.loadGroup=async(a,g)=>a===2&&g===6?plainContainer(Buffer.from([5,1,0,1,24,0,12,0])):load(a,g);
+    const t={...flatTerrain(),mapX:50,mapY:50,group:97};
+    const scene=await loadStaticScenery(cache,t);
+    assert.equal(scene.rendered,1);assert.equal(scene.skipped,0);assert.equal(scene.vertices.length,0);
+    assert.equal(scene.animatedLocations.length,1);assert.equal(scene.animatedLocations[0].definition.seqId,12);
+    assert.equal(scene.animatedLocations[0].model.faceCount,1);
+    assert.equal(scene.animatedLocations[0].terrain.mapX,50);assert.equal(scene.animatedLocations[0].loc.id,5);
 });

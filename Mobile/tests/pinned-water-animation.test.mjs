@@ -8,7 +8,7 @@ test("TSPS water taxonomy includes classic, swamp, ice, dark and water-colour ba
     for(const id of [-1,0,24,90,129,190,207,209])assert.equal(isKnownWaterTextureId(id),false);
     assert.equal(KNOWN_WATER_TEXTURE_IDS.size,64);
 });
-test("vanilla TSPS UV animation follows the exact pinned direction/speed scale",()=>{
+test("OpenOSRS UV animation retains classic direction/speed and advances on integer client ticks",()=>{
     const speed=4;
     assert.deepEqual(textureAnimationOffset({animationDirection:0,animationSpeed:speed},120),[0,0]);
     assert.deepEqual(textureAnimationOffset({animationDirection:1,animationSpeed:speed},20),[0,-4/128]);
@@ -17,6 +17,8 @@ test("vanilla TSPS UV animation follows the exact pinned direction/speed scale",
     assert.deepEqual(textureAnimationOffset({animationDirection:4,animationSpeed:speed},20),[4/128,0]);
     assert.deepEqual(textureAnimationOffset({animationDirection:4,animationSpeed:2},1280),[0,0]);
     assert.deepEqual(textureAnimationOffset({animationDirection:9,animationSpeed:4},30),[0,0]);
+    assert.deepEqual(textureAnimationOffset({animationDirection:4,animationSpeed:4},19.99),[0,0]);
+    assert.deepEqual(textureAnimationOffset({animationDirection:4,animationSpeed:4},39.99),[4/128,0]);
 });
 test("textured batch classification retains pinned water IDs for future material passes",()=>{
     const vp=Object.create(NativeTerrainViewport.prototype),deleted=[];

@@ -173,7 +173,7 @@ try{
     await fetch('/result?status=pass');
 }catch(error){session?.close();await fetch('/result?status='+encodeURIComponent(error.message));}
 </script>`;
-    const modules=new Set(["native-login","native-js5","login-crypto","login-protocol","login-pow","game-protocol"].map(n=>"/"+n+".mjs"));
+    const modules=new Set(["native-login","native-js5","js5-persistent","login-crypto","login-protocol","login-pow","game-protocol"].map(n=>"/"+n+".mjs"));
     const http=createHttpServer(async(req,res)=>{
         try{
             if(req.url.startsWith("/result?")){report(new URL(req.url,"http://localhost").searchParams.get("status"));res.end("received");}

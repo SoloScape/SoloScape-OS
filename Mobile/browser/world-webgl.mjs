@@ -33,7 +33,7 @@ import {SceneTileModel} from "./tsps-runtime/rs-scene-SceneTileModel.mjs";
 import {terrainPlane,sceneLevel,validateSceneLevel} from "./scene-planes.mjs";
 import {NpcLongPress} from "./npc-pointer.mjs";
 import {nativeRoofPlaneLimit} from "./native-roof-adapter.mjs";
-import {isKnownWaterTextureId,ANIM_DIRECTION_UV} from "./tsps-runtime/common-world-WaterTextureIds.mjs";
+import {isKnownWaterTextureId} from "./tsps-runtime/common-world-WaterTextureIds.mjs";
 import {resolveFogRange,HD_AUTO_FOG_DEPTH_FACTOR} from "./tsps-runtime/render-RenderDistancePolicy.mjs";
 // Native scene distances are tiles, unlike RuneLite's client zoom values.
 export const GAME_CAMERA_ZOOM=Object.freeze({default:12,min:6,max:24});
@@ -49,14 +49,15 @@ export function rotateCamera(camera,dx,dy){
 }
 export const CLASSIC_DRAW_DISTANCE=25;
 
-// Pinned TSPS SpriteTextureLoader ANIM_DIRECTION_UV and main.vert.glsl
-// classic texture animation: one 1/128 UV step per 20 ms client tick.
+// OpenOSRS TextureManager.computeTextureAnimations and gpu/vert.glsl:
+// integer client ticks, directions 1/3 vertical and 2/4 horizontal, 1/128 UV.
+const TEXTURE_DIRECTIONS=[[0,0],[0,-1],[-1,0],[0,1],[1,0]];
 export function textureAnimationOffset(def,elapsedMs){
     const direction=def?.animationDirection??0,speed=def?.animationSpeed??0;
     if(!Number.isInteger(direction)||direction<0||direction>4||!Number.isFinite(speed)||
         !Number.isFinite(elapsedMs)||elapsedMs<0)return [0,0];
-    const [u,v]=ANIM_DIRECTION_UV[direction];
-    const steps=elapsedMs/20*speed/128;
+    const [u,v]=TEXTURE_DIRECTIONS[direction];
+    const steps=Math.floor(elapsedMs/20)*speed/128;
     return [(u*steps)%1,(v*steps)%1];
 }
 
@@ -118,6 +119,7 @@ uniform float u_fogDepth;
 uniform float u_fogEnd;
 uniform vec3 u_fogColor;
 uniform float u_fogEnabled;
+uniform float u_opacity;
 varying highp float v_hsl_w;
 varying highp float v_w;
 varying highp vec2 v_uv;
@@ -127,7 +129,7 @@ void main(){
         v_scenePosition.x>=u_drawBounds.z||v_scenePosition.y>=u_drawBounds.w)discard;
     ${textured?`vec4 texel=texture2D(u_texture,v_uv+u_textureShift);
     if(texel.a<0.1)discard;
-    float light=clamp(v_hsl_w/v_w,2.0,126.0)/128.0;
+    float light=clamp(v_hsl_w/v_w,2.0,126.0)/127.0;
     gl_FragColor=vec4(texel.rgb*light,1.0);`:""}
     if(u_wireframe){gl_FragColor=vec4(1.0);return;}
     float hsl=clamp(floor(v_hsl_w/v_w+0.01),0.0,65535.0);
@@ -138,7 +140,7 @@ void main(){
     float ramp=max(0.0001,u_fogEnd-u_fogDepth);
     float fog=clamp(d/ramp+1.0,0.0,1.0);
     fog=fog*fog*(3.0-2.0*fog)*u_fogEnabled;
-    gl_FragColor=vec4(mix(gl_FragColor.rgb,u_fogColor,fog),gl_FragColor.a);
+    gl_FragColor=vec4(mix(gl_FragColor.rgb,u_fogColor,fog),gl_FragColor.a*u_opacity);
 }`);
     const p=gl.createProgram();
     gl.attachShader(p,vs);gl.attachShader(p,fs);gl.linkProgram(p);
@@ -346,7 +348,7 @@ export function buildTerrainScene(terrain){
 }
 
 export function combineRegionMeshes(scenes){
-    const levels=Array.from({length:4},()=>[]),texturedBatches=[];
+    const levels=Array.from({length:4},()=>[]),texturedBatches=[],transparentBatches=[];
     const shift=(vertices,dx,dy)=>{const out=vertices.slice();for(let i=0;i<out.length;i+=6){out[i]+=dx;out[i+2]+=dy;}return out;};
     for(const {scene,dx=0,dy=0} of scenes){
         let start=0;
@@ -355,13 +357,29 @@ export function combineRegionMeshes(scenes){
             levels[level].push(shift(scene.vertices.subarray(start,start+count),dx,dy));start+=count;
         }
         for(const b of scene.texturedBatches??[])texturedBatches.push({...b,vertices:shift(b.vertices,dx,dy)});
+        for(const b of scene.transparentBatches??[])transparentBatches.push({...b,vertices:shift(b.vertices,dx,dy)});
     }
     const vertices=new Float32Array(levels.flat().reduce((n,v)=>n+v.length,0));let at=0;
     for(const v of levels.flat()){vertices.set(v,at);at+=v.length;}
     const pickMeshes=scenes.flatMap(({scene,dx=0,dy=0})=>(scene.pickMeshes??[]).map(loc=>({
         ...loc,x:loc.x+dx,y:loc.y+dy,vertices:shift(loc.vertices,dx,dy),
     })));
-    return {vertices,levelCounts:levels.map(parts=>parts.reduce((n,v)=>n+v.length/6,0)),texturedBatches,pickMeshes};
+    return {vertices,levelCounts:levels.map(parts=>parts.reduce((n,v)=>n+v.length/6,0)),texturedBatches,transparentBatches,pickMeshes};
+}
+
+// Sort across materials and scene owners, rather than rendering each alpha
+// texture separately. Clip W is view depth for the scene perspective matrix.
+export function sortTransparentFaces(batches,matrix,drawLevel=3){
+    const faces=[];
+    for(const batch of batches){
+        if(batch.level>drawLevel)continue;
+        for(let at=0;at<batch.vertices.length;at+=18){
+            let depth=0;
+            for(let v=at;v<at+18;v+=6)depth+=matrix[3]*batch.vertices[v]+matrix[7]*batch.vertices[v+1]+matrix[11]*batch.vertices[v+2]+matrix[15];
+            faces.push({batch,first:at/6,depth:depth/3});
+        }
+    }
+    return faces.sort((a,b)=>b.depth-a.depth);
 }
 
 // Perspective-correct ground picking uses the same triangles/matrix as rendering.
@@ -491,7 +509,7 @@ export class NativeTerrainViewport {
             const nx=2*(clientX-rect.left)/rect.width-1,ny=1-2*(clientY-rect.top)/rect.height;
             const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,rect.width/rect.height);
             const plane=this.roofContext?.player?.plane??this.visibleLevel;
-            const valid=this.sceneryPickMeshes.filter(loc=>loc.plane===plane&&loc.level<=this.visibleRoofLevel());
+            const valid=[...this.sceneryPickMeshes,...(this.dynamicPickMeshes??[])].filter(loc=>loc.plane===plane&&loc.level<=this.visibleRoofLevel());
             const hit=pickNpcTriangles(valid.map((loc,index)=>({index,vertices:loc.vertices})),matrix,nx,ny,this.drawBounds());
             if(!hit)return null;
             const loc=valid[hit.index];
@@ -610,6 +628,7 @@ export class NativeTerrainViewport {
         }
     }
     setScenery(scene){
+        this.setDynamicScenery(null);
         const vertices=scene?.vertices??new Float32Array();
         if(!(vertices instanceof Float32Array)||vertices.length%18)throw new Error("Invalid scenery mesh");
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER,this.sceneryBuf);
@@ -617,6 +636,7 @@ export class NativeTerrainViewport {
         this.sceneryCount=vertices.length/6;
         this.sceneryLevelCounts=scene?.levelCounts??[this.sceneryCount,0,0,0];
         this.replaceBatches("sceneryBatches",scene?.texturedBatches??[]);
+        this.replaceBatches("sceneryAlphaBatches",scene?.transparentBatches??[]);
         this.sceneryPickMeshes=scene?.pickMeshes??[];
         for(const texture of this.textures.values())this.gl.deleteTexture(texture);
         this.textures.clear();this.textureMeta?.clear();
@@ -643,7 +663,14 @@ export class NativeTerrainViewport {
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER,this.actorBuf);
         this.gl.bufferData(this.gl.ARRAY_BUFFER,vertices,this.gl.DYNAMIC_DRAW);this.actorCount=vertices.length/6;
         this.replaceBatches("actorBatches",scene?.texturedBatches??[]);
+        this.replaceBatches("actorAlphaBatches",scene?.transparentBatches??[]);
+        this.actorPickMeshes=scene?.npcPickMeshes??[];
         this.addTextures(scene?.textures??new Map());
+    }
+    setDynamicScenery(scene){
+        this.replaceBatches("dynamicBatches",scene?.batches??[]);
+        this.replaceBatches("dynamicAlphaBatches",scene?.transparentBatches??[]);
+        this.dynamicPickMeshes=scene?.pickMeshes??[];
     }
     setSceneLevel(level){validateSceneLevel(level);this.visibleLevel=level;}
     setRoofContext(regions,origin,player){this.roofContext={regions,origin,player};}
@@ -668,13 +695,20 @@ export class NativeTerrainViewport {
     }
     replaceBatches(name,batches){
         const gl=this.gl;
-        for(const batch of this[name])gl.deleteBuffer(batch.buffer);
+        for(const b of batches){
+            if(!(b.vertices instanceof Float32Array)||b.vertices.length%18)throw new Error("Invalid scene mesh batch");
+            if(b.alpha!==undefined&&(!Number.isInteger(b.alpha)||b.alpha<1||b.alpha>254))throw new Error("Invalid scene face alpha");
+        }
+        const previous=new Map((this[name]??[]).map(b=>[b.vertices,b]));
         this[name]=batches.map(b=>{
-            if(!(b.vertices instanceof Float32Array)||b.vertices.length%18)throw new Error("Invalid textured mesh");
-            const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,b.vertices,gl.STATIC_DRAW);
-            return {buffer,count:b.vertices.length/6,texture:b.texture,level:b.level,
+            const old=name.startsWith("dynamic")?previous.get(b.vertices):null;
+            if(old)previous.delete(b.vertices);
+            const buffer=old?.buffer??gl.createBuffer();
+            if(!old){gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,b.vertices,gl.STATIC_DRAW);}
+            return {buffer,count:b.vertices.length/6,texture:b.texture,level:b.level,alpha:b.alpha,vertices:b.vertices,
                 isWater:isKnownWaterTextureId(b.texture)};
         });
+        for(const b of previous.values())gl.deleteBuffer(b.buffer);
     }
     render(){
         const gl=this.gl,canvas=this.canvas;
@@ -687,6 +721,7 @@ export class NativeTerrainViewport {
         const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,w/h);
         const drawLevel=this.visibleRoofLevel();
         gl.useProgram(this.program);this.uploadFog(this.program);
+        gl.uniform1f(gl.getUniformLocation(this.program,"u_opacity"),1);
         const bounds=this.drawBounds();
         gl.uniform4fv(gl.getUniformLocation(this.program,"u_drawBounds"),bounds);
         gl.activeTexture(gl.TEXTURE0);
@@ -713,6 +748,7 @@ export class NativeTerrainViewport {
             gl.drawArrays(gl.TRIANGLES,0,this.actorCount);
         }
         gl.useProgram(this.textureProgram);this.uploadFog(this.textureProgram);
+        gl.uniform1f(gl.getUniformLocation(this.textureProgram,"u_opacity"),1);
         gl.uniform4fv(gl.getUniformLocation(this.textureProgram,"u_drawBounds"),bounds);
         gl.uniformMatrix4fv(gl.getUniformLocation(this.textureProgram,"u_mvp"),false,matrix);
         gl.uniform1i(gl.getUniformLocation(this.textureProgram,"u_texture"),0);
@@ -729,11 +765,47 @@ export class NativeTerrainViewport {
             gl.vertexAttribPointer(ta,3,gl.FLOAT,false,24,0);gl.vertexAttribPointer(tc,3,gl.FLOAT,false,24,12);
             gl.drawArrays(gl.TRIANGLES,0,batch.count);
         }
+        for(const batch of this.dynamicBatches??[]){
+            if(batch.level<=drawLevel)this.renderMaterialBatch(batch,0,batch.count,matrix,bounds,1);
+        }
+        this.renderTransparent(matrix,drawLevel,bounds);
         // Notify the loading tracker only after actual WebGL draw calls.
         // Wireframe and actor-only frames are not a fully constructed map.
         const groundReady=this.drawMode===gl.TRIANGLES&&
             (this.count>0||this.terrainBatches.some(batch=>batch.count>0));
         if(groundReady&&this.onSceneFrame){const done=this.onSceneFrame;this.onSceneFrame=null;done();}
+    }
+    renderTransparent(matrix,drawLevel,bounds){
+        const gl=this.gl;
+        const faces=sortTransparentFaces([...(this.sceneryAlphaBatches??[]),...(this.actorAlphaBatches??[]),...(this.dynamicAlphaBatches??[])],matrix,drawLevel);
+        if(!faces.length)return;
+        gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);
+        try{
+            for(const {batch,first} of faces){
+                this.renderMaterialBatch(batch,first,3,matrix,bounds,1-batch.alpha/255);
+            }
+        }finally{gl.depthMask(true);gl.disable(gl.BLEND);}
+    }
+    renderMaterialBatch(batch,first,count,matrix,bounds,opacity){
+        const gl=this.gl,textured=batch.texture>=0,texture=this.textures.get(batch.texture);
+        if(textured&&!texture)return;
+        const p=textured?this.textureProgram:this.program;
+        gl.useProgram(p);this.uploadFog(p);
+        gl.uniformMatrix4fv(gl.getUniformLocation(p,"u_mvp"),false,matrix);
+        gl.uniform4fv(gl.getUniformLocation(p,"u_drawBounds"),bounds);
+        gl.uniform1i(gl.getUniformLocation(p,"u_wireframe"),0);
+        gl.uniform1f(gl.getUniformLocation(p,"u_opacity"),opacity);
+        gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,textured?texture:this.palette);
+        gl.uniform1i(gl.getUniformLocation(p,textured?"u_texture":"u_palette"),0);
+        if(textured){
+            const offset=textureAnimationOffset(this.textureMeta.get(batch.texture),performance.now()-this.textureClock);
+            gl.uniform2f(gl.getUniformLocation(p,"u_textureShift"),...offset);
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER,batch.buffer);
+        const a=gl.getAttribLocation(p,"a_position"),c=gl.getAttribLocation(p,"a_color");
+        gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);
+        gl.enableVertexAttribArray(c);gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
+        gl.drawArrays(gl.TRIANGLES,first,count);
     }
     dispose(){
         this.disposed=true;this.onSceneFrame=null;this.longPress.cancel();cancelAnimationFrame(this.raf);
@@ -746,6 +818,6 @@ export class NativeTerrainViewport {
         this.gl.deleteProgram(this.program);
         this.gl.deleteProgram(this.textureProgram);
         for(const texture of this.textures.values())this.gl.deleteTexture(texture);
-        for(const batch of [...this.terrainBatches,...this.sceneryBatches,...this.actorBatches])this.gl.deleteBuffer(batch.buffer);
+        for(const batch of [...this.terrainBatches,...this.sceneryBatches,...this.actorBatches,...(this.sceneryAlphaBatches??[]),...(this.actorAlphaBatches??[]),...(this.dynamicBatches??[]),...(this.dynamicAlphaBatches??[])])this.gl.deleteBuffer(batch.buffer);
     }
 }

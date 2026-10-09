@@ -122,6 +122,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
             "/world-webgl.mjs","/floor-materials.mjs","/floor-lighting.mjs","/world-startup.mjs",
             "/cache-reader.mjs","/model-codec.mjs","/object-definitions.mjs","/location-cache.mjs","/scenery-models.mjs",
             "/texture-cache.mjs","/texture-mapper.mjs","/scene-planes.mjs",
+            "/model-composition.mjs","/scene-animation.mjs","/spot-effects.mjs",
             "/login-crypto.mjs","/login-protocol.mjs","/login-pow.mjs","/native-login.mjs","/game-protocol.mjs",
             "/player-sync.mjs","/player-models.mjs","/native-gameplay.mjs","/npc-sync.mjs","/npc-models.mjs","/npc-interactions.mjs","/npc-pointer.mjs","/native-menu.mjs","/native-interfaces.mjs","/interface-canvas.mjs",
             "/interface-protocol.mjs","/server-interfaces.mjs","/native-scripts.mjs","/dialogue-models.mjs",
@@ -231,6 +232,52 @@ try{
     if(gl.isTexture(oldTexture)||gl.isBuffer(oldBuffer))throw new Error("Replacing texture scene leaked GPU resources");
     gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
     if(expected.some((v,i)=>v!==pixel[i]))throw new Error("Texture cutout obscured terrain");
+    // Overlapping alpha materials must blend far-to-near across owners and
+    // textures, preserve opaque depth, filter roofs and restore GL depth writes.
+    const planeAt=(height,hsl)=>{const v=object.slice();for(let i=0;i<v.length;i+=6){v[i+1]=height;v[i+3]=hsl;}return v;};
+    const alphaRgb=HSL_PALETTE[12000],alphaColor=[alphaRgb>>>16&255,alphaRgb>>>8&255,alphaRgb&255];
+    const backColor=[objectRgb>>>16&255,objectRgb>>>8&255,objectRgb&255];
+    const alpha=128,opacity=1-alpha/255;
+    viewport.setSceneLevel(0);
+    for(const reverse of [false,true]){
+        const batches=[{level:0,texture:-1,alpha,vertices:planeAt(.5,2000)},
+            {level:0,texture:-1,alpha,vertices:planeAt(1,12000)}];
+        viewport.setScenery({vertices:new Float32Array(),transparentBatches:reverse?batches.reverse():batches});
+        viewport.render();gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        const want=alphaColor.map((v,i)=>v*opacity+(backColor[i]*opacity+expected[i]*(1-opacity))*(1-opacity));
+        if(want.some((v,i)=>Math.abs(v-pixel[i])>2))throw new Error("Alpha order/opacity incorrect: "+pixel+" expected "+want);
+        if(!gl.getParameter(gl.DEPTH_WRITEMASK)||gl.isEnabled(gl.BLEND))throw new Error("Alpha pass leaked GL state");
+        viewport.setActors({vertices:planeAt(2,2000)});viewport.render();
+        gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        if(objectExpected.some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("Alpha leaked through opaque actor");
+        viewport.setActors(null);
+    }
+    const alphaBuffer=viewport.sceneryAlphaBatches[0].buffer;
+    viewport.setScenery({vertices:new Float32Array(),transparentBatches:[{level:1,texture:-1,alpha,vertices:planeAt(1,12000)}]});
+    if(gl.isBuffer(alphaBuffer))throw new Error("Alpha replacement leaked buffer");
+    viewport.render();gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    if(expected.some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("Upper alpha roof leaked");
+    const alphaTexture=new Uint8Array(64*64*4);
+    for(let i=0;i<alphaTexture.length;i+=4)alphaTexture.set([128,64,32,255],i);
+    const translucentTexture=planeAt(1,64);
+    const alphaActor={level:0,texture:7,alpha,vertices:translucentTexture};
+    viewport.setScenery({vertices:new Float32Array()});
+    viewport.setActors({vertices:new Float32Array(),transparentBatches:[alphaActor],
+        textures:new Map([[7,{size:64,pixels:alphaTexture}]]),npcPickMeshes:[{index:9,vertices:translucentTexture}]});
+    viewport.render();gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    const textureWant=[128,64,32].map((v,i)=>v*64/127*opacity+expected[i]*(1-opacity));
+    if(textureWant.some((v,i)=>Math.abs(v-pixel[i])>2))throw new Error("Textured actor alpha incorrect: "+pixel);
+    if(viewport.actorPickMeshes[0]?.index!==9)throw new Error("Textured alpha NPC lost picking geometry");
+    const actorAlphaBuffer=viewport.actorAlphaBatches[0].buffer;
+    viewport.setActors(null);
+    if(gl.isBuffer(actorAlphaBuffer)||viewport.actorPickMeshes.length)throw new Error("Despawn retained alpha GPU/pick data");
+    const dynamic={batches:[{level:0,texture:-1,vertices:planeAt(1,2000)}],pickMeshes:[]};
+    viewport.setDynamicScenery(dynamic);viewport.render();
+    const dynamicBuffer=viewport.dynamicBatches[0].buffer;
+    viewport.setDynamicScenery(dynamic);
+    if(viewport.dynamicBatches[0].buffer!==dynamicBuffer)throw new Error("Unchanged animation frame was reuploaded");
+    viewport.setDynamicScenery(null);
+    if(gl.isBuffer(dynamicBuffer))throw new Error("Dynamic scene cleanup leaked buffer");
     // Coplanar floor and wall details must win at every camera yaw and zoom,
     // for both shaders and either submission order, while nearer walls occlude.
     const detailRgb=HSL_PALETTE[12000],detailExpected=[detailRgb>>>16&255,detailRgb>>>8&255,detailRgb&255,255];
@@ -285,7 +332,7 @@ try{
             texturedBatches:[{level:0,texture:9,vertices:markerVertices}],textures:new Map([[9,{size:64,pixels}]])}:
             {vertices:markerVertices});
         viewport.render();
-        const inside=sample(0),outside=sample(12),clear=[11,23,31,255];
+        const inside=sample(0),outside=sample(12),clear=[0,0,0,255];
         if(inside.every((n,i)=>Math.abs(n-clear[i])<=1))throw new Error("Draw window hid nearby marker");
         if(outside.some((n,i)=>Math.abs(n-clear[i])>1))throw new Error("Distant marker survived draw cutoff: "+outside);
     }
@@ -390,7 +437,7 @@ await fetch("/result?status="+encodeURIComponent(document.body.dataset.result));
                 res.writeHead(200);res.end("received");
             }else if(req.url==="/"){
                 res.writeHead(200,{"Content-Type":"text/html"});res.end(html);
-            }else if(/^\/[a-z][a-z0-9-]*\.mjs$/.test(req.url)){
+            }else if(/^\/(?:tsps-runtime\/)?[a-zA-Z][a-zA-Z0-9-]*\.mjs$/.test(req.url)){
                 res.writeHead(200,{"Content-Type":"text/javascript"});
                 res.end(await readFile(new URL(req.url.slice(1),browserRoot)));
             }else{res.writeHead(404);res.end();}

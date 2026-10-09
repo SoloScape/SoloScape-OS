@@ -74,9 +74,61 @@ Next engine-port gates, in order:
 | Scripts and state | Bounded partial CS2 interpreter; many scripts and runtime state dependencies absent | Execute required revision-240 scripts and compare widget trees and actions, without silently accepting unsupported behaviour |
 | Movement and actors | Legacy TSPS controller; incomplete actor overlays, effects and animation coverage | Matched tick traces for walking, running, turning, teleporting, forced movement, animations and combat overlays |
 | World updates | Not all revision-240 game packets have gameplay handlers | Every required packet mutates the same client state; unknown/unsupported packets remain explicitly tracked |
-| Rendering | Independent WebGL projection, scene and model rendering; original OpenOSRS scene loop is not running | Same-camera/cache frame comparisons for geometry, textures, transparency, roofs, lighting, animated scenery and effects |
+| Rendering | WebGL now renders translucent models, classic animated locations and actor spot effects; projection, priority ordering, skeletal animation and world effects still differ or are missing; original OpenOSRS scene loop is not running | Same-camera/cache frame comparisons for geometry, textures, transparency, roofs, lighting, animated scenery and effects; see rendering status below |
 | Audio | Title music exists; complete in-game sound/music behaviour unverified | Matched sound triggers, volume, position and music transitions |
 | Mobile input | Touch is a browser adaptation of desktop input | Phone tests for tap, hold, drag, multiple pointers, cancellation, focus changes and orientation changes |
+
+## Rendering implementation status (9 October 2026)
+
+The active `TeaVmWorldBridge` -> `NativeGameplay` -> `NativeTerrainViewport`
+path now includes:
+
+- Unsigned cache face transparency, including animation-driven actor alpha,
+  with opacity `1 - alpha / 255`, matching OpenOSRS `SceneUploader` and
+  `gpu/vert.glsl`. Opaque and cutout surfaces render first; translucent
+  triangles sort across materials and owners by camera depth, test against
+  opaque depth, blend, and leave depth writes disabled only during that pass.
+  Fully transparent faces have no drawn or clickable triangles.
+- Coloured and textured translucent scenery/actors, region offsets, physical
+  heights, bridge levels, roof filtering, and retained picking geometry. NPC
+  picking now consumes the scene geometry supplied by authenticated gameplay.
+- Verified animated location models rather than skipping every location with
+  a sequence. Classic frames use the declared loop tail, pose immutable merged
+  models, update picking with the visible pose, and reuse GPU buffers between
+  frame changes. The initial dynamic scene is prepared during map loading.
+- Player/NPC spot-effect slots from existing revision-240 sync masks, cache
+  group `2:13` definitions, verified models/textures, classic finite or looping
+  sequences, delayed starts, height offsets, scaling, rotation and recolouring.
+  Explicit slot updates restart/cancel effects; omitted slots continue. Despawn,
+  rebuild and disconnect invalidate pending work and release scene geometry.
+- OpenOSRS integer-tick texture scrolling and its textured lightness divisor
+  of 127. Water remains a classic scrolling texture, without HD material passes.
+- Explicit diagnostics for unsupported animated locations, missing spot assets
+  and varp/varbit-dependent locations. Failures do not fabricate materials or
+  assert reference equivalence.
+
+### Rendering proof still required
+
+| Component | Current evidence | Remaining implementation / proof |
+| --- | --- | --- |
+| Geometry and projection | All existing tile-shape, region-offset, bridge and compass tests; real WebGL landmark pixels | Native viewport scale/projection, clipping/culling, instanced scenes, occluders and matched camera/cache captures |
+| Textures | Verified JS5 definitions/sprites; UV fixtures; integer-tick scrolling; real WebGL cutout and textured-alpha pixels | Native texture filtering, brightness/settings and texture-mapping quantisation compared with matched reference frames |
+| Transparency and priority | Real WebGL blend, order reversal, opaque occlusion, roof filtering and resource cleanup checks | Native per-model priority 10/11 interleaving, face bias and intersecting translucent geometry; current global centroid sort and existing depth layers are an approximation |
+| Roofs | Existing flag/bridge/line-of-sight tests; dynamic and alpha passes share roof filtering | Native roof preferences and occlusion decisions in same-state indoor/outdoor frames |
+| Lighting | Existing floor normals/HSL/halo fixtures; model lighting and cache priorities retained | Native merged scenery normals, actor lighting and GPU colour interpolation/settings matched to captures |
+| Animated scenery | Verified location/model loading; classic loop timing, immutable poses, picking and buffer reuse tests | Skeletal sequences, native random initial frames, server animation replacements and varp/varbit-driven transforms |
+| Effects | Classic player/NPC spot slots, delay/expiry/restart/loop tests and stale-cache cancellation | World spot effects, projectiles, skeletal effects, remote-player effects and tick-matched combat captures |
+| Runtime | Active homepage import routes and Chrome WebGL/login fixtures | Live server tests and phone GPU/performance/orientation tests |
+
+These checks prove the browser implementation's behavior on fixtures. No
+same-state OpenOSRS screenshot set has been captured by this change. The
+rendering row remains **incomplete** until the missing runtime behavior and
+frame comparisons above pass; this is not whole-engine rendering parity.
+
+Validation: `npm test` with Windows Chrome supplied through `CHROME_BIN`
+passes all 323 tests, with no skips, including the WebGL pixel and encrypted
+login fixtures. `npm run verify:openosrs-reference` verifies the pinned local
+revision-240 source fingerprints. No live server or phone comparison was run.
 
 ## Validation boundary
 
