@@ -808,6 +808,60 @@ export class NativeTerrainViewport {
         if(!locations.has(name))locations.set(name,this.gl.getUniformLocation(program,name));
         return locations.get(name);
     }
+    // Attribute locations are stable for a linked program; avoid asking
+    // Safari's WebGL bridge for them on every material draw.
+    attribute(program,name){
+        if(!this.attributeLocations)this.attributeLocations=new WeakMap();
+        let locations=this.attributeLocations.get(program);
+        if(!locations){locations=new Map();this.attributeLocations.set(program,locations);}
+        if(!locations.has(name))locations.set(name,this.gl.getAttribLocation(program,name));
+        return locations.get(name);
+    }
+    // Only change the current GL program when a batch actually needs it.
+    useRenderProgram(program){
+        if(this.boundRenderProgram!==program){
+            this.gl.useProgram(program);
+            this.boundRenderProgram=program;
+        }
+    }
+    // Texture unit zero is shared by every world shader. Avoid redundant
+    // activeTexture/bindTexture calls when a material uses the same texture.
+    bindRenderTexture(texture){
+        const gl=this.gl;
+        if(!this.frameTextureUnitActive){
+            gl.activeTexture(gl.TEXTURE0);
+            this.frameTextureUnitActive=true;
+        }
+        if(this.lastFrameTexture!==texture){
+            gl.bindTexture(gl.TEXTURE_2D,texture);
+            this.lastFrameTexture=texture;
+        }
+    }
+    // Fog, view matrices and clipping bounds are shared by all triangles
+    // of one shader during a given frame. Upload once, not per draw call.
+    prepareRenderProgram(program,matrix,bounds){
+        this.useRenderProgram(program);
+        if(this.framePreparedPrograms?.has(program))return;
+        const gl=this.gl;
+        this.uploadFog(program);
+        gl.uniformMatrix4fv(this.uniform(program,"u_mvp"),false,matrix);
+        gl.uniform4fv(this.uniform(program,"u_drawBounds"),bounds);
+        gl.uniform1i(this.uniform(program,"u_wireframe"),0);
+        gl.uniform1i(this.uniform(program,program===this.textureProgram?"u_texture":"u_palette"),0);
+        gl.uniform1f(this.uniform(program,"u_opacity"),1);
+        this.framePreparedPrograms?.add(program);
+        this.frameOpacity?.set(program,1);
+    }
+    // A texture moves as one unit. Calculate UV scrolling once per texture
+    // per frame and reuse the exact same offset in every compatible batch.
+    frameTextureShift(texture){
+        if(!this.frameTextureOffsets)this.frameTextureOffsets=new Map();
+        if(!this.frameTextureOffsets.has(texture)){
+            const at=this.frameTime??(performance.now()-this.textureClock);
+            this.frameTextureOffsets.set(texture,textureAnimationOffset(this.textureMeta?.get(texture),at));
+        }
+        return this.frameTextureOffsets.get(texture);
+    }
     uploadFog(program){
         const gl=this.gl,ctx=this.roofContext,active=!!ctx?.player&&!!ctx?.origin;
         const x=active?ctx.player.x-ctx.origin.mapX*64-31.5:0;
@@ -856,6 +910,18 @@ export class NativeTerrainViewport {
     render(){
         const gl=this.gl,canvas=this.canvas;
         this.drawCallCount=0;
+        if(!this.framePreparedPrograms)this.framePreparedPrograms=new Set();
+        else this.framePreparedPrograms.clear();
+        if(!this.frameOpacity)this.frameOpacity=new Map();
+        else this.frameOpacity.clear();
+        if(!this.frameTextureOffsets)this.frameTextureOffsets=new Map();
+        else this.frameTextureOffsets.clear();
+        this.frameTextureUnitActive=false;
+        this.lastFrameTexture=undefined;
+        this.frameTime=performance.now()-this.textureClock;
+        // Any non-rendering upload may have changed WebGL's active program
+        // since the last requestAnimationFrame callback.
+        this.boundRenderProgram=null;
         const {width:w,height:h}=worldRenderPixels(canvas.clientWidth,canvas.clientHeight,
             window.devicePixelRatio||1,this.touch);
         if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
@@ -864,17 +930,14 @@ export class NativeTerrainViewport {
         if(!this.count&&!this.sceneryCount&&!this.terrainBatches.length&&!this.sceneryBatches.length)return;
         const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,w/h);
         const drawLevel=this.visibleRoofLevel();
-        gl.useProgram(this.program);this.uploadFog(this.program);
-        gl.uniform1f(this.uniform(this.program,"u_opacity"),1);
+
+
         const bounds=this.drawBounds();
-        gl.uniform4fv(this.uniform(this.program,"u_drawBounds"),bounds);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D,this.palette);
-        gl.uniform1i(this.uniform(this.program,"u_palette"),0);
+        this.prepareRenderProgram(this.program,matrix,bounds);
+        this.bindRenderTexture(this.palette);
         gl.uniform1i(this.uniform(this.program,"u_wireframe"),this.drawMode===gl.LINES?1:0);
-        gl.uniformMatrix4fv(this.uniform(this.program,"u_mvp"),false,matrix);
         gl.bindBuffer(gl.ARRAY_BUFFER,this.buf);
-        const a=gl.getAttribLocation(this.program,"a_position"),c=gl.getAttribLocation(this.program,"a_color");
+        const a=this.attribute(this.program,"a_position"),c=this.attribute(this.program,"a_color");
         gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);
         gl.enableVertexAttribArray(c);gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
         this.drawArrays(this.drawMode,0,this.terrainLevelCounts?.slice(0,drawLevel+1).reduce((a,b)=>a+b,0)??this.count);
@@ -891,21 +954,20 @@ export class NativeTerrainViewport {
             gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
             this.drawArrays(gl.TRIANGLES,0,this.actorCount);
         }
-        gl.useProgram(this.textureProgram);this.uploadFog(this.textureProgram);
-        gl.uniform1f(this.uniform(this.textureProgram,"u_opacity"),1);
-        gl.uniform4fv(this.uniform(this.textureProgram,"u_drawBounds"),bounds);
-        gl.uniformMatrix4fv(this.uniform(this.textureProgram,"u_mvp"),false,matrix);
-        gl.uniform1i(this.uniform(this.textureProgram,"u_texture"),0);
-        const ta=gl.getAttribLocation(this.textureProgram,"a_position"),tc=gl.getAttribLocation(this.textureProgram,"a_color");
+        // Only the wireframe ground pass uses line mode; later opaque and
+        // alpha materials must be shaded normally even when F10 toggles lines.
+        this.useRenderProgram(this.program);
+        gl.uniform1i(this.uniform(this.program,"u_wireframe"),0);
+        this.prepareRenderProgram(this.textureProgram,matrix,bounds);
+        const ta=this.attribute(this.textureProgram,"a_position"),tc=this.attribute(this.textureProgram,"a_color");
         gl.enableVertexAttribArray(ta);gl.enableVertexAttribArray(tc);
         for(const batch of [...this.terrainBatches,...this.sceneryBatches,...this.actorBatches]){
             const texture=this.textures.get(batch.texture);if(!texture||batch.level>drawLevel)continue;
-            const meta=this.textureMeta?.get(batch.texture);
-            const offset=textureAnimationOffset(meta,performance.now()-this.textureClock);
+            const offset=this.frameTextureShift(batch.texture);
             gl.uniform2f(this.uniform(this.textureProgram,"u_textureShift"),offset[0],offset[1]);
             // Water IDs retain the pinned TSPS classification in batch metadata.
             // Foam, normals and water-material passes are not yet ported.
-            gl.bindTexture(gl.TEXTURE_2D,texture);gl.bindBuffer(gl.ARRAY_BUFFER,batch.buffer);
+            this.bindRenderTexture(texture);gl.bindBuffer(gl.ARRAY_BUFFER,batch.buffer);
             gl.vertexAttribPointer(ta,3,gl.FLOAT,false,24,0);gl.vertexAttribPointer(tc,3,gl.FLOAT,false,24,12);
             this.drawArrays(gl.TRIANGLES,0,batch.count);
         }
@@ -937,19 +999,19 @@ export class NativeTerrainViewport {
         const gl=this.gl,textured=batch.texture>=0,texture=this.textures.get(batch.texture);
         if(textured&&!texture)return;
         const p=textured?this.textureProgram:this.program;
-        gl.useProgram(p);this.uploadFog(p);
-        gl.uniformMatrix4fv(this.uniform(p,"u_mvp"),false,matrix);
-        gl.uniform4fv(this.uniform(p,"u_drawBounds"),bounds);
-        gl.uniform1i(this.uniform(p,"u_wireframe"),0);
-        gl.uniform1f(this.uniform(p,"u_opacity"),opacity);
-        gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,textured?texture:this.palette);
-        gl.uniform1i(this.uniform(p,textured?"u_texture":"u_palette"),0);
+        this.prepareRenderProgram(p,matrix,bounds);
+        if(this.frameOpacity?.get(p)!==opacity){
+            gl.uniform1f(this.uniform(p,"u_opacity"),opacity);
+            this.frameOpacity?.set(p,opacity);
+        }
+        this.bindRenderTexture(textured?texture:this.palette);
+
         if(textured){
-            const offset=textureAnimationOffset(this.textureMeta.get(batch.texture),performance.now()-this.textureClock);
+            const offset=this.frameTextureShift(batch.texture);
             gl.uniform2f(this.uniform(p,"u_textureShift"),...offset);
         }
         gl.bindBuffer(gl.ARRAY_BUFFER,batch.buffer);
-        const a=gl.getAttribLocation(p,"a_position"),c=gl.getAttribLocation(p,"a_color");
+        const a=this.attribute(p,"a_position"),c=this.attribute(p,"a_color");
         gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);
         gl.enableVertexAttribArray(c);gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
         this.drawArrays(gl.TRIANGLES,first,count);

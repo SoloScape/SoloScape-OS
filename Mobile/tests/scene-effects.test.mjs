@@ -324,3 +324,56 @@ test("distant uninitialised animations do not disable scenery caching",async()=>
     assert.notStrictEqual(crossed,cached,"moving to the distant object loads a new visible scene");
     assert.ok(crossed.batches.length>0);
 });
+
+test("mobile WebGL reuses shader frame state and UV offsets across hundreds of material draws",()=>{
+    const log=[],counts=new Map(),record=name=>(...args)=>{
+        counts.set(name,(counts.get(name)??0)+1);log.push([name,...args]);
+    };
+    const gl={
+        ARRAY_BUFFER:1,TRIANGLES:4,FLOAT:5,TEXTURE0:6,TEXTURE_2D:7,
+        useProgram:record("useProgram"),uniformMatrix4fv:record("uniformMatrix4fv"),
+        uniform4fv:record("uniform4fv"),uniform1i:record("uniform1i"),
+        uniform1f:record("uniform1f"),uniform2f:record("uniform2f"),
+        getAttribLocation:(_p,name)=>{record("getAttribLocation")(name);return name==="a_position"?0:1;},
+        activeTexture:record("activeTexture"),bindTexture:record("bindTexture"),
+        bindBuffer:record("bindBuffer"),enableVertexAttribArray:record("enableVertexAttribArray"),
+        vertexAttribPointer:record("vertexAttribPointer"),
+        drawArrays:record("drawArrays")
+    };
+    const view=Object.create(NativeTerrainViewport.prototype);
+    const main={},textured={},texture={},buffer={};
+    view.gl=gl;view.program=main;view.textureProgram=textured;
+    view.palette={};view.textures=new Map([[4,texture]]);
+    view.textureMeta=new Map();view.textureClock=0;view.frameTime=1000;
+    view.framePreparedPrograms=new Set();view.frameOpacity=new Map();
+    view.frameTextureOffsets=new Map();view.drawCallCount=0;
+    view.uploadFog=()=>{record("uploadFog")();};
+    view.uniform=(_p,name)=>name;
+    const bounds=[0,0,64,64],matrix=new Float32Array(16),batch={
+        buffer,texture:4,count:3,level:0
+    };
+    for(let i=0;i<150;i++)view.renderMaterialBatch(batch,0,3,matrix,bounds,1);
+    assert.equal(counts.get("drawArrays"),150);
+    assert.equal(counts.get("activeTexture"),1,"same texture unit activated once per frame");
+    assert.equal(counts.get("bindTexture"),1,"same material texture bound once for 150 draws");
+    assert.equal(counts.get("useProgram"),1,
+        "same shader avoids 149 redundant WebGL program switches");
+    assert.equal(counts.get("uniformMatrix4fv"),1,
+        "scene matrix is uploaded once for 150 texture draws");
+    assert.equal(counts.get("uploadFog"),1);
+    assert.equal(counts.get("getAttribLocation"),2);
+    assert.equal(view.frameTextureOffsets.size,1,
+        "all batches sharing a texture use one scroll-offset calculation");
+    view.renderMaterialBatch(batch,0,3,matrix,bounds,.5);
+    view.renderMaterialBatch(batch,0,3,matrix,bounds,.5);
+    assert.equal(counts.get("uniform1f"),2,
+        "opacity updates only when value actually changes");
+    const paletteBatch={...batch,texture:-1};
+    view.renderMaterialBatch(paletteBatch,0,3,matrix,bounds,1);
+    assert.equal(counts.get("useProgram"),2,"switch only when changing shader");
+    assert.equal(counts.get("uploadFog"),2);
+    assert.equal(counts.get("uniformMatrix4fv"),2);
+    view.renderMaterialBatch(batch,0,3,matrix,bounds,1);
+    assert.equal(counts.get("useProgram"),3,
+        "switch back to textured shader on subsequent batches");
+});
