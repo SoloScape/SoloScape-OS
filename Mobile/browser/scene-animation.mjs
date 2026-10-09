@@ -56,7 +56,7 @@ export function sceneEntryVisible(entry,cell){
 export class NativeSceneAnimations {
     constructor(animations){this.animations=animations;this.entries=[];this.errors=[];}
     reset(entries=[],started=0){
-        this.entries=entries.map(entry=>({...entry,started,lastFrame:null,mesh:null,scenePart:null,failed:false}));
+        this.entries=entries.map(entry=>({...entry,started,lastFrame:null,mesh:null,scenePart:null,failed:false,batchKeys:new Map()}));
         this.errors=[];this.previousScene=null;this.previousView=null;
     }
     async scene(now,origin,player,textures){
@@ -83,12 +83,16 @@ export class NativeSceneAnimations {
                 if(!entry.sequence||entry.sequenceResolver!==this.animations.sequence){
                     entry.sequence=await this.animations.sequence(definition.seqId);
                     entry.sequenceResolver=this.animations.sequence;
+                    entry.mesh=null;
                 }
                 const sequence=entry.sequence;
                 const frame=sceneSequenceFrame(sequence,Math.max(0,now-entry.started),{location:true});
                 if(!entry.mesh||frame!==entry.lastFrame){
-                    const posed=frame<0?model:await this.animations.poseFrame(model,definition.seqId,frame);
-                    entry.mesh=buildObjectMesh(terrain,loc,definition,part,[posed],{textures});entry.lastFrame=frame;
+                    entry.posed=frame<0?model:await this.animations.poseFrame(model,definition.seqId,frame);
+                }
+                if(!entry.mesh||frame!==entry.lastFrame||entry.meshTextures!==textures){
+                    entry.mesh=buildObjectMesh(terrain,loc,definition,part,[entry.posed],{textures});entry.lastFrame=frame;
+                    entry.meshTextures=textures;
                     entry.scenePart=null;
                 }
                 if(entry.scenePart&&entry.scenePart.dx===dx&&entry.scenePart.dy===dy){
@@ -96,11 +100,18 @@ export class NativeSceneAnimations {
                     pickMeshes.push(entry.scenePart.pickMesh);continue;
                 }
                 const partBatches=[],partAlpha=[];
+                // Identity belongs to this placement/material, independent of
+                // its current pose or position in the visible batch arrays.
+                const key=(texture,alpha=0)=>{
+                    const material=texture+":"+alpha;
+                    if(!entry.batchKeys.has(material))entry.batchKeys.set(material,{});
+                    return entry.batchKeys.get(material);
+                };
                 const shift=vertices=>{const v=vertices.slice();for(let i=0;i<v.length;i+=6){v[i]+=dx;v[i+2]+=dy;}return v;};
                 const mesh=entry.mesh,chunks=[];
-                if(mesh.vertices.length){const vertices=shift(mesh.vertices);partBatches.push({level,texture:-1,vertices});chunks.push(vertices);}
-                for(const [texture,v] of mesh.texturedBatches){const vertices=shift(v);partBatches.push({level,texture,vertices});chunks.push(vertices);}
-                for(const b of mesh.transparentBatches){const vertices=shift(b.vertices);partAlpha.push({...b,level,vertices});chunks.push(vertices);}
+                if(mesh.vertices.length){const vertices=shift(mesh.vertices);partBatches.push({key:key(-1),level,texture:-1,vertices});chunks.push(vertices);}
+                for(const [texture,v] of mesh.texturedBatches){const vertices=shift(v);partBatches.push({key:key(texture),level,texture,vertices});chunks.push(vertices);}
+                for(const b of mesh.transparentBatches){const vertices=shift(b.vertices);partAlpha.push({...b,key:key(b.texture,b.alpha),level,vertices});chunks.push(vertices);}
                 const vertices=new Float32Array(chunks.reduce((n,v)=>n+v.length,0));let at=0;
                 for(const v of chunks){vertices.set(v,at);at+=v.length;}
                 const pickMesh={id:loc.id,name:definition.name,actions:definition.actions??[],

@@ -26,6 +26,15 @@ mesh preparation reuses immutable posed-model rotations and lit tile-local
 geometry, recalculating interpolated position and ground-height offsets
 without mutating earlier GPU/picking snapshots.
 
+Animated scenery now retains a GPU buffer and VAOs per placement/material
+across pose changes, visibility reordering and scene-origin shifts. Only
+changed geometry uploads with `bufferSubData`; growth reallocates storage in
+the same buffer, and disappearing materials/placements release their resources.
+Opaque and alpha batches keep separate identities and existing alpha sorting.
+Unchanged picking geometry also retains its cached bounds. This is an incremental
+mobile renderer improvement; dynamic loc morphs and skeletal sequences remain
+unsupported, and on-device profiling is still needed.
+
 **Starting 8 October 2026**, `npm run dev` (also `npm run dev:native`)
 starts **SoloScape's own WebGL world client** at
 `http://localhost:3001/`, not the collection of JS5 diagnostic buttons.

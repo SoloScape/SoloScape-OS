@@ -457,6 +457,7 @@ const pickMeshBounds=new WeakMap();
 function preparePickMeshes(meshes){
     for(const {vertices} of meshes){
         if(!(vertices instanceof Float32Array)||vertices.length%18)continue;
+        if(pickMeshBounds.has(vertices))continue;
         let minX=Infinity,minZ=Infinity,maxX=-Infinity,maxZ=-Infinity;
         for(let i=0;i<vertices.length;i+=6){
             minX=Math.min(minX,vertices[i]);maxX=Math.max(maxX,vertices[i]);
@@ -851,10 +852,10 @@ export class NativeTerrainViewport {
     setDynamicScenery(scene){
         const next=scene?.batches??[],alpha=scene?.transparentBatches??[],pick=scene?.pickMeshes??[];
         const same=(old,incoming)=>old?.length===incoming.length&&old.every((b,i)=>
-            b.vertices===incoming[i].vertices&&b.texture===incoming[i].texture&&
+            b.key===incoming[i].key&&b.vertices===incoming[i].vertices&&b.texture===incoming[i].texture&&
             b.level===incoming[i].level&&b.alpha===incoming[i].alpha);
-        // Keep unchanged animated zone buffers (as OpenOSRS does for
-        // unchanged static zones) instead of revisiting them every actor pass.
+        // Preserve unchanged poses; changed placement/material identities are
+        // reconciled below without recreating their VBOs and retained VAOs.
         if(same(this.dynamicBatches,next)&&same(this.dynamicAlphaBatches,alpha)&&
             this.dynamicPickSources?.length===pick.length&&
             this.dynamicPickSources.every((source,i)=>source===pick[i]))return;
@@ -955,9 +956,10 @@ export class NativeTerrainViewport {
         }
         const previous=this[name]??[],used=new Set();
         const dynamic=name.startsWith("dynamic"),actor=name.startsWith("actor");
-        const byVertices=dynamic?new Map(previous.map(b=>[b.vertices,b])):null;
+        const byIdentity=dynamic?new Map(previous.map(b=>[b.key??b.vertices,b])):null;
         this[name]=batches.map((b,i)=>{
-            const old=dynamic?byVertices.get(b.vertices):actor?previous[i]:null;
+            const candidate=dynamic?byIdentity.get(b.key??b.vertices):actor?previous[i]:null;
+            const old=candidate&&!used.has(candidate)?candidate:null;
             if(old)used.add(old);
             const buffer=old?.buffer??gl.createBuffer();
             const bytes=b.vertices.byteLength;
@@ -967,11 +969,11 @@ export class NativeTerrainViewport {
                 if(old&&capacity>=bytes&&gl.bufferSubData){
                     if(bytes)gl.bufferSubData(gl.ARRAY_BUFFER,0,b.vertices);
                 }else{
-                    gl.bufferData(gl.ARRAY_BUFFER,b.vertices,actor?gl.DYNAMIC_DRAW:gl.STATIC_DRAW);
+                    gl.bufferData(gl.ARRAY_BUFFER,b.vertices,actor||dynamic?gl.DYNAMIC_DRAW:gl.STATIC_DRAW);
                     capacity=bytes;
                 }
             }
-            return {buffer,capacity,count:b.vertices.length/6,texture:b.texture,level:b.level,
+            return {key:b.key,buffer,capacity,count:b.vertices.length/6,texture:b.texture,level:b.level,
                 bounds:b.bounds,alpha:b.alpha,vertices:b.vertices,
                 isWater:isKnownWaterTextureId(b.texture)};
         });

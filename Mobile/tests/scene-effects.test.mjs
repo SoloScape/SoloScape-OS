@@ -234,6 +234,69 @@ test("unchanged animated scenery bypasses redundant GPU uploads",()=>{
     assert.equal(fake.dynamicBatches.length,0,"scene unload removes stale dynamic geometry");
 });
 
+test("animated placements update only changed VBOs and retain identities across reorder and origin shifts",async()=>{
+    const calls=[],gl={ARRAY_BUFFER:1,STATIC_DRAW:2,DYNAMIC_DRAW:3,
+        createBuffer(){const b={};calls.push(["create",b]);return b;},
+        bindBuffer(_target,b){calls.push(["bind",b]);},
+        bufferData(_target,v,usage){calls.push(["data",v.length,usage]);},
+        bufferSubData(_target,_offset,v){calls.push(["subdata",v.length]);},
+        deleteBuffer(b){calls.push(["delete",b]);}};
+    const view={gl,dynamicBatches:[],dynamicAlphaBatches:[],
+        replaceBatches:NativeTerrainViewport.prototype.replaceBatches,
+        releaseGeometry:b=>calls.push(["release",b])};
+    const upload=scene=>NativeTerrainViewport.prototype.setDynamicScenery.call(view,scene);
+    const t=terrain(),definition=decodeObjectDefinition(Uint8Array.of(24,0,2,0),5);
+    const alpha=model();alpha.faceAlphas=Int8Array.of(-128);
+    const entry=(x,m,seqId)=>({terrain:t,loc:{id:5,x,y:10,plane:0,rotation:0,shape:10},
+        definition:{...definition,seqId},part:{type:10,rotation:0,dx:0,dy:0},model:m,level:0});
+    const runtime=new NativeSceneAnimations({sequence:async id=>id===3?{...seq,frameLengths:[100,100,100]}:seq,
+        poseFrame:async(m,_id,frame)=>({...m,verticesY:Int32Array.from(m.verticesY,y=>y-frame*128)})});
+    runtime.reset([entry(10,model(),2),entry(11,model(),3),entry(12,alpha,2)],1000);
+    const origin={mapX:50,mapY:50},player={x:3210,y:3210},textures=new Map();
+    const first=await runtime.scene(1000,origin,player,textures);upload(first);
+    const buffers=[...view.dynamicBatches,...view.dynamicAlphaBatches].map(b=>b.buffer);
+    assert.equal(calls.filter(c=>c[0]==="create").length,3);
+    assert.ok(calls.filter(c=>c[0]==="data").every(c=>c[2]===gl.DYNAMIC_DRAW));
+    calls.length=0;
+    const next=await runtime.scene(1060,origin,player,textures);upload(next);
+    assert.deepEqual([...view.dynamicBatches,...view.dynamicAlphaBatches].map(b=>b.buffer),buffers);
+    assert.equal(calls.filter(c=>c[0]==="subdata").length,2,"only fast opaque and alpha poses upload");
+    assert.equal(calls.filter(c=>["create","delete","release","data"].includes(c[0])).length,0);
+    assert.strictEqual(first.batches[1],next.batches[1],"slow pose retains its batch snapshot");
+    assert.strictEqual(first.pickMeshes[1],next.pickMeshes[1],"unchanged picking snapshot is retained");
+    assert.notStrictEqual(first.pickMeshes[0].vertices,next.pickMeshes[0].vertices);
+    assert.equal(next.pickMeshes[0].vertices[1],first.pickMeshes[0].vertices[1]+1);
+    calls.length=0;
+    upload({...next,batches:[...next.batches].reverse(),pickMeshes:[...next.pickMeshes].reverse()});
+    assert.equal(calls.length,0,"reordering visible placements preserves VBOs without uploading");
+    assert.strictEqual(view.dynamicBatches[0].buffer,buffers[1]);
+    const shifted=await runtime.scene(1060,{mapX:49,mapY:50},player,textures);upload(shifted);
+    assert.equal(calls.filter(c=>c[0]==="subdata").length,3,"origin shift updates coordinates in existing buffers");
+    assert.strictEqual(view.dynamicBatches[0].buffer,buffers[0]);
+    assert.equal(shifted.pickMeshes[0].x,next.pickMeshes[0].x+64);
+    calls.length=0;
+    upload({...shifted,batches:shifted.batches.slice(1),pickMeshes:shifted.pickMeshes.slice(1)});
+    assert.deepEqual(calls,[["release",buffers[0]],["delete",buffers[0]]],"only removed placement is released");
+    calls.length=0;upload(null);
+    assert.equal(calls.filter(c=>c[0]==="delete").length,2,"unload releases remaining opaque and alpha buffers");
+    runtime.reset([entry(11,model(),3)],1100);
+    const reset=await runtime.scene(1100,origin,player,textures);
+    assert.notStrictEqual(reset.batches[0].key,first.batches[1].key,"new scene cannot inherit obsolete identities");
+});
+
+test("dynamic scenery grows buffer capacity without releasing its retained geometry",()=>{
+    const calls=[],buffer={},key={},gl={ARRAY_BUFFER:1,DYNAMIC_DRAW:2,
+        createBuffer(){calls.push("create");return buffer;},bindBuffer(){},
+        bufferData(){calls.push("data");},bufferSubData(){calls.push("subdata");},
+        deleteBuffer(){calls.push("delete");}};
+    const view={gl,releaseGeometry:()=>calls.push("release")};
+    for(const size of [18,36,18])NativeTerrainViewport.prototype.replaceBatches.call(view,"dynamicBatches",
+        [{key,level:0,texture:-1,vertices:new Float32Array(size)}]);
+    assert.deepEqual(calls,["create","data","data","subdata"]);
+    assert.strictEqual(view.dynamicBatches[0].buffer,buffer);
+    assert.equal(view.dynamicBatches[0].capacity,36*4);
+});
+
 test("dynamic actor VBOs are reused with subData when size allows, reallocated only on growth",()=>{
     const calls=[],gl={
         ARRAY_BUFFER:1,STATIC_DRAW:2,DYNAMIC_DRAW:3,
@@ -327,6 +390,26 @@ test("distant uninitialised animations do not disable scenery caching",async()=>
     const crossed=await runtime.scene(1020,origin,{...player,x:3340},textures);
     assert.notStrictEqual(crossed,cached,"moving to the distant object loads a new visible scene");
     assert.ok(crossed.batches.length>0);
+});
+
+test("animated material replacement rebuilds geometry without posing the same frame again",async()=>{
+    const m=model();m.faceTextures=Int16Array.of(3);m.textureUvs=Float32Array.of(0,0,1,0,0,1);
+    let poses=0;
+    const animations={sequence:async()=>seq,poseFrame:async()=>{poses++;return m;}};
+    const runtime=new NativeSceneAnimations(animations),t=terrain(),
+        definition=decodeObjectDefinition(Uint8Array.of(24,0,2,0),5);
+    runtime.reset([{terrain:t,loc:{id:5,x:10,y:10,plane:0,rotation:0,shape:10},
+        definition,part:{type:10,rotation:0,dx:0,dy:0},model:m,level:0}],1000);
+    const origin={mapX:50,mapY:50},player={x:3210,y:3210};
+    const missing=await runtime.scene(1000,origin,player,new Map());
+    assert.equal(missing.batches.length,0);
+    const loaded=await runtime.scene(1020,origin,player,new Map([[3,{}]]));
+    assert.equal(loaded.batches[0].texture,3);assert.equal(poses,1);
+    const key=loaded.batches[0].key;
+    animations.sequence=async()=>seq;
+    const replaced=await runtime.scene(1020,origin,player,new Map([[3,{}]]));
+    assert.equal(poses,2,"a replaced sequence resolver invalidates even the same frame index");
+    assert.strictEqual(replaced.batches[0].key,key,"material identity survives rebuilding its pose");
 });
 
 test("mobile WebGL reuses shader frame state and UV offsets across hundreds of material draws",()=>{
