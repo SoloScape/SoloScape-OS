@@ -3,3 +3,6 @@ html{color-scheme:dark;font:16px system-ui;background:#101114;color:#ececec}
 main{max-width:720px;margin:5vh auto;padding:24px}h1{font-size:24px}
 .panel{background:#1c2026;border:1px solid #4b5962;border-radius:12px;padding:18px}
 a{color:#b1d5ff}p{line-height:1.6}#result{white-space:pre-wrap;overflow-wrap:anywhere}
+#genuine-raster{display:block;width:100%;max-width:768px;aspect-ratio:8/5;height:auto;image-rendering:pixelated;margin-top:12px;border:1px solid #43576b}
+#genuine-raster[hidden]{display:none}
+.panel+.panel{margin-top:16px}

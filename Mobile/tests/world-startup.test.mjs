@@ -118,13 +118,18 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         const proofHtml=await proof.text();
         assert.match(proofHtml,/TeaVM:/);
         assert.match(proofHtml,/src="\/teavm\/probe\.mjs"/);
+        assert.match(proofHtml,/id="genuine-raster"/,"authentic canvas probe mounted");
         for(const path of ["/teavm/probe.mjs","/teavm/probe.css"]){
             const response=await fetch(root+path);
             assert.equal(response.status,200,path);
             assert.ok((await response.text()).length>100);
         }
-        const gamepack=await fetch(root+"/teavm/injected-client.oprs");
-        assert.equal(gamepack.status,404);
+        for(const url of ["/teavm/injected-client.oprs","/teavm/rasterizer2d.jar"]){
+            const gamepack=await fetch(root+url);
+            assert.equal(gamepack.status,404,"gamepack material must never be served directly");
+        }
+        const teaModule=await fetch(root+"/teavm/probe.mjs");
+        assert.match(await teaModule.text(),/core\.renderHex\(\)/);
         const keys=await fetch(root+"/region-keys.json");
         assert.equal(keys.status,200);assert.deepEqual(await keys.json(),{});
         const login=await fetch(root+"/login-config.json");

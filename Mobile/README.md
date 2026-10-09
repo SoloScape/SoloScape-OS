@@ -1303,10 +1303,15 @@ optional NPC models are still pending.
 
 ### Experimental TeaVM browser target
 
-An isolated [TeaVM feasibility spike](teavm-poc/README.md) compiles original
-Java code to a browser-loadable ES module. Run `npm run build:teavm` with
-JDK 17+ and Maven; visit `/teavm` in the existing preview. The module verifies
-OSRS coordinate math and CRC32 against a real JS5 master index when the gateway
-is available. This **does not yet run the original OpenOSRS engine**: the
-compiled desktop gamepack uses AWT/JVM facilities that require porting. No
-proprietary gamepack archive or transpiled gamepack code is bundled or served.
+The isolated [TeaVM renderer spike](teavm-poc/README.md) runs actual
+revision-240 OpenOSRS Rasterizer2D fill/clipping bytecode on HTML Canvas.
+`npm run build:teavm` selects JDK 17+ automatically, verifies the local
+pinned gamepack and produces a browser-only module. Open `/teavm` in the
+existing preview, then run `npm run test:teavm` to compare its framebuffer
+with the original JVM gamepack. JS5 master-index validation remains optional.
+
+This is an authentic software-rendering *primitive* test, not a running
+OpenOSRS game engine, title screen or 3D scene. The binary gamepack,
+locally extracted methods, and generated gamepack-derived JavaScript are
+never committed; the latter is served only by the local development preview
+and must not be redistributed without appropriate permissions.
