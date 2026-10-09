@@ -51,9 +51,11 @@
         <button id="world-performance-toggle" type="button" aria-controls="world-performance-stats" aria-expanded="true">PERF <span aria-hidden="true">▾</span></button>
         <div id="world-performance-stats">
           <div><span>FPS</span><output data-perf="fps">—</output></div>
-          <div><span>RAM</span><output data-perf="ram" title="JavaScript heap only; unavailable in some browsers">N/A</output></div>
+          <div><span>RAM</span><output data-perf="ram" title="JavaScript heap unavailable on iOS Safari; N/A is expected">N/A</output></div>
           <div><span>TICK</span><output data-perf="tick" title="PLAYER_INFO updates received / average interval">0</output></div>
-          <div><span>MS</span><output data-perf="ms" title="Average time between rendered frames, not network ping">—</output></div>
+          <div><span>MS</span><output data-perf="ms" title="Average time between WebGL animation frames, not network ping">—</output></div>
+          <div><span>DRAW</span><output data-perf="draw" title="WebGL draw submission time on CPU, not GPU timing">—</output></div>
+          <div><span>NET</span><output data-perf="net" title="HTTPS round trip to the SoloScape LAN page server, not game server ping">—</output></div>
         </div>
       </aside>
       <span id="world-status" class="sr-only" role="status" aria-live="polite"></span>

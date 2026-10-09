@@ -14,7 +14,7 @@ import {NativeChooseOptionMenu} from "./native-menu.mjs";
 import {NativeInterfaceCanvas} from "./interface-canvas.mjs";
 import {ServerInterfaces} from "./server-interfaces.mjs";
 import {NativeDialogueModels} from "./dialogue-models.mjs";
-import {GamePerformanceOverlay} from "./game-performance.mjs";
+import {GamePerformanceOverlay,measurePreviewLatency} from "./game-performance.mjs";
 
 export class TeaVmWorldBridge {
     constructor({cache,canvas,stage,title,overlay,worldStatus,menuCanvas,interfaceCanvas,performanceRoot=null,onStatus=()=>{},onReady=()=>{},
@@ -23,7 +23,7 @@ export class TeaVmWorldBridge {
         createMenu=(c,options)=>new NativeChooseOptionMenu(c,options),
         createInterfaceView=(c,cache)=>new NativeInterfaceCanvas(c,cache),
         createInterfaces=options=>new ServerInterfaces(options),
-        createPerformanceOverlay=root=>new GamePerformanceOverlay(root)}={}) {
+        createPerformanceOverlay=root=>new GamePerformanceOverlay(root,{networkProbe:()=>measurePreviewLatency()})}={}) {
         if(!cache||!canvas||!stage||!title||!overlay||!worldStatus)
             throw new Error("TeaVM world bridge requires verified cache and canvas");
         this.cache=cache;this.canvas=canvas;this.stage=stage;this.title=title;
@@ -59,6 +59,12 @@ export class TeaVmWorldBridge {
                 this.performanceOverlay=this.createPerformanceOverlay(this.performanceRoot);
                 this.performanceOverlay.start();
                 this.viewport.onFrame=timestamp=>this.performanceOverlay?.frame(timestamp);
+                this.viewport.onDrawTime=ms=>this.performanceOverlay?.draw?.(ms);
+                this.viewport.onRenderError=error=>{
+                    const message="WebGL rendering stopped: "+(error?.message||String(error));
+                    this.onStatus(message);
+                    this.session?.stop?.(new Error(message));
+                };
             }
             const current=()=>this.active&&token===this.generation;
             if(this.interfaceCanvas){

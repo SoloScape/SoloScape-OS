@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {NativeGameplay,interpolatePlayer,rebuildRegions} from "../browser/native-gameplay.mjs";
+import {NativeGameplay,actorMeshInterval,interpolatePlayer,rebuildRegions} from "../browser/native-gameplay.mjs";
 import {decodeRebuild,encodeMoveDestination,encodeWindowStatus,WINDOW_STATUS} from "../browser/player-protocol.mjs";
 import {NativePlayerSync} from "../browser/player-sync.mjs";
 import {NativeTspsPlayerController} from "../browser/tsps-game-controller.mjs";
@@ -334,4 +334,10 @@ test("landscape resize reports true mobile CSS viewport dimensions once per size
     }
     game.updateWindowStatus();
     assert.equal(sent.length,3,"closed session cannot send resize packets");
+});
+
+test("mobile actor mesh upload schedule is ~30Hz while desktop stays unchanged",()=>{
+    assert.equal(actorMeshInterval(true),33);
+    assert.equal(actorMeshInterval(false),20);
+    assert.equal(actorMeshInterval(undefined),20);
 });

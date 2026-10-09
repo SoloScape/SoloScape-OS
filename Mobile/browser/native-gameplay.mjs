@@ -39,6 +39,7 @@ export function interpolatePlayer(motion,now){
     return {...motion.target,x,y,moving:x!==motion.target.x||y!==motion.target.y};
 }
 
+export const actorMeshInterval=touch=>touch?33:20;
 export class NativeGameplay {
     constructor({cache,viewport,session,interfaces=null,onStatus=()=>{},onRegion=()=>{},onLoading=()=>{},onReady=()=>{},onNpcMenu=()=>{},onExamine=()=>{},run=()=>false,
         loadTerrain=loadNativeTerrain,loadMaterials=loadFloorMaterials,loadScenery=loadStaticScenery,
@@ -65,7 +66,10 @@ export class NativeGameplay {
         this.localServerId=account.playerIndex;
         this.viewport.distance=GAME_CAMERA_ZOOM.default;this.viewport.pitch=.65;
         this.updateWindowStatus();
-        this.timer=setInterval(()=>{this.playerController.advance(this.now());void this.drawActors();},20);
+        // Actor mesh rebuilding is CPU-heavy in mobile Safari. Update at ~30Hz
+        // on touch devices rather than rebuilding every 20ms on top of WebGL.
+        this.timer=setInterval(()=>{this.playerController.advance(this.now());void this.drawActors();},
+            actorMeshInterval(this.viewport.touch));
     }
     updateWindowStatus(){
         // The iPhone viewport changes on rotation and Safari toolbar resize.

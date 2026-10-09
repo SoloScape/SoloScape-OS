@@ -484,10 +484,21 @@ export function terrainWireframe(vertices){
     }
     return lines;
 }
+// Mobile WebGL must not render a 2x Retina framebuffer every frame. This
+// budget reduces fill-rate cost while leaving text/interface canvas sharp.
+export function worldRenderPixels(width,height,devicePixelRatio=1,touch=false){
+    const cssWidth=Math.max(1,width),cssHeight=Math.max(1,height);
+    const ratio=Math.min(touch?1.25:2,
+        Number.isFinite(devicePixelRatio)?devicePixelRatio:1,
+        touch?Math.sqrt(850000/(cssWidth*cssHeight)):2);
+    return {width:Math.max(1,Math.floor(cssWidth*ratio)),
+        height:Math.max(1,Math.floor(cssHeight*ratio))};
+}
 export class NativeTerrainViewport {
     constructor(canvas,{onDestination=()=>{}}={}) {
         this.canvas=canvas;
-        this.gl=canvas.getContext("webgl",{antialias:true,alpha:false}) ||
+        this.touch=Boolean(window.matchMedia?.("(pointer: coarse)")?.matches);
+        this.gl=canvas.getContext("webgl",{antialias:!this.touch,alpha:false}) ||
             canvas.getContext("experimental-webgl");
         if(!this.gl)throw new Error("WebGL not supported on this device");
         const gl=this.gl;
@@ -628,7 +639,21 @@ export class NativeTerrainViewport {
         gl.enable(gl.DEPTH_TEST);
         // Classic black void beyond the rendered scene (also used by distance fog).
         gl.clearColor(0,0,0,1);
-        this.frame=timestamp=>{if(this.disposed)return;this.render();this.onFrame?.(timestamp);this.raf=requestAnimationFrame(this.frame);};
+        this.frame=timestamp=>{
+            if(this.disposed)return;
+            // Record before rendering: failures must not hide an expensive
+            // frame or silently stop RAF without surfacing the exception.
+            this.onFrame?.(timestamp);
+            const started=performance.now();
+            try{this.render();}
+            catch(error){
+                this.onRenderError?.(error);
+                if(!this.onRenderError)console.error("[native-world] WebGL rendering stopped:",error);
+                return;
+            }
+            this.onDrawTime?.(performance.now()-started);
+            if(!this.disposed)this.raf=requestAnimationFrame(this.frame);
+        };
         this.raf=requestAnimationFrame(this.frame);
     }
     setTerrain(terrain,{resetCamera=true}={}){
@@ -732,8 +757,8 @@ export class NativeTerrainViewport {
     }
     render(){
         const gl=this.gl,canvas=this.canvas;
-        const w=Math.max(1,Math.floor(canvas.clientWidth*Math.min(2,window.devicePixelRatio||1)));
-        const h=Math.max(1,Math.floor(canvas.clientHeight*Math.min(2,window.devicePixelRatio||1)));
+        const {width:w,height:h}=worldRenderPixels(canvas.clientWidth,canvas.clientHeight,
+            window.devicePixelRatio||1,this.touch);
         if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
         gl.viewport(0,0,w,h);
         gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);

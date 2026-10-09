@@ -104,7 +104,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         assert.doesNotMatch(htmlText,/id="login-otp"/,"ordinary login has only username and password");
         assert.match(htmlText,/id="world-canvas"/,"same-session cache-backed world is mounted");
         assert.match(htmlText,/id="world-performance"/,"gameplay performance HUD is mounted");
-        for(const metric of ["fps","ram","tick","ms"])
+        for(const metric of ["fps","ram","tick","ms","draw","net"])
             assert.match(htmlText,new RegExp('data-perf="'+metric+'"'),"missing performance metric "+metric);
         assert.doesNotMatch(htmlText,/id="world-disconnect"|class="world-hud"/,
             "game viewport has no top logout/status overlay");
@@ -158,6 +158,9 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
             assert.match(response.headers.get("content-type")??"",/text\/javascript/,path);
             assert.ok((await response.text()).length>50,path);
         }
+        const ping=await fetch(root+"/ping",{cache:"no-store"});
+        assert.equal(ping.status,204,"LAN latency probe must return without cache/body");
+        assert.match(ping.headers.get("cache-control")??"",/no-store/);
         // Walk the actual module import graph, including the login-time dynamic
         // world import, so adding a new dependency cannot silently create a 404.
         const queue=["/teavm/title-client.mjs","/teavm-world.mjs"],checked=new Set();

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {GamePerformanceMetrics,GamePerformanceOverlay} from "../browser/game-performance.mjs";
+import {GamePerformanceMetrics,GamePerformanceOverlay,measurePreviewLatency} from "../browser/game-performance.mjs";
 
 function fixture(){
     const make=()=>({
@@ -13,7 +13,7 @@ function fixture(){
         click(){this.listeners.get("click")?.();}
     });
     const root=make(),button=make(),details=make();
-    const fields=Object.fromEntries(["fps","ram","tick","ms"].map(name=>[name,make()]));
+    const fields=Object.fromEntries(["fps","ram","tick","ms","draw","net"].map(name=>[name,make()]));
     root.hidden=true;
     root.querySelector=selector=>selector==="#world-performance-toggle"?button:
         selector==="#world-performance-stats"?details:
@@ -30,9 +30,9 @@ test("FPS and MS measure actual RAF intervals; tick counts authoritative PLAYER_
     assert.equal(snapshot.tickMs,600);
     assert.equal(snapshot.ticks,4);
     assert.equal(snapshot.heapBytes,70*1048576);
-    metrics.recordFrame(6000);
+    metrics.recordFrame(6200);
     assert.equal(metrics.snapshot().fps,null,"suspended tab must not report stale FPS");
-    metrics.recordFrame(6033);
+    metrics.recordFrame(6233);
     assert.ok(Math.abs(metrics.snapshot().fps-1000/33)<.01);
     metrics.recordTick(6000);
     assert.equal(metrics.snapshot().tickMs,null,"stale server tick interval clears after long gaps");
@@ -54,7 +54,7 @@ test("performance HUD displays N/A for protected memory, samples cheaply and tog
     for(let i=0;i<=45;i++)overlay.frame(i*20);
     overlay.tick(0);overlay.tick(600);overlay.tick(1200);
     refresh();
-    assert.equal(fields.fps.textContent,"50");
+    assert.equal(fields.fps.textContent,"50.0");
     assert.equal(fields.ram.textContent,"N/A");
     assert.equal(fields.tick.textContent,"3 / 600 ms");
     assert.equal(fields.ms.textContent,"20.0");
@@ -74,7 +74,7 @@ test("performance HUD displays N/A for protected memory, samples cheaply and tog
 test("heap read errors never interrupt frames or world packet processing",()=>{
     const metrics=new GamePerformanceMetrics({memory:()=>{throw new Error("blocked");}});
     metrics.recordFrame(0);metrics.recordFrame(40);metrics.recordTick(100);
-    assert.deepEqual(metrics.snapshot(),{fps:25,frameMs:40,heapBytes:null,ticks:1,tickMs:null});
+    assert.deepEqual(metrics.snapshot(),{fps:25,frameMs:40,heapBytes:null,ticks:1,tickMs:null,drawMs:null});
 });
 
 test("native gameplay reports server ticks only after successfully decoded PLAYER_INFO",async()=>{
@@ -117,5 +117,69 @@ test("Safari Window timer methods are called on their owning object during login
     overlay.frame(100);overlay.frame(120);
     overlay.dispose();
     assert.deepEqual(calls,["scheduled","cleared"]);
+    assert.equal(root.hidden,true);
+});
+
+test("very slow frames remain visible instead of being discarded as background pauses",()=>{
+    const metrics=new GamePerformanceMetrics({hidden:()=>false,memory:()=>null});
+    metrics.recordFrame(100);metrics.recordFrame(600);
+    assert.equal(metrics.snapshot().fps,2);
+    assert.equal(metrics.snapshot().frameMs,500);
+    metrics.recordDraw(412.75);
+    assert.equal(metrics.snapshot().drawMs,412.75);
+    metrics.recordFrame(1000);
+    assert.ok(Math.abs(metrics.snapshot().fps-1000/450)<.001);
+    metrics.recordFrame(8000);
+    assert.equal(metrics.snapshot().fps,null,"genuine 7s suspension resets stale data");
+});
+
+test("hidden iOS home-screen view must not count background time as a 1fps frame",()=>{
+    let hidden=false;
+    const metrics=new GamePerformanceMetrics({hidden:()=>hidden});
+    metrics.recordFrame(100);
+    metrics.recordFrame(116);
+    hidden=true;metrics.recordFrame(3000);
+    assert.equal(metrics.snapshot().fps,null);
+    hidden=false;metrics.recordFrame(4000);metrics.recordFrame(4033);
+    assert.ok(Math.abs(metrics.snapshot().fps-1000/33)<.01);
+});
+
+test("overlay flags a stopped WebGL RAF loop instead of displaying a dash forever",()=>{
+    const {root,fields}=fixture();
+    let current=0,update;
+    const overlay=new GamePerformanceOverlay(root,{now:()=>current,
+        interval:fn=>{update=fn;return 9;},clear:()=>{}});
+    overlay.start();overlay.frame(100);overlay.frame(116);
+    current=1000;update();assert.equal(fields.fps.textContent,"62.5");
+    current=5000;update();assert.equal(fields.fps.textContent,"STOP");
+    overlay.dispose();
+});
+
+test("HTTPS network round-trip is labelled NET, measured sparsely, and never called per frame",async()=>{
+    let current=1000,requests=0,refresh;
+    const roundTrip=await measurePreviewLatency({
+        now:()=>{current+=7;return current;},
+        fetcher:async(path,options)=>{
+            assert.equal(path,"/ping");
+            assert.equal(options.credentials,"omit");
+            assert.equal(options.cache,"no-store");
+            return {status:204};
+        }
+    });
+    assert.equal(roundTrip,7);
+    await assert.rejects(measurePreviewLatency({fetcher:async()=>({status:404})}),/unavailable/);
+    const {root,fields}=fixture();
+    const overlay=new GamePerformanceOverlay(root,{
+        now:()=>100,networkProbe:async()=>{requests++;return 8;},
+        interval:fn=>{refresh=fn;return 1;},clear:()=>{}
+    });
+    overlay.start();await Promise.resolve();
+    refresh();assert.equal(fields.net.textContent,"8 ms");
+    assert.equal(requests,1);
+    for(let i=0;i<200;i++)overlay.frame(i*16.67);
+    for(let i=0;i<4;i++)refresh();
+    await Promise.resolve();
+    assert.equal(requests,2,"only one network probe every 5 refreshes");
+    overlay.dispose();
     assert.equal(root.hidden,true);
 });

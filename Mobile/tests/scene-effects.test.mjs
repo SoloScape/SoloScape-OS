@@ -3,7 +3,7 @@ import {test} from "node:test";
 import {NativeSceneAnimations,sceneSequenceFrame} from "../browser/scene-animation.mjs";
 import {NativeSpotEffects,decodeSpotEffect} from "../browser/spot-effects.mjs";
 import {mergePlayerModels,buildPlayerMesh} from "../browser/player-models.mjs";
-import {combineRegionMeshes,sortTransparentFaces,sceneCameraMatrix} from "../browser/world-webgl.mjs";
+import {combineRegionMeshes,sortTransparentFaces,sceneCameraMatrix,worldRenderPixels} from "../browser/world-webgl.mjs";
 import {decodeObjectDefinition} from "../browser/object-definitions.mjs";
 
 const model=()=>({verticesCount:3,faceCount:1,verticesX:Int32Array.of(0,128,0),verticesY:Int32Array.of(0,0,-128),
@@ -100,4 +100,16 @@ test("effect cache responses after slot replacement or disconnect cannot return 
     const pending=effects.meshes("p",{x:3210,y:3210,plane:0},terrain(),0);
     await new Promise(r=>setImmediate(r));effects.reset();resolve(model());
     assert.deepEqual(await pending,[]);
+});
+
+test("mobile GPU framebuffer is capped and desktop quality remains unchanged",()=>{
+    assert.deepEqual(worldRenderPixels(600,400,2,false),{width:1200,height:800});
+    assert.deepEqual(worldRenderPixels(600,400,1,true),{width:600,height:400});
+    const mobile=worldRenderPixels(932,430,3,true);
+    assert.ok(mobile.width*mobile.height<=850000);
+    assert.ok(mobile.width<932*2&&mobile.height<430*2,
+        "phone no longer renders twice the screen resolution per axis");
+    const huge=worldRenderPixels(3000,1500,3,true);
+    assert.ok(huge.width*huge.height<850000,
+        "large or zoomed iPhone viewport must not explode GPU fill rate");
 });

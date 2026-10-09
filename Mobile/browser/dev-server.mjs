@@ -72,6 +72,10 @@ if(keyPath){
     regionKeys=normalizeRegionKeys(JSON.parse(keyBytes.toString("utf8")));
 }
 const handler = async (req, res) => {
+    if(req.method==="GET"&&req.url==="/ping"){
+        res.writeHead(204,{"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});
+        res.end();return;
+    }
     if(req.method==="GET"&&req.url==="/login-config.json"){
         res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});
         res.end(JSON.stringify(loginConfig));return;
