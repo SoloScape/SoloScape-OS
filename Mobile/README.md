@@ -1300,3 +1300,13 @@ target, and cold JS5 WebSocket gateway response times remain a possible
 bottleneck. Performance tests ensure concurrency is limited, asset order,
 CRC protection, stale-scene cancellation, and first playable state while
 optional NPC models are still pending.
+
+### Experimental TeaVM browser target
+
+An isolated [TeaVM feasibility spike](teavm-poc/README.md) compiles original
+Java code to a browser-loadable ES module. Run `npm run build:teavm` with
+JDK 17+ and Maven; visit `/teavm` in the existing preview. The module verifies
+OSRS coordinate math and CRC32 against a real JS5 master index when the gateway
+is available. This **does not yet run the original OpenOSRS engine**: the
+compiled desktop gamepack uses AWT/JVM facilities that require porting. No
+proprietary gamepack archive or transpiled gamepack code is bundled or served.

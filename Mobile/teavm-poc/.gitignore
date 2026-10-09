@@ -1,0 +1,5 @@
+# Generated locally by TeaVM; never commit compiled third-party gamepack assets.
+target/
+*.oprs
+*.jar
+*.class

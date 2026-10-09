@@ -8,6 +8,8 @@
   },
   "scripts": {
     "dev": "node browser/dev-server.mjs",
+    "build:teavm": "mvn -f teavm-poc/pom.xml package",
+    "test:teavm": "node teavm-poc/scripts/verify.mjs",
     "build": "node scripts/run-client.mjs build",
     "test": "node --test tests/*.test.mjs",
     "verify:openosrs-reference": "node scripts/verify-openosrs-reference.mjs",

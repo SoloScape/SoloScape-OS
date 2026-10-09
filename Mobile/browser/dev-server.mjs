@@ -12,6 +12,11 @@ const root = dirname(fileURLToPath(import.meta.url));
 const routes = new Map([
     ["/", ["index.html", "text/html; charset=utf-8"]],
     ["/diagnostics", ["diagnostics.html", "text/html; charset=utf-8"]],
+    // Isolated TeaVM feasibility experiment; no gamepack or Java source served.
+    ["/teavm", ["../teavm-poc/site/index.html", "text/html; charset=utf-8"]],
+    ["/teavm/probe.mjs", ["../teavm-poc/site/probe.mjs", "text/javascript; charset=utf-8"]],
+    ["/teavm/probe.css", ["../teavm-poc/site/probe.css", "text/css; charset=utf-8"]],
+    ["/teavm/bridge.js", ["../teavm-poc/target/javascript/bridge.js", "text/javascript; charset=utf-8"]],
     ["/diagnostics-app.mjs", ["diagnostics-app.mjs", "text/javascript; charset=utf-8"]],
     ["/world.css", ["world.css", "text/css; charset=utf-8"]],
     ["/terrain-world.mjs", ["terrain-world.mjs", "text/javascript; charset=utf-8"]],
@@ -90,6 +95,11 @@ const handler = async (req, res) => {
         });
         res.end(bytes);
     } catch (error) {
+        if(req.url==="/teavm/bridge.js"&&error?.code==="ENOENT"){
+            res.writeHead(404,{"Content-Type":"text/plain","Cache-Control":"no-store"});
+            res.end("TeaVM proof not built: run mvn -f Mobile/teavm-poc/pom.xml package");
+            return;
+        }
         console.error("[native-browser]", error.message);
         res.writeHead(500, { "Content-Type": "text/plain" });
         res.end("Preview unavailable");

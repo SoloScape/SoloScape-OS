@@ -111,6 +111,20 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
             assert.match(response.headers.get("content-type")??"",/text\/javascript/,path);
             assert.ok((await response.text()).length>50,path);
         }
+        // TeaVM is isolated: only the probe page and original-source JS/CSS
+        // are served. No OpenOSRS gamepack bytes can be downloaded.
+        const proof=await fetch(root+"/teavm");
+        assert.equal(proof.status,200);
+        const proofHtml=await proof.text();
+        assert.match(proofHtml,/TeaVM:/);
+        assert.match(proofHtml,/src="\/teavm\/probe\.mjs"/);
+        for(const path of ["/teavm/probe.mjs","/teavm/probe.css"]){
+            const response=await fetch(root+path);
+            assert.equal(response.status,200,path);
+            assert.ok((await response.text()).length>100);
+        }
+        const gamepack=await fetch(root+"/teavm/injected-client.oprs");
+        assert.equal(gamepack.status,404);
         const keys=await fetch(root+"/region-keys.json");
         assert.equal(keys.status,200);assert.deepEqual(await keys.json(),{});
         const login=await fetch(root+"/login-config.json");
