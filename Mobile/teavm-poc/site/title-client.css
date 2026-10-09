@@ -19,8 +19,14 @@ body{background:radial-gradient(ellipse at 50% 25%,#182330,#080b10 75%)}
 .hotspot:hover{background:#ffde9022}
 .welcome-new{left:31.5%;top:53%;width:15.8%;height:9%}
 .welcome-existing{left:52.4%;top:53%;width:15.8%;height:9%}
-.login-handoff{left:30%;top:59%;width:20%;height:9%}
-.login-back{left:51%;top:59%;width:19%;height:9%}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+.login-field{position:absolute;left:44%;width:25%;height:5.5%;padding:0 6px;background:#100d0bbf;color:#fff;border:1px solid #856e50;border-radius:2px;font:clamp(9px,1.4vw,13px) Arial,sans-serif;pointer-events:auto;min-width:0}
+.login-field:focus-visible{outline:2px solid #fce39f}
+.username-field{top:45%}.password-field{top:50.5%}.otp-field{top:56%}
+.login-submit{left:31.5%;top:64%;width:16%;height:9%}
+.login-back{left:52.4%;top:64%;width:16%;height:9%}
+.session-disconnect{left:40%;top:60%;width:20%;height:10%}
+@media(max-width:590px){.login-field{font-size:10px}}
 .foot{width:min(100%,765px);margin:0 auto;display:flex;align-items:start;justify-content:space-between;gap:10px;font-size:12px;color:#aebac6}
 .foot p{margin:0;max-width:70%}.milestone{text-align:right;color:#d3b878}
 .development{width:min(100%,765px);margin:0 auto;color:#a4b2c0;font-size:13px;border-top:1px solid #293443;padding:10px 0;line-height:1.6}

@@ -34,7 +34,17 @@ public final class RendererBridge {
         if(titleMode==1)titleMode=2;
     }
     @JSExport public static void titleBack() {
-        if(titleMode==2)titleMode=1;
+        if(titleMode==2||titleMode==3||titleMode==4)titleMode=1;
+    }
+    /** Login transport remains the existing verified JS protocol, not a Java socket. */
+    @JSExport public static void titleConnecting() {
+        if(titleMode==2)titleMode=4;
+    }
+    @JSExport public static void titleAuthenticated() {
+        if(titleMode==4)titleMode=3;
+    }
+    @JSExport public static void titleLoginFailed() {
+        if(titleMode==4)titleMode=2;
     }
 
     @JSExport public static int width() { return WIDTH; }

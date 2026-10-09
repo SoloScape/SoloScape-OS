@@ -21,9 +21,18 @@
         <button id="new-user" type="button" class="hotspot welcome-new">New User</button>
         <button id="existing-user" type="button" class="hotspot welcome-existing">Existing User</button>
       </div>
-      <div id="login-controls" class="controls" hidden>
-        <a class="hotspot login-handoff" href="/legacy" aria-label="Open working SoloScape client to log in">Continue in working client</a>
+      <form id="login-controls" class="controls" autocomplete="off" novalidate hidden>
+        <label class="sr-only" for="login-username">Username or email</label>
+        <input id="login-username" name="login-username" class="login-field username-field" maxlength="320" autocomplete="off" spellcheck="false" autocapitalize="none" autocorrect="off" required placeholder="Username / email">
+        <label class="sr-only" for="login-password">Password</label>
+        <input id="login-password" name="login-password" class="login-field password-field" type="password" maxlength="80" autocomplete="off" required placeholder="Password">
+        <label class="sr-only" for="login-otp">Six-digit authenticator code (only if enabled)</label>
+        <input id="login-otp" name="login-otp" class="login-field otp-field" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off" placeholder="2FA code (optional)">
+        <button id="login-submit" class="hotspot login-submit" type="submit" aria-label="Log in to SoloScape game server">Login</button>
         <button id="login-back" type="button" class="hotspot login-back">Cancel</button>
+      </form>
+      <div id="session-controls" class="controls" hidden>
+        <button id="session-disconnect" type="button" class="hotspot session-disconnect">Disconnect</button>
       </div>
     </div>
   </section>

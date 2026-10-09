@@ -24,7 +24,16 @@ cache-backed title bootstrap. **/legacy** is the previous working native
 WebGL/mobile client. **/teavm/lab** hosts the previous rasterizer/model lab,
 and **/teavm** aliases the new homepage. The title screen needs the native JS5
 gateway; the old renderer lab works without a gateway (its live tests are optional).
-It never sends account credentials or bundles OpenOSRS gamepack classes.
+Only after you explicitly submit the login form, the browser sends a native
+RSA/XTEA-encrypted revision-240 login packet to SoloScape over the existing
+WSS-to-TCP gateway. The adapter reuses `NativeGameSession` and validates the
+same JS5 master CRC manifest as `/legacy`. Password and 2FA inputs are cleared
+on submission, and the session can be disconnected; no credentials are
+persisted in browser storage or sent to ChatGPT. Login success keeps an
+independent WebSocket session open and shows the server's player slot, **but
+the original Java OpenOSRS game loop and gameplay are not running**. To play,
+disconnect and log in separately via `/legacy`. The compiled Java gamepack is
+never bundled into Git.
 
 ## Why this is not an OpenOSRS engine port
 

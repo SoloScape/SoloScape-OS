@@ -1303,19 +1303,28 @@ optional NPC models are still pending.
 
 ### TeaVM/OpenOSRS title-screen homepage
 
-The homepage (`/`) is now the **TeaVM/OpenOSRS development client**, with
-a CRC-verified cache titlewide.jpg, logo, titlebox, titlebutton and an initial
-TeaVM Java title-state bridge. The previous working native browser client
-remains intact at **`/legacy`**, and the rasterizer/model experiments are at
-**`/teavm/lab`** (`/teavm` also opens the new homepage).
+The homepage (`/`) is the TeaVM/OpenOSRS browser development client. It loads
+the actual revision-240 titlewide.jpg, logo, titlebox and titlebutton sprites
+through the CRC-verified JS5 cache and uses the compiled Java title state
+bridge. The existing working native client remains at **`/legacy`**;
+**`/teavm/lab`** holds renderer/model experiments.
 
-Run `npm run build:teavm` with JDK 17+ and Maven, start the HTTPS preview and
-native JS5 gateway, then open `https://192.168.0.129:3443/`. The real title
-art and Java state transitions are bootstrapped, but the original OpenOSRS
-title game loop, login and gameplay have **not** yet been ported to TeaVM.
-The new homepage never collects or submits credentials; use `/legacy` for
-login and gameplay until that work is complete.
+Run `npm run build:teavm` (JDK 17+) and `npm run dev:lan -- 192.168.0.129`,
+then open `https://192.168.0.129:3443/`. Select **Existing User** to log in
+using the **same revision-240 RSA/XTEA encrypted protocol and native
+WebSocket-to-TCP gateway as /legacy**. Optional six-digit authenticator
+codes are supported. On acceptance the new title shows the authenticated
+player slot and holds a live game connection until Disconnect or navigation.
+Rejected logins remain on the title screen, and passwords/2FA inputs are
+cleared immediately after submission.
 
-See [the TeaVM port notes](teavm-poc/README.md). The extracted original
-gamepack-derived bytecode and generated TeaVM output remain local and excluded
-from version control and must not be redistributed without appropriate rights.
+**Scope:** Native login is implemented by reusing the tested browser
+`NativeGameSession`, not by porting OpenOSRS Java's login engine. TeaVM Java
+owns the title UI state, but the original OpenOSRS Java game loop, server
+packet handling, scene and playable gameplay have **not yet been ported**.
+Disconnect before switching to `/legacy` to play; another login is required.
+No credentials are persisted in browser storage or sent to ChatGPT.
+
+The extracted original gamepack-derived bytecode and generated TeaVM output
+remain local and excluded from Git. Redistribution rights must be verified.
+See [the TeaVM port notes](teavm-poc/README.md).
