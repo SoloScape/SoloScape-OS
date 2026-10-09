@@ -4,11 +4,16 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.soloscape</groupId><artifactId>openosrs-whole-engine-probe</artifactId><version>0.1.0</version>
   <properties>
-    <maven.compiler.release>17</maven.compiler.release>
+    <!-- JDK 17 runs the compiler; Java 8 source mode permits the missing
+         java.lang classlib implementation without modifying the host JDK. -->
+    <maven.compiler.release>8</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <teavm.version>0.15.0</teavm.version>
   </properties>
   <dependencies>
+    <!-- Match the pinned reference client's logging API dependency. -->
+    <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId><version>1.7.32</version></dependency>
+    <dependency><groupId>com.google.guava</groupId><artifactId>guava</artifactId><version>30.1.1-jre</version></dependency>
     <dependency><groupId>org.teavm</groupId><artifactId>teavm-jso</artifactId><version>${teavm.version}</version></dependency>
     <dependency><groupId>org.teavm</groupId><artifactId>teavm-classlib</artifactId><version>${teavm.version}</version></dependency>
     <dependency><groupId>local.openosrs</groupId><artifactId>injected-client</artifactId><version>240</version>

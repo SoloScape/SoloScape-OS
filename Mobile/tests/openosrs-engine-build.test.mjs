@@ -16,7 +16,8 @@ function fixture(t){
     const output=join(root,"teavm-poc/target/engine/javascript/engine.js");
     const env={SOLOSCAPE_OPENOSRS_GAMEPACK:gamepack,SOLOSCAPE_OPENOSRS_API:api};
     const selectJdk=()=>({major:17,home:null,binary:"java"});
-    return {root,env,selectJdk,output,platform:"linux"};
+    const normalize=({gamepack})=>({gamepack,adaptation:{constants:1},parser:{failures:0}});
+    return {root,env,selectJdk,normalize,output,platform:"linux"};
 }
 
 test("whole-engine build rejects a mismatched gamepack before executing tools",t=>{
@@ -57,6 +58,25 @@ test("successful compilation never claims runtime or whole-client parity",t=>{
 });
 test("tool launch failures and ordinary dependency failures remain distinct",()=>{
     assert.equal(classifyEngineBuild({error:new Error("Maven missing")},"",false).stage,"toolchain");
-    assert.equal(classifyEngineBuild({status:1},"Class java.awt.Canvas was not found",false).stage,"compiler");
+    assert.equal(classifyEngineBuild({status:1},"[ERROR] Class java.awt.Canvas was not found",false).stage,"runtime-dependencies");
     assert.equal(classifyEngineBuild({status:1},"",true).status,"blocked");
+});
+test("whole-engine Maven receives adapted bytes and reports missing runtime dependencies",t=>{
+    const f=fixture(t);const normalized=f.env.SOLOSCAPE_OPENOSRS_GAMEPACK+".normalized.jar";
+    const {report}=buildOpenOsrsEngine({...f,normalize:()=>({gamepack:normalized,adaptation:{loads:85},parser:{failures:0}}),
+        run:(command,args)=>{
+            if(command==="java")return {status:0,stdout:"java version 17"};
+            assert.ok(args.includes(`-Dgamepack.path=${normalized}`));
+            mkdirSync(join(f.root,"teavm-poc/target/engine/javascript"),{recursive:true});writeFileSync(f.output,"broken output");
+            return {status:1,stdout:"[ERROR] Class java.awt.Panel was not found\n[ERROR] Class java.awt.Panel was not found\n"};
+        }});
+    assert.equal(report.stage,"runtime-dependencies");assert.deepEqual(report.blockers,["Class java.awt.Panel was not found"]);
+    assert.equal(report.adaptation.loads,85);assert.equal(report.parser.failures,0);assert.equal(existsSync(f.output),false);
+});
+test("normalization failure prevents Maven and cannot retain a stale module",t=>{
+    const f=fixture(t);let probes=0;
+    const {report}=buildOpenOsrsEngine({...f,run:()=>{probes++;return {status:0};},
+        normalize:()=>{throw new Error("Unsupported bootstrap target signature");}});
+    assert.equal(probes,1);assert.equal(report.stage,"bytecode-normalization");
+    assert.match(report.reason,/Unsupported bootstrap/);assert.equal(report.status,"blocked");
 });

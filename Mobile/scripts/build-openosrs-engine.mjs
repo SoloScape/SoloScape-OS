@@ -6,12 +6,16 @@ import {createHash} from "node:crypto";
 import {dirname,resolve,join,delimiter} from "node:path";
 import {fileURLToPath} from "node:url";
 import {findTeaVmJdk} from "./build-teavm.mjs";
+import {prepareEngineBytecode} from "./prepare-engine-bytecode.mjs";
 
 const mobile=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 export function classifyEngineBuild(result,log,hasOutput){
     if(result.error)return {status:"blocked",stage:"toolchain",reason:result.error.message};
     if(result.status!==0){
         const parser=/ProgramParser\$1\.visitLdcInsn/.test(log);
+        const blockers=[...new Set([...log.matchAll(/^\[ERROR\] ((?:Class|Method|Field) .*(?:was not found|missing in the classpath))\r?$/gm)].map(m=>m[1]))];
+        if(blockers.length)return {status:"blocked",stage:"runtime-dependencies",blockers,
+            reason:"Bytecode parsing progressed to missing runtime classes or methods. Implement these dependencies before the engine module can compile."};
         return {status:"blocked",stage:parser?"bytecode-parser":"compiler",
             reason:parser?"TeaVM rejected an LDC constant while parsing the complete client. Inspect the log and dynamic-constant bootstraps before adapting bytecode.":
                 "Whole-engine compilation failed; inspect compiler.log for the first unsupported dependency or instruction."};
@@ -22,7 +26,7 @@ export function classifyEngineBuild(result,log,hasOutput){
 }
 
 export function buildOpenOsrsEngine({root=mobile,env=process.env,platform=process.platform,
-    run=spawnSync,selectJdk=findTeaVmJdk}={}){
+    run=spawnSync,selectJdk=findTeaVmJdk,normalize=prepareEngineBytecode}={}){
     const manifest=JSON.parse(readFileSync(join(root,"openosrs-reference.json"),"utf8"));
     const reference=resolve(env.SOLOSCAPE_OPENOSRS_ROOT||resolve(root,manifest.localDefault));
     const gamepack=resolve(env.SOLOSCAPE_OPENOSRS_GAMEPACK||join(reference,"runelite-client/src/main/resources/injected-client.oprs"));
@@ -45,11 +49,15 @@ export function buildOpenOsrsEngine({root=mobile,env=process.env,platform=proces
         const buildEnv={...env};
         if(jdk.home){buildEnv.JAVA_HOME=jdk.home;buildEnv.PATH=join(jdk.home,"bin")+delimiter+(env.PATH||env.Path||"");}
         report.javaMajor=jdk.major;
-        const args=["-B","-e","-f",join(root,"teavm-poc/engine-pom.xml"),
-            `-Dgamepack.path=${gamepack}`,`-Dapi.path=${api}`,"package"];
         // Pass all paths as process arguments, never through a shell command string.
         const result=run(jdk.binary,["-version"],{env:buildEnv,encoding:"utf8"});
         if(result.error||result.status!==0)throw new Error("Selected JDK is unavailable.");
+        report.stage="bytecode-normalization";
+        const prepared=normalize({root,target,gamepack,jdk,env:buildEnv,run});
+        report.adaptation=prepared.adaptation;report.parser=prepared.parser;
+        const args=["-B","-e","-f",join(root,"teavm-poc/engine-pom.xml"),
+            `-Dgamepack.path=${prepared.gamepack}`,`-Dapi.path=${api}`,"package"];
+        report.stage="toolchain";
         // Maven's Windows launcher is a .cmd. Use its Java entry point directly
         // so paths containing spaces/metacharacters never require shell interpolation.
         let command="mvn",commandArgs=args;
@@ -71,6 +79,7 @@ export function buildOpenOsrsEngine({root=mobile,env=process.env,platform=proces
         log=(compiled.stdout||"")+(compiled.stderr||"");
         report.exitCode=compiled.status;
         Object.assign(report,classifyEngineBuild(compiled,log,existsSync(output)));
+        if(report.status==="blocked")rmSync(output,{force:true});
     }catch(error){report.reason=error.message;}
     writeFileSync(join(target,"compiler.log"),log);
     writeFileSync(join(target,"report.json"),JSON.stringify(report,null,2)+"\n");

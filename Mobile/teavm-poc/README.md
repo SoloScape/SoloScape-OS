@@ -47,19 +47,33 @@ original gamepack and its derived artifacts must not be redistributed.
 ## Why this is not an OpenOSRS engine port
 
 The entire pinned client now has an independent compilation probe:
-`npm run build:openosrs-engine` from `Mobile`. It uses the untouched local
+`npm run build:openosrs-engine` from `Mobile`. It verifies the untouched local
 gamepack and `../Client/runelite-api/build/libs/runelite-api-1.2.0.jar`.
 Override those paths with `SOLOSCAPE_OPENOSRS_GAMEPACK` and
 `SOLOSCAPE_OPENOSRS_API`; `SOLOSCAPE_OPENOSRS_ROOT` changes the default
 reference checkout. The gamepack digest must match `openosrs-reference.json`.
 
 The probe compiles `engine-src/EngineBridge.java` using `engine-pom.xml`,
-separately from the existing renderer bridge. On October 9, 2026 it failed
-inside TeaVM's LDC bytecode parser before runtime dependency checks.
-The original client contains dynamic-constant bootstrap calls. See
-`../OPENOSRS_PARITY.md` for the diagnosis and remaining porting gates.
+separately from the existing renderer bridge. It first creates an ignored
+local adaptation of the pinned archive, lowering dynamic constants to lazy
+calls to their original helper methods without stripping engine methods.
+The adapter uses ASM 9.8 from the local Maven repository; set
+`SOLOSCAPE_MAVEN_REPOSITORY` to override that repository's location.
+TeaVM 0.15.0 then parses every method, including those outside startup
+reachability. All 735 classes and 18,979 adapted methods now parse successfully.
+Synthetic JVM fixtures verify the adaptation in
+`tests/openosrs-engine-constants.test.mjs`.
+
+The full engine still fails runtime dependency checking: AWT, executor/queue
+APIs, dynamic class/resource loading, logging binding and a regex overload
+need browser-compatible implementations. See `../OPENOSRS_PARITY.md` for
+the evidence and remaining porting gates. SLF4J/Guava API versions match the
+reference build. A small Java 8-source classlib implementation supplies the
+standard BootstrapMethodError type missing from TeaVM; Maven still runs
+under JDK 17 or newer.
 `target/engine/report.json` and `compiler.log` contain the local outcome;
-failure exits nonzero. Even a successful build is `compiled-unverified`.
+failure exits nonzero and removes any partially emitted engine module.
+Even a successful build is `compiled-unverified`.
 The probe does not serve its generated module or change the active homepage.
 
 The separate local OpenOSRS `injected-client.oprs` is a compiled desktop
