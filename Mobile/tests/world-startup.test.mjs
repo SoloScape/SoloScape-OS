@@ -89,6 +89,12 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         const html=await fetch(root+"/");
         assert.equal(html.status,200);
         const htmlText=await html.text();
+        assert.match(htmlText,/name="apple-mobile-web-app-capable" content="yes"/,
+            "iOS home screen must open in standalone app mode");
+        assert.match(htmlText,/name="apple-mobile-web-app-status-bar-style" content="black-translucent"/,
+            "iOS status bar must overlay game content, not reserve a black strip");
+        assert.match(htmlText,/name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/,
+            "mobile browser viewport extends behind iPhone safe areas");
         assert.match(htmlText,/src="\/teavm\/title-client\.mjs"/,"homepage is TeaVM title client");
         assert.match(htmlText,/id="osrs-title"/,"original 765x503 cache title canvas is mounted");
         assert.match(htmlText,/id="title-mute"/,"authentic mute control is mounted");
@@ -106,16 +112,21 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
             "the homepage contains only the client, with no site navigation or development chrome");
         const clientCss=await (await fetch(root+"/teavm/title-client.css")).text();
         assert.match(clientCss,/height:100dvh/,"game client occupies the viewport");
+        assert.match(clientCss,/#osrs-title\{[^}]*image-rendering:auto/,
+            "native title is composited smoothly from its Retina backing store");
         assert.match(clientCss,/#world-performance-toggle/,"touch-safe PERF toggle styles are served");
         assert.match(clientCss,/aspect-ratio:765\/503/,"desktop game preserves its native layout");
         assert.match(clientCss,/@media \(pointer:coarse\) and \(orientation:landscape\)/,
             "mobile landscape has a dedicated game fit mode");
-        assert.match(clientCss,/\.in-game \.app\{padding:env\(safe-area-inset-top/,
-            "notches and the home indicator cannot cover the landscape game");
+        assert.match(clientCss,/\.in-game \.app\{padding:0 env\(safe-area-inset-right/,
+            "landscape game extends beneath the status bar while keeping notch-side padding");
         assert.match(clientCss,/\.in-game \.screen\{width:100%;height:100%;aspect-ratio:auto/,
             "mobile game fills the available landscape screen instead of letterboxing");
         assert.match(clientCss,/#title-controls/,"original native fixed-position title hit targets");
         const titleJs=await (await fetch(root+"/teavm/title-client.mjs")).text();
+        const titlePainter=await (await fetch(root+"/title-screen.mjs")).text();
+        assert.match(titlePainter,/titleCanvasBacking\(width,height,window.devicePixelRatio/,
+            "Retina canvas backing is used by the real mobile title");
         assert.match(titleJs,/new NativeTitleScreen/,"homepage must use verified OpenOSRS-matched title renderer");
         assert.match(titleJs,/worldBridge\.resize\?\.\(\)/,
             "first authenticated frame reports post-layout game dimensions");

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {NativeTitleScreen,titleLayout,titleFieldLayout,OSRS_TITLE_COPY,OSRS_TITLE_FONT_IDS,titleErrorMessage,SERVER_CONNECTION_ERROR} from "../browser/title-screen.mjs";
+import {NativeTitleScreen,titleLayout,titleFieldLayout,titleCanvasBacking,OSRS_TITLE_COPY,OSRS_TITLE_FONT_IDS,titleErrorMessage,SERVER_CONNECTION_ERROR} from "../browser/title-screen.mjs";
 import {NativeLoginError} from "../browser/login-protocol.mjs";
 import {paintWorldSelect,WORLD_SELECT_LAYOUT} from "../browser/world-select-screen.mjs";
 import {NativeAudioCache,retryOnMissingGroup} from "../browser/title-audio-cache.mjs";
@@ -240,6 +240,19 @@ test("title form draws original cache labels and works with optional remembered/
         assert.equal(title.mode,"error");
         assert.equal(status.textContent,SERVER_CONNECTION_ERROR);
         assert.ok(drawn.join(" ").includes(SERVER_CONNECTION_ERROR),"offline startup must visibly render the complete message");
+        title.fillWindow=true;window.devicePixelRatio=3;title.paint();
+        assert.ok(canvas.width>765&&canvas.height>503,
+            "full-window iPhone title must allocate a Retina backing canvas");
+        assert.ok(drawn.join(" ").includes(SERVER_CONNECTION_ERROR),
+            "high-density error still renders with the native cache font");
+        window.matchMedia=()=>({matches:true});
+        drawn.length=0;title.frame(1000);
+        const painted=drawn.length;
+        assert.ok(painted>0);
+        title.frame(1016);
+        assert.equal(drawn.length,painted,"mobile Retina title limits redraws to roughly 30 fps");
+        title.frame(1034);
+        assert.ok(drawn.length>painted,"title still updates animation on the next frame");
         title.dispose();
     }finally{
         for(const [key,value] of Object.entries(saved)){
@@ -295,4 +308,20 @@ test("OpenOSRS world selector gracefully draws fallback art when sprite groups a
     const font={draw(){},measure:s=>s.length*6};
     assert.doesNotThrow(()=>paintWorldSelect(ctx,{font,small:font,sprites:new Map()}));
     assert.ok(black>=5);
+});
+
+test("Retina title backing stays sharp without changing layout or rendering too many pixels",()=>{
+    for(const [width,height] of [[390,844],[844,390],[932,430]]){
+        const backing=titleCanvasBacking(width,height,3,true);
+        assert.ok(backing.ratio>1.5,"iPhone title must not render at CSS-pixel resolution");
+        assert.ok(backing.width*backing.height<=2100000,"animated title backing store stays bounded");
+        assert.ok(backing.width>width&&backing.height>height);
+        const layout=titleLayout(width,height,true);
+        assert.equal(layout.x+765*layout.scale/2,width/2,
+            "higher-resolution canvas does not change title button coordinates");
+    }
+    assert.deepEqual(titleCanvasBacking(765,503,3,false),{width:765,height:503,ratio:1},
+        "fixed OpenOSRS framebuffer preserves its native 765x503 dimensions");
+    assert.deepEqual(titleCanvasBacking(765,503,1,true),{width:765,height:503,ratio:1},
+        "desktop 1x displays are unchanged");
 });

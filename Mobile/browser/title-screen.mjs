@@ -38,6 +38,15 @@ export function titleLayout(width,height,fillWindow=false){
 }
 // Native caret indexes map onto the cache font, including masked
 // passwords and horizontally scrolled text. Never paint the password itself.
+// Paint the original cache fonts at device resolution instead of painting to a
+// low-resolution CSS-pixel buffer that Safari enlarges on Retina iPhones.
+// Bound the number of backing pixels: the animated title repaints every frame.
+export function titleCanvasBacking(width,height,devicePixelRatio=1,fillWindow=false){
+    const w=Math.max(1,width),h=Math.max(1,height);
+    const density=Number.isFinite(devicePixelRatio)?Math.max(1,devicePixelRatio):1;
+    const ratio=fillWindow?Math.max(1,Math.min(2.5,density,Math.sqrt(2000000/(w*h)))):1;
+    return {width:Math.max(1,Math.round(w*ratio)),height:Math.max(1,Math.round(h*ratio)),ratio};
+}
 export function titleFieldLayout(font,value,selectionStart,selectionEnd,active,width=185){
     const advances=Array.from({length:value.length+1},(_,i)=>font.measure(value.slice(0,i)));
     const caret=selectionEnd??value.length;
@@ -153,7 +162,18 @@ export class NativeTitleScreen{
         document.addEventListener("pointerup",this.gesture,true);document.addEventListener("keydown",this.gesture,true);
         this.resize=()=>this.paint();window.addEventListener("resize",this.resize);
         window.visualViewport?.addEventListener("resize",this.resize);
-        this.syncControls();this.frame=()=>{if(this.visible){this.paint();this.animation=requestAnimationFrame(this.frame);}};this.frame();
+        this.syncControls();
+    this.frame=timestamp=>{
+        if(!this.visible)return;
+        // Retina-backed title painting is more expensive on phones. Keep the
+        // rune animation responsive without repainting 2M pixels at 60 Hz.
+        const mobile=this.fillWindow&&window.matchMedia?.("(pointer: coarse)")?.matches;
+        if(!mobile||timestamp===undefined||this.lastPaintAt===undefined||timestamp-this.lastPaintAt>=33){
+            this.paint();this.lastPaintAt=timestamp;
+        }
+        this.animation=requestAnimationFrame(this.frame);
+    };
+    this.frame();
     }
     async start(cache){
         this.music=new NativeTitleMusic(cache,{onStatus:m=>{this.status.textContent=m;}});
@@ -276,10 +296,13 @@ export class NativeTitleScreen{
         const ctx=this.canvas.getContext("2d");
         // The window title covers the viewport; its classic UI scales uniformly.
         // Fixed-title consumers retain their original 765x503 framebuffer.
-        const width=this.fillWindow?Math.max(1,Math.round(bounds.width)):765;
-        const height=this.fillWindow?Math.max(1,Math.round(bounds.height)):503;
-        if(this.canvas.width!==width||this.canvas.height!==height){this.canvas.width=width;this.canvas.height=height;}
-        ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle="#000000";ctx.fillRect(0,0,width,height);ctx.imageSmoothingEnabled=false;
+        const width=this.fillWindow?Math.max(1,bounds.width):765;
+        const height=this.fillWindow?Math.max(1,bounds.height):503;
+        const backing=titleCanvasBacking(width,height,window.devicePixelRatio||1,this.fillWindow);
+        if(this.canvas.width!==backing.width||this.canvas.height!==backing.height){
+            this.canvas.width=backing.width;this.canvas.height=backing.height;
+        }
+        ctx.setTransform(backing.ratio,0,0,backing.ratio,0,0);ctx.fillStyle="#000000";ctx.fillRect(0,0,width,height);ctx.imageSmoothingEnabled=false;
         const l=titleLayout(width,height,this.fillWindow),controls=titleLayout(bounds.width,bounds.height,this.fillWindow),{background}=this.assets;
         if(this.mode==="world-select"){
             this.stage.style.transform=`translate(${controls.x}px,${controls.y}px) scale(${controls.scale})`;

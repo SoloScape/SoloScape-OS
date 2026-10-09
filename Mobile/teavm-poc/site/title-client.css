@@ -1,8 +1,8 @@
 /* Revision-240 title artwork fills the window. The original 765x503 UI
    coordinates scale uniformly with their transparent input targets. */
-:root{color-scheme:dark;background:#000;color:#eee;font-family:Arial,Helvetica,sans-serif}
+:root{color-scheme:dark;background:#1a110d;color:#eee;font-family:Arial,Helvetica,sans-serif}
 *{box-sizing:border-box}
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#1a110d}
 .app{width:100%;height:100dvh;display:flex;align-items:center;justify-content:center}
 .screen{position:relative;flex:none;width:100vw;height:100dvh;background:#000;overflow:hidden}
 /* Desktop keeps the original RuneScape viewport proportions. On a phone in
@@ -10,14 +10,15 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
    a narrow 765:503 letterbox. Safari's dynamic viewport follows toolbar changes. */
 .in-game .screen{width:min(100vw,calc(100dvh * 765 / 503));height:auto;aspect-ratio:765/503}
 @media (pointer:coarse) and (orientation:landscape){
-  .in-game .app{padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)}
+  .in-game .app{padding:0 env(safe-area-inset-right,0px) 0 env(safe-area-inset-left,0px)}
   .in-game .screen{width:100%;height:100%;aspect-ratio:auto;min-width:0;min-height:0}
-  /* The phone's notch / home-indicator insets are already excluded by .app. */
-  #world-performance{top:6px;right:6px}
+  /* Fill behind translucent iOS status/home bars. Keep the PERF button below
+     status icons, and preserve the left/right camera-cutout touch-safe area. */
+  #world-performance{top:max(6px,env(safe-area-inset-top));right:6px}
 }
 #title-screen{position:absolute;inset:0;background:#000}
 #title-screen[hidden]{display:none}
-#osrs-title{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
+#osrs-title{position:absolute;inset:0;width:100%;height:100%;image-rendering:auto}
 #title-controls{position:absolute;left:0;top:0;width:765px;height:503px;transform-origin:0 0;pointer-events:none}
 .title-button{position:absolute;width:147px;height:41px;padding:0;border:0;background:transparent;color:transparent;cursor:pointer;pointer-events:auto;font-size:0}
 .title-button:focus-visible,#title-mute:focus-visible{outline:2px solid #ffff00;outline-offset:2px}
