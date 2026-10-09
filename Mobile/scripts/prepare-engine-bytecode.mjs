@@ -25,7 +25,11 @@ export function compileEngineTools({root,target,jdk,env=process.env,run=spawnSyn
     const libraries=engineLibraries(env),classes=join(target,"tools");mkdirSync(classes,{recursive:true});
     const sources=[join(root,"teavm-poc/scripts/NormalizeEngine.java"),join(root,"teavm-poc/scripts/ParseEngine.java"),
         join(root,"teavm-poc/scripts/AdaptEnginePlatform.java")];
-    if(fixture)sources.push(join(root,"tests/fixtures/EngineConstantsTest.java"),join(root,"tests/fixtures/EnginePlatformTransformTest.java"));
+    if(fixture)sources.push(join(root,"tests/fixtures/EngineConstantsTest.java"),join(root,"tests/fixtures/EnginePlatformTransformTest.java"),
+        join(root,"tests/fixtures/EngineServicesJvmTest.java"),
+        join(root,"teavm-poc/engine-src/org/soloscape/teavm/platform/BrowserObjectInputStream.java"),
+        join(root,"teavm-poc/engine-src/org/soloscape/teavm/platform/HeapMemory.java"),
+        join(root,"teavm-poc/engine-src/org/soloscape/teavm/platform/fs/BrowserProperties.java"));
     const javac=jdk.home?join(jdk.home,"bin",process.platform==="win32"?"javac.exe":"javac"):"javac";
     execute(javac,["-cp",libraries.asm+delimiter+libraries.parser,"-d",classes,...sources],
         {env,run,logPath:join(target,"tools-compile.log")});
@@ -37,8 +41,10 @@ export function prepareEngineBytecode({root,target,gamepack,api,jdk,env=process.
     const adaptation=JSON.parse(execute(jdk.binary,["-cp",classes+delimiter+libraries.asm,"NormalizeEngine",gamepack,normalized],
         {env,run,logPath:join(target,"normalization.log")}));
     const adapted=join(target,"gamepack-browser.jar"),adaptedApi=join(target,"api-browser.jar");
+    const resources=join(target,"generated-resources");mkdirSync(resources,{recursive:true});
     for(const [input,output] of [[normalized,adapted],[api,adaptedApi]])
-        execute(jdk.binary,["-cp",classes+delimiter+libraries.asm,"AdaptEnginePlatform",input,output],{env,run});
+        execute(jdk.binary,["-cp",classes+delimiter+libraries.asm,"AdaptEnginePlatform",input,output,
+            ...(input===normalized?[join(resources,"soloscape-engine-reflection-types.txt")]:[])],{env,run});
     const parser=JSON.parse(execute(jdk.binary,["-cp",classes+delimiter+libraries.parser,"ParseEngine",adapted],
         {env,run,logPath:join(target,"parser.log")}));
     return {gamepack:adapted,api:adaptedApi,adaptation,parser};
@@ -52,4 +58,9 @@ export function verifyEnginePlatformTransform({root,target,jdk,env=process.env,r
     const {libraries,classes}=compileEngineTools({root,target,jdk,env,run,fixture:true});
     return execute(jdk.binary,["-cp",classes+delimiter+libraries.asm,"EnginePlatformTransformTest"],
         {env,run,logPath:join(target,"platform-transform-test.log")});
+}
+export function verifyEngineServicesJvm({root,target,jdk,env=process.env,run=spawnSync}){
+    const {libraries,classes}=compileEngineTools({root,target,jdk,env,run,fixture:true});
+    return execute(jdk.binary,["-cp",classes+delimiter+libraries.asm,"EngineServicesJvmTest"],
+        {env,run,logPath:join(target,"services-jvm-test.log")});
 }

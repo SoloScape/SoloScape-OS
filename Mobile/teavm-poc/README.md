@@ -69,8 +69,12 @@ are resolved by `engine-src/org/soloscape/teavm/platform` adapters. Both the
 gamepack and API jar are remapped to the same platform types. Game methods
 are retained; the optional reflection-check JAR loader uses the browser's
 ahead-of-time class contract and explicitly rejects external JARs.
-The full engine still fails on filesystem, sockets/HTTPS, native/Unsafe,
-reflection/serialization, JVM diagnostics, JSON/crypto, ImageIO and audio.
+The full engine now compiles successfully. IndexedDB-backed sandbox files,
+WebSocket streams, Fetch, bounded reflection/serialization, checked memory
+blocks, Web Crypto, JSON-Java, browser image decoding and Web Audio resolve
+the later dependency groups. Native JVM libraries remain explicitly
+unsupported; browser input replaces RLICN and JVM diagnostics report missing
+capabilities. Original game logic is retained.
 See `../OPENOSRS_PARITY.md` for the evidence, adapter limits and remaining
 porting gates. SLF4J/Guava API versions match the
 reference build. A small Java 8-source classlib implementation supplies the
@@ -78,6 +82,8 @@ standard BootstrapMethodError type missing from TeaVM; Maven still runs
 under JDK 17 or newer.
 `target/engine/report.json` and `compiler.log` contain the local outcome;
 failure exits nonzero and removes any partially emitted engine module.
+Generated JavaScript must also pass ES module syntax validation. Minified
+aliases avoid invalid identifiers from obfuscated JVM class names.
 Even a successful build is `compiled-unverified`.
 The probe does not serve its generated module or change the active homepage.
 
@@ -87,6 +93,21 @@ verify Canvas 2D ARGB pixels/readback and DOM input in real Chrome. Its
 `platform.js` is separate from `engine.js`; passing this proof does not mark
 the whole-engine report as compiled. The future host must configure its
 canvas and preload named classpath resource bytes before engine startup.
+
+Run `npm run test:engine-services` with `CHROME_BIN` for real browser
+filesystem, Fetch/WebSocket, crypto, reflection/serialization, PNG and PCM
+checks. Run `npm run test:openosrs-engine` after building to import the actual
+full engine module and check its startup host contract in Node.
+
+Configure the canvas, resources, environment and explicit gateway routes
+before calling `initializeAsync(error => ...)`. Initialization starts a TeaVM
+thread, awaits IndexedDB hydration, then constructs the original client.
+`initialize()` also starts that thread; `startupState()` and `startupError()`
+report its outcome. `syncFilesystem(error => ...)` checkpoints storage;
+`unlockAudio()` must be called from a user gesture. These exports do not
+supply RuneLite callbacks, applet/world parameters, verified cache assets or
+the active homepage integration. Successful compilation and service checks
+do not establish a working login/game loop or OpenOSRS gameplay parity.
 
 The separate local OpenOSRS `injected-client.oprs` is a compiled desktop
 JVM game engine. It cannot be directly embedded in the mobile browser; TeaVM

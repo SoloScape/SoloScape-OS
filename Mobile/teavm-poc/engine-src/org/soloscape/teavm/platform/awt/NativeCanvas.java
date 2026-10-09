@@ -10,7 +10,7 @@ public final class NativeCanvas {
     public static native void input(JSObject canvas,InputHandler handler);
     @JSBody(params={"canvas"},script="canvas.focus();")
     public static native void focus(JSObject canvas);
-    @JSBody(params={"width","height","id"},script="const c=id?document.getElementById(id):document.createElement('canvas'); if(!c)throw new Error('Engine canvas missing: '+id); c.width=width;c.height=height;return c;")
+    @JSBody(params={"width","height","id"},script="const engineCanvas=id?document.getElementById(id):document.createElement('canvas'); if(!engineCanvas)throw new Error('Engine canvas missing: '+id); engineCanvas.width=width;engineCanvas.height=height;return engineCanvas;")
     public static native JSObject create(int width,int height,String id);
     @JSBody(params={"canvas","width","height"},script="canvas.width=width;canvas.height=height;")
     public static native void resize(JSObject canvas,int width,int height);

@@ -9,9 +9,21 @@ import org.objectweb.asm.commons.*;
 public final class AdaptEnginePlatform implements Opcodes {
     private static final String PLATFORM = "org/soloscape/teavm/platform/";
     public static void main(String[] args) throws Exception {
-        if (args.length != 2) throw new IllegalArgumentException("Expected input and output jar");
+        if (args.length != 2 && args.length != 3) throw new IllegalArgumentException("Expected input/output jar and optional reflection type manifest");
+        Set<String> reflectionTypes=new TreeSet<>();
         Remapper remapper = new Remapper() {
             @Override public String map(String name) {
+                if (name.equals("sun/misc/Unsafe")) return PLATFORM + "HeapMemory";
+                if (name.equals("java/io/ObjectInputStream")) return PLATFORM + "BrowserObjectInputStream";
+                if (name.equals("java/security/MessageDigest")) return PLATFORM + "BrowserDigest";
+                if (name.equals("javax/imageio/ImageIO")) return PLATFORM + "BrowserImageIO";
+                if (name.startsWith("javax/sound/sampled/")) return PLATFORM + "audio/" + name.substring(20);
+                if (name.equals("java/lang/ProcessHandle") || name.equals("java/lang/ProcessHandle$Info")) return PLATFORM + "BrowserDiagnostics$" + name.substring(10);
+                if (name.startsWith("java/lang/management/")) return PLATFORM + "BrowserDiagnostics$" + name.substring(21);
+                if (name.startsWith("java/io/") && Arrays.asList("File","RandomAccessFile","FileDescriptor","FileInputStream").contains(name.substring(8))) return PLATFORM + "fs/" + name.substring(8);
+                if (name.startsWith("java/nio/file/") && Arrays.asList("Files","Paths","Path").contains(name.substring(14))) return PLATFORM + "fs/" + name.substring(14);
+                if (name.startsWith("java/net/") && Arrays.asList("Socket","SocketAddress","InetSocketAddress","InetAddress").contains(name.substring(9))) return PLATFORM + "net/" + name.substring(9);
+                if (name.startsWith("javax/net/ssl/") && Arrays.asList("HttpsURLConnection","SSLSocketFactory").contains(name.substring(14))) return PLATFORM + "net/" + name.substring(14);
                 if (name.equals("org/slf4j/LoggerFactory")) return PLATFORM + "BrowserLoggerFactory";
                 if (name.equals("java/util/concurrent/Executors")) return PLATFORM + "BrowserExecutors";
                 if (name.equals("java/util/concurrent/locks/ReentrantLock")) return PLATFORM + "ReentrantLock";
@@ -28,6 +40,7 @@ public final class AdaptEnginePlatform implements Opcodes {
                 if (entry.getName().matches("META-INF/[^/]+\\.(SF|RSA|DSA|EC)")) continue;
                 byte[] bytes = input.getInputStream(entry).readAllBytes();
                 if (entry.getName().endsWith(".class")) {
+                    reflectionTypes.add(new ClassReader(bytes).getClassName().replace('/','.'));
                     ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
                     ClassVisitor visitor = new ClassRemapper(writer, remapper) {
                         private String owner;
@@ -36,7 +49,17 @@ public final class AdaptEnginePlatform implements Opcodes {
                             super.visit(version, access, name, signature, "java/lang/Thread".equals(parent) ? PLATFORM + "BrowserThread" : parent, interfaces);
                         }
                         @Override public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                            if(owner.equals("client")&&name.equals("initRLICN")&&(access&ACC_NATIVE)!=0){
+                                MethodVisitor body=super.visitMethod(access&~ACC_NATIVE,name,descriptor,signature,exceptions);
+                                body.visitCode();body.visitTypeInsn(NEW,"java/lang/UnsatisfiedLinkError");body.visitInsn(DUP);
+                                body.visitLdcInsn("RLICN JNI input is unavailable; browser canvas input supplies events");
+                                body.visitMethodInsn(INVOKESPECIAL,"java/lang/UnsatisfiedLinkError","<init>","(Ljava/lang/String;)V",false);
+                                body.visitInsn(ATHROW);body.visitMaxs(3,1);body.visitEnd();return null;
+                            }
                             MethodVisitor next = super.visitMethod(access, name, descriptor, signature, exceptions);
+                            if (owner.equals("zw") && name.equals("ux") && descriptor.equals("()Lsun/misc/Unsafe;")) {
+                                next.visitCode();next.visitFieldInsn(GETSTATIC,PLATFORM+"HeapMemory","theUnsafe","L"+PLATFORM+"HeapMemory;");next.visitInsn(ARETURN);next.visitMaxs(1,0);next.visitEnd();return null;
+                            }
                             // This pinned method only selects the optional reflectcheck JAR loader.
                             if (owner.equals("client") && name.equals("tx") && descriptor.equals("()Ljava/lang/ClassLoader;")) {
                                 next.visitCode(); next.visitMethodInsn(INVOKESTATIC, PLATFORM + "BrowserClasses", "engineLoader", descriptor, false);
@@ -47,7 +70,21 @@ public final class AdaptEnginePlatform implements Opcodes {
                                     super.visitTypeInsn(opcode, opcode == NEW && type.equals("java/lang/Thread") ? PLATFORM + "BrowserThread" : type);
                                 }
                                 @Override public void visitMethodInsn(int opcode, String type, String method, String desc, boolean itf) {
-                                    if ((type.equals("java/lang/ClassLoader") || type.equals("java/lang/Class")) &&
+                                    if (type.equals("java/lang/System") && Arrays.asList("getenv","load","exit").contains(method)) {
+                                        super.visitMethodInsn(INVOKESTATIC,PLATFORM+"BrowserDiagnostics",method,desc,false);
+                                    } else if (type.equals("java/lang/Runtime") && method.equals("maxMemory")) {
+                                        super.visitMethodInsn(INVOKESTATIC,PLATFORM+"BrowserDiagnostics",method,"(Ljava/lang/Object;)J",false);
+                                    } else if (type.equals("java/lang/Class") && method.equals("getSigners")) {
+                                        super.visitMethodInsn(INVOKESTATIC,PLATFORM+"BrowserDiagnostics","signers","(Ljava/lang/Class;)[Ljava/lang/Object;",false);
+                                    } else if (type.equals("java/lang/reflect/Field") && (method.equals("getInt") || method.equals("setInt"))) {
+                                        super.visitMethodInsn(INVOKESTATIC,PLATFORM+"BrowserDiagnostics",method,"(Ljava/lang/reflect/Field;"+desc.substring(1),false);
+                                    } else if (type.equals("java/util/Properties") && method.equals("store") && desc.equals("(Ljava/io/Writer;Ljava/lang/String;)V")) {
+                                        super.visitMethodInsn(INVOKESTATIC,PLATFORM+"fs/BrowserProperties","store","(Ljava/util/Properties;Ljava/io/Writer;Ljava/lang/String;)V",false);
+                                    } else if (type.equals("java/net/URL") && (method.equals("openConnection") || method.equals("openStream"))) {
+                                        super.visitMethodInsn(INVOKESTATIC,PLATFORM+"net/BrowserHttp",method.equals("openStream")?"stream":"open","(Ljava/net/URL;)"+Type.getReturnType(desc).getDescriptor(),false);
+                                    } else if (type.equals("ql") && method.equals("az") && desc.equals("(I)Lql;")) {
+                                        super.visitInsn(POP);super.visitMethodInsn(INVOKESTATIC,PLATFORM+"net/BrowserHttp","sslFactory","()L"+PLATFORM+"net/SSLSocketFactory;",false);
+                                    } else if ((type.equals("java/lang/ClassLoader") || type.equals("java/lang/Class")) &&
                                         Arrays.asList("getResourceAsStream", "getResource", "getResources", "getSystemResourceAsStream", "getSystemResource", "getSystemResources").contains(method)) {
                                         String result=Type.getReturnType(desc).getDescriptor();
                                         String adapted=method.equals("getResourceAsStream")?"stream":method.equals("getResource")?"resource":method.equals("getResources")?"resources":method.equals("getSystemResourceAsStream")?"systemStream":method.equals("getSystemResource")?"systemResource":"systemResources";
@@ -70,5 +107,6 @@ public final class AdaptEnginePlatform implements Opcodes {
                 JarEntry copy = new JarEntry(entry.getName()); copy.setTime(0); output.putNextEntry(copy); output.write(bytes); output.closeEntry();
             }
         }
+        if(args.length==3)Files.write(Paths.get(args[2]),reflectionTypes);
     }
 }

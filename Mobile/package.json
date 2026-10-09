@@ -11,6 +11,8 @@
     "build:teavm": "node scripts/build-teavm.mjs",
     "build:openosrs-engine": "node scripts/build-openosrs-engine.mjs",
     "test:engine-platform": "node teavm-poc/scripts/verify-platform.mjs",
+    "test:engine-services": "node teavm-poc/scripts/verify-platform.mjs --services",
+    "test:openosrs-engine": "node teavm-poc/scripts/verify-engine-module.mjs",
     "test:teavm": "node teavm-poc/scripts/verify.mjs",
     "build": "node scripts/run-client.mjs build",
     "test": "node --test tests/*.test.mjs",

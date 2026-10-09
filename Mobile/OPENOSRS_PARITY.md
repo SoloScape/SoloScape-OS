@@ -85,31 +85,65 @@ canvas pixels/readback and DOM keyboard consumption. JVM transform fixtures
 check method retention, receiver/descriptor rewriting and resource bytes.
 The proof is separate from the engine and cannot establish gameplay parity.
 Desktop window management is not reproduced; clipboard ownership is local
-to the module, and font metrics use browser fonts. Image decoding and audio
-still require their own adapters.
+to the module, and font metrics use browser fonts.
 
-The whole-engine build still fails, now on filesystem/environment APIs,
-raw sockets/HTTPS, native/Unsafe calls, reflection/serialization, JVM process
-and memory diagnostics, JSON, message digests, ImageIO and sampled audio.
-There are no remaining compiler diagnostics in the five initial groups.
-SLF4J/Guava versions continue to match the reference; the build also supplies
-TeaVM's missing BootstrapMethodError type.
+The whole-engine build now **succeeds** and emits a syntactically valid
+`engine.js`. The remaining dependency groups have these implementations:
 
-The command returns a failure exit code and writes local diagnostics to
+- Filesystem: a sandboxed byte filesystem hydrated from IndexedDB before
+  constructing the client, with random access, file streams, paths, properties
+  output, transactional checkpoints and deletion. It cannot access OS files;
+  storage quota and cache memory/performance still need phone testing.
+- Networking: byte streams over explicitly configured WebSocket gateway
+  routes, including queue limits and read timeouts. HTTP/HTTPS requests use
+  Fetch, preserve response status/error bodies, and obey browser TLS/CORS.
+  JVM TLS factories cannot install a custom browser trust policy.
+- Reflection: a generated manifest limits access to original compiled engine
+  types, excluding host bridge/proof methods. Static primitive fields and
+  methods with scalar/String parameters retain TeaVM reflection access.
+  Java serialization is decoded for strings, boxed primitives and supported
+  arrays/references, with length/depth limits. Arbitrary classes and custom
+  serialization fail explicitly rather than constructing Java objects.
+- Crypto and JSON: SHA-1/SHA-256/SHA-512 use Web Crypto, including the missing
+  MessageDigest entry point used by unmodified Guava. Digests need a secure
+  context. The real JSON-Java dependency supplies parsing and encoding.
+- Images/audio: PNG/JPEG/GIF/BMP decoding uses the browser decoder and returns
+  ARGB buffers. Signed 16-bit mono/stereo PCM uses bounded Web Audio scheduling.
+  The host must unlock audio from a user gesture; autoplay is not bypassed.
+- JVM-only paths: checked byte blocks replace the engine's Unsafe allocation
+  and copy operations. Native library/RLICN calls throw UnsatisfiedLinkError;
+  canvas listeners supply browser input. Process/GC data are unavailable,
+  not fabricated. The memory limit uses browser telemetry when available,
+  otherwise a 256 MiB budget. Exit reports status and stops its Java thread.
+
+`npm run test:engine-services` (with `CHROME_BIN`) compiles a separate proof
+and verifies IndexedDB persistence, Fetch status/body handling, binary
+WebSocket streams, SHA-256 and Guava hashing, reflected fields/methods,
+JVM-generated serialization, PNG pixels, secure entropy, JSON precision and
+Web Audio PCM. JVM fixtures also compare wire decoding against ObjectOutputStream
+and check overlapping memory copies, freed/range errors and properties output.
+
+TeaVM's readable aliases exposed a JVM class named `do` as a JavaScript
+keyword. Minified aliases avoid that name; a native canvas helper also avoids
+colliding with short parameter aliases. The build now parses the complete
+emitted ES module before reporting success, deleting invalid output on failure.
+`npm run test:openosrs-engine` imports the actual full module and checks its
+cooperative startup callback and explicit missing-storage error.
+
+The command writes local diagnostics to
 `teavm-poc/target/engine/report.json` and `compiler.log`, plus normalization and
 all-method parser logs. The report separates parser results from concrete
 missing runtime classes/methods. All gamepack-derived output remains ignored;
-failed compilation removes any partially emitted `engine.js`. A successful future compilation is labelled
+failed compilation or syntax validation removes any partially emitted `engine.js`. Successful compilation is labelled
 `compiled-unverified`; it cannot mark any parity row complete.
 
 Next engine-port gates, in order:
 
 1. Keep the passing all-method parser and JVM adaptation proofs as build gates.
    Extend the adapter only with new evidence and matching regression fixtures.
-2. Resolve the reported runtime dependencies, then re-run whole-engine
-   reachability to enumerate further missing APIs.
-   Replace reachable desktop canvas/input, scheduling, audio, sockets,
-   resources and reflection with browser contracts.
+2. Keep the generated-module syntax, host-contract and browser service proofs
+   passing. Test adapter limits against real cache sizes and server reflection
+   requests; browser service proofs are not complete JVM compatibility.
 3. Run the original initialization and game loop, exposing real framebuffers
    and connecting the verified JS5/game transport. Integrate on the active
    homepage while retaining touch and the explicit SoloScape loading/login UI.

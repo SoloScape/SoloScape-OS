@@ -92,3 +92,16 @@ test("whole-engine compilation adapts the API jar together with the gamepack",t=
     }});
     assert.equal(report.stage,"output");
 });
+
+test("invalid generated JavaScript cannot be reported as a compiled engine",t=>{
+    const f=fixture(t);
+    const {report}=buildOpenOsrsEngine({...f,run:(command,args)=>{
+        if(command==="mvn"){
+            mkdirSync(join(f.root,"teavm-poc/target/engine/javascript"),{recursive:true});writeFileSync(f.output,"let do = 1;");
+        }
+        if(args.includes("--experimental-vm-modules"))return {status:1,stderr:"SyntaxError: Unexpected token 'do'"};
+        return {status:0,stdout:""};
+    }});
+    assert.equal(report.status,"blocked");assert.equal(report.stage,"javascript-syntax");
+    assert.match(report.reason,/Unexpected token/);assert.equal(existsSync(f.output),false);
+});

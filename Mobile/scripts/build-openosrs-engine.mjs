@@ -79,6 +79,16 @@ export function buildOpenOsrsEngine({root=mobile,env=process.env,platform=proces
         log=(compiled.stdout||"")+(compiled.stderr||"");
         report.exitCode=compiled.status;
         Object.assign(report,classifyEngineBuild(compiled,log,existsSync(output)));
+        if(report.status==="compiled-unverified"){
+            const checked=run(process.execPath,["--experimental-vm-modules","--no-warnings","--input-type=module","-e",
+                "import {SourceTextModule} from 'node:vm';import {readFileSync} from 'node:fs';try{new SourceTextModule(readFileSync(process.argv[1],'utf8'));}catch(error){console.error(error.name+': '+error.message);process.exitCode=1;}",output],
+                {env:buildEnv,encoding:"utf8",maxBuffer:1024*1024});
+            if(checked.error||checked.status!==0){
+                report.status="blocked";report.stage="javascript-syntax";
+                report.reason=checked.error?.message||(checked.stderr||"Generated JavaScript failed parsing").trim();
+                log+="\nJavaScript syntax gate: "+report.reason+"\n";
+            }else report.javascriptSyntaxVerified=true;
+        }
         if(report.status==="blocked")rmSync(output,{force:true});
     }catch(error){report.reason=error.message;}
     writeFileSync(join(target,"compiler.log"),log);

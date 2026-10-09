@@ -5,7 +5,7 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {fileURLToPath} from "node:url";
 import {findTeaVmJdk} from "../scripts/build-teavm.mjs";
-import {verifyEnginePlatformTransform} from "../scripts/prepare-engine-bytecode.mjs";
+import {verifyEnginePlatformTransform,verifyEngineServicesJvm} from "../scripts/prepare-engine-bytecode.mjs";
 
 test("engine platform rewriting preserves methods, descriptors and resource bytes",t=>{
     let jdk;
@@ -14,4 +14,10 @@ test("engine platform rewriting preserves methods, descriptors and resource byte
     t.after(()=>rmSync(target,{recursive:true,force:true}));
     const root=fileURLToPath(new URL("../",import.meta.url));
     assert.match(verifyEnginePlatformTransform({root,target,jdk}),/^PASS:/);
+});
+
+test("browser wire serialization and heap operations match the JVM oracle",t=>{
+    let jdk;try{jdk=findTeaVmJdk();}catch(error){t.skip(error.message);return;}
+    const target=mkdtempSync(join(tmpdir(),"soloscape-services-jvm-"));t.after(()=>rmSync(target,{recursive:true,force:true}));
+    assert.match(verifyEngineServicesJvm({root:fileURLToPath(new URL("../",import.meta.url)),target,jdk}),/^PASS:/);
 });
