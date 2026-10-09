@@ -23,9 +23,10 @@ The public homepage **/** is now the fullscreen SoloScape client.
 It uses original cache-backed title assets, genuine encrypted native OSRS
 login and the same authenticated session for WebGL world and player display.
 The public `/legacy`, `/teavm/lab` and `/diagnostics` routes have been
-removed. The historic bytecode feasibility and model projects remain in the
-local source tree and are verified by `npm run test:teavm`, but are not pages
-served to users. The `/teavm` alias opens the same fullscreen client as `/`.
+removed along with their obsolete page markup, controllers and styles. The
+bytecode and model verification tools remain in the local source tree and
+are verified by `npm run test:teavm`. The `/teavm` alias opens the same
+fullscreen client as `/`.
 
 The home page shares `NativeTitleScreen` with the native browser renderer:
 verified revision-240 title artwork, bitmap fonts, rune fire, Scape Main,

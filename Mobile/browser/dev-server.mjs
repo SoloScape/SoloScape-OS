@@ -19,7 +19,6 @@ const routes = new Map([
     ["/teavm-world.mjs", ["teavm-world.mjs", "text/javascript; charset=utf-8"]],
     ["/teavm/title-client.css", ["../teavm-poc/site/title-client.css", "text/css; charset=utf-8"]],
     ["/teavm/bridge.js", ["../teavm-poc/target/javascript/bridge.js", "text/javascript; charset=utf-8"]],
-    ["/world.css", ["world.css", "text/css; charset=utf-8"]],
     ["/terrain-world.mjs", ["terrain-world.mjs", "text/javascript; charset=utf-8"]],
     ["/world-webgl.mjs", ["world-webgl.mjs", "text/javascript; charset=utf-8"]],
     ["/floor-lighting.mjs", ["floor-lighting.mjs", "text/javascript; charset=utf-8"]],

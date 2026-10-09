@@ -100,7 +100,7 @@ loader and renders a **real map-region terrain height mesh** in WebGL with touch
 mouse-wheel zoom and WASD/arrow camera panning.
 
 The implementation lives in `Mobile/browser/terrain-world.mjs`,
-`world-webgl.mjs` and the main `app.mjs`. Terrain region names are
+`world-webgl.mjs` and the active `teavm-world.mjs` bridge. Terrain region names are
 resolved using TSPS's 31x DJB2 map name hash from the **CRC-verified**
 index-5 reference table. Map-height opcodes are decoded in the **OSRS
 revision-240 (u16) tile format**, following the pinned TSPS
@@ -1382,8 +1382,9 @@ while the original OpenOSRS 3D Java engine continues to be ported to TeaVM.
 The client fills the browser viewport with aspect-preserving black letterbox
 space; there is no site header, development dashboard, or alternate-client
 navigation. `/legacy`, `/diagnostics`, and `/teavm/lab` are removed from the
-server routes, but older source and tests remain in the repository for
-non-destructive development. `/teavm` is an alias to the same client for
+server routes. Their obsolete page controllers, markup and styles have also
+been removed; shared runtime modules and TeaVM verification tools remain.
+`/teavm` is an alias to the same client for
 previously shared links.
 
 Run `npm run build:teavm` (JDK 17+), start the SoloScape TCP game server,

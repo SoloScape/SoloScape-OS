@@ -75,8 +75,9 @@ test("later server map rebuild returns from logged in to loading without reconne
 });
 
 test("only the classic loading label is visible; extra map progress is hidden",()=>{
-    const html=readFileSync(new URL("../browser/index.html",import.meta.url),"utf8");
-    const css=readFileSync(new URL("../browser/world.css",import.meta.url),"utf8");
-    assert.match(html,/Loading - please wait\./);
-    assert.match(css,/\.loading\s+#loading-detail\s*\{\s*display:\s*none\s*\}/);
+    const html=readFileSync(new URL("../teavm-poc/site/title.html",import.meta.url),"utf8");
+    const overlay=html.match(/<div id="world-loading-overlay"[^>]*>([\s\S]*?)<\/div>/)?.[1];
+    assert.ok(overlay,"the active homepage must contain a loading overlay");
+    assert.match(overlay,/<span>Loading - Please wait\.<\/span>/);
+    assert.doesNotMatch(overlay,/<progress|loading-detail|spinner/i);
 });

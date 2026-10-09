@@ -92,7 +92,7 @@ reference fog, projection, face bias, mipmapping and texture settings still diff
 This is an implementation tracker, not a declaration that the browser runs the
 OpenOSRS engine. The active homepage uses `teavm-poc/site/title.html`,
 `title-client.mjs`, `TitleLoginSession` and `TeaVmWorldBridge`. Improvements must
-reach that path rather than only the older `browser/app.mjs`.
+reach that path. The obsolete `browser/app.mjs` entry point has been removed.
 
 ## Completed first integration
 

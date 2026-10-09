@@ -66,8 +66,6 @@ jobs:
           node --check Mobile/browser/floor-lighting.mjs
           node --check Mobile/browser/floor-materials.mjs
           node --check Mobile/browser/world-startup.mjs
-          node --check Mobile/browser/diagnostics-app.mjs
-          node --check Mobile/browser/app.mjs
           node --check Mobile/browser/cache-reader.mjs
           node --check Mobile/browser/location-cache.mjs
           node --check Mobile/browser/object-definitions.mjs
