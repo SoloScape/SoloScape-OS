@@ -13,9 +13,12 @@ public class Socket {
     public void connect(SocketAddress address)throws IOException {
         if(closed||handle!=null)throw new IOException("Socket is closed or connected");
         InetSocketAddress target=(InetSocketAddress)address;String route=ROUTES.get(target.host+":"+target.port);
+        recordAttempt(target.host,target.port,route!=null);
         if(route==null)throw new IOException("No browser gateway configured for "+target.host+":"+target.port);
         handle=open(route);
     }
+    @JSBody(params={"host","port","configured"},script="const a=globalThis.soloscapeEngineSocketAttempts??(globalThis.soloscapeEngineSocketAttempts=[]);if(a.length<32)a.push({host,port,configured});")
+    private static native void recordAttempt(String host,int port,boolean configured);
     public boolean isConnected(){return handle!=null&&!closed;}
     public void setSoTimeout(int timeout){if(timeout<0)throw new IllegalArgumentException();this.timeout=timeout;}
     public void setTcpNoDelay(boolean enabled){} // WebSocket/TCP settings are controlled by the fixed gateway.
@@ -51,7 +54,7 @@ public class Socket {
     private static native void openNative(String route,Completion done);
     @Async private static native byte[] receive(JSObject socket,int timeout)throws IOException;
     private static void receive(JSObject socket,int timeout,AsyncCallback<byte[]> callback){
-        receiveNative(socket,timeout,(data,error)->{if(error!=null){callback.error(new IOException(error));return;}if(data==null){callback.complete(null);return;}byte[] result=new byte[length(data)];for(int i=0;i<result.length;i++)result[i]=(byte)at(data,i);callback.complete(result);});
+        receiveNative(socket,timeout,(data,error)->{if(error!=null){callback.error(new IOException(error));return;}if(data==null){callback.complete(null);return;}byte[] result=new byte[length(data)];copy(data,result);callback.complete(result);});
     }
     @JSBody(params={"s","timeout","done"},script="if(s.q.length){const data=s.q.shift();s.bytes-=data.length;done(data,null);return;}if(s.closed||s.error){done(null,s.error);return;}if(s.wait){done(null,'Concurrent stream reads are unsupported');return;}const w={done,timer:null};s.wait=w;if(timeout)w.timer=setTimeout(()=>{if(s.wait===w){s.wait=null;done(null,'Socket read timed out');}},timeout);")
     private static native void receiveNative(JSObject socket,int timeout,Completion done);
@@ -63,5 +66,6 @@ public class Socket {
     @JSBody(params={"s"},script="s.ws.close(1000);")private static native void closeNative(JSObject socket);
     @JSBody(params={"s"},script="return s.bytes;")private static native int queued(JSObject socket);
     @JSBody(params={"data"},script="return data.length;")private static native int length(JSObject data);
-    @JSBody(params={"data","i"},script="return data[i];")private static native int at(JSObject data,int i);
+    @JSBody(params={"data","out"},script="out.set(data);")
+    private static native void copy(JSObject data,@JSByRef byte[] out);
 }

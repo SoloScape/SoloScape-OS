@@ -14,8 +14,11 @@ public final class BrowserResources {
     }
     public static synchronized InputStream stream(Object loader, String name) {
         byte[] bytes = RESOURCES.get(Objects.requireNonNull(name));
+        recordLookup(name,bytes!=null);
         return bytes == null ? null : new ByteArrayInputStream(bytes);
     }
+    @org.teavm.jso.JSBody(params={"name","found"},script="const a=globalThis.soloscapeOriginalResourceLookups??(globalThis.soloscapeOriginalResourceLookups=[]);if(a.length<32)a.push({name,found});")
+    private static native void recordLookup(String name,boolean found);
     private static String relative(Class<?> type, String name) {
         if (name.startsWith("/")) return name.substring(1);
         String owner = type.getName(); int end = owner.lastIndexOf('.');
@@ -31,7 +34,8 @@ public final class BrowserResources {
         return Collections.enumeration(url == null ? Collections.<URL>emptyList() : Collections.singletonList(url));
     }
     public static synchronized URL resource(Object loader, String name) {
-        if (!RESOURCES.containsKey(name)) return null;
+        if (!RESOURCES.containsKey(name)) { recordLookup(name,false); return null; }
+        recordLookup(name,true);
         try {
             return new URL(null,"soloscape-resource:/"+name,new URLStreamHandler() {
                 protected URLConnection openConnection(URL url) {

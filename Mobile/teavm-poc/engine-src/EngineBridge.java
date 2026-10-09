@@ -1,22 +1,45 @@
 import org.teavm.jso.JSExport;
 
-/** Whole-engine reachability probe. No replacement or stripped game methods. */
+/** Isolated original OpenOSRS gamepack runtime: never used by the active homepage. */
 public final class EngineBridge {
     private static client engine;
+    private static BrowserEngineCallbacks callbacks;
+    private static final EngineConfiguration configuration = new EngineConfiguration();
     private static boolean initializing;
-    private static String initializationState="not-started", initializationError="";
-    @org.teavm.jso.JSFunctor public interface Completion extends org.teavm.jso.JSObject {void completed(String error);}
+    private static String initializationState = "not-started", initializationError = "";
+    private static String startupStep = "not-started";
+    @org.teavm.jso.JSFunctor public interface Completion extends org.teavm.jso.JSObject {
+        void completed(String error);
+    }
 
     public static void main(String[] args) { }
 
-    @JSExport public static void configureGateway(String host, int port, String url) {
-        if(engine!=null||initializing)throw new IllegalStateException("Configure transport before initialization");
-        org.soloscape.teavm.platform.net.Socket.configure(host,port,url);
+    private static void beforeStartup() {
+        if (engine != null || initializing)
+            throw new IllegalStateException("Configure original engine before initialization");
     }
 
-    @JSExport public static void configureEnvironment(String key,String value) {
-        if(engine!=null||initializing)throw new IllegalStateException("Configure environment before initialization");
-        org.soloscape.teavm.platform.BrowserDiagnostics.configureEnvironment(key,value);
+    @JSExport public static void configureClient(String codeBase) {
+        beforeStartup();
+        configuration.setCodeBase(codeBase);
+    }
+
+    @JSExport public static void configureClientParameter(String key, String value) {
+        beforeStartup();
+        configuration.setParameter(key, value);
+    }
+
+    @JSExport public static String clientError() { return configuration.lastError(); }
+    @JSExport public static String callbackError() { return callbacks == null ? "" : callbacks.lastError(); }
+
+    @JSExport public static void configureGateway(String host, int port, String url) {
+        beforeStartup();
+        org.soloscape.teavm.platform.net.Socket.configure(host, port, url);
+    }
+
+    @JSExport public static void configureEnvironment(String key, String value) {
+        beforeStartup();
+        org.soloscape.teavm.platform.BrowserDiagnostics.configureEnvironment(key, value);
     }
 
     @JSExport public static void unlockAudio() {
@@ -24,46 +47,116 @@ public final class EngineBridge {
     }
 
     @JSExport public static void syncFilesystem(Completion callback) {
-        if(callback==null)throw new IllegalArgumentException("Filesystem completion callback required");
-        new Thread(()->{
-            try{org.soloscape.teavm.platform.fs.BrowserStorage.sync();if(callback!=null)callback.completed(null);}
-            catch(Throwable error){if(callback!=null)callback.completed(error.toString());}
+        if (callback == null) throw new IllegalArgumentException("Filesystem completion callback required");
+        new Thread(() -> {
+            try {
+                org.soloscape.teavm.platform.fs.BrowserStorage.sync();
+                callback.completed(null);
+            } catch (Throwable error) {
+                callback.completed(error.toString());
+            }
         }).start();
     }
 
     @JSExport public static void configureCanvas(String elementId) {
-        if (engine != null || initializing) throw new IllegalStateException("Configure canvas before initialization");
+        beforeStartup();
         org.soloscape.teavm.platform.awt.NativeCanvas.hostId = elementId;
     }
 
     @JSExport public static void registerResource(String name, String hex) {
-        if (engine != null || initializing) throw new IllegalStateException("Register resources before initialization");
-        if ((hex.length() & 1) != 0) throw new IllegalArgumentException("Resource hex length");
-        byte[] bytes = new byte[hex.length()/2];
-        for (int i=0;i<bytes.length;i++) {
-            int high=Character.digit(hex.charAt(i*2),16), low=Character.digit(hex.charAt(i*2+1),16);
-            if (high<0 || low<0) throw new IllegalArgumentException("Resource hex digit");
-            bytes[i]=(byte)((high<<4)|low);
+        beforeStartup();
+        if (name == null || hex == null || (hex.length() & 1) != 0)
+            throw new IllegalArgumentException("Invalid resource");
+        byte[] bytes = new byte[hex.length() / 2];
+        for (int i = 0; i < bytes.length; i++) {
+            int high = Character.digit(hex.charAt(i * 2), 16);
+            int low = Character.digit(hex.charAt(i * 2 + 1), 16);
+            if (high < 0 || low < 0) throw new IllegalArgumentException("Resource hex digit");
+            bytes[i] = (byte)((high << 4) | low);
         }
-        org.soloscape.teavm.platform.BrowserResources.register(name,bytes);
+        org.soloscape.teavm.platform.BrowserResources.register(name, bytes);
     }
 
-    @JSExport public static String startupState(){return initializationState;}
-    @JSExport public static String startupError(){return initializationError;}
+    @JSExport public static String startupState() { return initializationState; }
+    @JSExport public static String startupError() { return initializationError; }
+    @JSExport public static String startupStep() { return startupStep; }
+
+    /** A successful initialize() return does not imply that game cycles are running. */
+    @JSExport public static int gameCycle() {
+        return engine instanceof net.runelite.api.Client
+            ? ((net.runelite.api.Client) engine).getGameCycle() : -1;
+    }
+
+    /** The real injected client game state, not a screen inferred from pixels. */
+    @JSExport public static String gameState() {
+        if (!(engine instanceof net.runelite.api.Client)) return "UNAVAILABLE";
+        net.runelite.api.GameState state=((net.runelite.api.Client)engine).getGameState();
+        return state==null?"UNAVAILABLE":state.name();
+    }
+
+    @JSExport public static boolean hasClientThread() {
+        return engine != null && ((net.runelite.api.GameEngine) engine).getClientThread() != null;
+    }
 
     @JSExport public static void initialize() { initializeAsync(null); }
 
     @JSExport public static void initializeAsync(Completion callback) {
-        if(engine!=null||initializing)throw new IllegalStateException("Engine initialization already started");
-        initializing=true;initializationState="loading";
-        new Thread(()->{
-            String failure=null;
+        beforeStartup();
+        if (!configuration.configured())
+            throw new IllegalStateException("ClientConfiguration codebase is required");
+        initializing = true;
+        initializationState = "loading";
+        initializationError = "";
+        startupStep = "mount-storage";
+        new Thread(() -> {
+            String failure = null;
             try {
                 org.soloscape.teavm.platform.fs.BrowserStorage.mount();
-                engine=new client();engine.initialize();initializationState="ready";
-            }catch(Throwable error){failure=error.toString();initializationError=failure;initializationState="error";}
-            finally{initializing=false;}
-            if(callback!=null)callback.completed(failure);
+                startupStep = "configure-jvm-platform";
+                // TeaVM 0.15 does not provide java.vendor by default. The
+                // original client uses it to choose built-in keyboard mapping.
+                // On a real JVM this property is non-null; supply the honest
+                // browser identity rather than changing the original client.
+                if (System.getProperty("java.vendor") == null)
+                    System.setProperty("java.vendor", "Browser");
+                startupStep = "construct-client";
+                engine = new client();
+                startupStep = "configure-injected-hooks";
+                callbacks = new BrowserEngineCallbacks();
+                engine.vi = callbacks;
+                startupStep = "set-client-configuration";
+                // Follow the actual local OpenOSRS ClientLoader (1.12.x GameEngine).
+                ((net.runelite.api.GameEngine) engine).setConfiguration(configuration);
+                startupStep = "initialize-game-engine";
+                engine.initialize();
+                startupStep = "initialized";
+                initializationState = "ready";
+            } catch (Throwable error) {
+                // TeaVM may not provide JVM stack-trace metadata for obfuscated
+                // gamepack exceptions. Never let diagnostic formatting replace
+                // the original failure with a second JavaScript runtime error.
+                failure = startupStep + ": " + error.toString();
+                // Pinned gamepack aaf wraps the real exception and records the
+                // obfuscated throw location in package-visible fields.
+                if (error instanceof aaf) {
+                    try {
+                        aaf wrapped = (aaf) error;
+                        failure += " [location=" + wrapped.as + "]";
+                        if (wrapped.ax != null)
+                            failure += " [underlying=" + wrapped.ax.toString() + "]";
+                    } catch (Throwable ignored) { /* preserve primary failure */ }
+                }
+                failure += " [parameter-presence=" + configuration.requestedKeys() + "]";
+                try {
+                    failure += " [original-environment=" +
+                        (ro.gp == null ? "missing" : ro.gp.ag) + "]";
+                } catch (Throwable ignored) { /* do not mask the initialization failure */ }
+                initializationError = failure;
+                initializationState = "error";
+            } finally {
+                initializing = false;
+            }
+            if (callback != null) callback.completed(failure);
         }).start();
     }
 }

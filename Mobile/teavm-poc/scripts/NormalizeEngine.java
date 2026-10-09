@@ -4,12 +4,15 @@ import java.util.*;
 import java.util.jar.*;
 import org.objectweb.asm.*;
 import org.objectweb.asm.tree.*;
+import org.objectweb.asm.commons.ClassRemapper;
+import org.objectweb.asm.commons.Remapper;
 
 /** Local compiler adaptation, never a substitute for original game methods. */
 public final class NormalizeEngine implements Opcodes {
     private static final String PREFIX = "$soloscape$condy$";
     private static final String INVOKE_DESC = "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/Class;Ljava/lang/invoke/MethodHandle;[Ljava/lang/Object;)Ljava/lang/Object;";
-    public int constants, loads, concats, classes;
+    public int constants, loads, concats, classes, renamedFields;
+    private final Map<String,String> fieldRenames = new HashMap<>();
 
     public static void main(String[] args) throws Exception {
         if (args.length != 2) throw new IllegalArgumentException("Expected local input jar and local output jar");
@@ -19,9 +22,21 @@ public final class NormalizeEngine implements Opcodes {
         Path staging = Files.createTempFile(destination.toAbsolutePath().getParent(), "normalize-", ".jar");
         try {
             try (JarFile input = new JarFile(args[0]); JarOutputStream output = new JarOutputStream(Files.newOutputStream(staging))) {
+                // The injected gamepack is valid JVM bytecode but can contain two
+                // fields with one name and different descriptors (client.ls).
+                // TeaVM emits the two fields under one JS property and corrupts
+                // the original java.io.File startup state. Inventory the whole
+                // archive before rewriting any cross-class field instructions.
+                for (JarEntry entry : Collections.list(input.entries())) {
+                    if (entry.getName().endsWith(".class"))
+                        tool.inventoryFields(input.getInputStream(entry).readAllBytes());
+                }
                 for (JarEntry entry : Collections.list(input.entries())) {
                     byte[] bytes = input.getInputStream(entry).readAllBytes();
-                    if (entry.getName().endsWith(".class")) bytes = tool.transform(bytes);
+                    if (entry.getName().endsWith(".class")) {
+                        bytes = tool.renameFields(bytes);
+                        bytes = tool.transform(bytes);
+                    }
                     // A transformed jar cannot retain signatures for its original bytes.
                     if (entry.getName().matches("META-INF/[^/]+\\.(SF|RSA|DSA|EC)")) continue;
                     JarEntry copy = new JarEntry(entry.getName()); copy.setTime(0);
@@ -31,7 +46,41 @@ public final class NormalizeEngine implements Opcodes {
             Files.move(staging, destination, StandardCopyOption.REPLACE_EXISTING);
         } finally { Files.deleteIfExists(staging); }
         System.out.println("{\"classes\":" + tool.classes + ",\"constants\":" + tool.constants +
-            ",\"loads\":" + tool.loads + ",\"concats\":" + tool.concats + "}");
+            ",\"loads\":" + tool.loads + ",\"concats\":" + tool.concats +
+            ",\"renamedFields\":" + tool.renamedFields + "}");
+    }
+
+    private static String fieldKey(String owner, String name, String descriptor) {
+        return owner + "\\u0000" + name + "\\u0000" + descriptor;
+    }
+
+    private void inventoryFields(byte[] bytes) {
+        ClassNode owner = new ClassNode(ASM9);
+        new ClassReader(bytes).accept(owner, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+        Set<String> used = new HashSet<>(), encountered = new HashSet<>();
+        for (FieldNode field : owner.fields) used.add(field.name);
+        int id = 0;
+        for (FieldNode field : owner.fields) {
+            if (encountered.add(field.name)) continue;
+            String replacement;
+            do { replacement = "$soloscape$unique$field$" + (id++); }
+            while (!used.add(replacement));
+            String previous = fieldRenames.putIfAbsent(fieldKey(owner.name, field.name, field.desc), replacement);
+            if (previous != null) throw new IllegalArgumentException("Duplicate JVM field name+descriptor in " + owner.name);
+            renamedFields++;
+        }
+    }
+
+    private byte[] renameFields(byte[] bytes) {
+        if (fieldRenames.isEmpty()) return bytes;
+        ClassReader source = new ClassReader(bytes);
+        ClassWriter output = new ClassWriter(0);
+        source.accept(new ClassRemapper(output, new Remapper() {
+            @Override public String mapFieldName(String owner, String name, String descriptor) {
+                return fieldRenames.getOrDefault(fieldKey(owner, name, descriptor), name);
+            }
+        }), 0);
+        return output.toByteArray();
     }
 
     public byte[] transform(byte[] bytes) {

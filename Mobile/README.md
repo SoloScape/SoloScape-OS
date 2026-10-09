@@ -5,6 +5,17 @@
 This directory integrates the pinned upstream browser client as a Git submodule at `tsps-upstream/`, based on [RSPSApp/tsps](https://github.com/RSPSApp/tsps), which provides a React/TypeScript/WebGL OSRS-style game client. Track the work in [issue #32](https://github.com/SoloScape/SoloScape-OS/issues/32).
 
 Whole-client OpenOSRS parity is tracked in [OPENOSRS_PARITY.md](OPENOSRS_PARITY.md).
+The original Java game engine has an **isolated, localhost-only startup harness**
+([ORIGINAL_ENGINE_STARTUP.md](ORIGINAL_ENGINE_STARTUP.md)). Its pinned rev-240
+TeaVM module accepts `ClientConfiguration` and now **advances genuine original
+client game cycles** in Chrome (3 to 118 in a 10-second stability check), with
+an active engine thread, changed original framebuffer pixels, and no fatal
+callback errors. Its original login/title framebuffer has also been visually
+verified in Chrome from the pinned gamepack and local cache (original logo,
+autumn-hall background, welcome panel and buttons); a separate desktop
+pixel-by-pixel comparison is not claimed. This is *not* authenticated gameplay,
+mobile deployment, or RuneLite GPU parity. The diagnostic does not replace the active client or
+expose gamepack-derived output via `npm run dev`.
 The 9 October mobile scene integration adds skeletal poses, authenticated
 object morphs, joined static lighting and classic terrain shadows, rotated
 instanced chunks, and additional built-in GPU shader settings to the active

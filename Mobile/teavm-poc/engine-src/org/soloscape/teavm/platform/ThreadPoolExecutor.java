@@ -3,15 +3,22 @@ import java.util.*; import java.util.concurrent.*;
 /** Cooperative workers, matching the engine's bounded request queue. */
 public final class ThreadPoolExecutor implements ExecutorService {
     private final int core;
+    private final int activeWorkers;
     private final BlockingQueue<Runnable> queue;
     private final List<ExecutorService> workers=new ArrayList<>();
     private int cursor;
     private boolean shutdown;
     public ThreadPoolExecutor(int core,int maximum,long keepAlive,TimeUnit unit,BlockingQueue<Runnable> queue,ThreadFactory factory) {
-        if(core<=0||maximum<core||keepAlive<0)throw new IllegalArgumentException();
-        if(maximum!=core)throw new UnsupportedOperationException("Browser request pools require fixed worker counts");
-        this.core=core;this.queue=Objects.requireNonNull(queue);Objects.requireNonNull(unit);
-        for(int i=0;i<core;i++)workers.add(BrowserExecutors.newSingleThreadExecutor(factory));
+        // JDK ThreadPoolExecutor permits corePoolSize == 0 (a demand-driven
+        // pool), provided maximumPoolSize > 0. The injected client uses (0, 1).
+        if(core<0||maximum<=0||maximum<core||keepAlive<0)throw new IllegalArgumentException();
+        if(core>0&&maximum!=core)throw new UnsupportedOperationException("Browser pool only supports fixed-size or zero-core request workers");
+        this.core=core;this.activeWorkers=core==0?maximum:core;
+        this.queue=Objects.requireNonNull(queue);Objects.requireNonNull(unit);
+        Objects.requireNonNull(factory);
+        // Cooperative on-demand workers: no fabricated client cycles or JVM
+        // thread activity. A zero-core pool needs a worker to run submissions.
+        for(int i=0;i<activeWorkers;i++)workers.add(BrowserExecutors.newSingleThreadExecutor(factory));
     }
     public int getCorePoolSize(){return core;}
     public BlockingQueue<Runnable> getQueue(){return queue;}
@@ -19,7 +26,7 @@ public final class ThreadPoolExecutor implements ExecutorService {
         Objects.requireNonNull(callable); if(shutdown)throw new IllegalStateException("Executor is shut down");
         Request<V> request=new Request<>(callable);
         if(!queue.offer(request))throw new IllegalStateException("Executor request queue is full");
-        ExecutorService worker=workers.get(cursor);cursor=(cursor+1)%core;
+        ExecutorService worker=workers.get(cursor);cursor=(cursor+1)%activeWorkers;
         worker.execute(()->{Runnable task=queue.poll();if(task!=null)task.run();});
         return request;
     }

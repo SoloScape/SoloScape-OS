@@ -4,7 +4,9 @@ public final class File {
     public static final char separatorChar='/';
     public static final String separator="/";
     final String path;
-    public File(String path){this.path=BrowserStorage.normalize(Objects.requireNonNull(path));}
+    public File(String path){this.path=BrowserStorage.normalize(Objects.requireNonNull(path));record(this.path);}
+    @org.teavm.jso.JSBody(params={"path"},script="const a=globalThis.soloscapeOriginalFilePaths??(globalThis.soloscapeOriginalFilePaths=[]);if(a.length<100&&!a.includes(path))a.push(path);")
+    private static native void record(String path);
     public File(File parent,String child){this(parent==null?child:parent.path+"/"+child);}
     public File(String parent,String child){this(parent==null?child:parent+"/"+child);}
     public String getPath(){return path;}public String toString(){return path;}
@@ -12,7 +14,7 @@ public final class File {
     public String getParent(){return path.equals("/")?null:path.substring(0,path.lastIndexOf('/')).isEmpty()?"/":path.substring(0,path.lastIndexOf('/'));}
     public boolean exists(){return BrowserStorage.entries.containsKey(path);}
     public boolean isDirectory(){BrowserStorage.Entry e=BrowserStorage.entries.get(path);return e!=null&&e.directory;}
-    public long length(){BrowserStorage.Entry e=BrowserStorage.entries.get(path);return e==null||e.directory?0:e.bytes.length;}
+    public long length(){BrowserStorage.Entry e=BrowserStorage.entries.get(path);return e==null||e.directory?0:e.localCache?BrowserStorage.localCacheSize(path):e.bytes.length;}
     public boolean mkdirs(){
         if(exists())return false;String parent=getParent();if(parent!=null&&!new File(parent).isDirectory())new File(parent).mkdirs();
         if(parent!=null&&!new File(parent).isDirectory())return false;BrowserStorage.entries.put(path,new BrowserStorage.Entry(true));return true;

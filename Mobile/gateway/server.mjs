@@ -15,7 +15,7 @@ function forbidden(socket, status, message) {
     socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: ${Buffer.byteLength(message)}\r\n\r\n${message}`);
 }
 
-export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls }) {
+export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivity = () => {} }) {
     if (!tcpHost || !Number.isInteger(tcpPort) || tcpPort < 1 || tcpPort > 65535) {
         throw new Error("A fixed TCP host and valid port are required");
     }
@@ -53,6 +53,7 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls }) {
     });
 
     wss.on("connection", (ws) => {
+        onActivity("connected",0);
         let tcp = null;
         let queued = [];
         let queuedBytes = 0;
@@ -78,6 +79,7 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls }) {
                 return;
             }
             const bytes = Buffer.isBuffer(data) ? data : Buffer.from(data);
+            onActivity("upstreamBytes",bytes.length);
             if (bytes.length === 0) {
                 stop(1003, "Empty handshake");
                 return;
@@ -104,6 +106,7 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls }) {
                 });
                 tcp.on("drain", () => { if (!ended) ws.resume(); });
                 tcp.on("data", (chunk) => {
+                    onActivity("downstreamBytes",chunk.length);
                     if (ended || ws.readyState !== WebSocket.OPEN) return;
                     if (ws.bufferedAmount > MAX_BUFFER_BYTES) {
                         stop(1009, "Downstream too slow");

@@ -1,6 +1,6 @@
 import {spawnSync} from "node:child_process";
-import {existsSync,mkdirSync,writeFileSync} from "node:fs";
-import {join,delimiter} from "node:path";
+import {existsSync,mkdirSync,writeFileSync,copyFileSync} from "node:fs";
+import {join,delimiter,dirname} from "node:path";
 
 export function engineLibraries(env=process.env){
     const home=env.USERPROFILE||env.HOME;
@@ -25,7 +25,7 @@ export function compileEngineTools({root,target,jdk,env=process.env,run=spawnSyn
     const libraries=engineLibraries(env),classes=join(target,"tools");mkdirSync(classes,{recursive:true});
     const sources=[join(root,"teavm-poc/scripts/NormalizeEngine.java"),join(root,"teavm-poc/scripts/ParseEngine.java"),
         join(root,"teavm-poc/scripts/AdaptEnginePlatform.java")];
-    if(fixture)sources.push(join(root,"tests/fixtures/EngineConstantsTest.java"),join(root,"tests/fixtures/EnginePlatformTransformTest.java"),
+    if(fixture)sources.push(join(root,"tests/fixtures/EngineConstantsTest.java"),join(root,"tests/fixtures/EngineFieldCollisionTest.java"),join(root,"tests/fixtures/EnginePlatformTransformTest.java"),
         join(root,"tests/fixtures/EngineServicesJvmTest.java"),
         join(root,"teavm-poc/engine-src/org/soloscape/teavm/platform/BrowserObjectInputStream.java"),
         join(root,"teavm-poc/engine-src/org/soloscape/teavm/platform/HeapMemory.java"),
@@ -41,6 +41,22 @@ export function prepareEngineBytecode({root,target,gamepack,api,jdk,env=process.
     const adaptation=JSON.parse(execute(jdk.binary,["-cp",classes+delimiter+libraries.asm,"NormalizeEngine",gamepack,normalized],
         {env,run,logPath:join(target,"normalization.log")}));
     const adapted=join(target,"gamepack-browser.jar"),adaptedApi=join(target,"api-browser.jar");
+    // Keep the original injected JAR's tiny non-class classpath resources local.
+    // TeaVM does not automatically embed resources from system-scope JARs.
+    const browserResources=join(target,"resources");mkdirSync(browserResources,{recursive:true});
+    const jar=jdk.home?join(jdk.home,"bin",process.platform==="win32"?"jar.exe":"jar"):"jar";
+    execute(jar,["xf",gamepack,"client.serial","compilercontrol.json"],
+        {env,run:((binary,args,options)=>run(binary,args,{...options,cwd:browserResources}))});
+    for(const name of ["client.serial","compilercontrol.json"])
+        if(!existsSync(join(browserResources,name)))
+            throw new Error("Pinned client resource was not extracted: "+name);
+    // This four-byte source resource belongs to the pinned RuneLite API's
+    // OverlayIndex, not to injected-client.oprs. Do not synthesize its contents.
+    const overlayIndex=join(dirname(gamepack),"runelite","index");
+    if(!existsSync(overlayIndex))throw new Error("Pinned RuneLite overlay index missing: "+overlayIndex);
+    const overlayDir=join(browserResources,"runelite");
+    mkdirSync(overlayDir,{recursive:true});
+    copyFileSync(overlayIndex,join(overlayDir,"index"));
     const resources=join(target,"generated-resources");mkdirSync(resources,{recursive:true});
     for(const [input,output] of [[normalized,adapted],[api,adaptedApi]])
         execute(jdk.binary,["-cp",classes+delimiter+libraries.asm,"AdaptEnginePlatform",input,output,
@@ -51,8 +67,12 @@ export function prepareEngineBytecode({root,target,gamepack,api,jdk,env=process.
 }
 export function verifyEngineConstants({root,target,jdk,env=process.env,run=spawnSync}){
     const {libraries,classes}=compileEngineTools({root,target,jdk,env,run,fixture:true});
-    return execute(jdk.binary,["-cp",classes+delimiter+libraries.asm,"EngineConstantsTest"],
+    const classpath=classes+delimiter+libraries.asm;
+    const constants=execute(jdk.binary,["-cp",classpath,"EngineConstantsTest"],
         {env,run,logPath:join(target,"constants-test.log")});
+    const collisions=execute(jdk.binary,["-cp",classpath,"EngineFieldCollisionTest"],
+        {env,run,logPath:join(target,"field-collision-test.log")});
+    return constants+"\n"+collisions;
 }
 export function verifyEnginePlatformTransform({root,target,jdk,env=process.env,run=spawnSync}){
     const {libraries,classes}=compileEngineTools({root,target,jdk,env,run,fixture:true});
