@@ -96,3 +96,19 @@ test("long elapsed animation times skip complete loops with identical final fram
     const short={frame:0,cycle:0,loops:0};stepMovementFrames(sequence,short,100000000%6);
     assert.deepEqual(state,short);
 });
+
+test("reuses immutable animated poses for repeated idle frames without retaining old models",()=>{
+    const loader=new NativePlayerAnimations({}),base=model();
+    const f1=frame([1],[{group:0,x:7,y:0,z:0}]);
+    const f2=frame([1],[{group:0,x:8,y:0,z:0}]);
+    const one=loader.cachedPose(base,f1);
+    assert.strictEqual(loader.cachedPose(base,f1),one,"identical idle pose reuses transformed buffers");
+    assert.notStrictEqual(loader.cachedPose(base,f2),one,"new animation frame has a distinct pose");
+    assert.equal(one.verticesX[0],17);
+    assert.equal(base.verticesX[0],10,"base model stays immutable");
+    const another=model();
+    assert.notStrictEqual(loader.cachedPose(another,f1),one,"different actor base must not share poses");
+    for(let i=0;i<9;i++)loader.cachedPose(base,frame([1],[{group:0,x:i,y:0,z:0}]));
+    assert.ok(loader.posedFrames.get(base).size<=8,"bounded poses per base model");
+    assert.notStrictEqual(loader.cachedPose(base,f1),one,"old unused frame can be regenerated");
+});

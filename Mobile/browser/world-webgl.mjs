@@ -760,7 +760,16 @@ export class NativeTerrainViewport {
         const vertices=scene?.vertices??new Float32Array();
         if(!(vertices instanceof Float32Array)||vertices.length%18)throw new Error("Invalid player mesh");
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER,this.actorBuf);
-        this.gl.bufferData(this.gl.ARRAY_BUFFER,vertices,this.gl.DYNAMIC_DRAW);this.actorCount=vertices.length/6;
+        const bytes=vertices.byteLength;
+        if(bytes){
+            if(this.actorCapacity>=bytes&&this.gl.bufferSubData)
+                this.gl.bufferSubData(this.gl.ARRAY_BUFFER,0,vertices);
+            else{
+                this.gl.bufferData(this.gl.ARRAY_BUFFER,vertices,this.gl.DYNAMIC_DRAW);
+                this.actorCapacity=bytes;
+            }
+        }
+        this.actorCount=vertices.length/6;
         this.replaceBatches("actorBatches",scene?.texturedBatches??[]);
         this.replaceBatches("actorAlphaBatches",scene?.transparentBatches??[]);
         this.actorPickMeshes=preparePickMeshes(scene?.npcPickMeshes??[]);
@@ -817,16 +826,28 @@ export class NativeTerrainViewport {
             if(!(b.vertices instanceof Float32Array)||b.vertices.length%18)throw new Error("Invalid scene mesh batch");
             if(b.alpha!==undefined&&(!Number.isInteger(b.alpha)||b.alpha<1||b.alpha>254))throw new Error("Invalid scene face alpha");
         }
-        const previous=new Map((this[name]??[]).map(b=>[b.vertices,b]));
-        this[name]=batches.map(b=>{
-            const old=name.startsWith("dynamic")?previous.get(b.vertices):null;
-            if(old)previous.delete(b.vertices);
+        const previous=this[name]??[],used=new Set();
+        const dynamic=name.startsWith("dynamic"),actor=name.startsWith("actor");
+        const byVertices=dynamic?new Map(previous.map(b=>[b.vertices,b])):null;
+        this[name]=batches.map((b,i)=>{
+            const old=dynamic?byVertices.get(b.vertices):actor?previous[i]:null;
+            if(old)used.add(old);
             const buffer=old?.buffer??gl.createBuffer();
-            if(!old){gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,b.vertices,gl.STATIC_DRAW);}
-            return {buffer,count:b.vertices.length/6,texture:b.texture,level:b.level,alpha:b.alpha,vertices:b.vertices,
+            const bytes=b.vertices.byteLength;
+            let capacity=old?.capacity??old?.vertices.byteLength??0;
+            if(!old||old.vertices!==b.vertices){
+                gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+                if(old&&capacity>=bytes&&gl.bufferSubData){
+                    if(bytes)gl.bufferSubData(gl.ARRAY_BUFFER,0,b.vertices);
+                }else{
+                    gl.bufferData(gl.ARRAY_BUFFER,b.vertices,actor?gl.DYNAMIC_DRAW:gl.STATIC_DRAW);
+                    capacity=bytes;
+                }
+            }
+            return {buffer,capacity,count:b.vertices.length/6,texture:b.texture,level:b.level,alpha:b.alpha,vertices:b.vertices,
                 isWater:isKnownWaterTextureId(b.texture)};
         });
-        for(const b of previous.values())gl.deleteBuffer(b.buffer);
+        for(const old of previous)if(!used.has(old))gl.deleteBuffer(old.buffer);
     }
     drawArrays(mode,first,count){
         this.drawCallCount++;

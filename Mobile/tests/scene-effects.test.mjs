@@ -229,3 +229,56 @@ test("unchanged animated scenery bypasses redundant GPU uploads",()=>{
     update.call(fake,null);
     assert.equal(fake.dynamicBatches.length,0,"scene unload removes stale dynamic geometry");
 });
+
+test("dynamic actor VBOs are reused with subData when size allows, reallocated only on growth",()=>{
+    const calls=[],gl={
+        ARRAY_BUFFER:1,STATIC_DRAW:2,DYNAMIC_DRAW:3,
+        createBuffer(){const b={id:calls.filter(c=>c[0]==="create").length+1};calls.push(["create",b.id]);return b;},
+        bindBuffer(_kind,b){calls.push(["bind",b.id]);},
+        bufferData(_kind,v,usage){calls.push(["data",v.length,usage]);},
+        bufferSubData(_kind,offset,v){calls.push(["subdata",offset,v.length]);},
+        deleteBuffer(b){calls.push(["delete",b.id]);}
+    };
+    const view={gl,actorBatches:[],actorAlphaBatches:[]};
+    const update=NativeTerrainViewport.prototype.replaceBatches;
+    const one=vertices=>({level:0,texture:5,vertices});
+    const a=new Float32Array(18),b=new Float32Array(18).fill(1),
+        larger=new Float32Array(36).fill(3);
+    update.call(view,"actorBatches",[one(a)]);
+    assert.equal(calls.filter(c=>c[0]==="create").length,1);
+    update.call(view,"actorBatches",[one(b)]);
+    assert.equal(calls.filter(c=>c[0]==="create").length,1);
+    assert.equal(calls.filter(c=>c[0]==="subdata").length,1);
+    assert.strictEqual(view.actorBatches[0].buffer.id,1);
+    update.call(view,"actorBatches",[one(larger)]);
+    assert.equal(calls.filter(c=>c[0]==="data").length,2,"grow re-uploads into existing VBO");
+    update.call(view,"actorBatches",[one(a)]);
+    assert.equal(calls.filter(c=>c[0]==="subdata").length,2);
+    assert.equal(calls.filter(c=>c[0]==="delete").length,0);
+    update.call(view,"actorBatches",[]);
+    assert.deepEqual(calls.filter(c=>c[0]==="delete"),[["delete",1]],"unload releases buffer");
+
+    const dynamic=new Float32Array(18).fill(7);
+    update.call(view,"dynamicBatches",[one(dynamic)]);
+    const before=calls.length;
+    update.call(view,"dynamicBatches",[one(dynamic)]);
+    assert.equal(calls.length,before,"identical dynamic meshes never upload again");
+    update.call(view,"dynamicBatches",[]);
+    assert.equal(calls.filter(c=>c[0]==="delete").length,2);
+});
+
+test("color actor VBO keeps allocation between updates and does not upload on clear",()=>{
+    const calls=[],gl={
+        ARRAY_BUFFER:1,DYNAMIC_DRAW:2,
+        bindBuffer(){},bufferData(_t,data){calls.push(["data",data.length]);},
+        bufferSubData(_t,_offset,data){calls.push(["subdata",data.length]);}
+    };
+    const fake={gl,actorBuf:{},actorBatches:[],actorAlphaBatches:[],
+        replaceBatches(){},addTextures(){}};
+    const set=NativeTerrainViewport.prototype.setActors;
+    set.call(fake,{vertices:new Float32Array(18)});
+    set.call(fake,{vertices:new Float32Array(18).fill(1)});
+    set.call(fake,null);
+    assert.deepEqual(calls,[["data",18],["subdata",18]]);
+    assert.equal(fake.actorCount,0);
+});

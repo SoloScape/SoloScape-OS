@@ -60,8 +60,11 @@ the browser preview HTTPS RTT, not the game's ping.
 
 Current incremental CPU optimizations: touch actor updates at ~20 Hz;
 skip rebuilding distant NPC models, cache stable scene animation sequence
-lookups, and avoid re-uploading dynamic scenery with identical mesh and pick
-references. Preserve gameplay/server tick cadence. Device screenshots and
+lookups and bounded immutable classic animation poses, avoid re-uploading
+dynamic scenery with identical mesh and pick references, and reuse actor
+WebGL vertex buffers across same-size updates via `bufferSubData`.
+All animation-frame changes still produce distinct poses, and newly visible
+actors can trigger buffer growth. Preserve gameplay/server tick cadence. Device screenshots and
 on-device profiling remain necessary to validate actual FPS gains and
 animation smoothness; lower actor cadence can make movement less fluid.
 

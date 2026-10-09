@@ -184,7 +184,24 @@ export function availableAsset(promise){
 }
 
 export class NativePlayerAnimations {
-    constructor(cache){this.cache=cache;this.files=new Map();this.sequences=new Map();this.frames=new Map();this.skeletons=new Map();}
+    constructor(cache){this.cache=cache;this.files=new Map();this.sequences=new Map();this.frames=new Map();this.skeletons=new Map();
+        // Model/animation frame combinations are immutable and repeat across
+        // client ticks. A WeakMap avoids keeping unloaded base models alive.
+        this.posedFrames=new WeakMap();
+    }
+    cachedPose(model,frame){
+        let entries=this.posedFrames.get(model);
+        if(!entries){entries=new Map();this.posedFrames.set(model,entries);}
+        if(entries.has(frame)){
+            const posed=entries.get(frame);
+            entries.delete(frame);entries.set(frame,posed);
+            return posed;
+        }
+        const posed=applyAnimation(model,frame);
+        entries.set(frame,posed);
+        if(entries.size>8)entries.delete(entries.keys().next().value);
+        return posed;
+    }
     file(index,group,file){
         const key=`${index}:${group}`;
         if(!this.files.has(key)){
@@ -223,7 +240,7 @@ export class NativePlayerAnimations {
         const sequence=await this.sequence(id);
         if(sequence.skeletalId>=0)throw new Error(`Sequence ${id} requires skeletal animation`);
         if(!sequence.frameIds.length)throw new Error(`Sequence ${id} has no classic frames`);
-        return applyAnimation(model,await this.frame(sequence.frameIds[Math.max(0,Math.min(index|0,sequence.frameIds.length-1))]));
+        return this.cachedPose(model,await this.frame(sequence.frameIds[Math.max(0,Math.min(index|0,sequence.frameIds.length-1))]));
     }
     // World actors must keep moving while verified sequence/frame data streams.
     // Use bind pose for missing assets; never hold the shared actor drawing lock.
@@ -233,7 +250,7 @@ export class NativePlayerAnimations {
         if(sequence.skeletalId>=0)throw new Error(`Sequence ${id} requires skeletal animation`);
         if(!sequence.frameIds.length)throw new Error(`Sequence ${id} has no classic frames`);
         const frame=availableAsset(this.frame(sequence.frameIds[Math.max(0,Math.min(index|0,sequence.frameIds.length-1))]));
-        return frame?applyAnimation(model,frame):model;
+        return frame?this.cachedPose(model,frame):model;
     }
     poseAvailable(model,id,timeMs=0){
         if(!Number.isFinite(timeMs)||timeMs<0)throw new Error("Invalid animation time");
@@ -256,9 +273,9 @@ export class NativePlayerAnimations {
             // A newly selected shorter sequence may not contain the old frame.
             if(movementState.frame>=sequence.frameIds.length){movementState.frame=0;movementState.cycle=0;}
             movementState.tick=tick;
-            return applyAnimation(model,await this.frame(sequence.frameIds[movementState.frame]));
+            return this.cachedPose(model,await this.frame(sequence.frameIds[movementState.frame]));
         }
         const index=stepMovementFrames(sequence,{frame:0,cycle:0},Math.floor(timeMs/20));
-        return applyAnimation(model,await this.frame(sequence.frameIds[index]));
+        return this.cachedPose(model,await this.frame(sequence.frameIds[index]));
     }
 }
