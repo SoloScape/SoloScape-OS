@@ -11,6 +11,7 @@ import {loadStaticScenery} from "./scenery-models.mjs";
 import {combineRegionMeshes,GAME_CAMERA_ZOOM} from "./world-webgl.mjs";
 import {NativePlayerModels,buildPlayerMesh,playerGroundHeight} from "./player-models.mjs";
 import {SceneTextures} from "./texture-cache.mjs";
+import {mapBounded} from "./bounded-work.mjs";
 
 export function rebuildRegions(rebuild,player){
     const regions=[];
@@ -97,6 +98,10 @@ export class NativeGameplay {
         this.motion={target:{...player}};
         if(player.appearance!==previous?.appearance){
             this.renderError=null;this.drawBlockedUntil=0;this.modelReady=false;this.interfaces?.refreshPortraits?.();
+            // Begin verified player equipment/model downloads while the terrain
+            // and scenery load; drawActors() consumes the same cached promise.
+            if(player.appearance&&!player.appearance.hidden)
+                void this.models.composition(player.appearance).catch(()=>{});
         }
         if(this.destination&&player.x===this.destination.x&&player.y===this.destination.y)this.destination=null;
     }
@@ -104,7 +109,7 @@ export class NativeGameplay {
         const generation=++this.generation,current=()=>!this.closed&&generation===this.generation;
         this.clearNpcMenu();this.npcs.reset();this.npcMotions.clear();this.npcDrawn=0;
         this.loading=true;this.scenePrepared=false;this.ready=false;this.modelReady=false;this.renderError=null;this.sceneWarnings=[];this.regions=new Map();this.viewport.setActors(null);this.viewport.setScenery(null);
-        const started=this.now();
+        const started=this.now();this.loadStarted=started;this.loadCheckpoint=started;this.loadTimings=[];
         this.onLoading();
         this.onStatus("Loading server map data…");
         // The rebuild packet can arrive before the follow-up player position update.
@@ -132,12 +137,13 @@ export class NativeGameplay {
         };
         await loadRegion({x:origin.mapX,y:origin.mapY});
         if(!current())return;
+        this.recordStage("spawn terrain");
         const neighbours=targets.filter(({x,y})=>x!==origin.mapX||y!==origin.mapY);
-        // Small bounded parallel batches prevent excessive gateway connections.
-        for(let i=0;i<neighbours.length;i+=3){
-            await Promise.all(neighbours.slice(i,i+3).map(loadRegion));
-            if(!current())return;
-        }
+        // A bounded worker pool fills the map edges without the latency of
+        // waiting for each previous 3-region batch to finish.
+        await mapBounded(neighbours,6,loadRegion);
+        if(!current())return;
+        this.recordStage("neighbour terrain");
         const center=this.regions.get(`${origin.mapX},${origin.mapY}`);
         if(!center)throw new Error("Server map centre did not load");
         const regions=[...this.regions.values()];
@@ -168,6 +174,13 @@ export class NativeGameplay {
         if(!this.ready)this.onStatus("Map ready; waiting for the local player model…");
         else this.onStatus(`World scene ready in ${Math.round(this.now()-started)} ms`);
     }
+    recordStage(stage){
+        if(this.loadCheckpoint===undefined)return;
+        const at=this.now(),record={stage,ms:Math.max(0,Math.round(at-this.loadCheckpoint)),
+            totalMs:Math.max(0,Math.round(at-this.loadStarted))};
+        this.loadCheckpoint=at;this.loadTimings.push(record);
+        if(typeof window!=="undefined")console.info(`[native-perf] ${stage}: +${record.ms} ms (${record.totalMs} ms total)`);
+    }
     async loadRebuildScenery({regions,center,origin,unavailable,current}){
         const textureSource=new SceneTextures(this.cache,{isCurrent:current});
         // Load all required floor definitions together: repeated JS5 requests
@@ -181,6 +194,7 @@ export class NativeGameplay {
             }
         }));
         if(!current())return;
+        this.recordStage("floor definitions");
         this.onStatus("Loading verified floor textures…");
         const textureIds=new Set();
         for(const region of regions)
@@ -189,12 +203,11 @@ export class NativeGameplay {
         // Bound outstanding gateway streams instead of fetching each texture
         // serially (or spawning hundreds of simultaneous sockets).
         const ids=[...textureIds];
-        for(let i=0;i<ids.length;i+=4){
-            const values=await Promise.all(ids.slice(i,i+4).map(id=>textureSource.load(id)));
-            if(!current())return;
-            const missing=ids.slice(i,i+4).filter((_,index)=>!values[index]);
-            if(missing.length)throw new Error(`Missing required floor textures: ${missing.join(", ")}`);
-        }
+        const values=await mapBounded(ids,8,id=>textureSource.load(id));
+        if(!current())return;
+        const missing=ids.filter((_,index)=>!values[index]);
+        if(missing.length)throw new Error(`Missing required floor textures: ${missing.join(", ")}`);
+        this.recordStage("floor textures");
         for(const region of regions)region.textures=textureSource.textures;
         this.viewport.addTextures(textureSource.textures);
         this.viewport.setTerrain({...center,regions},{resetCamera:false});
@@ -204,14 +217,13 @@ export class NativeGameplay {
         try{const response=await fetch("/region-keys.json");if(response.ok)keys=await response.json();}catch{}
         // Process independent region scenery in small parallel batches. No
         // incomplete scene is published as a finished map.
-        const scenes=[];
-        for(let i=0;i<regions.length;i+=2){
-            await Promise.all(regions.slice(i,i+2).map(async region=>{
+        const modelStore=new Map();
+        const scenes=await mapBounded(regions,3,async region=>{
                 if(!current())return;
                 let scene;
                 try{
                     scene=await this.loadScenery(this.cache,region,{
-                        key:keys[region.mapX<<8|region.mapY],isCurrent:current,textureSource,
+                        key:keys[region.mapX<<8|region.mapY],isCurrent:current,textureSource,modelStore,
                     });
                 }catch(error){
                     if(!current())return;
@@ -230,18 +242,18 @@ export class NativeGameplay {
                     this.sceneWarnings.push({region:`${region.mapX},${region.mapY}`,count:scene.errors.length});
                 }
                 region.scenery=scene;region.textures=textureSource.textures;
-                scenes.push({scene,dx:(region.mapX-origin.mapX)*64,dy:(region.mapY-origin.mapY)*64});
-            }));
-            if(!current())return;
-        }
+                return {scene,dx:(region.mapX-origin.mapX)*64,dy:(region.mapY-origin.mapY)*64};
+            });
+        if(!current())return;
         this.viewport.addTextures(textureSource.textures);
         // Keep the GPU's scene textures even when a scenery region has no meshes.
         this.viewport.setScenery({
-            ...combineRegionMeshes(scenes),
+            ...combineRegionMeshes(scenes.filter(Boolean)),
             textures:textureSource.textures,
         });
         if(!current())return;
         this.unavailable=unavailable;
+        this.recordStage("scenery meshes");
     }
     showGroundMenu({tile,x,y,run=false}){
         this.clearNpcMenu();
@@ -368,6 +380,7 @@ export class NativeGameplay {
         if(this.closed||this.loading||!this.scenePrepared||this.ready||!this.modelReady||
             !this.sync?.local?.appearance)return false;
         this.ready=true;
+        this.recordStage("first playable character");
         this.onReady();
         return true;
     }
@@ -403,9 +416,19 @@ export class NativeGameplay {
                     if(!mesh.vertices.length&&!mesh.texturedBatches.some(batch=>batch.vertices.length))
                         throw new Error("Local player model produced no visible triangles");
                     add(mesh,region);
+                    if(this.closed||generation!==this.generation)return;
+                    // The player and complete floor/scenery are sufficient for
+                    // first-playable readiness. NPC models can stream in after
+                    // the first frame instead of delaying login for every NPC.
+                    if(this.scenePrepared&&!this.ready){
+                        this.viewport.setActors({vertices:mesh.vertices,
+                            texturedBatches:mesh.texturedBatches,
+                            textures:this.models.textures.textures,npcPickMeshes:[]});
+                    }
                     const ground=playerGroundHeight(region,player.x-region.mapX*64+.5,player.y-region.mapY*64+.5,player.plane);
                     this.viewport.target=[player.x-this.origin.mapX*64-31,-ground.height/128+1,player.y-this.origin.mapY*64-31];
                     this.modelReady=true;this.renderError=null;
+                    if(this.scenePrepared&&!this.ready)this.maybeReady();
                 }catch(error){
                     this.modelReady=false;this.renderError=error.message;
                     this.drawBlockedUntil=now+5000;
@@ -418,18 +441,24 @@ export class NativeGameplay {
                 m.target.plane===this.sync?.local?.plane&&this.regions.has(`${m.target.x>>>6},${m.target.y>>>6}`))
                 .sort((a,b)=>Math.hypot(a.target.x-(player?.x??0),a.target.y-(player?.y??0))-
                     Math.hypot(b.target.x-(player?.x??0),b.target.y-(player?.y??0))).slice(0,48);
-            for(const motion of nearby){
-                if(this.closed||generation!==this.generation)return;
+            const npcResults=await mapBounded(nearby,6,async motion=>{
+                if(this.closed||generation!==this.generation)return null;
                 const npc=interpolatePlayer(motion,now),region=this.regions.get(`${npc.x>>>6},${npc.y>>>6}`);
-                if(!region){missing++;continue;}
+                if(!region)return null;
                 try{
                     const mesh=await this.npcModels.mesh(npc,region,{
                         elapsed:Math.max(0,now-motion.animationStarted),
                         sequenceElapsed:Math.max(0,now-motion.sequenceStarted-(npc.sequence?.delay??0)*20)});
-                    add(mesh,region);drawn++;
-                    npcPickMeshes.push({index:motion.target.index,vertices:mesh.vertices});
-                    for(const batch of mesh.texturedBatches)npcPickMeshes.push({index:motion.target.index,vertices:batch.vertices});
-                }catch{missing++;}
+                    return {mesh,region,index:motion.target.index};
+                }catch{return null;}
+            });
+            if(this.closed||generation!==this.generation)return;
+            for(const result of npcResults){
+                if(!result){missing++;continue;}
+                const {mesh,region,index}=result;
+                add(mesh,region);drawn++;
+                npcPickMeshes.push({index,vertices:mesh.vertices});
+                for(const batch of mesh.texturedBatches)npcPickMeshes.push({index,vertices:batch.vertices});
             }
             if(this.closed||generation!==this.generation)return;
             const length=meshes.reduce((n,m)=>n+m.vertices.length,0),vertices=new Float32Array(length);

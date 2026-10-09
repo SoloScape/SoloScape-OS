@@ -10,7 +10,7 @@ test("concurrent requests for one verified JS5 group share a single gateway fetc
     cache.fetchRawGroup=async()=>{fetches++;await pending;return {container:data};};
     const first=cache.loadGroup(7,13),second=cache.loadGroup(7,13);
     assert.equal(fetches,0,"fetch awaits index/microtasks");
-    await Promise.resolve();await Promise.resolve();
+    await new Promise(resolve=>setImmediate(resolve));
     assert.equal(fetches,1);
     release();
     const [a,b]=await Promise.all([first,second]);

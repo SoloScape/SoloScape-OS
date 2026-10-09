@@ -24,8 +24,8 @@ test("equipment model fetches overlap but composition retains original OSRS slot
     const mesh=await models.composition(appearance);
     assert.deepEqual([...mesh.faceColors],[21000,21001,21002,21003]);
     assert.equal(mesh.faceCount,4);
-    assert.ok(maximum>=2,"independent slot requests should overlap");
-    assert.ok(maximum<=3,"parallelism must remain bounded");
+    assert.ok(maximum>=4,"four independent equipment slots should fetch together");
+    assert.ok(maximum<=6,"parallelism must remain bounded to six slots");
     assert.strictEqual(await models.composition(appearance),mesh,"composed appearance is cached");
 });
 

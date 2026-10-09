@@ -33,6 +33,7 @@ import { sampleTerrain, adjustFloorLight } from "./floor-lighting.mjs";
 import {computeTextureCoords} from "./texture-mapper.mjs";
 import {SceneTextures} from "./texture-cache.mjs";
 import {terrainPlane,sceneLevel} from "./scene-planes.mjs";
+import {mapBounded} from "./bounded-work.mjs";
 
 export function decodeModel(bytes){
     if(!(bytes instanceof Uint8Array)||bytes.length<18||bytes.length>2*1024*1024)throw new Error("Invalid model length");
@@ -188,7 +189,7 @@ export function buildObjectMesh(terrain,loc,d,part,models,{textures=new Map()}={
     return {vertices:new Float32Array(out),texturedBatches:new Map(Array.from(textured,([id,v])=>[id,new Float32Array(v)])),omittedFaces};
 }
 
-export async function loadStaticScenery(cache,terrain,{key,isCurrent=()=>true,onProgress=()=>{},textureSource=new SceneTextures(cache,{isCurrent})}={}){
+export async function loadStaticScenery(cache,terrain,{key,isCurrent=()=>true,onProgress=()=>{},textureSource=new SceneTextures(cache,{isCurrent}),modelStore=new Map()}={}){
     const source=await loadRegionLocations(cache,terrain,{key});
     if(!isCurrent())return null;
     const table=await verifiedCatalog(cache,2),ids=new Set(source.locations.map(l=>l.id));
@@ -202,6 +203,27 @@ export async function loadStaticScenery(cache,terrain,{key,isCurrent=()=>true,on
     const planeViews=Array.from({length:4},(_,p)=>terrainPlane(terrain,p));
     let rendered=0,skipped=0,omittedFaces=0,totalFloats=0;
     for(const loc of source.locations){if(loc.shape<=3){const d=decoded.get(loc.id);if(d)walls.set(`${loc.plane},${loc.x},${loc.y}`,d.decorDisplacement);}}
+    // Fetch independent, CRC-checked model archives concurrently rather than
+    // serially awaiting each new model in the placement/triangle loop. Share
+    // decoded promises across overlapping regions in this rebuild only.
+    const requiredModels=new Set();
+    for(const loc of source.locations){
+        if(!isCurrent())return null;
+        const d=decoded.get(loc.id);
+        if(!planeViews[loc.plane]||!d||d.transforms||d.seqId!==-1||!d.sizeX||!d.sizeY)continue;
+        const parts=placementParts(loc,d,walls.get(`${loc.plane},${loc.x},${loc.y}`));
+        for(const part of parts)for(const id of part.modelIds)requiredModels.add(id);
+        if(requiredModels.size>2048)throw new Error("Scene model count exceeds limit");
+    }
+    await mapBounded(requiredModels,6,async id=>{
+        if(!isCurrent())return;
+        if(!modelStore.has(id)){
+            modelStore.set(id,Promise.resolve().then(()=>cache.loadGroup(7,id)).then(decodeGroup).then(decodeModel));
+        }
+        try{models.set(id,await modelStore.get(id));}
+        catch(error){modelErrors.add(id);errors.push({model:id,reason:error.message});}
+    });
+    if(!isCurrent())return null;
     for(const loc of source.locations){
         if(!isCurrent())return null;
         const view=planeViews[loc.plane],level=sceneLevel(terrain,loc.plane,loc.x,loc.y);
@@ -216,17 +238,13 @@ export async function loadStaticScenery(cache,terrain,{key,isCurrent=()=>true,on
             const components=[];
             for(const id of part.modelIds){
                 if(!isCurrent())return null;
-                if(!models.has(id)&&!modelErrors.has(id)){
-                    if(models.size+modelErrors.size>=2048)throw new Error("Scene model count exceeds limit");
-                    try{models.set(id,decodeModel(await decodeGroup(await cache.loadGroup(7,id))));}
-                    catch(error){modelErrors.add(id);errors.push({model:id,reason:error.message});}
-                }
                 const model=models.get(id);if(model)components.push(model);
             }
             if(components.length!==part.modelIds.length)continue;
             const textureIds=new Set(),retextures=new Map(d.retextures);
             for(const model of components)for(const id of model.faceTextures??[])if(id>=0)textureIds.add(retextures.get(id)??id);
-            for(const id of textureIds){if(!isCurrent())return null;await textureSource.load(id);}
+            await mapBounded(textureIds,4,id=>isCurrent()?textureSource.load(id):null);
+            if(!isCurrent())return null;
             try{
                 const mesh=buildObjectMesh(view,loc,d,part,components,{textures:textureSource.textures});omittedFaces+=mesh.omittedFaces;
                 totalFloats+=mesh.vertices.length;

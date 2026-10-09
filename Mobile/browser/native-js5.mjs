@@ -1,6 +1,9 @@
 // Browser-native SoloScape OSRS revision-240 JS5 cache transport.
-// No Node Buffer, npm modules, account credentials, or disk writes.
+// No Node Buffer, npm modules or account credentials. Verified public
+// containers may be cached with the browser's origin-scoped CacheStorage.
 // This is a renderer-facing cache service, NOT a TSPS packet adapter.
+import {BrowserJs5Storage} from "./js5-persistent.mjs";
+
 const MAX_CONTAINER = 2 * 1024 * 1024;
 const MAX_DECODED = 16 * 1024 * 1024;
 const crcTable = Uint32Array.from({ length: 256 }, (_, n) => {
@@ -229,7 +232,7 @@ export function decodeReferenceCatalog(bytes) {
 
 export class NativeJs5Cache {
     constructor({ url = "ws://127.0.0.1:43595/", revision = 240,
-        WebSocketClass = globalThis.WebSocket, timeoutMs = 10000 } = {}) {
+        WebSocketClass = globalThis.WebSocket, timeoutMs = 10000,persistentStore=undefined } = {}) {
         this.url = validateNativeGatewayUrl(url);
         checkNumber(revision, 0x7fffffff, "Revision");
         if (revision === 0) throw new Error("Revision must be positive");
@@ -240,6 +243,7 @@ export class NativeJs5Cache {
         this.WebSocketClass = WebSocketClass;
         this.revision = revision;
         this.timeoutMs = timeoutMs;
+        this.persistent=persistentStore===undefined?new BrowserJs5Storage({revision}):persistentStore;
         this.master = null;
         this.indices = new Map();
         // Full validated index-255 reference table cache containers for TSPS's
@@ -293,6 +297,18 @@ export class NativeJs5Cache {
         });
     }
 
+    async persistedContainer(index,group,expectedCrc){
+        const bytes=await this.persistent?.get?.(index,group,expectedCrc);
+        if(!bytes)return null;
+        if(bytes instanceof Uint8Array&&bytes.length>=5&&bytes.length<=MAX_CONTAINER&&crc32(bytes)===expectedCrc)return bytes;
+        // Do not consume a stale, damaged or incorrect container. Re-fetch
+        // from the authenticated JS5 gateway and replace the cache entry.
+        void Promise.resolve(this.persistent?.remove?.(index,group,expectedCrc)).catch(()=>{});
+        return null;
+    }
+    persistContainer(index,group,crc,container){
+        void Promise.resolve(this.persistent?.put?.(index,group,crc,container)).catch(()=>{});
+    }
     async loadMaster() {
         if(this.master)return this.master;
         if(!this.masterPending){
@@ -312,13 +328,15 @@ export class NativeJs5Cache {
             const pending=(async()=>{
                 const master=await this.loadMaster(),entry=master[index];
                 if(!entry)throw new Error("Index is absent from the master index");
-                const ref=await this.fetchRawGroup(255,index);
+                const stored=await this.persistedContainer(255,index,entry.crc);
+                const ref=stored?{container:stored}:await this.fetchRawGroup(255,index);
                 if(crc32(ref.container)!==entry.crc)throw new Error("Reference-table CRC mismatch");
                 const data=await decodeCacheContainer(ref),catalog=decodeReferenceCatalog(data);
                 if(catalog.revision!==entry.revision)throw new Error("Reference-table revision mismatch");
                 const result={index,revision:catalog.revision,groups:catalog.groups};
                 this.referenceContainers.set(index,ref.container.slice());
                 this.indices.set(index,result);
+                if(!stored)this.persistContainer(255,index,entry.crc,ref.container);
                 return result;
             })().finally(()=>this.indicesPending.delete(index));
             this.indicesPending.set(index,pending);
@@ -335,9 +353,11 @@ export class NativeJs5Cache {
             const pending=(async()=>{
                 const catalog=await this.loadIndex(index),expectedCrc=catalog.groups.get(group);
                 if(expectedCrc===undefined)throw new Error("Group is absent from reference table");
-                const payload=await this.fetchRawGroup(index,group);
+                const stored=await this.persistedContainer(index,group,expectedCrc);
+                const payload=stored?{container:stored}:await this.fetchRawGroup(index,group);
                 if(crc32(payload.container)!==expectedCrc)throw new Error("Archive group CRC mismatch");
                 this.groups.set(key,payload.container);
+                if(!stored)this.persistContainer(index,group,expectedCrc,payload.container);
                 return payload.container;
             })().finally(()=>this.groupsPending.delete(key));
             this.groupsPending.set(key,pending);

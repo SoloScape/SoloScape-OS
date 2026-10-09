@@ -1255,3 +1255,48 @@ to the previous welcome/login state. The switcher is hidden while connecting.
 Verified rev-240 sl_back, sl_flags, sl_stars and sl_arrows sprite archives
 supply the art, with local fallbacks. Tests cover geometry, fonts, the world
 row's cache-sprite coordinates, sorting and interactive close actions.
+
+### Login-to-world performance (OpenOSRS revision-240 comparison)
+
+The native browser previously downloaded all required JS5 groups again after
+every page refresh, awaited independent model archives one-by-one for each
+scenery placement, and waited for every nearby NPC before considering the local
+player ready. This was a substantially longer critical path than OpenOSRS's
+persistent cache and background asset streaming.
+
+The renderer now overlaps **six** terrain-neighbour requests, up to **eight**
+required floor textures, **three** scene regions with **six** scene model
+requests each, and six independent player equipment slots. The cache verifies
+every group against its current revision-240 reference-table CRC. Decoded
+model promises are shared across scene regions, and overlapping texture/sprite
+downloads are coalesced. Scene order stays deterministic despite the
+overlapping fetches.
+
+When the local player has a verified and uploaded visible mesh and the
+terrain/scenery are ready, the loading overlay can fade; nearby NPC models
+continue loading in bounded parallel work instead of blocking the first frame.
+This does **not** bypass critical scene, texture, appearance or first-frame
+readiness checks.
+
+**Persistent browser JS5 cache:** the optional browser CacheStorage bucket
+`soloscape-js5-verified-v240` contains public revision-240 reference tables
+and encrypted/plain group containers, not login details, decrypted region keys
+or account data. It reuses archives across browser refreshes only if their
+bytes still match the current gateway's CRC; corrupted data is evicted and
+fetched again. Storage-denied/private browsing safely reverts to normal
+network fetching. Clearing the site's storage removes the warm cache.
+The master manifest is still fetched each browser session.
+
+**Measure a login:** open the browser developer console. After clicking
+Login, inspect `[native-login] Authenticated in ... ms`, the
+`[native-perf] spawn terrain / neighbour terrain / floor definitions /
+floor textures / scenery meshes / first playable character` lines, and
+`[native-login] First playable map in ... ms`. Measure once after
+clearing site Cache Storage (**cold**) and once after refreshing with a
+populated cache (**warm**). These timings are printed to the console, not
+rendered as debugging text over the RuneScape title. The approximate target is
+OpenOSRS's 5-second login; no live authenticated benchmark has confirmed that
+target, and cold JS5 WebSocket gateway response times remain a possible
+bottleneck. Performance tests ensure concurrency is limited, asset order,
+CRC protection, stale-scene cancellation, and first playable state while
+optional NPC models are still pending.

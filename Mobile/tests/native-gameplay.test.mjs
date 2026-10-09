@@ -219,9 +219,52 @@ test("the local character is uploaded and becomes ready even if its idle sequenc
             appearance:{hidden:false,animations:{idle:10}}};
         game.sync.players[1]=local;game.updateMotion(local);
         await game.drawActors();
-        assert.equal(uploaded,1,JSON.stringify({renderError:game.renderError,modelReady:game.modelReady,player:game.playerController.sample(1)}));
+        assert.ok(uploaded>=1,JSON.stringify({renderError:game.renderError,modelReady:game.modelReady,player:game.playerController.sample(1)}));
         assert.equal(ready,1);
         assert.equal(game.modelReady,true);
         assert.equal(game.animationRenderError,"unsupported skeletal sequence");
     }finally{game.close();}
+});
+
+test("authenticated player becomes playable before optional NPC cache requests complete",async()=>{
+    let ready=0,resolveNpc,uploaded=0;
+    const npcBarrier=new Promise(resolve=>{resolveNpc=resolve;});
+    const vp={...viewport(),setActors(scene){if(scene?.vertices.length)uploaded++;}};
+    const model={verticesCount:3,faceCount:1,
+        verticesX:Int32Array.of(0,128,0),verticesY:Int32Array.of(0,0,128),
+        verticesZ:Int32Array.of(0,0,0),indices1:Int32Array.of(0),
+        indices2:Int32Array.of(1),indices3:Int32Array.of(2),
+        faceColors:Uint16Array.of(2000)};
+    const models={composition:async()=>model,textures:{textures:new Map()},
+        animations:{sequence:async()=>({frameIds:[0],frameLengths:[1]}),
+            poseFrame:async()=>model}};
+    const game=new NativeGameplay({cache:{},viewport:vp,models,
+        session:{sendGame(){}},now:()=>1000,onReady:()=>{ready++;}});
+    try{
+        game.authenticated({playerIndex:1});
+        game.origin={mapX:50,mapY:50};game.regions.set("50,50",terrain(50,50));
+        game.scenePrepared=true;game.loading=false;
+        const local={x:3201,y:3201,plane:0,orientation:0,
+            appearance:{hidden:false,animations:{idle:10}}};
+        game.sync.players[1]=local;game.updateMotion(local);
+        game.npcMotions.set(5,{from:{x:3202,y:3202},
+            target:{x:3202,y:3202,plane:0,index:5,type:1},
+            started:1000,animationStarted:1000,sequenceStarted:1000});
+        let npcStarted=false;
+        game.npcModels.mesh=async()=>{
+            npcStarted=true;await npcBarrier;
+            return {vertices:new Float32Array(18),texturedBatches:[]};
+        };
+        const pending=game.drawActors();
+        await new Promise(resolve=>setImmediate(resolve));
+        assert.equal(npcStarted,true,"the NPC fetch has been scheduled");
+        assert.equal(ready,1,"the fully rendered player must unlock first-playable without the NPC");
+        assert.ok(uploaded>=1,"the local player was uploaded to WebGL before onReady");
+        assert.equal(game.drawing,true,"NPCs continue loading asynchronously");
+        resolveNpc();
+        await pending;
+        assert.equal(ready,1,"NPC completion must not fire onReady twice");
+        assert.equal(game.npcDrawn,1);
+        assert.ok(uploaded>=2,"NPC assets are added to the actor buffer later");
+    }finally{resolveNpc();game.close();}
 });

@@ -200,3 +200,16 @@ test("upper-plane locations use physical heights and bridge origin demotion with
     assert.deepEqual([...new Set(heights)].map(v=>v||0),[0,1,1.875,2.875,3.75,4.75,5.625,6.625]);
     assert.equal(requests.filter(r=>r==="7:1").length,1);
 });
+
+test("two concurrent map squares share one decoded verified model promise",async()=>{
+    const {cache,requests}=sceneCache(),terrain={...flatTerrain(),mapX:50,mapY:50,group:97};
+    const shared=new Map();
+    const [a,b]=await Promise.all([
+        loadStaticScenery(cache,terrain,{modelStore:shared}),
+        loadStaticScenery(cache,terrain,{modelStore:shared}),
+    ]);
+    assert.equal(shared.size,1,"decoded models are shared across scenery regions");
+    assert.equal((await shared.get(1)).verticesCount,3);
+    assert.equal(requests.filter(r=>r==="7:1").length,1);
+    assert.deepEqual([...a.vertices],[...b.vertices],"shared immutable models build identical meshes");
+});

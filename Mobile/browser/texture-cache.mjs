@@ -73,7 +73,7 @@ export function texturePixels(def,frame,brightness=.8){
 
 /** One scene's lazy, CRC-verified texture/sprite loads; failures never invent a material. */
 export class SceneTextures {
-    constructor(cache,{isCurrent=()=>true}={}){this.cache=cache;this.isCurrent=isCurrent;this.textures=new Map();this.errors=[];this.failed=new Set();this.sprites=new Map();}
+    constructor(cache,{isCurrent=()=>true}={}){this.cache=cache;this.isCurrent=isCurrent;this.textures=new Map();this.errors=[];this.failed=new Set();this.sprites=new Map();this.pendingTextures=new Map();this.pendingSprites=new Map();}
     async definitions(){
         if(!this.pending)this.pending=(async()=>{
             const table=await verifiedCatalog(this.cache,9),ids=table.fileIdsForGroup.get(0);
@@ -83,9 +83,16 @@ export class SceneTextures {
         })();
         return this.pending;
     }
-    async load(id){
-        if(this.textures.has(id))return this.textures.get(id);
-        if(this.failed.has(id)||!this.isCurrent())return null;
+    load(id){
+        if(this.textures.has(id))return Promise.resolve(this.textures.get(id));
+        if(this.failed.has(id)||!this.isCurrent())return Promise.resolve(null);
+        if(!this.pendingTextures.has(id)){
+            const pending=this.loadUncached(id).finally(()=>this.pendingTextures.delete(id));
+            this.pendingTextures.set(id,pending);
+        }
+        return this.pendingTextures.get(id);
+    }
+    async loadUncached(id){
         try{
             if(this.textures.size+this.failed.size>=512)throw new Error("Scene texture count exceeds limit");
             const bytes=(await this.definitions()).get(id);
@@ -93,11 +100,19 @@ export class SceneTextures {
             const def=decodeTextureDefinition(bytes,id,this.cache.revision),spriteId=def.spriteIds[0];
             let frame=this.sprites.get(spriteId);
             if(!frame){
-                const table=await verifiedCatalog(this.cache,8),ids=table.fileIdsForGroup.get(spriteId);
-                if(!ids?.includes(0))throw new Error("Texture sprite file is missing");
-                const files=unpackArchiveFiles(await decodeGroup(await this.cache.loadGroup(8,spriteId)),ids,new Set([0]));
-                frame=decodeIndexedSprites(files.get(0))[0];
-                this.sprites.set(spriteId,frame);
+                // Different texture definitions can share one sprite. Coalesce
+                // the verified JS5 read and PNG/indexed sprite decode as well.
+                if(!this.pendingSprites.has(spriteId)){
+                    const pending=(async()=>{
+                        const table=await verifiedCatalog(this.cache,8),ids=table.fileIdsForGroup.get(spriteId);
+                        if(!ids?.includes(0))throw new Error("Texture sprite file is missing");
+                        const files=unpackArchiveFiles(await decodeGroup(await this.cache.loadGroup(8,spriteId)),ids,new Set([0]));
+                        const decoded=decodeIndexedSprites(files.get(0))[0];
+                        this.sprites.set(spriteId,decoded);return decoded;
+                    })().finally(()=>this.pendingSprites.delete(spriteId));
+                    this.pendingSprites.set(spriteId,pending);
+                }
+                frame=await this.pendingSprites.get(spriteId);
             }
             if(!this.isCurrent())return null;
             const texture=texturePixels(def,frame);this.textures.set(id,texture);return texture;

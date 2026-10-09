@@ -10,6 +10,7 @@ import {terrainPlane} from "./scene-planes.mjs";
 import {sampleTerrain} from "./floor-lighting.mjs";
 import {SceneTextures} from "./texture-cache.mjs";
 import {NativePlayerAnimations} from "./player-animation.mjs";
+import {mapBounded} from "./bounded-work.mjs";
 
 export function recolourPlayerModel(source,definition,appearance,custom=null){
     const model={...source,verticesX:source.verticesX.slice(),verticesY:source.verticesY.slice(),verticesZ:source.verticesZ.slice(),
@@ -125,9 +126,7 @@ export class NativePlayerModels {
                 // concurrently but flatten in the original slot/model order:
                 // welding and recolours remain bit-for-bit deterministic.
                 const partSlots=[];
-                for(let start=0;start<12;start+=3){
-                    const slots=Array.from({length:Math.min(3,12-start)},(_,i)=>start+i);
-                    const loaded=await Promise.all(slots.map(async slot=>{
+                const loaded=await mapBounded(Array.from({length:12},(_,slot)=>slot),6,async slot=>{
                         const code=appearance.equipment[slot];if(code<256)return [];
                         const item=code>=2048;
                         const d=await this.config(item?10:3,code-(item?2048:256),item?ObjType:IdkType);
@@ -136,17 +135,13 @@ export class NativePlayerModels {
                         const ids=item?[primary,d[prefix+"Model1"],d[prefix+"Model2"]].filter(id=>id>=0&&id<0x7fffffff):d.modelIds??[];
                         const models=await Promise.all(ids.map(id=>this.model(id)));
                         return models.map(model=>recolourPlayerModel(model,d,appearance,appearance.customisations?.[slot]));
-                    }));
-                    partSlots.push(...loaded);
-                }
+                    });
+                partSlots.push(...loaded);
                 const model=mergePlayerModels(partSlots.flat());
                 const textures=[...new Set(model.faceTextures)].filter(id=>id>=0);
-                for(let i=0;i<textures.length;i+=4){
-                    const batch=textures.slice(i,i+4);
-                    const loaded=await Promise.all(batch.map(id=>this.textures.load(id)));
-                    for(let j=0;j<batch.length;j++)if(!loaded[j])
-                        throw new Error("Player model texture "+batch[j]+" unavailable");
-                }
+                const loadedTextures=await mapBounded(textures,6,id=>this.textures.load(id));
+                for(let i=0;i<textures.length;i++)if(!loadedTextures[i])
+                    throw new Error("Player model texture "+textures[i]+" unavailable");
                 return model;
             })();
             this.appearances.set(key,pending);pending.catch(()=>this.appearances.delete(key));
