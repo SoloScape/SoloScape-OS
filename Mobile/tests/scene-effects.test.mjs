@@ -3,7 +3,7 @@ import {test} from "node:test";
 import {NativeSceneAnimations,sceneSequenceFrame,sceneVisibilityCell,sceneEntryVisible} from "../browser/scene-animation.mjs";
 import {NativeSpotEffects,decodeSpotEffect} from "../browser/spot-effects.mjs";
 import {mergePlayerModels,buildPlayerMesh} from "../browser/player-models.mjs";
-import {combineRegionMeshes,sortTransparentFaces,sortTransparentBatches,transparentIndexRanges,mergeOpaqueTextureBatches,partitionOpaqueScene,partitionColorScene,spatialBoundsOverlap,sceneCameraMatrix,worldRenderPixels,worldShaderSources,NativeTerrainViewport} from "../browser/world-webgl.mjs";
+import {combineRegionMeshes,sortTransparentFaces,sortTransparentBatches,transparentIndexRanges,mergeOpaqueTextureBatches,partitionOpaqueScene,partitionColorScene,spatialBoundsOverlap,sceneCameraMatrix,worldRenderPixels,worldShaderSources,NativeTerrainViewport,pickNpcTriangles} from "../browser/world-webgl.mjs";
 import {decodeObjectDefinition} from "../browser/object-definitions.mjs";
 
 const model=()=>({verticesCount:3,faceCount:1,verticesX:Int32Array.of(0,128,0),verticesY:Int32Array.of(0,0,-128),
@@ -43,6 +43,86 @@ test("transparent faces sort across texture groups, reverse with camera and filt
     const matrix=yaw=>sceneCameraMatrix([0,0,0],yaw,.5,12,1);
     assert.deepEqual(sortTransparentFaces([near,roof,far],matrix(0),0).map(f=>f.batch),[far,near]);
     assert.deepEqual(sortTransparentFaces([near,far],matrix(Math.PI),0).map(f=>f.batch),[near,far]);
+});
+
+test("retained actor geometry crosses tiles and regions with translation only",()=>{
+    const m=model(),textures=new Map(),t=terrain();
+    for(let x=0;x<64;x++)for(let y=0;y<64;y++)t.heights[x*64+y]=x*23+y*11;
+    const player={x:3210.2,y:3210.4,plane:0,orientation:192};
+    const first=buildPlayerMesh(m,t,player,{textures,retained:true});
+    const snapshot=first.vertices.slice();
+    const other={...terrain(),mapX:51};
+    for(const [ground,x,y] of [[t,3210.8,3210.9],[t,3211.2,3211.4],[other,3267.2,3212.3]]){
+        const moved=buildPlayerMesh(m,ground,{...player,x,y},{textures,retained:true});
+        assert.strictEqual(moved.vertices,first.vertices,"movement never allocates new geometry");
+        const oracle=buildPlayerMesh(m,ground,{...player,x,y},{textures});
+        for(let at=0;at<moved.vertices.length;at++){
+            const position=at%6<3?moved.offset[at%6]:0;
+            assert.ok(Math.abs(moved.vertices[at]+position-oracle.vertices[at])<.00001);
+        }
+    }
+    assert.deepEqual(first.vertices,snapshot,"earlier geometry remains immutable");
+    assert.notStrictEqual(buildPlayerMesh({...m,verticesY:Int32Array.of(0,0,-256)},t,player,
+        {textures,retained:true}).vertices,first.vertices,"new poses still invalidate geometry");
+});
+
+test("retained actors skip geometry uploads on movement and keep keyed buffers across reorder",()=>{
+    const calls=[],gl={ARRAY_BUFFER:1,DYNAMIC_DRAW:2,STATIC_DRAW:3,
+        createBuffer:()=>({}),bindBuffer(){},bufferData:()=>calls.push("data"),
+        bufferSubData:()=>calls.push("subdata"),deleteBuffer:b=>calls.push(b)};
+    const view=Object.create(NativeTerrainViewport.prototype);view.gl=gl;view.addTextures=()=>{};
+    const vertices=Float32Array.of(-1,-1,0,2000,0,0,1,-1,0,2000,0,0,0,1,0,2000,0,0);
+    const mesh={vertices,texturedBatches:[],transparentBatches:[],offset:[0,0,0]};
+    const present=actors=>view.setActorInstances({actors});
+    present([{key:"npc:1",index:1,mesh},{key:"npc:2",index:2,mesh}]);
+    const buffers=view.actorColorBatches.map(b=>b.buffer);
+    calls.length=0;
+    present([{key:"npc:2",index:2,mesh:{...mesh,offset:[4,2,-3]}},
+        {key:"npc:1",index:1,mesh:{...mesh,offset:[2,0,0]}}]);
+    assert.equal(calls.length,0,"movement and reorder upload no vertices");
+    assert.deepEqual(view.actorColorBatches.map(b=>b.buffer),buffers.toReversed());
+    assert.deepEqual(view.actorPickMeshes[0].offset,[4,2,-3]);
+    const identity=Float32Array.of(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1);
+    assert.equal(pickNpcTriangles([view.actorPickMeshes[1]],identity,2,0,[1,-1,3,1])?.index,1,
+        "picking translates both cached bounds and triangles");
+    assert.equal(pickNpcTriangles([view.actorPickMeshes[1]],identity,0,0),null,
+        "old location is no longer clickable");
+    present([{key:"npc:1",index:1,mesh:{...mesh,vertices:vertices.slice()}}]);
+    assert.ok(calls.includes("subdata"),"changed pose uploads into retained capacity");
+    assert.ok(calls.includes(buffers[1]),"despawn releases only its own buffer");
+    view.setActors(null);
+    assert.equal(view.actorColorBatches.length,0);assert.equal(view.actorPickMeshes.length,0);
+});
+
+test("moving alpha actors invalidate ordering even while their vertex arrays stay unchanged",()=>{
+    const gl={createBuffer:()=>({}),bindVertexArray(){},bindBuffer(){},bufferData(){},bufferSubData(){}};
+    const view={gl};
+    const vertices=Float32Array.of(-1,0,0,2000,0,0,1,0,0,2000,0,0,0,1,0,2000,0,0);
+    const a={buffer:{},vertices,texture:-1,alpha:128,level:0,offset:[0,0,-6]},
+        b={...a,buffer:{},offset:[0,0,0]},matrix=sceneCameraMatrix([0,0,0],0,.5,12,1);
+    const prepare=NativeTerrainViewport.prototype.prepareTransparentDraws;
+    const initial=prepare.call(view,[a,b],matrix,0);
+    assert.strictEqual(initial[0].batch.buffer,b.buffer);
+    const moved=prepare.call(view,[{...a,offset:[0,0,6]},b],matrix,0);
+    assert.strictEqual(moved[0].batch.buffer,a.buffer);
+    assert.deepEqual(moved[0].batch.offset,[0,0,6]);
+});
+
+test("repeating scenery frames reuse posed meshes, world vertices and picking",async()=>{
+    let poses=0;
+    const runtime=new NativeSceneAnimations({sequence:async()=>seq,
+        poseFrame:async(m,_id,frame)=>{poses++;return {...m,verticesY:Int32Array.from(m.verticesY,y=>y-frame*128)};}});
+    runtime.reset([{terrain:terrain(),loc:{id:5,x:10,y:10,plane:0,rotation:0,shape:10},
+        definition:decodeObjectDefinition(Uint8Array.of(24,0,2,0),5),
+        part:{type:10,rotation:0,dx:0,dy:0},model:model(),level:0}],1000);
+    const origin={mapX:50,mapY:50},player={x:3210,y:3210},textures=new Map();
+    const frame=await runtime.scene(1060,origin,player,textures);
+    await runtime.scene(1140,origin,player,textures);
+    const repeat=await runtime.scene(1200,origin,player,textures);
+    assert.equal(poses,2,"looping back skips both animation posing and mesh construction");
+    assert.strictEqual(repeat.batches[0].vertices,frame.batches[0].vertices);
+    assert.strictEqual(repeat.pickMeshes[0],frame.pickMeshes[0]);
+    runtime.reset();assert.equal(runtime.entries.length,0,"scene unload drops frame caches");
 });
 
 test("animated scenery poses once per frame, retains world offsets and picking, and reports unsupported sequences",async()=>{
@@ -114,7 +194,7 @@ test("mobile GPU framebuffer is capped and desktop quality remains unchanged",()
     assert.ok(huge.width*huge.height<850000,
         "large or zoomed iPhone viewport must not explode GPU fill rate");
 });
-test("mobile alpha render batches hundreds of transparent faces in one draw per material batch",()=>{
+test("desktop and mobile alpha batch hundreds of faces without changing sorted order",()=>{
     const triangles=150,vertices=new Float32Array(triangles*18);
     for(let i=0;i<triangles;i++){
         for(let j=0;j<3;j++){
@@ -140,8 +220,8 @@ test("mobile alpha render batches hundreds of transparent faces in one draw per 
     assert.ok(Math.abs(calls[0].opacity-(1-128/255))<.00001);
     fake.touch=false;calls.length=0;
     NativeTerrainViewport.prototype.renderTransparent.call(fake,matrix,0,[0,0,64,64]);
-    assert.equal(calls.length,triangles,"desktop maintains exact per-face alpha sorting");
-    assert.ok(calls.every(c=>c.count===3));
+    assert.equal(calls.length,1,"desktop uses the same exact indexed face ordering");
+    assert.equal(calls[0].count,triangles*3);
 });
 
 test("alpha element ranges preserve face order across interleaved materials and camera reversal",()=>{
@@ -475,7 +555,7 @@ test("mobile WebGL reuses shader frame state and UV offsets across hundreds of m
         deleteVertexArray:record("deleteVertexArray"),
         useProgram:record("useProgram"),uniformMatrix4fv:record("uniformMatrix4fv"),
         uniform4fv:record("uniform4fv"),uniform1i:record("uniform1i"),
-        uniform1f:record("uniform1f"),uniform2f:record("uniform2f"),
+        uniform1f:record("uniform1f"),uniform2f:record("uniform2f"),uniform3fv:record("uniform3fv"),
         getAttribLocation:(_p,name)=>{record("getAttribLocation")(name);return name==="a_position"?0:1;},
         activeTexture:record("activeTexture"),bindTexture:record("bindTexture"),
         bindBuffer:record("bindBuffer"),enableVertexAttribArray:record("enableVertexAttribArray"),
@@ -729,6 +809,7 @@ test("touch render skips offscreen opaque chunks without skipping visible scene 
     view.sceneryBatches=[];view.actorBatches=[];view.dynamicBatches=[];
     view.textures=new Map([[5,{}]]);
     view.uniform=()=>0;view.prepareRenderProgram=()=>{};view.bindRenderTexture=()=>{};
+    view.uploadModelOffset=()=>{};
     view.bindGeometry=()=>{};view.frameTextureShift=()=>[0,0];
     view.renderTransparent=()=>{};view.renderMaterialBatch=b=>submitted.push(b.label);
     view.drawArrays=(_mode,_first,_count)=>submitted.push("texture draw");

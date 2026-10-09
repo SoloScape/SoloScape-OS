@@ -137,7 +137,7 @@ export class NativeNpcModels{
         }
         return this.compositions.get(id);
     }
-    async mesh(npc,terrain,{elapsed=0,sequenceElapsed=0,waitForAssets=true,renderTime=NaN}={}){
+    async mesh(npc,terrain,{elapsed=0,sequenceElapsed=0,waitForAssets=true,renderTime=NaN,retained=false}={}){
         const pending=this.composition(npc.type);
         const composition=waitForAssets?await pending:availableAsset(pending);
         if(!composition)return null;
@@ -150,14 +150,15 @@ export class NativeNpcModels{
             animations.poseAvailable(model,animId,time):await animations.pose(model,animId,time);}catch{pose=model;}}
         // Stationary NPCs often spend multiple 20Hz actor ticks in one
         // animation frame. Cache the immutable region-local mesh, not just its
-        // animated source model. Moving and newly animated NPCs still rebuild.
+        // animated source model. Retained movement shares pose geometry and
+        // updates its translation; pose/facing changes select new geometry.
         const key=npc.index;
         const cached=Number.isInteger(key)?this.renderedMeshes.get(key):null;
-        const coords=[npc.type,npc.x,npc.y,npc.plane,npc.orientation,actorTintKey(activeActorTint(npc.tint,renderTime-npc.tintStartedAt))];
+        const coords=[retained,npc.type,npc.x,npc.y,npc.plane,npc.orientation,actorTintKey(activeActorTint(npc.tint,renderTime-npc.tintStartedAt))];
         if(cached&&cached.terrain===terrain&&cached.pose===pose&&
             cached.coords.every((v,i)=>v===coords[i]))return cached.mesh;
         const mesh=buildPlayerMesh(pose,terrain,npc,{textures:this.playerModels.textures.textures,
-            size:definition.size,ambient:definition.ambient,contrast:82+definition.contrast,renderTime});
+            size:definition.size,ambient:definition.ambient,contrast:82+definition.contrast,renderTime,retained});
         if(Number.isInteger(key)){
             this.renderedMeshes.delete(key);
             if(this.renderedMeshes.size>=96)this.renderedMeshes.delete(this.renderedMeshes.keys().next().value);

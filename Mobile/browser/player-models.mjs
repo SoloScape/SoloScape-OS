@@ -11,7 +11,7 @@ import {sampleTerrain} from "./floor-lighting.mjs";
 import {SceneTextures} from "./texture-cache.mjs";
 import {NativePlayerAnimations} from "./player-animation.mjs";
 import {mapBounded} from "./bounded-work.mjs";
-import {activeActorTint,tintActorMesh} from "./actor-tint.mjs";
+import {activeActorTint,actorTintKey,tintActorMesh} from "./actor-tint.mjs";
 
 export function recolourPlayerModel(source,definition,appearance,custom=null){
     const model={...source,verticesX:source.verticesX.slice(),verticesY:source.verticesY.slice(),verticesZ:source.verticesZ.slice(),
@@ -57,8 +57,8 @@ export function playerGroundHeight(terrain,x,y,plane){
     return {height:(h[0]*(1-fx)+h[1]*fx)*(1-fy)+(h[2]*(1-fx)+h[3]*fx)*fy,view};
 }
 // Animated poses are immutable. Cache per-pose rotation arrays and the
-// expensive lit/triangulated mesh for each region tile; interpolate only the
-// vertex positions/terrain height while a moving NPC stays within that tile.
+// expensive lit/triangulated mesh. Retained actors translate that geometry on
+// the GPU; legacy consumers receive immutable region-local vertex snapshots.
 const actorRotations=new WeakMap(),actorTileMeshes=new WeakMap();
 export function rotatedActorModel(model,orientation=0){
     let entries=actorRotations.get(model);
@@ -75,7 +75,7 @@ export function rotatedActorModel(model,orientation=0){
     entries.set(orientation,rotated);
     return rotated;
 }
-export function buildPlayerMesh(model,terrain,player,{textures=new Map(),size=1,ambient=0,contrast=82,renderTime=NaN}={}){
+export function buildPlayerMesh(model,terrain,player,{textures=new Map(),size=1,ambient=0,contrast=82,renderTime=NaN,retained=false}={}){
     if(!Number.isInteger(size)||size<1||size>8)throw new Error("Invalid actor footprint");
     const x=player.x-terrain.mapX*64,y=player.y-terrain.mapY*64;
     const tx=Math.floor(x),ty=Math.floor(y),ground=playerGroundHeight(terrain,x+size/2,y+size/2,player.plane);
@@ -86,18 +86,32 @@ export function buildPlayerMesh(model,terrain,player,{textures=new Map(),size=1,
     const center=(h[0]+h[1]+h[2]+h[3])>>2;
     let entries=actorTileMeshes.get(rotated);
     if(!entries){entries=new Map();actorTileMeshes.set(rotated,entries);}
-    const key=[tx,ty,ground.view.plane,size,ambient,contrast].join(":");
+    // Actors never contour to terrain: lighting and UVs depend on the pose,
+    // facing and material only. Retained geometry can cross tiles/regions;
+    // its original anchor is removed by the per-instance translation.
+    const key=retained?["retained",size,ambient,contrast].join(":"):
+        [tx,ty,ground.view.plane,size,ambient,contrast].join(":");
     let cached=entries.get(key);
-    if(!cached||cached.terrain!==terrain||cached.textures!==textures){
+    if(!cached||(!retained&&cached.terrain!==terrain)||cached.textures!==textures){
         const mesh=buildObjectMesh(ground.view,{x:tx,y:ty,rotation:0},
             {sizeX:size,sizeY:size,isRotated:false,modelSizeX:128,modelSizeHeight:128,modelSizeY:128,offsetX:0,offsetHeight:0,offsetY:0,
                 ambient,contrast,recolors:[],retextures:[],contour:-1},
             {type:10,rotation:0,dx:0,dy:0},[rotated],{textures});
-        cached={terrain,textures,mesh};
+        cached={terrain:retained?null:terrain,textures,mesh,tx,ty,center};
         if(entries.size>=16)entries.delete(entries.keys().next().value);
         entries.set(key,cached);
     }
     const mesh=cached.mesh,dx=x-tx,dz=y-ty,dy=-(ground.height-center)/128;
+    if(retained){
+        const tint=activeActorTint(player.tinting??player.tint,renderTime-player.tintStartedAt),key=actorTintKey(tint);
+        if(!cached.retained||cached.tintKey!==key||cached.level!==player.plane){
+            cached.retained=tintActorMesh({vertices:mesh.vertices,
+                texturedBatches:Array.from(mesh.texturedBatches,([texture,vertices])=>({level:player.plane,texture,vertices})),
+                transparentBatches:mesh.transparentBatches.map(b=>({...b,level:player.plane})),textures},tint);
+            cached.tintKey=key;cached.level=player.plane;
+        }
+        return {...cached.retained,offset:[x-cached.tx,-(ground.height-cached.center)/128,y-cached.ty]};
+    }
     const shift=source=>{
         const vertices=source.slice();
         for(let i=0;i<vertices.length;i+=6){

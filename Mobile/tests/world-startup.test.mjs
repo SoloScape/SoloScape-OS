@@ -399,6 +399,32 @@ try{
     const actorAlphaBuffer=viewport.actorAlphaBatches[0].buffer;
     viewport.setActors(null);
     if(gl.isBuffer(actorAlphaBuffer)||viewport.actorPickMeshes.length)throw new Error("Despawn retained alpha GPU/pick data");
+    // Separate instance translations must match CPU-translated legacy pixels
+    // for both shaders and the globally sorted indexed alpha pass.
+    const readFrame=()=>{
+        const pixels=new Uint8Array(viewport.canvas.width*viewport.canvas.height*4);
+        gl.readPixels(0,0,viewport.canvas.width,viewport.canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+        return pixels;
+    };
+    for(const kind of ["color","texture","alpha"]){
+        const base=planeAt(.5,kind==="color"?2000:64),offset=[2,.25,-1];
+        const shifted=base.slice();
+        for(let at=0;at<shifted.length;at+=6)for(let axis=0;axis<3;axis++)shifted[at+axis]+=offset[axis];
+        const mesh={vertices:kind==="color"?base:new Float32Array(),offset,
+            texturedBatches:kind==="texture"?[{vertices:base,texture:7,level:0}]:[],
+            transparentBatches:kind==="alpha"?[{vertices:base,texture:7,level:0,alpha}]:[]};
+        viewport.setActors({vertices:kind==="color"?shifted:new Float32Array(),
+            texturedBatches:kind==="texture"?[{vertices:shifted,texture:7,level:0}]:[],
+            transparentBatches:kind==="alpha"?[{vertices:shifted,texture:7,level:0,alpha}]:[]});
+        viewport.render();const oracle=readFrame();
+        viewport.setActorInstances({actors:[{key:"npc:9",index:9,mesh}]});viewport.render();
+        const actual=readFrame();
+        if(oracle.some((v,i)=>Math.abs(v-actual[i])>1))throw new Error("Retained "+kind+" actor pixels differ from translated geometry");
+        if(viewport.actorPickMeshes[0]?.offset!==offset)throw new Error("Retained actor lost picking transform");
+        const actorBuffer=(kind==="color"?viewport.actorColorBatches:kind==="texture"?viewport.actorBatches:viewport.actorAlphaBatches)[0].buffer;
+        viewport.setActors(null);
+        if(gl.isBuffer(actorBuffer))throw new Error("Retained actor despawn leaked GPU buffer");
+    }
     const dynamic={batches:[{level:0,texture:-1,vertices:planeAt(1,2000)}],pickMeshes:[]};
     viewport.setDynamicScenery(dynamic);viewport.render();
     const dynamicBuffer=viewport.dynamicBatches[0].buffer;

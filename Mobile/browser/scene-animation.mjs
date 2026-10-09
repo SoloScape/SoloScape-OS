@@ -64,7 +64,7 @@ export class NativeSceneAnimations {
     constructor(animations){this.animations=animations;this.entries=[];this.errors=[];}
     reset(entries=[],started=0){
         this.revision=(this.revision??0)+1;
-        this.entries=entries.map(entry=>({...entry,started,lastFrame:null,mesh:null,scenePart:null,failed:false,batchKeys:new Map()}));
+        this.entries=entries.map(entry=>({...entry,started,lastFrame:null,mesh:null,scenePart:null,failed:false,batchKeys:new Map(),frameMeshes:new Map()}));
         this.errors=[];this.previousScene=null;this.previousView=null;
     }
     async scene(now,origin,player,textures){
@@ -82,7 +82,7 @@ export class NativeSceneAnimations {
                 if(resolved!==entry.resolved){
                     entry.resolved=resolved;
                     entry.children=(resolved??[]).map(child=>({...entry,...child,resolve:null,
-                        started:now,lastFrame:null,mesh:null,scenePart:null,sequence:null,batchKeys:new Map()}));
+                        started:now,lastFrame:null,mesh:null,scenePart:null,sequence:null,batchKeys:new Map(),frameMeshes:new Map()}));
                     this.previousScene=null;
                 }
             }catch(error){if(obsolete())return empty();entry.retryAt=now+1000;entry.resolved=undefined;entry.children=[];this.previousScene=null;
@@ -111,14 +111,22 @@ export class NativeSceneAnimations {
                     if(obsolete())return empty();
                     entry.sequenceResolver=this.animations.sequence;
                     entry.mesh=null;
+                    entry.frameMeshes.clear();
                 }
                 const sequence=entry.sequence;
                 const frame=definition.seqId<0?-1:sceneSequenceFrame(sequence,Math.max(0,now-entry.started),{location:true});
-                if(!entry.mesh||frame!==entry.lastFrame){
+                if(entry.frameTextures!==textures){entry.frameMeshes.clear();entry.frameTextures=textures;}
+                const cached=entry.frameMeshes.get(frame);
+                if(cached){
+                    entry.frameMeshes.delete(frame);entry.frameMeshes.set(frame,cached);
+                    entry.posed=cached.posed;entry.mesh=cached.mesh;entry.scenePart=cached.scenePart;
+                    entry.lastFrame=frame;entry.meshTextures=textures;
+                }
+                if(!cached&&(!entry.mesh||frame!==entry.lastFrame)){
                     entry.posed=frame<0?model:await this.animations.poseFrame(model,definition.seqId,frame);
                     if(obsolete())return empty();
                 }
-                if(!entry.mesh||frame!==entry.lastFrame||entry.meshTextures!==textures){
+                if(!cached&&(!entry.mesh||frame!==entry.lastFrame||entry.meshTextures!==textures)){
                     entry.mesh=buildObjectMesh(terrain,loc,definition,part,[entry.posed],{textures});entry.lastFrame=frame;
                     entry.meshTextures=textures;
                     entry.scenePart=null;
@@ -145,6 +153,10 @@ export class NativeSceneAnimations {
                 const pickMesh={id:loc.id,name:definition.name,actions:definition.actions??[],
                     x:loc.x+dx,y:loc.y+dy,plane:loc.plane,level,vertices};
                 entry.scenePart={dx,dy,batches:partBatches,transparentBatches:partAlpha,pickMesh};
+                entry.frameMeshes.set(frame,{posed:entry.posed,mesh:entry.mesh,scenePart:entry.scenePart});
+                // Bound retained geometry per placement; short repeating cycles
+                // reuse lighting, triangulation, world vertices and pick bounds.
+                if(entry.frameMeshes.size>4)entry.frameMeshes.delete(entry.frameMeshes.keys().next().value);
                 batches.push(...partBatches);transparentBatches.push(...partAlpha);pickMeshes.push(pickMesh);
             }catch(error){if(obsolete())return empty();entry.failed=true;this.errors.push({id:loc.id,sequence:definition.seqId,reason:error.message});}
         }

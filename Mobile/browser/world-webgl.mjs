@@ -50,6 +50,7 @@ export function rotateCamera(camera,dx,dy){
 export const CLASSIC_DRAW_DISTANCE=25;
 export const GPU_SETTINGS=Object.freeze({brightness:.8,smoothBanding:true,brightTextures:false,
     fogDepth:0,colorBlindMode:0,colorBlindIntensity:100,anisotropicFilteringLevel:1});
+const ZERO_MODEL_OFFSET=Object.freeze([0,0,0]);
 
 export function validateGpuSettings(settings={}){
     const result={...GPU_SETTINGS,...settings};
@@ -140,6 +141,7 @@ vec3 gpuHslRgb(float packed){
 in vec3 a_position;
 in vec3 a_color;
 uniform mat4 u_mvp;
+uniform vec3 u_modelOffset;
 uniform float u_brightness;
 uniform vec4 u_fogBounds;
 uniform float u_fogDepth;
@@ -154,7 +156,8 @@ out highp float v_fog;
 // perspective-correct RGB interpolation (default remove-colour-banding mode).
 ${hslConversion}
 void main(){
-    vec4 v=u_mvp*vec4(a_position,1.0);
+    vec3 position=a_position+u_modelOffset;
+    vec4 v=u_mvp*vec4(position,1.0);
     // Match TSPS's small view-depth priority layers without moving world
     // geometry or UVs. Projection near/far are .2/350: -projection[3][2].
     float layer=floor(fract(a_color.x)*32.0+0.5);
@@ -175,8 +178,8 @@ void main(){
     }`}
     v_w=v.w;
     v_uv=a_color.yz;
-    v_scenePosition=a_position.xz;
-    vec2 edge=min(a_position.xz-u_fogBounds.xy,u_fogBounds.zw-a_position.xz);
+    v_scenePosition=position.xz;
+    vec2 edge=min(position.xz-u_fogBounds.xy,u_fogBounds.zw-position.xz);
     float nearest=min(edge.x,edge.y),second=max(edge.x,edge.y);
     float d=nearest-1.5*max(0.0,(nearest+0.017578125)/(second+0.017578125));
     v_fog=(1.0-clamp(d/max(0.0001,u_fogDepth),0.0,1.0))*u_fogEnabled;
@@ -469,10 +472,12 @@ export function sortTransparentFaces(batches,matrix,drawLevel=3){
     const faces=[];
     for(const batch of batches){
         if(batch.level>drawLevel)continue;
+        const offset=batch.offset??ZERO_MODEL_OFFSET;
+        const translation=matrix[3]*offset[0]+matrix[7]*offset[1]+matrix[11]*offset[2];
         for(let at=0;at<batch.vertices.length;at+=18){
             let depth=0;
             for(let v=at;v<at+18;v+=6)depth+=matrix[3]*batch.vertices[v]+matrix[7]*batch.vertices[v+1]+matrix[11]*batch.vertices[v+2]+matrix[15];
-            faces.push({batch,first:at/6,depth:depth/3});
+            faces.push({batch,first:at/6,depth:depth/3+translation});
         }
     }
     return faces.sort((a,b)=>b.depth-a.depth);
@@ -520,10 +525,10 @@ export function sortTransparentBatches(batches,matrix,drawLevel=3){
 
 // Reuse one hit record per scan. Reject triangles outside the draw window before
 // projecting them; exact perspective-correct bounds/depth checks still decide hits.
-function pickTriangle(vertices,i,m,nx,ny,bounds,hit){
-    const ax=vertices[i],ay=vertices[i+1],az=vertices[i+2];
-    const bx=vertices[i+6],by=vertices[i+7],bz=vertices[i+8];
-    const cx=vertices[i+12],cy=vertices[i+13],cz=vertices[i+14];
+function pickTriangle(vertices,i,m,nx,ny,bounds,hit,offset=ZERO_MODEL_OFFSET){
+    const ax=vertices[i]+offset[0],ay=vertices[i+1]+offset[1],az=vertices[i+2]+offset[2];
+    const bx=vertices[i+6]+offset[0],by=vertices[i+7]+offset[1],bz=vertices[i+8]+offset[2];
+    const cx=vertices[i+12]+offset[0],cy=vertices[i+13]+offset[1],cz=vertices[i+14]+offset[2];
     if(bounds&&(Math.max(ax,bx,cx)<bounds[0]||Math.max(az,bz,cz)<bounds[1]||
         Math.min(ax,bx,cx)>=bounds[2]||Math.min(az,bz,cz)>=bounds[3]))return false;
     const aw=m[3]*ax+m[7]*ay+m[11]*az+m[15];
@@ -579,13 +584,13 @@ export function pickTerrainTile(vertices,matrix,nx,ny,bounds=null){
 // Pick real rendered triangles, including textured geometry, by nearest depth.
 export function pickNpcTriangles(meshes,matrix,nx,ny,bounds=null){
     const hit={depth:Infinity,x:0,z:0};let best=null;
-    for(const {index,vertices} of meshes){
+    for(const {index,vertices,offset=ZERO_MODEL_OFFSET} of meshes){
         if(!(vertices instanceof Float32Array)||vertices.length%18)continue;
         const extent=pickMeshBounds.get(vertices);
-        if(bounds&&extent&&(extent[2]<bounds[0]||extent[3]<bounds[1]||
-            extent[0]>=bounds[2]||extent[1]>=bounds[3]))continue;
+        if(bounds&&extent&&(extent[2]+offset[0]<bounds[0]||extent[3]+offset[2]<bounds[1]||
+            extent[0]+offset[0]>=bounds[2]||extent[1]+offset[2]>=bounds[3]))continue;
         for(let i=0;i<vertices.length;i+=18){
-            if(pickTriangle(vertices,i,matrix,nx,ny,bounds,hit))best=index;
+            if(pickTriangle(vertices,i,matrix,nx,ny,bounds,hit,offset))best=index;
         }
     }
     return best===null?null:{index:best,depth:hit.depth};
@@ -961,6 +966,7 @@ export class NativeTerrainViewport {
         this.appliedFilteringLevel=level;
     }
     setActors(scene){
+        this.replaceBatches("actorColorBatches",[]);
         const vertices=scene?.vertices??new Float32Array();
         if(!(vertices instanceof Float32Array)||vertices.length%18)throw new Error("Invalid player mesh");
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER,this.actorBuf);
@@ -977,6 +983,26 @@ export class NativeTerrainViewport {
         this.replaceBatches("actorBatches",scene?.texturedBatches??[]);
         this.replaceBatches("actorAlphaBatches",scene?.transparentBatches??[]);
         this.actorPickMeshes=preparePickMeshes(scene?.npcPickMeshes??[]);
+        this.addTextures(scene?.textures??new Map());
+    }
+    setActorInstances(scene){
+        const colored=[],textured=[],alpha=[],picks=[];
+        for(const {key,mesh,index} of scene?.actors??[]){
+            const offset=mesh.offset??ZERO_MODEL_OFFSET;
+            const append=(destination,batch,material)=>{
+                if(!batch.vertices.length)return;
+                destination.push({...batch,key:`${key}:${material}`,offset});
+                if(index!==undefined)picks.push({index,vertices:batch.vertices,offset});
+            };
+            append(colored,{vertices:mesh.vertices,texture:-1,level:0},"color");
+            for(let i=0;i<mesh.texturedBatches.length;i++)append(textured,mesh.texturedBatches[i],`texture:${i}`);
+            for(let i=0;i<(mesh.transparentBatches?.length??0);i++)append(alpha,mesh.transparentBatches[i],`alpha:${i}`);
+        }
+        this.actorCount=0;
+        this.replaceBatches("actorColorBatches",colored);
+        this.replaceBatches("actorBatches",textured);
+        this.replaceBatches("actorAlphaBatches",alpha);
+        this.actorPickMeshes=preparePickMeshes(picks);
         this.addTextures(scene?.textures??new Map());
     }
     setDynamicScenery(scene){
@@ -1053,6 +1079,7 @@ export class NativeTerrainViewport {
         gl.uniform1i(this.uniform(program,"u_wireframe"),0);
         gl.uniform1i(this.uniform(program,program===this.textureProgram?"u_texture":"u_palette"),0);
         gl.uniform1f(this.uniform(program,"u_opacity"),1);
+        this.uploadModelOffset(program);
         const settings=this.gpuSettings??GPU_SETTINGS;
         gl.uniform1f(this.uniform(program,"u_brightness"),settings.brightness);
         gl.uniform1f(this.uniform(program,"u_smoothBanding"),settings.smoothBanding?0:1);
@@ -1061,6 +1088,13 @@ export class NativeTerrainViewport {
         gl.uniform1f(this.uniform(program,"u_colorBlindIntensity"),settings.colorBlindIntensity);
         this.framePreparedPrograms?.add(program);
         this.frameOpacity?.set(program,1);
+    }
+    uploadModelOffset(program,offset=ZERO_MODEL_OFFSET){
+        if(!this.frameModelOffsets)this.frameModelOffsets=new Map();
+        const old=this.frameModelOffsets.get(program);
+        if(old&&old.every((v,i)=>v===offset[i]))return;
+        this.gl.uniform3fv(this.uniform(program,"u_modelOffset"),offset);
+        this.frameModelOffsets.set(program,offset);
     }
     // A texture moves as one unit. Calculate UV scrolling once per texture
     // per frame and reuse the exact same offset in every compatible batch.
@@ -1100,9 +1134,10 @@ export class NativeTerrainViewport {
         }
         const previous=this[name]??[],used=new Set();
         const dynamic=name.startsWith("dynamic"),actor=name.startsWith("actor");
-        const byIdentity=dynamic?new Map(previous.map(b=>[b.key??b.vertices,b])):null;
+        const byIdentity=dynamic||actor?new Map(previous.filter(b=>b.key!==undefined).map(b=>[b.key,b])):null;
+        if(dynamic)for(const b of previous)if(b.key===undefined)byIdentity.set(b.vertices,b);
         this[name]=batches.map((b,i)=>{
-            const candidate=dynamic?byIdentity.get(b.key??b.vertices):actor?previous[i]:null;
+            const candidate=dynamic?byIdentity.get(b.key??b.vertices):actor?(b.key!==undefined?byIdentity.get(b.key):previous[i]):null;
             const old=candidate&&!used.has(candidate)?candidate:null;
             if(old)used.add(old);
             const buffer=old?.buffer??gl.createBuffer();
@@ -1118,7 +1153,7 @@ export class NativeTerrainViewport {
                 }
             }
             return {key:b.key,buffer,capacity,count:b.vertices.length/6,texture:b.texture,level:b.level,
-                bounds:b.bounds,alpha:b.alpha,vertices:b.vertices,
+                bounds:b.bounds,alpha:b.alpha,vertices:b.vertices,offset:b.offset,
                 isWater:isKnownWaterTextureId(b.texture)};
         });
         for(const old of previous)if(!used.has(old)){
@@ -1177,6 +1212,7 @@ export class NativeTerrainViewport {
         const gl=this.gl,canvas=this.canvas;
         this.refreshTextureFiltering();
         this.drawCallCount=0;
+        this.frameModelOffsets?.clear();
         if(!this.framePreparedPrograms)this.framePreparedPrograms=new Set();
         else this.framePreparedPrograms.clear();
         if(!this.frameOpacity)this.frameOpacity=new Map();
@@ -1229,6 +1265,8 @@ export class NativeTerrainViewport {
             this.bindGeometry(this.actorBuf,this.program);
             this.drawArrays(gl.TRIANGLES,0,this.actorCount);
         }
+        for(const batch of this.actorColorBatches??[])
+            this.renderMaterialBatch(batch,0,batch.count,matrix,bounds,1);
         // Only the wireframe ground pass uses line mode; later opaque and
         // alpha materials must be shaded normally even when F10 toggles lines.
         this.useRenderProgram(this.program);
@@ -1237,17 +1275,21 @@ export class NativeTerrainViewport {
         // The VAO stores both vertex attributes, even when texture changes.
         // Iterate stable batch arrays without concatenating hundreds of
         // wrapper objects on every requestAnimationFrame.
-        for(const batchSet of [this.terrainBatches,this.sceneryBatches,this.actorBatches])
+        for(const batchSet of [this.terrainBatches,this.sceneryBatches])
         for(const batch of batchSet){
             const texture=this.textures.get(batch.texture);
             if(!texture||batch.level>drawLevel||!spatialBoundsOverlap(batch.bounds,bounds))continue;
             const offset=this.frameTextureShift(batch.texture);
+            this.uploadModelOffset(this.textureProgram);
             gl.uniform2f(this.uniform(this.textureProgram,"u_textureShift"),offset[0],offset[1]);
             this.uploadTextureBrightness(batch.texture);
             // Water IDs retain the pinned TSPS classification in batch metadata.
             // Foam, normals and water-material passes are not yet ported.
             this.bindRenderTexture(texture);this.bindGeometry(batch.buffer,this.textureProgram);
             this.drawArrays(gl.TRIANGLES,0,batch.count);
+        }
+        for(const batch of this.actorBatches??[]){
+            if(batch.level<=drawLevel)this.renderMaterialBatch(batch,0,batch.count,matrix,bounds,1);
         }
         for(const batch of this.dynamicBatches??[]){
             if(batch.level<=drawLevel)this.renderMaterialBatch(batch,0,batch.count,matrix,bounds,1);
@@ -1263,8 +1305,7 @@ export class NativeTerrainViewport {
     renderTransparent(matrix,drawLevel,bounds){
         const gl=this.gl;
         const batches=[...(this.sceneryAlphaBatches??[]),...(this.actorAlphaBatches??[]),...(this.dynamicAlphaBatches??[])];
-        const faces=this.touch?this.prepareTransparentDraws(batches,matrix,drawLevel):
-            sortTransparentFaces(batches,matrix,drawLevel);
+        const faces=this.prepareTransparentDraws(batches,matrix,drawLevel);
         if(!faces.length)return;
         gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);
         try{
@@ -1281,7 +1322,8 @@ export class NativeTerrainViewport {
             previous.direction.every((v,i)=>v===matrix[[3,7,11][i]])&&
             previous.sources.length===batches.length&&previous.sources.every((b,i)=>
                 b.buffer===batches[i].buffer&&b.vertices===batches[i].vertices&&
-                b.level===batches[i].level&&b.texture===batches[i].texture&&b.alpha===batches[i].alpha))
+                b.level===batches[i].level&&b.texture===batches[i].texture&&b.alpha===batches[i].alpha&&
+                (b.offset??ZERO_MODEL_OFFSET).every((v,j)=>v===(batches[i].offset??ZERO_MODEL_OFFSET)[j])))
             return previous.draws;
         const gl=this.gl,ordered=transparentIndexRanges(batches,matrix,drawLevel);
         if(!this.transparentIndexBuffers)this.transparentIndexBuffers=new Map();
@@ -1314,6 +1356,7 @@ export class NativeTerrainViewport {
         if(textured&&!texture)return;
         const p=textured?this.textureProgram:this.program;
         this.prepareRenderProgram(p,matrix,bounds);
+        this.uploadModelOffset(p,batch.offset);
         if(this.frameOpacity?.get(p)!==opacity){
             gl.uniform1f(this.uniform(p,"u_opacity"),opacity);
             this.frameOpacity?.set(p,opacity);
@@ -1350,7 +1393,7 @@ export class NativeTerrainViewport {
         for(const texture of this.textures.values())this.gl.deleteTexture(texture);
         for(const batch of [...this.terrainBatches,...this.sceneryBatches,...this.actorBatches,
             ...(this.terrainColorBatches??[]),...(this.sceneryColorBatches??[]),
-            ...(this.sceneryAlphaBatches??[]),...(this.actorAlphaBatches??[]),
+            ...(this.sceneryAlphaBatches??[]),...(this.actorAlphaBatches??[]),...(this.actorColorBatches??[]),
             ...(this.dynamicBatches??[]),...(this.dynamicAlphaBatches??[])])
             this.gl.deleteBuffer(batch.buffer);
     }

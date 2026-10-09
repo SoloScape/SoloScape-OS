@@ -45,11 +45,11 @@ export function interpolatePlayer(motion,now){
 // the WebGL RAF. Limit model rebuilding to 20Hz on touch devices; the world
 // continues rendering at the browser's native display cadence.
 export const actorMeshInterval=touch=>touch?50:20;
-// Cached NPC meshes are region-local. Translate copies into the 3x3 world
-// without mutating the cached source; otherwise every successive actor update
-// shifts the same vertices again and corrupts geometry/picking.
+// Retained meshes translate by offset; legacy meshes translate copies into
+// the world without mutating earlier GPU/pick snapshots.
 export function translateActorMesh(mesh,dx,dy){
     if(dx===0&&dy===0)return mesh;
+    if(mesh.offset)return {...mesh,offset:[mesh.offset[0]+dx,mesh.offset[1],mesh.offset[2]+dy]};
     const shift=source=>{
         const vertices=source.slice();
         for(let i=0;i<vertices.length;i+=6){vertices[i]+=dx;vertices[i+2]+=dy;}
@@ -486,15 +486,17 @@ export class NativeGameplay {
     }
     async drawActors(){
         if(this.closed||this.loading||this.drawing||!this.origin)return;
-        const generation=this.generation,now=this.now(),meshes=[],npcPickMeshes=[];
+        const generation=this.generation,now=this.now(),meshes=[],npcPickMeshes=[],actors=[];
+        const retained=typeof this.viewport.setActorInstances==="function";
         // Wall-clock stage timings include async waits; they are not CPU-only measurements.
         const stages={player:0,npc:0,upload:0,scenery:0};let stageStart=now,stagesComplete=false;
         const endStage=stage=>{const finished=this.now();stages[stage]=Math.max(0,finished-stageStart);stageStart=finished;};
         this.drawing=true;
-        const add=(mesh,region)=>{
+        const add=(mesh,region,key,index)=>{
             const dx=(region.mapX-this.origin.mapX)*64,dy=(region.mapY-this.origin.mapY)*64;
             const worldMesh=translateActorMesh(mesh,dx,dy);
             meshes.push(worldMesh);
+            if(retained)actors.push({key,mesh:worldMesh,index});
             return worldMesh;
         };
         try{
@@ -516,16 +518,17 @@ export class NativeGameplay {
                     if(id>=0)try{posed=this.models.animations.poseFrameAvailable?
                         this.models.animations.poseFrameAvailable(model,id,frame):await this.models.animations.poseFrame(model,id,frame);this.animationRenderError=null;}
                     catch(error){this.animationRenderError=error.message;}
-                    const mesh=buildPlayerMesh(posed,region,player,{textures:this.models.textures.textures,renderTime:now});
+                    const mesh=buildPlayerMesh(posed,region,player,{textures:this.models.textures.textures,renderTime:now,retained});
                     if(!mesh.vertices.length&&!mesh.texturedBatches.some(batch=>batch.vertices.length)&&!mesh.transparentBatches.some(batch=>batch.vertices.length))
                         throw new Error("Local player model produced no visible triangles");
-                    const worldMesh=add(mesh,region);
+                    const worldMesh=add(mesh,region,"player");
                     if(this.closed||generation!==this.generation)return;
                     // The player and complete floor/scenery are sufficient for
                     // first-playable readiness. NPC models can stream in after
                     // the first frame instead of delaying login for every NPC.
                     if(this.scenePrepared&&!this.ready){
-                        this.viewport.setActors({vertices:worldMesh.vertices,
+                        if(retained)this.viewport.setActorInstances({actors,textures:this.models.textures.textures});
+                        else this.viewport.setActors({vertices:worldMesh.vertices,
                             texturedBatches:worldMesh.texturedBatches,
                             transparentBatches:worldMesh.transparentBatches,
                             textures:this.models.textures.textures,npcPickMeshes:[]});
@@ -534,7 +537,8 @@ export class NativeGameplay {
                     this.viewport.target=[player.x-this.origin.mapX*64-31,-ground.height/128+1,player.y-this.origin.mapY*64-31];
                     this.modelReady=true;this.renderError=null;
                     if(this.scenePrepared&&!this.ready)this.maybeReady();
-                    for(const effect of await this.spotEffects.meshes("player",player,region,now))add(effect,region);
+                    let effectIndex=0;
+                    for(const effect of await this.spotEffects.meshes("player",player,region,now))add(effect,region,`player:effect:${effectIndex++}`);
                 }catch(error){
                     this.modelReady=false;this.renderError=error.message;
                     this.drawBlockedUntil=now+5000;
@@ -555,6 +559,7 @@ export class NativeGameplay {
                 try{
                     const mesh=await this.npcModels.mesh(npc,region,{
                         waitForAssets:false,
+                        retained,
                         renderTime:now,
                         elapsed:Math.max(0,now-motion.animationStarted),
                         sequenceElapsed:Math.max(0,now-motion.sequenceStarted-(npc.sequence?.delay??0)*20)});
@@ -568,17 +573,22 @@ export class NativeGameplay {
             for(const result of npcResults){
                 if(!result){missing++;continue;}
                 const {mesh,effects,region,index}=result;
-                const worldMesh=add(mesh,region);drawn++;
-                for(const effect of effects)add(effect,region);
+                const worldMesh=add(mesh,region,`npc:${index}`,index);drawn++;
+                for(let i=0;i<effects.length;i++)add(effects[i],region,`npc:${index}:effect:${i}`);
+                if(retained)continue;
                 npcPickMeshes.push({index,vertices:worldMesh.vertices});
                 for(const batch of worldMesh.texturedBatches)npcPickMeshes.push({index,vertices:batch.vertices});
                 for(const batch of worldMesh.transparentBatches??[])npcPickMeshes.push({index,vertices:batch.vertices});
             }
             if(this.closed||generation!==this.generation)return;
-            const length=meshes.reduce((n,m)=>n+m.vertices.length,0),vertices=new Float32Array(length);
-            let offset=0;for(const mesh of meshes){vertices.set(mesh.vertices,offset);offset+=mesh.vertices.length;}
+            let vertices;
+            if(!retained){
+                const length=meshes.reduce((n,m)=>n+m.vertices.length,0);vertices=new Float32Array(length);
+                let offset=0;for(const mesh of meshes){vertices.set(mesh.vertices,offset);offset+=mesh.vertices.length;}
+            }
             endStage("npc");
-            this.viewport.setActors({vertices,texturedBatches:meshes.flatMap(m=>m.texturedBatches),
+            if(retained)this.viewport.setActorInstances({actors,textures:this.models.textures.textures});
+            else this.viewport.setActors({vertices,texturedBatches:meshes.flatMap(m=>m.texturedBatches),
                 transparentBatches:meshes.flatMap(m=>m.transparentBatches??[]),
                 textures:this.models.textures.textures,npcPickMeshes});
             endStage("upload");

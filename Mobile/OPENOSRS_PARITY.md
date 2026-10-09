@@ -114,6 +114,32 @@ reach that path rather than only the older `browser/app.mjs`.
 
 ## Work remaining before whole-client parity
 
+### Retained actor geometry and desktop alpha submissions (9 October 2026)
+
+The active homepage now uses keyed actor/material VBOs instead of combining
+all actor vertices into a new array each update. Immutable pose/facing geometry
+is shared across movement, tile crossings and map regions; a shader translation
+applies fractional position, region offsets and interpolated terrain height.
+Movement alone skips vertex allocation and GPU uploads. Picking, alpha depth
+sorting and fog/clipping use the same translation. Pose/facing/tint changes still
+require the appropriate geometry; this is not GPU skinning or hardware instancing.
+Legacy mesh consumers retain the existing CPU-translated snapshot API.
+
+Desktop alpha now uses the same retained sorted element ranges as touch, removing
+the desktop-only one-draw-per-triangle path without changing global face order.
+Interleaved materials can still require separate draws. Animated placements keep
+up to four recurring frame meshes, including world/picking snapshots, and clear
+them on material/sequence replacement or scene unload. Longer cycles can still
+miss this bounded cache.
+
+Regression checks verify zero actor vertex uploads on movement/reordering,
+cross-tile/region geometry equivalence, translated picking and alpha ordering,
+recurring scenery reuse and resource cleanup. Chrome framebuffer comparisons
+cover opaque, textured and translucent translated actors. The complete suite
+passes 436 tests with Chrome and `--test-concurrency=1`; parallel execution hit
+shared generated-module/timer failures. No same-view live FPS benchmark was run;
+the earlier device samples below are historical rather than post-change results.
+
 ### Mobile performance comparison: original OpenOSRS GPU vs browser WebGL (9 October 2026)
 
 Source audited: the locally SHA-256-verified OpenOSRS 1.2.0 / revision-240

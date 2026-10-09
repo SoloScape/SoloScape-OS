@@ -190,6 +190,36 @@ test("NPC composition selects verified configuration group 9 and actual model ID
     assert.equal(first.model.faceColors[0],11);
 });
 
+test("authenticated retained NPC path presents instances without a combined vertex array",async()=>{
+    let presented,clock=1000;
+    const viewport={setActors(){},setActorInstances:scene=>{presented=scene;}};
+    const game=new NativeGameplay({cache:{},viewport,session:{sendGame(){}},now:()=>clock});
+    const ground={mapX:50,mapY:50,side:64,heights:new Int32Array(4096),renderFlags:new Uint8Array(4096)};
+    const model={verticesCount:3,faceCount:1,verticesX:Int32Array.of(0,128,0),verticesY:Int32Array.of(0,0,-128),
+        verticesZ:Int32Array.of(0,0,128),indices1:Int32Array.of(0),indices2:Int32Array.of(1),indices3:Int32Array.of(2),
+        faceColors:Uint16Array.of(2000),faceTextures:Int16Array.of(-1)};
+    game.npcModels=new NativeNpcModels({textures:{textures:new Map()},animations:{}});
+    const composition=Promise.resolve({model,definition:{size:1,idleSeqId:-1,walkSeqId:-1,
+        runSeqId:-1,ambient:0,contrast:0}});
+    game.npcModels.composition=()=>composition;
+    game.origin={mapX:50,mapY:50};game.rebuild={baseX:3200,baseY:3200};
+    game.sync={local:{x:3201,y:3201,plane:0}};game.regions.set("50,50",ground);
+    try{
+        game.handle({name:"SET_NPC_UPDATE_ORIGIN",payload:Uint8Array.of(1,1)});
+        game.handle({name:"NPC_INFO_SMALL_V6",payload:spawn({index:7,dx:1,dy:1})});
+        game.npcs.npcs.get(7).orientation=1536;game.updateNpcMotions();
+        await game.drawActors();await game.drawActors();
+        assert.equal(presented.vertices,undefined,"retained path never combines actor geometry");
+        assert.equal(presented.actors[0].index,7);
+        assert.equal(presented.actors[0].key,"npc:7");
+        const vertices=presented.actors[0].mesh.vertices;
+        game.handle({name:"NPC_INFO_SMALL_V6",payload:bits([1,8],[1,1],[1,2],[4,3],[0,1])});
+        clock+=320;await game.drawActors();
+        assert.strictEqual(presented.actors[0].mesh.vertices,vertices);
+        assert.equal(presented.actors[0].mesh.offset[0],.5,"walking updates only the transform");
+    }finally{game.close();}
+});
+
 test("stationary NPC mesh is reused only while pose, placement, orientation and region are unchanged",async()=>{
     const model={verticesCount:3,faceCount:1,verticesX:Int32Array.of(0,128,0),
         verticesY:Int32Array.of(0,0,128),verticesZ:Int32Array.of(0,0,0),
