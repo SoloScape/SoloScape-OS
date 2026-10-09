@@ -360,3 +360,20 @@ test("OpenOSRS-style conservative actor visibility avoids rebuilding distant NPC
     // Fallback for headless test viewports without real camera geometry.
     assert.equal(visibleNpcMotions(actors,{x:center,y:center,plane:0},null,origin).length,4);
 });
+
+test("actor profiler separates player, NPC preparation, VBO upload and scenery",async()=>{
+    let time=100,stages=null,total=null;
+    const vp={...viewport(),drawBounds:()=>{time+=4;return [-25,-25,25,25];},
+        setActors:()=>{time+=7;}};
+    const game=new NativeGameplay({cache:{},viewport:vp,session:{},now:()=>time,
+        onActorStages:result=>{stages=result;},
+        onActorUpdate:ms=>{total=ms;}});
+    try{
+        game.origin={mapX:50,mapY:50};game.loading=false;
+        game.playerController.sample=()=>{time+=3;return null;};
+        await game.drawActors();
+        assert.deepEqual(stages,{player:3,npc:4,upload:7,scenery:0});
+        assert.equal(total,14);
+        assert.equal(game.drawing,false);
+    }finally{game.close();}
+});

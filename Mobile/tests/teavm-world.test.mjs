@@ -111,6 +111,7 @@ test("world performance HUD gets real RAF and server packet hooks, and stops on 
         start:()=>calls.push("start"),
         frame:time=>calls.push(["frame",time]),
         tick:time=>calls.push(["tick",time]),
+        actorStages:stages=>calls.push(["stages",stages]),
         dispose:()=>calls.push("dispose"),
     };
     const root={};
@@ -124,11 +125,14 @@ test("world performance HUD gets real RAF and server packet hooks, and stops on 
     world.activate({connected:true},{playerIndex:99});
     world.viewport.onFrame(500);
     gameplayOptions.onServerTick(600);
-    assert.deepEqual(calls,["start",["frame",500],["tick",600]]);
+    gameplayOptions.onActorStages({player:3,npc:4,upload:7,scenery:2});
+    assert.deepEqual(calls,["start",["frame",500],["tick",600],
+        ["stages",{player:3,npc:4,upload:7,scenery:2}]]);
     world.dispose();
     assert.deepEqual(calls.slice(-2),["viewport disposed","dispose"]);
     gameplayOptions.onServerTick(700);
-    assert.equal(calls.length,5,"disposed world must not collect more ticks");
+    gameplayOptions.onActorStages({player:99});
+    assert.equal(calls.length,6,"disposed world must not collect more profiler events");
 });
 
 test("iPhone rotation and visualViewport resize update world layout and remove listeners on logout",()=>{

@@ -92,6 +92,7 @@ export class TeaVmWorldBridge {
                 cache:this.cache,viewport:this.viewport,session,interfaces:this.interfaces,
                 onServerTick:timestamp=>{if(current())this.performanceOverlay?.tick(timestamp);},
                 onActorUpdate:ms=>{if(current())this.performanceOverlay?.actor(ms);},
+                onActorStages:stages=>{if(current())this.performanceOverlay?.actorStages?.(stages);},
                 onStatus:message=>{
                     if(!current())return;
                     this.onStatus(message);

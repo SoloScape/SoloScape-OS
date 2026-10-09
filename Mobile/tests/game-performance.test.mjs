@@ -13,7 +13,7 @@ function fixture(){
         click(){this.listeners.get("click")?.();}
     });
     const root=make(),button=make(),details=make();
-    const fields=Object.fromEntries(["fps","ram","tick","ms","draw","net","gl","act"].map(name=>[name,make()]));
+    const fields=Object.fromEntries(["fps","ram","tick","ms","draw","net","gl","act","plr","npc","up","scn"].map(name=>[name,make()]));
     root.hidden=true;
     root.querySelector=selector=>selector==="#world-performance-toggle"?button:
         selector==="#world-performance-stats"?details:
@@ -201,5 +201,26 @@ test("actor update latency is measured separately from CPU WebGL submission",()=
     overlay.refresh();
     assert.equal(fields.act.textContent,"20.0");
     assert.equal(fields.draw.textContent,"10.0");
+    overlay.dispose();
+});
+
+test("actor breakdown independently reports rolling player/NPC/upload/scenery wall times",()=>{
+    const {root,fields}=fixture(),overlay=new GamePerformanceOverlay(root,{
+        now:()=>100,interval:()=>1,clear:()=>{}
+    });
+    overlay.start();
+    assert.equal(fields.plr.textContent,"—");
+    overlay.actorStages({player:14,npc:6,upload:2,scenery:10});
+    overlay.actorStages({player:6,npc:4,upload:4,scenery:2});
+    overlay.actorStages({player:-1,npc:Infinity,upload:NaN,scenery:-3});
+    overlay.refresh();
+    assert.equal(fields.plr.textContent,"10.0");
+    assert.equal(fields.npc.textContent,"5.0");
+    assert.equal(fields.up.textContent,"3.0");
+    assert.equal(fields.scn.textContent,"6.0");
+    overlay.dispose();
+    assert.ok(Object.values(overlay.stageTimes).every(values=>values.length===2));
+    overlay.start();overlay.refresh();
+    assert.equal(fields.plr.textContent,"—","reconnect discards last session profiler history");
     overlay.dispose();
 });

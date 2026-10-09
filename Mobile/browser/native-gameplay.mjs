@@ -68,10 +68,10 @@ export function visibleNpcMotions(motions,player,bounds,origin,max=48){
 export class NativeGameplay {
     constructor({cache,viewport,session,interfaces=null,onStatus=()=>{},onRegion=()=>{},onLoading=()=>{},onReady=()=>{},onNpcMenu=()=>{},onExamine=()=>{},run=()=>false,
         loadTerrain=loadNativeTerrain,loadMaterials=loadFloorMaterials,loadScenery=loadStaticScenery,
-        models=new NativePlayerModels(cache),now=()=>performance.now(),onServerTick=()=>{},onActorUpdate=()=>{}}={}){
+        models=new NativePlayerModels(cache),now=()=>performance.now(),onServerTick=()=>{},onActorUpdate=()=>{},onActorStages=()=>{}}={}){
         this.cache=cache;this.viewport=viewport;this.session=session;this.onStatus=onStatus;this.onRegion=onRegion;this.onNpcMenu=onNpcMenu;this.onExamine=onExamine;this.run=run;
         this.interfaces=interfaces;
-        this.onReady=onReady;this.onLoading=onLoading;this.onServerTick=onServerTick;this.onActorUpdate=onActorUpdate;
+        this.onReady=onReady;this.onLoading=onLoading;this.onServerTick=onServerTick;this.onActorUpdate=onActorUpdate;this.onActorStages=onActorStages;
         this.loadTerrain=loadTerrain;this.loadMaterials=loadMaterials;this.loadScenery=loadScenery;this.models=models;this.now=now;
         this.generation=0;this.closed=false;this.regions=new Map();this.packetCount=0;this.animationStarted=now();
         this.scenePrepared=false;this.ready=false;this.lastWindowSize=null;
@@ -445,6 +445,9 @@ export class NativeGameplay {
     async drawActors(){
         if(this.closed||this.loading||this.drawing||!this.origin)return;
         const generation=this.generation,now=this.now(),meshes=[],npcPickMeshes=[];
+        // Wall-clock stage timings include async waits; they are not CPU-only measurements.
+        const stages={player:0,npc:0,upload:0,scenery:0};let stageStart=now,stagesComplete=false;
+        const endStage=stage=>{const finished=this.now();stages[stage]=Math.max(0,finished-stageStart);stageStart=finished;};
         this.drawing=true;
         const add=(mesh,region)=>{
             const dx=(region.mapX-this.origin.mapX)*64,dy=(region.mapY-this.origin.mapY)*64;
@@ -497,6 +500,7 @@ export class NativeGameplay {
                         this.onStatus("Player appearance unavailable: "+error.message);
                 }
             }
+            endStage("player");
             let drawn=0,missing=0;
             const nearby=visibleNpcMotions(
                 [...this.npcMotions.values()].filter(m=>
@@ -530,14 +534,17 @@ export class NativeGameplay {
             if(this.closed||generation!==this.generation)return;
             const length=meshes.reduce((n,m)=>n+m.vertices.length,0),vertices=new Float32Array(length);
             let offset=0;for(const mesh of meshes){vertices.set(mesh.vertices,offset);offset+=mesh.vertices.length;}
+            endStage("npc");
             this.viewport.setActors({vertices,texturedBatches:meshes.flatMap(m=>m.texturedBatches),
                 transparentBatches:meshes.flatMap(m=>m.transparentBatches??[]),
                 textures:this.models.textures.textures,npcPickMeshes});
+            endStage("upload");
             if(player&&this.viewport.setDynamicScenery){
                 const dynamic=await this.sceneAnimations.scene(now,this.origin,player,this.viewport.textureMeta??new Map());
                 if(this.closed||generation!==this.generation)return;
                 this.viewport.setDynamicScenery(dynamic);
             }
+            endStage("scenery");stagesComplete=true;
             this.maybeReady();
             const renderWarnings=this.sceneAnimations.errors.length+this.spotEffects.errors.length;
             if(this.npcDrawn!==drawn||this.npcMissing!==missing||this.renderWarnings!==renderWarnings){
@@ -547,8 +554,10 @@ export class NativeGameplay {
             if(!this.closed&&generation===this.generation)this.onStatus("Actor drawing unavailable: "+error.message);
         }finally{
             this.drawing=false;
-            if(!this.closed&&generation===this.generation)
+            if(!this.closed&&generation===this.generation){
+                if(stagesComplete)this.onActorStages(stages);
                 this.onActorUpdate(Math.max(0,this.now()-now));
+            }
         }
     }
     report(){

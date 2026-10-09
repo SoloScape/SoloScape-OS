@@ -55,7 +55,11 @@
           <div><span>TICK</span><output data-perf="tick" title="PLAYER_INFO updates received / average interval">0</output></div>
           <div><span>MS</span><output data-perf="ms" title="Average time between WebGL animation frames, not network ping">—</output></div>
           <div><span>DRAW</span><output data-perf="draw" title="WebGL draw submission time on CPU, not GPU timing">—</output></div>
-          <div><span>ACT</span><output data-perf="act" title="Average wall-clock time spent rebuilding player/NPC and animation meshes, including async waits">—</output></div>
+          <div><span>ACT</span><output data-perf="act" title="Actor update elapsed time, including async waits; not CPU-only">—</output></div>
+          <div><span>PLR</span><output data-perf="plr" title="Player appearance, animation and effects (ms), including waits">—</output></div>
+          <div><span>NPC</span><output data-perf="npc" title="NPC model preparation and mesh assembly (ms), including waits">—</output></div>
+          <div><span>UP</span><output data-perf="up" title="WebGL actor buffer upload time (ms)">—</output></div>
+          <div><span>SCN</span><output data-perf="scn" title="Animated scenery and buffer updates (ms), including waits">—</output></div>
           <div><span>GL</span><output data-perf="gl" title="Number of WebGL draw calls per frame; excessive calls are costly on mobile">—</output></div>
           <div><span>NET</span><output data-perf="net" title="HTTPS round trip to the SoloScape LAN page server, not game server ping">—</output></div>
         </div>

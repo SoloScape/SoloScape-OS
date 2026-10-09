@@ -53,10 +53,15 @@ mobile transparency batching; 18.1 FPS / 11.5 ms DRAW, 582 GL calls and
 benchmarks. Frame interval minus DRAW is *not* exclusively actor time:
 browser compositing, GPU stalls, timer callbacks and asset work also contribute.
 
-New performance HUD ACT is the rolling wall-clock time for asynchronous
+Performance HUD ACT is the rolling wall-clock time for asynchronous
 `NativeGameplay.drawActors()` (including awaited work), **not** CPU-only
-or network latency. TICK is server packet arrival interval, and NET is
-the browser preview HTTPS RTT, not the game's ping.
+or network latency. Stage timings break ACT into **PLR** (player models/animation/effects),
+**NPC** (NPC work and final CPU mesh assembly), **UP** (actor WebGL upload), and
+**SCN** (animated scenery computation/upload). Each is a 12-sample rolling average
+of elapsed wall time and may include async waits. Stage timings can differ
+slightly from ACT because ACT also includes readiness/status bookkeeping.
+TICK is server packet arrival interval, and NET is the browser preview
+HTTPS RTT, not the game's ping.
 
 Current incremental CPU optimizations: touch actor updates at ~20 Hz;
 skip rebuilding distant NPC models, cache stable scene animation sequence
