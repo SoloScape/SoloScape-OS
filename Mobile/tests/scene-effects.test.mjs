@@ -3,7 +3,7 @@ import {test} from "node:test";
 import {NativeSceneAnimations,sceneSequenceFrame} from "../browser/scene-animation.mjs";
 import {NativeSpotEffects,decodeSpotEffect} from "../browser/spot-effects.mjs";
 import {mergePlayerModels,buildPlayerMesh} from "../browser/player-models.mjs";
-import {combineRegionMeshes,sortTransparentFaces,sortTransparentBatches,mergeOpaqueTextureBatches,sceneCameraMatrix,worldRenderPixels,NativeTerrainViewport} from "../browser/world-webgl.mjs";
+import {combineRegionMeshes,sortTransparentFaces,sortTransparentBatches,mergeOpaqueTextureBatches,sceneCameraMatrix,worldRenderPixels,worldShaderSources,NativeTerrainViewport} from "../browser/world-webgl.mjs";
 import {decodeObjectDefinition} from "../browser/object-definitions.mjs";
 
 const model=()=>({verticesCount:3,faceCount:1,verticesX:Int32Array.of(0,128,0),verticesY:Int32Array.of(0,0,-128),
@@ -376,4 +376,37 @@ test("mobile WebGL reuses shader frame state and UV offsets across hundreds of m
     view.renderMaterialBatch(batch,0,3,matrix,bounds,1);
     assert.equal(counts.get("useProgram"),3,
         "switch back to textured shader on subsequent batches");
+});
+
+test("the native renderer uses WebGL 2 GLSL ES 3.00 for both palette and textured shaders",()=>{
+    for(const textured of [false,true]){
+        const {vertex,fragment}=worldShaderSources(textured);
+        for(const source of [vertex,fragment]){
+            assert.ok(source.startsWith("#version 300 es\n"));
+            assert.doesNotMatch(source,/\bvarying\b|\battribute\b|\bgl_FragColor\b|\btexture2D\s*\(/,
+                "WebGL 1 shader syntax must not ship in the WebGL 2 renderer");
+        }
+        assert.match(vertex,/\bin vec3 a_position;/);
+        assert.match(vertex,/\bout highp vec2 v_uv;/);
+        assert.match(fragment,/\bin highp vec2 v_uv;/);
+        assert.match(fragment,/\bout vec4 fragColor;/);
+        assert.match(fragment,/\bfragColor=vec4\(mix\(/);
+        if(textured){
+            assert.match(fragment,/texture\(u_texture,v_uv\+u_textureShift\)/);
+            assert.match(fragment,/if\(texel\.a<0\.1\)discard/);
+        }else assert.match(fragment,/texture\(u_palette,\(cell\+0\.5\)\/256\.0\)/);
+    }
+});
+
+test("the renderer requests only WebGL 2, with no WebGL 1 fallback",()=>{
+    const before=globalThis.window,calls=[];
+    try{
+        globalThis.window={matchMedia:()=>({matches:true})};
+        const canvas={getContext:(type,options)=>{calls.push([type,options]);return null;}};
+        assert.throws(()=>new NativeTerrainViewport(canvas),/WebGL 2 is required/);
+        assert.deepEqual(calls,[["webgl2",{antialias:false,alpha:false}]]);
+    }finally{
+        if(before===undefined)delete globalThis.window;
+        else globalThis.window=before;
+    }
 });

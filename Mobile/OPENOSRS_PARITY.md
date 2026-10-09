@@ -44,7 +44,7 @@ This **does not** mean the WebGL renderer is running OpenOSRS Java code.
 | Scene visibility | Uses scene zones, roof/level filtering, and draw-distance settings | Uses a 25-tile render window and now culls NPC model work conservatively beyond visible bounds (10-tile padding) |
 | Transparency | Keeps separate opaque/alpha buffers and handles sorted alpha models | Batches alpha per material on touch; ordering within batches remains approximate |
 | Opaque rendering | Larger static zone uploads and retained buffers | Groups repeated static texture/level batches; further texture-array/atlas or spatial-zone work is pending |
-| Rendering model | Native desktop OpenGL and game engine | iOS Safari WebGL 1 plus JavaScript/async model work; timings not directly comparable |
+| Rendering model | Native desktop OpenGL and game engine | iOS Safari WebGL 2 (GLSL ES 3.00 only; no WebGL 1 fallback) plus JavaScript/async model work; timings not directly comparable |
 
 **Measured user's iPhone samples, different views**:
 2.7 FPS / 532.3 ms DRAW initially; 24.2 FPS / 10.4 ms DRAW with

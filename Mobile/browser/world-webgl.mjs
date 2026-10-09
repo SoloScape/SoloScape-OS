@@ -88,14 +88,15 @@ function shader(gl,type,source){
     }
     return sh;
 }
-function program(gl,textured=false){
-    const vs=shader(gl,gl.VERTEX_SHADER,`attribute vec3 a_position;
-attribute vec3 a_color;
+export function worldShaderSources(textured=false){
+    const vertex=`#version 300 es
+in vec3 a_position;
+in vec3 a_color;
 uniform mat4 u_mvp;
-varying highp float v_hsl_w;
-varying highp float v_w;
-varying highp vec2 v_uv;
-varying highp vec2 v_scenePosition;
+out highp float v_hsl_w;
+out highp float v_w;
+out highp vec2 v_uv;
+out highp vec2 v_scenePosition;
 void main(){
     vec4 v=u_mvp*vec4(a_position,1.0);
     // Match TSPS's small view-depth priority layers without moving world
@@ -107,8 +108,9 @@ void main(){
     v_w=v.w;
     v_uv=a_color.yz;
     v_scenePosition=a_position.xz;
-}`);
-    const fs=shader(gl,gl.FRAGMENT_SHADER,`precision highp float;
+}`;
+    const fragment=`#version 300 es
+precision highp float;
 uniform sampler2D u_palette;
 uniform bool u_wireframe;
 uniform sampler2D u_texture;
@@ -120,28 +122,35 @@ uniform float u_fogEnd;
 uniform vec3 u_fogColor;
 uniform float u_fogEnabled;
 uniform float u_opacity;
-varying highp float v_hsl_w;
-varying highp float v_w;
-varying highp vec2 v_uv;
-varying highp vec2 v_scenePosition;
+in highp float v_hsl_w;
+in highp float v_w;
+in highp vec2 v_uv;
+in highp vec2 v_scenePosition;
+out vec4 fragColor;
 void main(){
     if(v_scenePosition.x<u_drawBounds.x||v_scenePosition.y<u_drawBounds.y||
         v_scenePosition.x>=u_drawBounds.z||v_scenePosition.y>=u_drawBounds.w)discard;
-    ${textured?`vec4 texel=texture2D(u_texture,v_uv+u_textureShift);
+    ${textured?`vec4 texel=texture(u_texture,v_uv+u_textureShift);
     if(texel.a<0.1)discard;
     float light=clamp(v_hsl_w/v_w,2.0,126.0)/127.0;
-    gl_FragColor=vec4(texel.rgb*light,1.0);`:""}
-    if(u_wireframe){gl_FragColor=vec4(1.0);return;}
+    fragColor=vec4(texel.rgb*light,1.0);`:""}
+    if(u_wireframe){fragColor=vec4(1.0);return;}
     float hsl=clamp(floor(v_hsl_w/v_w+0.01),0.0,65535.0);
     vec2 cell=vec2(mod(hsl,256.0),floor(hsl/256.0));
-    if(!${textured?"true":"false"})gl_FragColor=texture2D(u_palette,(cell+0.5)/256.0);
+    if(!${textured?"true":"false"})fragColor=texture(u_palette,(cell+0.5)/256.0);
     vec2 delta=abs(v_scenePosition-u_fogPlayer);
     float d=max(delta.x,delta.y)-u_fogEnd;
     float ramp=max(0.0001,u_fogEnd-u_fogDepth);
     float fog=clamp(d/ramp+1.0,0.0,1.0);
     fog=fog*fog*(3.0-2.0*fog)*u_fogEnabled;
-    gl_FragColor=vec4(mix(gl_FragColor.rgb,u_fogColor,fog),gl_FragColor.a*u_opacity);
-}`);
+    fragColor=vec4(mix(fragColor.rgb,u_fogColor,fog),fragColor.a*u_opacity);
+}`;
+    return {vertex,fragment};
+}
+function program(gl,textured=false){
+    const {vertex,fragment}=worldShaderSources(textured);
+    const vs=shader(gl,gl.VERTEX_SHADER,vertex);
+    const fs=shader(gl,gl.FRAGMENT_SHADER,fragment);
     const p=gl.createProgram();
     gl.attachShader(p,vs);gl.attachShader(p,fs);gl.linkProgram(p);
     gl.deleteShader(vs);gl.deleteShader(fs);
@@ -550,9 +559,9 @@ export class NativeTerrainViewport {
     constructor(canvas,{onDestination=()=>{}}={}) {
         this.canvas=canvas;
         this.touch=Boolean(window.matchMedia?.("(pointer: coarse)")?.matches);
-        this.gl=canvas.getContext("webgl",{antialias:!this.touch,alpha:false}) ||
-            canvas.getContext("experimental-webgl");
-        if(!this.gl)throw new Error("WebGL not supported on this device");
+        // SoloScape requires WebGL 2; do not silently fall back to WebGL 1.
+        this.gl=canvas.getContext("webgl2",{antialias:!this.touch,alpha:false});
+        if(!this.gl)throw new Error("WebGL 2 is required to play SoloScape on this device");
         const gl=this.gl;
         this.program=program(gl);
         this.textureProgram=program(gl,true);this.textures=new Map();this.textureMeta=new Map();this.textureClock=performance.now();this.terrainBatches=[];this.sceneryBatches=[];this.visibleLevel=0;

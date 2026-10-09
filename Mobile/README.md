@@ -11,6 +11,11 @@ engine, widget-script and visual parity remain incomplete.
 
 ## The actual native WebGL client (current active development)
 
+**WebGL 2 is required.** The active browser scene requests only `webgl2`,
+uses GLSL ES 3.00 vertex/fragment shaders, and intentionally provides no
+WebGL 1 or `experimental-webgl` fallback. A browser without WebGL 2 reports
+a renderer startup error; no degraded WebGL 1 mode is attempted.
+
 **Starting 8 October 2026**, `npm run dev` (also `npm run dev:native`)
 starts **SoloScape's own WebGL world client** at
 `http://localhost:3001/`, not the collection of JS5 diagnostic buttons.
@@ -1152,7 +1157,7 @@ upper floors/roofs outdoors and hides them when the reference roof rules
 require it. The native orbit-camera pitch is *mapped* to RS pitch units rather
 than using a full RuneLite camera, so some camera-angle behavior may differ.
 
-The native WebGL1 fragment shaders now fade scene colours and textures into
+The native WebGL 2 (GLSL ES 3.00) fragment shaders now fade scene colours and textures into
 the restored black sky using the pinned square/zero-rounded-corner OSRS
 fog-distance equation and smoothstep. The fog range comes from the generated
 TSPS `RenderDistancePolicy` and default HD auto-fog factor (0.85), with a

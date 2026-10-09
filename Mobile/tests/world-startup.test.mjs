@@ -225,6 +225,7 @@ try{
     const {NativeTerrainViewport}=await import("/world-webgl.mjs");
     const {HSL_PALETTE}=await import("/floor-lighting.mjs");
     const viewport=new NativeTerrainViewport(document.getElementById("scene"));
+    if(!(viewport.gl instanceof WebGL2RenderingContext))throw new Error("WebGL 2 context required");
     const terrain={side:64,heights:new Int32Array(4096),
         underlays:new Uint16Array(4096).fill(1),overlays:new Int16Array(4096),
         floorMaterials:{underlays:new Map([[0,{rgb:0xff0000,textureId:-1}]]),overlays:new Map()}};
