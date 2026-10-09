@@ -1,29 +1,44 @@
-:root{color-scheme:dark;font-family:Arial,Helvetica,sans-serif;background:#000;color:#eee}
+/* Revision-240 OpenOSRS title is rendered in a fixed 765 x 503
+   framebuffer, never reconstructed with CSS layout or generic buttons. */
+:root{color-scheme:dark;background:#000;color:#eee;font-family:Arial,Helvetica,sans-serif}
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
-.app{width:100%;height:100dvh;display:flex;align-items:center;justify-content:center;background:#000}
-.screen{position:relative;flex:none;aspect-ratio:765/503;width:min(100vw,calc(100dvh * 765 / 503));height:auto;max-height:100dvh;background:#000;overflow:hidden}
-#osrs-title{display:block;width:100%;height:100%;image-rendering:auto}
-#osrs-title[hidden]{display:none}
-.overlay{position:absolute;inset:0;background:#060607ee;display:grid;place-content:center;justify-items:center;text-align:center;gap:12px;padding:16px;font:14px Arial,sans-serif}
-.overlay[hidden]{display:none}
-.overlay p{margin:0}
-.spinner{width:25px;height:25px;border:3px solid #544b36;border-top-color:#d8c287;border-radius:50%;animation:spin .9s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.controls{position:absolute;inset:0;pointer-events:none}
-.controls[hidden]{display:none}
-.hotspot{position:absolute;appearance:none;border:1px solid transparent;background:transparent;color:transparent;pointer-events:auto;cursor:pointer;text-decoration:none;text-align:center;border-radius:3px;font-size:0}
-.hotspot:focus-visible{outline:2px solid #ead38e;background:#d4b8702b}
-.hotspot:hover{background:#ffde9022}
-.welcome-new{left:31.5%;top:53%;width:15.8%;height:9%}
-.welcome-existing{left:52.4%;top:53%;width:15.8%;height:9%}
-.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
-.login-field{position:absolute;left:44%;width:25%;height:5.5%;min-width:0;padding:0 6px;background:#100d0bd9;color:#fff;border:1px solid #856e50;border-radius:2px;font:clamp(10px,1.5vw,13px) Arial,sans-serif;pointer-events:auto}
-.login-field:focus-visible{outline:2px solid #fce39f}
-.username-field{top:45%}.password-field{top:50.5%}.otp-field{top:56%}
-.login-submit{left:31.5%;top:64%;width:16%;height:9%}
-.login-back{left:52.4%;top:64%;width:16%;height:9%}
-.session-disconnect{left:40%;top:60%;width:20%;height:10%}
+.app{width:100%;height:100dvh;display:flex;align-items:center;justify-content:center}
+.screen{position:relative;flex:none;width:min(765px,100vw,calc(100dvh * 765 / 503));aspect-ratio:765/503;max-height:100dvh;background:#000;overflow:hidden}
+.in-game .screen{width:min(100vw,calc(100dvh * 765 / 503))}
+#title-screen{position:absolute;inset:0;background:#000}
+#title-screen[hidden]{display:none}
+#osrs-title{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
+#title-controls{position:absolute;left:0;top:0;width:765px;height:503px;transform-origin:0 0;pointer-events:none}
+.title-button{position:absolute;width:147px;height:41px;padding:0;border:0;background:transparent;color:transparent;cursor:pointer;pointer-events:auto;font-size:0}
+.title-button:focus-visible,#title-mute:focus-visible{outline:2px solid #ffff00;outline-offset:2px}
+.title-button:disabled{cursor:default}
+.welcome-new{left:228.5px;top:270.5px}
+.welcome-login{left:388.5px;top:270.5px}
+.form-login{left:228.5px;top:300.5px}
+.form-cancel{left:388.5px;top:300.5px}
+.title-option,.title-help{position:absolute;padding:0;border:0;background:transparent;color:transparent;font-size:0;cursor:pointer;pointer-events:auto}
+#title-remember{left:266px;top:274px;width:138px;height:22px}
+#title-hide-username{left:406px;top:274px;width:128px;height:22px}
+#title-login-help{left:284px;top:340px;width:196px;height:24px}
+.title-world-switch,.title-world-choice,.title-world-back,.title-world-sort{position:absolute;padding:0;border:0;background:transparent;color:transparent;font-size:0;pointer-events:auto;cursor:pointer}
+.title-world-switch{left:5px;top:463px;width:100px;height:35px}
+.title-world-choice{left:338px;top:253px;width:88px;height:19px}
+.title-world-back{left:708px;top:4px;width:50px;height:16px}
+.title-world-sort{top:3px;width:98px;height:19px}
+#title-world-sort-0{left:280px}
+#title-world-sort-1{left:390px}
+#title-world-sort-2{left:500px}
+#title-world-sort-3{left:610px}
+.title-world-switch:focus-visible,.title-world-choice:focus-visible,.title-world-back:focus-visible,.title-world-sort:focus-visible,.title-option:focus-visible,.title-help:focus-visible{outline:2px solid #ffff00;outline-offset:1px}
+#login-form{position:absolute;inset:0;pointer-events:none}
+#login-form[hidden]{display:none}
+#login-form input{position:absolute;width:192px;height:15px;margin:0;padding:0;border:0;border-radius:0;background:transparent;color:transparent;caret-color:transparent;font-size:16px;pointer-events:auto;outline:none}
+#login-form input::selection{background:transparent;color:transparent}
+#login-username{left:310px;top:241px}
+#login-password{left:333px;top:256px}
+#title-mute{position:absolute;width:36px;height:36px;padding:0;border:0;background:transparent;cursor:pointer}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 .world-stage{position:absolute;inset:0;background:#000}
 .world-stage[hidden]{display:none}
 #world-canvas{display:block;width:100%;height:100%;touch-action:none}
@@ -32,7 +47,9 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
 #world-disconnect{pointer-events:auto;background:#251e12d9;color:#e9d8a9;border:1px solid #8a7550;border-radius:3px;font:12px Arial,sans-serif;padding:6px 9px;cursor:pointer}
 .world-overlay{position:absolute;inset:0;background:#050607ea;color:#e9d8a9;font:13px Arial,sans-serif;display:grid;place-content:center;justify-items:center;gap:15px;text-align:center;padding:20px;pointer-events:none}
 .world-overlay[hidden]{display:none}
-.client-status{position:absolute;left:12%;right:12%;bottom:3%;z-index:1;margin:0;padding:6px 10px;text-align:center;color:#e8dfc7;background:#050402b8;text-shadow:0 1px 2px #000;font:clamp(10px,1.5vw,12px) Arial,sans-serif;pointer-events:none}
-.client-status:empty,.client-status[hidden],.world-stage:not([hidden])~.client-status{display:none}
-@media(max-width:590px){.login-field{font-size:10px}.world-hud span{font-size:10px}.client-status{left:5%;right:5%}}
+.spinner{width:25px;height:25px;border:3px solid #544b36;border-top-color:#d8c287;border-radius:50%;animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.spinner{animation:none}}
+
+[hidden]{display:none!important}
+#title-screen,#title-screen *{cursor:default;user-select:none;-webkit-user-select:none}

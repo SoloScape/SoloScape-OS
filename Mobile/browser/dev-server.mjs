@@ -17,7 +17,6 @@ const routes = new Map([
     ["/teavm/title-client.mjs", ["../teavm-poc/site/title-client.mjs", "text/javascript; charset=utf-8"]],
     ["/title-login-session.mjs", ["title-login-session.mjs", "text/javascript; charset=utf-8"]],
     ["/teavm-world.mjs", ["teavm-world.mjs", "text/javascript; charset=utf-8"]],
-    ["/teavm/title-assets.mjs", ["../teavm-poc/site/title-assets.mjs", "text/javascript; charset=utf-8"]],
     ["/teavm/title-client.css", ["../teavm-poc/site/title-client.css", "text/css; charset=utf-8"]],
     ["/teavm/bridge.js", ["../teavm-poc/target/javascript/bridge.js", "text/javascript; charset=utf-8"]],
     ["/world.css", ["world.css", "text/css; charset=utf-8"]],

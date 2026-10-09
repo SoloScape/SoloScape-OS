@@ -10,27 +10,33 @@
 <body>
 <main class="app">
   <div class="screen" id="screen">
-    <canvas id="osrs-title" width="765" height="503" aria-label="RuneScape title screen"></canvas>
-    <div id="loading-overlay" class="overlay" role="status" aria-live="polite">
-      <div class="spinner"></div><p>Loading RuneScape...</p>
-    </div>
-    <div id="welcome-controls" class="controls" hidden>
-      <button id="new-user" type="button" class="hotspot welcome-new" aria-label="New User">New User</button>
-      <button id="existing-user" type="button" class="hotspot welcome-existing" aria-label="Existing User">Existing User</button>
-    </div>
-    <form id="login-controls" class="controls" autocomplete="off" novalidate hidden>
-      <label class="sr-only" for="login-username">Username or email</label>
-      <input id="login-username" name="login-username" class="login-field username-field" maxlength="320" autocomplete="off" spellcheck="false" autocapitalize="none" autocorrect="off" required placeholder="Username / email">
-      <label class="sr-only" for="login-password">Password</label>
-      <input id="login-password" name="login-password" class="login-field password-field" type="password" maxlength="80" autocomplete="off" required placeholder="Password">
-      <label class="sr-only" for="login-otp">Six-digit authenticator code (only if enabled)</label>
-      <input id="login-otp" name="login-otp" class="login-field otp-field" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off" placeholder="2FA (optional)">
-      <button id="login-submit" class="hotspot login-submit" type="submit" aria-label="Login">Login</button>
-      <button id="login-back" type="button" class="hotspot login-back" aria-label="Cancel">Cancel</button>
-    </form>
-    <div id="session-controls" class="controls" hidden>
-      <button id="session-disconnect" type="button" class="hotspot session-disconnect" aria-label="Disconnect">Disconnect</button>
-    </div>
+    <section id="title-screen" aria-label="RuneScape title screen">
+      <canvas id="osrs-title" width="765" height="503" aria-label="Revision-240 RuneScape title screen"></canvas>
+      <div id="title-controls">
+        <button id="title-new-account" class="title-button welcome-new" type="button" aria-disabled="true" hidden>New User</button>
+        <button id="title-login" class="title-button welcome-login" type="button" hidden>Existing User</button>
+        <form id="login-form" autocomplete="off" novalidate hidden>
+          <label class="sr-only" for="login-username">Username / Email</label>
+          <input id="login-username" name="login-entry" autocomplete="off" maxlength="320" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+          <label class="sr-only" for="login-password">Password</label>
+          <input id="login-password" name="secret-entry" type="password" autocomplete="off" maxlength="80" required>
+          <button id="title-remember" class="title-option" type="button" role="checkbox" aria-checked="false" aria-label="Remember username">Remember username</button>
+          <button id="title-hide-username" class="title-option" type="button" role="checkbox" aria-checked="false" aria-label="Hide username">Hide username</button>
+          <button id="title-login-help" class="title-help" type="button">Can't login? Click here.</button>
+          <button id="login-submit" class="title-button form-login" type="submit">Login</button>
+        </form>
+        <button id="title-cancel" class="title-button form-cancel" type="button" hidden>Cancel</button>
+        <button id="title-world-switch" class="title-world-switch" type="button" hidden>World 255 — Click to switch</button>
+        <button id="title-world-current" class="title-world-choice" type="button" hidden>World 255</button>
+        <button id="title-world-back" class="title-world-back" type="button" hidden>Cancel</button>
+        <button id="title-world-sort-0" class="title-world-sort" type="button" hidden>World</button>
+        <button id="title-world-sort-1" class="title-world-sort" type="button" hidden>Players</button>
+        <button id="title-world-sort-2" class="title-world-sort" type="button" hidden>Location</button>
+        <button id="title-world-sort-3" class="title-world-sort" type="button" hidden>Type</button>
+      </div>
+      <button id="title-mute" type="button" aria-label="Mute title music" aria-pressed="false" hidden></button>
+      <p id="client-status" class="sr-only" role="status" aria-live="polite"></p>
+    </section>
     <div id="world-stage" class="world-stage" hidden>
       <canvas id="world-canvas" width="765" height="503" aria-label="RuneScape world"></canvas>
       <div class="world-hud">
@@ -38,10 +44,9 @@
         <button type="button" id="world-disconnect">Log out</button>
       </div>
       <div id="world-loading-overlay" class="world-overlay" role="status" aria-live="polite">
-        <div class="spinner"></div><span>Loading world...</span>
+        <div class="spinner"></div><span>Loading - please wait.</span>
       </div>
     </div>
-    <p id="client-status" class="client-status" role="status" aria-live="polite"></p>
   </div>
 </main>
 <script type="module" src="/teavm/title-client.mjs"></script>

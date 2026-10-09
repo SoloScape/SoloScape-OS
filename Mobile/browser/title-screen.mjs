@@ -172,7 +172,12 @@ export class NativeTitleScreen{
                 }
             }]),
             ["Loading fonts - ",async()=>{this.assets.font=await loadCacheMenuFont(cache,OSRS_TITLE_FONT_IDS.bold12);this.assets.small=await loadCacheMenuFont(cache,OSRS_TITLE_FONT_IDS.plain11);}],
-            ["Loaded title screen",async()=>this.music.prepare()],
+            ["Loaded title screen",async()=>{
+                // Music is authentic cache content but must not prevent the
+                // title/login from opening if the audio archive is unavailable.
+                try{await this.music.prepare();}
+                catch(error){console.warn("[osrs-title] Optional Scape Main unavailable:",error);}
+            }],
         ];
         try{
             for(let i=0;i<steps.length;i++){
@@ -265,7 +270,7 @@ export class NativeTitleScreen{
         ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle="#000000";ctx.fillRect(0,0,765,503);ctx.imageSmoothingEnabled=false;
         const l=titleLayout(765,503),controls=titleLayout(bounds.width,bounds.height),{background}=this.assets;
         if(this.mode==="world-select"){
-            this.stage.style.transform=`translate(${controls.x}px,${controls.y}) scale(${controls.scale})`;
+            this.stage.style.transform=`translate(${controls.x}px,${controls.y}px) scale(${controls.scale})`;
             paintWorldSelect(ctx,{sprites:this.assets.sprites,font:this.assets.font,
                 small:this.assets.small,worldId:this.worldId,
                 sortOption:this.worldSortOption,sortDirection:this.worldSortDirection,

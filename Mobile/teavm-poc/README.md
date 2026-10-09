@@ -27,6 +27,18 @@ removed. The historic bytecode feasibility and model projects remain in the
 local source tree and are verified by `npm run test:teavm`, but are not pages
 served to users. The `/teavm` alias opens the same fullscreen client as `/`.
 
+The home page shares `NativeTitleScreen` with the native browser renderer:
+verified revision-240 title artwork, bitmap fonts, rune fire, Scape Main,
+mute, username toggles and the world selector. The 765x503 title framebuffer
+and transparent input targets scale together on phones; desktop title pixels
+remain at native size. Ordinary login contains only username and password,
+with the original connecting screen retained until native authentication.
+TeaVM title-state exports and `TitleLoginSession` still control authentication
+and attach the world before its first same-frame rebuild packet. Cache music
+failure does not block login. Exact visual parity needs a live side-by-side
+OpenOSRS/cache comparison; the automated homepage smoke uses fixture assets
+and a simulated native session.
+
 The browser's native JS login/game networking and WebGL scene remain distinct
 from the original OpenOSRS Java scene renderer, which is not yet ported. The
 original gamepack and its derived artifacts must not be redistributed.

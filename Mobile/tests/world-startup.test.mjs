@@ -90,9 +90,12 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         assert.equal(html.status,200);
         const htmlText=await html.text();
         assert.match(htmlText,/src="\/teavm\/title-client\.mjs"/,"homepage is TeaVM title client");
-        assert.match(htmlText,/id="osrs-title"/,"original title cache canvas is mounted");
+        assert.match(htmlText,/id="osrs-title"/,"original 765x503 cache title canvas is mounted");
+        assert.match(htmlText,/id="title-mute"/,"authentic mute control is mounted");
+        assert.match(htmlText,/id="title-world-switch"/,"original world selector control is mounted");
+        assert.match(htmlText,/id="title-remember"/,"OpenOSRS login toggle is mounted");
         assert.match(htmlText,/id="login-password"/,"title has native encrypted login fields");
-        assert.match(htmlText,/id="session-disconnect"/,"authenticated session can be closed");
+        assert.doesNotMatch(htmlText,/id="login-otp"/,"ordinary login has only username and password");
         assert.match(htmlText,/id="world-canvas"/,"same-session cache-backed world is mounted");
         assert.match(htmlText,/id="world-disconnect"/,"native world can be disconnected");
         assert.doesNotMatch(htmlText,/<header\b|<nav\b|class="development"|class="milestone"|href="\/legacy"/,
@@ -100,6 +103,9 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         const clientCss=await (await fetch(root+"/teavm/title-client.css")).text();
         assert.match(clientCss,/height:100dvh/,"game client occupies the viewport");
         assert.match(clientCss,/aspect-ratio:765\/503/,"game title preserves its native layout");
+        assert.match(clientCss,/#title-controls/,"original native fixed-position title hit targets");
+        const titleJs=await (await fetch(root+"/teavm/title-client.mjs")).text();
+        assert.match(titleJs,/new NativeTitleScreen/,"homepage must use verified OpenOSRS-matched title renderer");
         assert.doesNotMatch(clientCss,/\.development|\.legacy|\.milestone|\.top\{/,
             "old site chrome styles are removed");
         for(const removed of ["/legacy","/diagnostics","/teavm/lab","/app.mjs","/diagnostics-app.mjs"]){
@@ -109,7 +115,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         // Regression: absent floor-materials.mjs used to leave the static
         // loading spinner displayed forever because the import graph failed.
         const modules=[
-            "/teavm/title-client.mjs","/teavm/title-assets.mjs","/title-login-session.mjs",
+            "/teavm/title-client.mjs","/title-login-session.mjs",
             "/teavm-world.mjs",
             "/native-js5.mjs","/terrain-world.mjs",
             "/world-webgl.mjs","/floor-materials.mjs","/floor-lighting.mjs","/world-startup.mjs",
@@ -338,7 +344,7 @@ try{
     // visible form. No development shell or terrain preview starts on boot.
     const {NativeTitleScreen}=await import("/title-screen.mjs");
     const screen=document.createElement("section");
-    screen.innerHTML='<canvas id="title-canvas"></canvas><div id="title-controls"><button id="title-new-account">New User</button><button id="title-login">Existing User</button><form id="login-form"><input id="login-username"><input id="login-password" type="password"><button id="login-submit">Login</button></form><button id="title-cancel">Cancel</button><p id="login-status"></p></div><button id="title-mute"></button>';
+    screen.innerHTML='<canvas id="osrs-title"></canvas><div id="title-controls"><button id="title-new-account">New User</button><button id="title-login">Existing User</button><form id="login-form"><input id="login-username"><input id="login-password" type="password"><button id="login-submit">Login</button></form><button id="title-cancel">Cancel</button><p id="login-status"></p></div><button id="title-mute"></button>';
     document.body.append(screen);
     const title=new NativeTitleScreen({canvas:screen.querySelector("canvas"),stage:screen.querySelector("#title-controls"),
         form:screen.querySelector("form"),status:screen.querySelector("p")});
