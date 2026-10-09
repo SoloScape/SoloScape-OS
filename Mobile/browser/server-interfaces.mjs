@@ -146,6 +146,10 @@ export class ServerInterfaces {
             for(const [uid,list] of source.children)children.set(uid,list.map(w=>copies.get(w.uid)));
             groups.set(id,{roots:source.roots.map(w=>copies.get(w.uid))});
         }
+        // Revision-240 popout (728) supplies the empty full-height stone sidebar
+        // and its expand button. Suppress its presentation, leaving server mount
+        // state and the separate inventory/chat/modal interfaces intact.
+        for(const root of groups.get(728)?.roots??[])root.hidden=true;
         for(const [uid,mount] of this.mounts){
             const roots=groups.get(mount.groupId)?.roots;
             if(!widgets.has(uid)||!roots)continue;

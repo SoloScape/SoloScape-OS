@@ -126,13 +126,13 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         assert.match(clientCss,/#osrs-title\{[^}]*image-rendering:auto/,
             "native title is composited smoothly from its Retina backing store");
         assert.match(clientCss,/#world-performance-toggle/,"touch-safe PERF toggle styles are served");
-        assert.match(clientCss,/aspect-ratio:765\/503/,"desktop game preserves its native layout");
+        assert.doesNotMatch(clientCss,/aspect-ratio:765\/503/,"gameplay must not retain desktop letterboxing");
         assert.match(clientCss,/@media \(pointer:coarse\) and \(orientation:landscape\)/,
             "mobile landscape has a dedicated game fit mode");
         assert.match(clientCss,/\.in-game \.app\{padding:0 env\(safe-area-inset-right/,
             "landscape game extends beneath the status bar while keeping notch-side padding");
         assert.match(clientCss,/\.in-game \.screen\{width:100%;height:100%;aspect-ratio:auto/,
-            "mobile game fills the available landscape screen instead of letterboxing");
+            "game fills the available screen on desktop and mobile");
         assert.match(clientCss,/#title-controls/,"original native fixed-position title hit targets");
         const titleJs=await (await fetch(root+"/teavm/title-client.mjs")).text();
         const titlePainter=await (await fetch(root+"/title-screen.mjs")).text();
@@ -231,7 +231,8 @@ test("real WebGL shader renders RuneLite GPU colours, ordered alpha and releases
     const browserRoot=new URL("../browser/",import.meta.url);
     let reportResult;
     const browserResult=new Promise(resolve=>{reportResult=resolve;});
-    const html=`<!doctype html><html><body><canvas id="scene" style="width:128px;height:128px"></canvas>
+    const clientCss=await readFile(new URL("../teavm-poc/site/title-client.css",import.meta.url),"utf8");
+    const html=`<!doctype html><html><head><style>${clientCss}</style></head><body><canvas id="scene" style="width:128px;height:128px"></canvas>
 <script type="module">
 try{
     const {NativeTerrainViewport,GPU_SETTINGS}=await import("/world-webgl.mjs");
@@ -611,6 +612,15 @@ try{
     if(titleText.includes("Loading - Please wait.")||!titleText.includes("Connecting to server...")||!titleText.includes("*********"))throw new Error("The connecting screen must show the pending login, not a post-auth loading badge");
     title.enterGame();
     if(!screen.hidden||!document.body.classList.contains("in-game"))throw new Error("Title remained over authenticated game");
+    const app=document.createElement("div");app.className="app";
+    app.innerHTML='<div class="screen"><div class="world-stage"><canvas id="world-canvas"></canvas></div></div>';
+    document.body.prepend(app);
+    for(const element of [app.firstChild,app.querySelector("#world-canvas")]){
+        const rect=element.getBoundingClientRect();
+        if(rect.x!==0||rect.y!==0||rect.width!==innerWidth||rect.height!==innerHeight)
+            throw new Error("Authenticated world does not fill browser viewport: "+JSON.stringify(rect));
+    }
+    app.remove();
     title.showLogin("Disconnected");
     if(screen.hidden||screen.querySelector("#login-password").value||document.body.classList.contains("in-game"))throw new Error("Disconnect did not restore clean login screen");
     title.dispose();screen.remove();

@@ -33,6 +33,24 @@ function fixture(load=async id=>group(id)){
     return {runtime,view,sent,statuses};
 }
 
+test("popout sidebar stays invisible and click-through while other server interfaces remain usable",async()=>{
+    const sources=new Map([161,728,231].map(id=>[id,group(id)]));
+    const {runtime,view,sent}=fixture(async id=>sources.get(id));
+    const host=161*65536+2;
+    runtime.handle(top(161));runtime.handle(open(host,728));await runtime.pending;
+    assert.ok(runtime.mounts.has(host),"server mount state is retained");
+    assert.equal(sources.get(728).roots[0].hidden,undefined,"cached widgets are not mutated");
+    assert.ok(view.active.layout.nodes.every(n=>n.widget.groupId!==728),"sidebar and expand button are omitted");
+    assert.equal(runtime.click(46,64),false,"hidden sidebar does not consume world clicks");
+    runtime.handle(packet("IF_SETHIDE",[128,...me(728*65536)]));await runtime.pending;
+    assert.ok(view.active.layout.nodes.every(n=>n.widget.groupId!==728),"server updates cannot reveal sidebar");
+    runtime.handle(open(host,231));await runtime.pending;
+    assert.ok(view.active.layout.nodes.some(n=>n.widget.groupId===231),"replacement dialogue is visible");
+    assert.equal(runtime.click(46,64),true,"dialogue remains interactive");
+    assert.equal(sent.length,1);
+    runtime.close();
+});
+
 test("revision-240 interface packet vectors preserve field order and transforms",()=>{
     assert.deepEqual(decode("IF_OPENTOP",[0xb4,0x12]),{kind:"top",groupId:0x1234});
     assert.deepEqual(decode("IF_OPENSUB",[0,0xb4,0x12,0x34,0x12,0x78,0x56]),
