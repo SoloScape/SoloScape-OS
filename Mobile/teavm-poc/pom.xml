@@ -23,6 +23,10 @@
       <executions><execution><phase>process-classes</phase><goals><goal>compile</goal></goals>
         <configuration><mainClass>RendererBridge</mainClass><targetType>JAVASCRIPT</targetType>
           <jsModuleType>ES2015</jsModuleType><targetFileName>bridge.js</targetFileName>
+          <!-- TeaVM Maven 0.15 defaults to SIMPLE (debug-oriented) optimisation.
+               ADVANCED is the production JavaScript level (equivalent intent
+               to Gradle BALANCED; their enum names are not interchangeable). -->
+          <optimizationLevel>ADVANCED</optimizationLevel><incremental>false</incremental>
           <sourceMapsGenerated>false</sourceMapsGenerated><minifying>true</minifying></configuration>
       </execution></executions>
     </plugin>

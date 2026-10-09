@@ -133,9 +133,28 @@ py -3 scripts\audit_gamepack.py 'C:\path\to\injected-client.oprs'
 No binary gamepack, extracted proprietary bytecode, or gamepack-derived TeaVM
 output is committed, exposed over HTTPS or included in this experiment.
 
+## Production JavaScript compilation
+
+Both `pom.xml` (the active 27 KB title/state bridge) and `engine-pom.xml`
+(the experimental, separate whole-engine module) use TeaVM Maven 0.15.0 with
+`optimizationLevel=ADVANCED`, `minifying=true`, `incremental=false` and
+`sourceMapsGenerated=false`. The installed Maven plugin defaults to
+`SIMPLE` optimisation if unspecified. TeaVM's **Gradle** JavaScript advice
+recommends `BALANCED`, but the Maven optimisation enum is different:
+`ADVANCED` is its production-oriented JavaScript option.
+
+Run `npm run build:teavm` followed by `npm run test:teavm` to compile and
+verify that the real rev-240 bridge still matches JVM hashes and title state.
+The full-engine module has a separate build/status gate and must not be
+confused with the running game. The mobile 3D renderer and actor logic are
+native browser `Mobile/browser/*.mjs` code, so TeaVM optimisation is **not**
+an expected fix for low WebGL in-game FPS.
+
 TeaVM references:
 https://teavm.org/docs/runtime/js-modules.html
 https://teavm.org/docs/intro/overview.html
+https://www.teavm.org/docs/tooling/gradle.html
+https://www.teavm.org/docs/tooling/maven.html
 
 ## Authentic revision-240 Rasterizer2D milestone
 

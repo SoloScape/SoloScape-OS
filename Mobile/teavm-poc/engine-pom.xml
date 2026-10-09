@@ -41,6 +41,7 @@
             <jsModuleType>ES2015</jsModuleType><targetFileName>${engine.outputName}</targetFileName>
             <!-- Obfuscated JVM class names can be JS keywords (for example do).
                  TeaVM's minified aliases avoid those invalid identifiers. -->
+            <optimizationLevel>ADVANCED</optimizationLevel><incremental>false</incremental>
             <sourceMapsGenerated>false</sourceMapsGenerated><minifying>true</minifying>
           </configuration>
         </execution></executions>
