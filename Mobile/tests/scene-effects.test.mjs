@@ -3,7 +3,7 @@ import {test} from "node:test";
 import {NativeSceneAnimations,sceneSequenceFrame} from "../browser/scene-animation.mjs";
 import {NativeSpotEffects,decodeSpotEffect} from "../browser/spot-effects.mjs";
 import {mergePlayerModels,buildPlayerMesh} from "../browser/player-models.mjs";
-import {combineRegionMeshes,sortTransparentFaces,sortTransparentBatches,sceneCameraMatrix,worldRenderPixels,NativeTerrainViewport} from "../browser/world-webgl.mjs";
+import {combineRegionMeshes,sortTransparentFaces,sortTransparentBatches,mergeOpaqueTextureBatches,sceneCameraMatrix,worldRenderPixels,NativeTerrainViewport} from "../browser/world-webgl.mjs";
 import {decodeObjectDefinition} from "../browser/object-definitions.mjs";
 
 const model=()=>({verticesCount:3,faceCount:1,verticesX:Int32Array.of(0,128,0),verticesY:Int32Array.of(0,0,-128),
@@ -159,4 +159,49 @@ test("GL draw call counter increments once per submitted call",()=>{
     NativeTerrainViewport.prototype.drawArrays.call(view,4,450,3);
     assert.equal(view.drawCallCount,2);
     assert.deepEqual(seen,[[4,0,450],[4,450,3]]);
+});
+
+test("opaque mobile terrain merges duplicate level/texture geometry without changing vertex data",()=>{
+    const a=Float32Array.from({length:18},(_,i)=>i+1);
+    const b=Float32Array.from({length:36},(_,i)=>i+100);
+    const c=Float32Array.from({length:18},(_,i)=>i+200);
+    const batches=[
+        {level:0,texture:42,vertices:a},{level:1,texture:42,vertices:c},
+        {level:0,texture:42,vertices:b},{level:0,texture:15,vertices:c}
+    ];
+    const grouped=mergeOpaqueTextureBatches(batches);
+    assert.equal(grouped.length,3,"repeated region materials upload as a single static GPU batch");
+    assert.deepEqual(grouped.map(v=>[v.level,v.texture,v.vertices.length]),
+        [[0,42,54],[1,42,18],[0,15,18]]);
+    assert.deepEqual([...grouped[0].vertices],[...a,...b]);
+    assert.deepEqual([...grouped[1].vertices],[...c]);
+    assert.deepEqual([...a],Array.from({length:18},(_,i)=>i+1),
+        "original geometry is not modified");
+    assert.throws(()=>mergeOpaqueTextureBatches([{level:0,texture:42,vertices:new Float32Array(2)}]),
+        /Invalid opaque/);
+});
+
+test("mobile scenery upload merges opaque textures but preserves alpha objects and desktop batching",()=>{
+    const tri=Float32Array.from({length:18},(_,i)=>i);
+    const scene={vertices:tri,levelCounts:[3,0,0,0],texturedBatches:[
+        {level:0,texture:7,vertices:tri},{level:0,texture:7,vertices:tri},
+        {level:0,texture:2,vertices:tri}
+    ],transparentBatches:[{level:0,texture:-1,alpha:100,vertices:tri}],
+    pickMeshes:[],textures:new Map()};
+    const exercise=touch=>{
+        const received=new Map(),view={
+            touch,sceneryBuf:{},gl:{ARRAY_BUFFER:9,STATIC_DRAW:10,
+                bindBuffer(){},bufferData(){},deleteTexture(){}},
+            setDynamicScenery(){},replaceBatches:(name,batches)=>received.set(name,batches),
+            textures:new Map(),textureMeta:new Map(),addTextures(){},
+        };
+        NativeTerrainViewport.prototype.setScenery.call(view,scene);
+        return received;
+    };
+    const mobile=exercise(true),desktop=exercise(false);
+    assert.equal(mobile.get("sceneryBatches").length,2);
+    assert.equal(mobile.get("sceneryBatches")[0].vertices.length,tri.length*2);
+    assert.equal(desktop.get("sceneryBatches").length,3);
+    assert.strictEqual(mobile.get("sceneryAlphaBatches")[0],scene.transparentBatches[0],
+        "transparent alpha sorting must remain independent from opaque batching");
 });

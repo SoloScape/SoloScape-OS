@@ -521,6 +521,31 @@ export function worldRenderPixels(width,height,devicePixelRatio=1,touch=false){
     return {width:Math.max(1,Math.floor(cssWidth*ratio)),
         height:Math.max(1,Math.floor(cssHeight*ratio))};
 }
+// Consolidate static opaque, same-texture geometry across adjacent regions.
+// Original cache UVs/positions and level boundaries are preserved byte-for-byte.
+// Do not use for alpha batches, where depth and material sorting still matter.
+export function mergeOpaqueTextureBatches(batches){
+    const grouped=new Map(),order=[];
+    for(const batch of batches){
+        if(!(batch.vertices instanceof Float32Array)||batch.vertices.length%18)
+            throw new Error("Invalid opaque scene mesh batch");
+        const key=batch.level+":"+batch.texture;
+        let group=grouped.get(key);
+        if(!group){
+            group={level:batch.level,texture:batch.texture,chunks:[],length:0};
+            grouped.set(key,group);order.push(group);
+        }
+        if(batch.vertices.length){
+            group.chunks.push(batch.vertices);group.length+=batch.vertices.length;
+        }
+    }
+    return order.map(group=>{
+        const vertices=new Float32Array(group.length);
+        let offset=0;
+        for(const chunk of group.chunks){vertices.set(chunk,offset);offset+=chunk.length;}
+        return {level:group.level,texture:group.texture,vertices};
+    });
+}
 export class NativeTerrainViewport {
     constructor(canvas,{onDestination=()=>{}}={}) {
         this.canvas=canvas;
@@ -693,7 +718,8 @@ export class NativeTerrainViewport {
         gl.bufferData(gl.ARRAY_BUFFER,vertices,gl.STATIC_DRAW);
         this.count=vertices.length/6;
         this.terrainLevelCounts=this.drawMode===gl.LINES?scene.levelCounts.map(n=>n*2):scene.levelCounts;
-        this.replaceBatches("terrainBatches",scene.texturedBatches);
+        this.replaceBatches("terrainBatches",this.touch?
+            mergeOpaqueTextureBatches(scene.texturedBatches):scene.texturedBatches);
         if(resetCamera){
             this.target=[0,-terrain.heights[32*64+32]/128,0];
             this.setScenery(null);
@@ -707,7 +733,8 @@ export class NativeTerrainViewport {
         this.gl.bufferData(this.gl.ARRAY_BUFFER,vertices,this.gl.STATIC_DRAW);
         this.sceneryCount=vertices.length/6;
         this.sceneryLevelCounts=scene?.levelCounts??[this.sceneryCount,0,0,0];
-        this.replaceBatches("sceneryBatches",scene?.texturedBatches??[]);
+        const opaque=scene?.texturedBatches??[];
+        this.replaceBatches("sceneryBatches",this.touch?mergeOpaqueTextureBatches(opaque):opaque);
         this.replaceBatches("sceneryAlphaBatches",scene?.transparentBatches??[]);
         this.sceneryPickMeshes=preparePickMeshes(scene?.pickMeshes??[]);
         for(const texture of this.textures.values())this.gl.deleteTexture(texture);
