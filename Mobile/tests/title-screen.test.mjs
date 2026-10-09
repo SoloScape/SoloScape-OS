@@ -212,7 +212,7 @@ test("title form draws original cache labels and works with optional remembered/
             drawn.length=0;
             status.textContent=phase;
             title.paint();
-            assert.equal(drawn.filter(text=>text==="Connecting to server...").length,1,
+            assert.equal(drawn.filter(text=>text==="Connecting... please wait.").length,1,
                 "the title must display the same message during every phase");
             assert.equal(drawn.includes(phase),false,"internal progress must not appear on the title");
             assert.equal(status.textContent,phase,"the real progress signal must be preserved");

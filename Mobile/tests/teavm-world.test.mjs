@@ -29,13 +29,15 @@ test("TeaVM world bridge attaches to the authenticated revision-240 session befo
     assert.equal(elements.overlay.hidden,false);
     world.handle({name:"REBUILD_NORMAL_V2",payload:new Uint8Array([1])});
     assert.deepEqual(events,["authenticated 42","packet REBUILD_NORMAL_V2"]);
-    options.onRegion({mapX:50,mapY:50});
-    assert.match(elements.worldStatus.textContent,/m50_50/);
+    assert.equal(elements.worldStatus.textContent,"Loading - Please wait.");
+    options.onStatus("Loading verified cache terrain, models and textures...");
+    assert.equal(elements.worldStatus.textContent,"Loading - Please wait.");
     options.onLoading();
     options.onReady();
     assert.equal(elements.overlay.hidden,false,"never reveal the world before WebGL actually draws");
     world.viewport.onSceneFrame();
     assert.equal(elements.overlay.hidden,true);
+    assert.equal(elements.worldStatus.textContent,"");
     assert.equal(events.at(-1),"first painted frame");
     world.dispose();
     assert.equal(closed,true);

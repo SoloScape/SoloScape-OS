@@ -220,7 +220,7 @@ export class NativeTitleScreen{
     }
     beginConnecting(){
         this.connectingPasswordLength=document.getElementById("login-password").value.length;
-        this.mode="connecting";this.status.textContent="Connecting to server...";this.syncControls();this.paint();
+        this.mode="connecting";this.status.textContent="Connecting... please wait.";this.syncControls();this.paint();
     }
     enterGame(){this.visible=false;document.body.classList.add("in-game");cancelAnimationFrame(this.animation);this.music?.hide();this.syncControls();}
     validateCredentials(){
@@ -313,7 +313,7 @@ export class NativeTitleScreen{
                 // Keep the in-game title message stable during every login,
                 // authentication and world-loading phase. Internal progress and
                 // error details remain available through the status channel.
-                const message=this.mode==="connecting"?"Connecting to server...":
+                const message=this.mode==="connecting"?"Connecting... please wait.":
                     (this.status.textContent||OSRS_TITLE_COPY.loginPrompt);
                 const words=message.split(" "),rows=[];let line="";
                 for(const word of words){const next=line?line+" "+word:word;if(line&&(this.assets.font?.measure(next)??next.length*7)>320){rows.push(line);line=word;}else line=next;}if(line)rows.push(line);

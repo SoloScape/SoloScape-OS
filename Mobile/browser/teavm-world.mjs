@@ -34,7 +34,7 @@ export class TeaVmWorldBridge {
         // The viewport must have nonzero layout size before WINDOW_STATUS is sent.
         this.stage.hidden=false;this.title.hidden=true;
         this.overlay.hidden=false;
-        this.worldStatus.textContent="Loading your revision-240 world...";
+        this.worldStatus.textContent="Loading - Please wait.";
         try{
             this.viewport=this.createViewport(this.canvas);
             const current=()=>this.active&&token===this.generation;
@@ -42,27 +42,21 @@ export class TeaVmWorldBridge {
                 cache:this.cache,viewport:this.viewport,session,
                 onStatus:message=>{
                     if(!current())return;
-                    this.worldStatus.textContent=message;
                     this.onStatus(message);
-                },
-                onRegion:region=>{
-                    if(!current())return;
-                    this.worldStatus.textContent=
-                        "Loading real map m"+region.mapX+"_"+region.mapY+" and your character...";
                 },
                 onLoading:()=>{
                     if(!current())return;
                     this.overlay.hidden=false;
-                    this.worldStatus.textContent="Loading verified cache terrain, models and textures...";
+                    this.worldStatus.textContent="Loading - Please wait.";
                 },
                 onReady:()=>{
                     if(!current())return;
-                    // Keep the loading cover until WebGL actually draws a world
+                    // Keep the loading label until WebGL actually draws a world
                     // frame with player geometry, not merely until JS5 completes.
                     this.viewport.onSceneFrame=()=>{
                         if(!current())return;
                         this.overlay.hidden=true;
-                        this.worldStatus.textContent="World and local player rendered from revision-240 cache";
+                        this.worldStatus.textContent="";
                         this.onReady();
                     };
                 },
