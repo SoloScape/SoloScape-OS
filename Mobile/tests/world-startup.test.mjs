@@ -125,7 +125,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
             "/model-composition.mjs","/scene-animation.mjs","/spot-effects.mjs",
             "/login-crypto.mjs","/login-protocol.mjs","/login-pow.mjs","/native-login.mjs","/game-protocol.mjs",
             "/player-sync.mjs","/player-models.mjs","/native-gameplay.mjs","/npc-sync.mjs","/npc-models.mjs","/npc-interactions.mjs","/npc-pointer.mjs","/native-menu.mjs","/native-interfaces.mjs","/interface-canvas.mjs",
-            "/interface-protocol.mjs","/server-interfaces.mjs","/native-scripts.mjs","/dialogue-models.mjs",
+            "/interface-protocol.mjs","/server-interfaces.mjs","/native-scripts.mjs","/cs2-pure-ops.mjs","/cs2-widget-ops.mjs","/dialogue-models.mjs",
             "/title-screen.mjs","/title-fire.mjs","/title-music.mjs","/title-music-worklet.mjs","/title-audio-cache.mjs",
             "/title-audio-realtime-midi-synth.mjs","/title-audio-audio-context.mjs","/title-audio-vorbis-sample.mjs",
         ];
@@ -135,6 +135,28 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
             assert.match(response.headers.get("content-type")??"",/text\/javascript/,path);
             assert.ok((await response.text()).length>50,path);
         }
+        // Walk the actual module import graph, including the login-time dynamic
+        // world import, so adding a new dependency cannot silently create a 404.
+        const queue=["/teavm/title-client.mjs","/teavm-world.mjs"],checked=new Set();
+        while(queue.length){
+            const path=queue.shift();
+            if(checked.has(path))continue;
+            assert.ok(checked.size<256,"ES module import graph exceeds safe test bound");
+            checked.add(path);
+            const response=await fetch(root+path);
+            assert.equal(response.status,200,"Missing JS import dependency: "+path);
+            assert.match(response.headers.get("content-type")??"",/text\/javascript/,path);
+            const source=await response.text();
+            const importPattern=/\bfrom\s*["']([^"']+\.mjs)["']|\bimport\s*\(\s*["']([^"']+\.mjs)["']|\bimport\s*["']([^"']+\.mjs)["']/g;
+            for(const match of source.matchAll(importPattern)){
+                const specifier=match[1]??match[2]??match[3];
+                if(!specifier.startsWith("/")&&!specifier.startsWith("."))continue;
+                const imported=new URL(specifier,root+path).pathname;
+                if(!checked.has(imported))queue.push(imported);
+            }
+        }
+        assert.ok(checked.has("/cs2-pure-ops.mjs"),"new CS2 dependency must load");
+        assert.ok(checked.has("/cs2-widget-ops.mjs"),"new widget opcode dependency must load");
         // Only the game page is exposed. The TeaVM JavaScript module remains
         // an internal dependency and no original gamepack bytes are served.
         const titleAlias=await fetch(root+"/teavm");
