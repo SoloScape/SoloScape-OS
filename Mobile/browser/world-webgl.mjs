@@ -628,7 +628,7 @@ export class NativeTerrainViewport {
         gl.enable(gl.DEPTH_TEST);
         // Classic black void beyond the rendered scene (also used by distance fog).
         gl.clearColor(0,0,0,1);
-        this.frame=()=>{if(this.disposed)return;this.render();this.raf=requestAnimationFrame(this.frame);};
+        this.frame=timestamp=>{if(this.disposed)return;this.render();this.onFrame?.(timestamp);this.raf=requestAnimationFrame(this.frame);};
         this.raf=requestAnimationFrame(this.frame);
     }
     setTerrain(terrain,{resetCamera=true}={}){

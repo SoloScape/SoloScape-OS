@@ -104,3 +104,29 @@ test("active mobile world attaches server interfaces and routes every context me
     const before=calls.length;menuOptions.onEntry({kind:"walk"},info);assert.equal(calls.length,before);
     await Promise.resolve();
 });
+
+test("world performance HUD gets real RAF and server packet hooks, and stops on logout",()=>{
+    const elements=ui(),calls=[];let gameplayOptions;
+    const overlay={
+        start:()=>calls.push("start"),
+        frame:time=>calls.push(["frame",time]),
+        tick:time=>calls.push(["tick",time]),
+        dispose:()=>calls.push("dispose"),
+    };
+    const root={};
+    const world=new TeaVmWorldBridge({...elements,performanceRoot:root,
+        createPerformanceOverlay:received=>{assert.equal(received,root);return overlay;},
+        createViewport:canvas=>({canvas,dispose(){calls.push("viewport disposed");}}),
+        createGameplay:options=>{
+            gameplayOptions=options;
+            return {authenticated(){},close(){},handle(){}};
+        }});
+    world.activate({connected:true},{playerIndex:99});
+    world.viewport.onFrame(500);
+    gameplayOptions.onServerTick(600);
+    assert.deepEqual(calls,["start",["frame",500],["tick",600]]);
+    world.dispose();
+    assert.deepEqual(calls.slice(-2),["viewport disposed","dispose"]);
+    gameplayOptions.onServerTick(700);
+    assert.equal(calls.length,5,"disposed world must not collect more ticks");
+});

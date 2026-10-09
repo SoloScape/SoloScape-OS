@@ -89,6 +89,7 @@ loginForm.addEventListener("submit",async event=>{
         worldBridge=new TeaVmWorldBridge({cache:sessionCache,canvas:worldCanvas,
             menuCanvas:document.querySelector("#world-menu-canvas"),
             interfaceCanvas:document.querySelector("#server-interface-canvas"),
+            performanceRoot:document.querySelector("#world-performance"),
             stage:worldStage,title:titleStage,overlay:worldOverlay,worldStatus,
             onStatus:say,onReady:()=>{worldStatus.textContent="";}});
         const attempt=titleLogin.login(details);

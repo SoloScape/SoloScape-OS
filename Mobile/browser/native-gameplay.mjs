@@ -42,10 +42,10 @@ export function interpolatePlayer(motion,now){
 export class NativeGameplay {
     constructor({cache,viewport,session,interfaces=null,onStatus=()=>{},onRegion=()=>{},onLoading=()=>{},onReady=()=>{},onNpcMenu=()=>{},onExamine=()=>{},run=()=>false,
         loadTerrain=loadNativeTerrain,loadMaterials=loadFloorMaterials,loadScenery=loadStaticScenery,
-        models=new NativePlayerModels(cache),now=()=>performance.now()}={}){
+        models=new NativePlayerModels(cache),now=()=>performance.now(),onServerTick=()=>{}}={}){
         this.cache=cache;this.viewport=viewport;this.session=session;this.onStatus=onStatus;this.onRegion=onRegion;this.onNpcMenu=onNpcMenu;this.onExamine=onExamine;this.run=run;
         this.interfaces=interfaces;
-        this.onReady=onReady;this.onLoading=onLoading;
+        this.onReady=onReady;this.onLoading=onLoading;this.onServerTick=onServerTick;
         this.loadTerrain=loadTerrain;this.loadMaterials=loadMaterials;this.loadScenery=loadScenery;this.models=models;this.now=now;
         this.generation=0;this.closed=false;this.regions=new Map();this.packetCount=0;this.animationStarted=now();
         this.scenePrepared=false;this.ready=false;
@@ -80,7 +80,7 @@ export class NativeGameplay {
             const loading=this.loadRebuild(this.rebuild),generation=this.generation;
             void loading.catch(error=>{if(generation===this.generation)this.fail(error);});
         }else if(packet.name==="PLAYER_INFO"){
-            const local=this.sync.decode(packet.payload);this.updateMotion(local);
+            const local=this.sync.decode(packet.payload);this.updateMotion(local);this.onServerTick(this.now());
             if(local.plane!==this.viewport.visibleLevel)this.viewport.setSceneLevel(local.plane);
             this.report();
         }else if(packet.name==="SET_NPC_UPDATE_ORIGIN"){

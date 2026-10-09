@@ -46,6 +46,13 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
 #server-interface-canvas,#world-menu-canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
 #server-interface-canvas{pointer-events:none}
 #world-menu-canvas{z-index:2;touch-action:none}
+/* Touch-friendly optional diagnostics. Only the PERF button intercepts input. */
+#world-performance{position:absolute;top:max(6px,env(safe-area-inset-top));right:max(6px,env(safe-area-inset-right));z-index:4;pointer-events:none;max-width:min(58vw,200px);min-width:128px;color:#f6f6f6;font:12px/1.45 ui-monospace,Consolas,monospace;text-shadow:0 1px 1px #000}
+#world-performance-toggle{display:block;min-height:40px;margin:0 0 3px auto;padding:5px 12px;background:rgba(0,0,0,.86);border:1px solid #9a9a9a;border-radius:5px;color:#f8e966;font:700 13px ui-monospace,Consolas,monospace;cursor:pointer;pointer-events:auto;touch-action:manipulation}
+#world-performance-toggle:focus-visible{outline:2px solid #f8e966;outline-offset:2px}
+#world-performance-stats{padding:6px 9px;background:rgba(0,0,0,.84);border:1px solid #737373;border-radius:5px;font-variant-numeric:tabular-nums}
+#world-performance-stats>div{display:flex;justify-content:space-between;gap:10px;white-space:nowrap}
+#world-performance-stats output{color:#9eff9e;text-align:right}
 .world-overlay{position:absolute;inset:0;z-index:3;background:#000;color:#fff;font:13px Arial,sans-serif;pointer-events:auto;touch-action:none}
 .world-overlay span{position:absolute;top:6px;left:6px;border:1px solid #ddd;padding:3px 5px}
 .world-overlay[hidden]{display:none}

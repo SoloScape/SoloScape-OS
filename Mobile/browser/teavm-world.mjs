@@ -14,14 +14,16 @@ import {NativeChooseOptionMenu} from "./native-menu.mjs";
 import {NativeInterfaceCanvas} from "./interface-canvas.mjs";
 import {ServerInterfaces} from "./server-interfaces.mjs";
 import {NativeDialogueModels} from "./dialogue-models.mjs";
+import {GamePerformanceOverlay} from "./game-performance.mjs";
 
 export class TeaVmWorldBridge {
-    constructor({cache,canvas,stage,title,overlay,worldStatus,menuCanvas,interfaceCanvas,onStatus=()=>{},onReady=()=>{},
+    constructor({cache,canvas,stage,title,overlay,worldStatus,menuCanvas,interfaceCanvas,performanceRoot=null,onStatus=()=>{},onReady=()=>{},
         createViewport=c=>new NativeTerrainViewport(c),
         createGameplay=options=>new NativeGameplay(options),
         createMenu=(c,options)=>new NativeChooseOptionMenu(c,options),
         createInterfaceView=(c,cache)=>new NativeInterfaceCanvas(c,cache),
-        createInterfaces=options=>new ServerInterfaces(options)}={}) {
+        createInterfaces=options=>new ServerInterfaces(options),
+        createPerformanceOverlay=root=>new GamePerformanceOverlay(root)}={}) {
         if(!cache||!canvas||!stage||!title||!overlay||!worldStatus)
             throw new Error("TeaVM world bridge requires verified cache and canvas");
         this.cache=cache;this.canvas=canvas;this.stage=stage;this.title=title;
@@ -29,6 +31,7 @@ export class TeaVmWorldBridge {
         this.onStatus=onStatus;this.onReady=onReady;
         this.createViewport=createViewport;this.createGameplay=createGameplay;
         this.menuCanvas=menuCanvas;this.interfaceCanvas=interfaceCanvas;
+        this.performanceRoot=performanceRoot;this.createPerformanceOverlay=createPerformanceOverlay;this.performanceOverlay=null;
         this.createMenu=createMenu;this.createInterfaceView=createInterfaceView;this.createInterfaces=createInterfaces;
         this.menu=null;this.interfaces=null;
         this.resize=()=>{if(this.interfaces?.view.active)this.interfaces.view.paint();this.menu?.render();};
@@ -48,6 +51,11 @@ export class TeaVmWorldBridge {
         this.worldStatus.textContent="Loading - Please wait.";
         try{
             this.viewport=this.createViewport(this.canvas);
+            if(this.performanceRoot){
+                this.performanceOverlay=this.createPerformanceOverlay(this.performanceRoot);
+                this.performanceOverlay.start();
+                this.viewport.onFrame=timestamp=>this.performanceOverlay?.frame(timestamp);
+            }
             const current=()=>this.active&&token===this.generation;
             if(this.interfaceCanvas){
                 this.interfaces=this.createInterfaces({
@@ -71,6 +79,7 @@ export class TeaVmWorldBridge {
             }
             this.gameplay=this.createGameplay({
                 cache:this.cache,viewport:this.viewport,session,interfaces:this.interfaces,
+                onServerTick:timestamp=>{if(current())this.performanceOverlay?.tick(timestamp);},
                 onStatus:message=>{
                     if(!current())return;
                     this.onStatus(message);
@@ -130,6 +139,7 @@ export class TeaVmWorldBridge {
             this.gameplay=null;
             try{this.menu?.dispose();this.menu=null;this.interfaces?.close();this.interfaces=null;}finally{
                 try{this.viewport?.dispose();}finally{
+                    this.performanceOverlay?.dispose();this.performanceOverlay=null;
                     this.viewport=null;this.session=null;
                     this.stage.hidden=true;this.title.hidden=false;this.overlay.hidden=false;
                 }

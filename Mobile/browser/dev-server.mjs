@@ -41,7 +41,7 @@ const routes = new Map([
     ["/sprite-preview.mjs", ["sprite-preview.mjs", "text/javascript; charset=utf-8"]],
     ...["login-crypto","login-protocol","login-pow","native-login","game-protocol"].map(name=>
         [`/${name}.mjs`,[`${name}.mjs`,"text/javascript; charset=utf-8"]]),
-    ...["player-sync","player-protocol","player-config","player-colors","player-models","player-animation","native-gameplay","npc-sync","npc-models","npc-interactions","npc-pointer","native-menu","native-interfaces","interface-canvas","interface-protocol","server-interfaces","native-scripts","cs2-pure-ops","cs2-widget-ops","dialogue-models"].map(name=>
+    ...["player-sync","player-protocol","player-config","player-colors","player-models","player-animation","native-gameplay","npc-sync","npc-models","npc-interactions","npc-pointer","native-menu","native-interfaces","interface-canvas","interface-protocol","server-interfaces","native-scripts","cs2-pure-ops","cs2-widget-ops","game-performance","dialogue-models"].map(name=>
         [`/${name}.mjs`,[`${name}.mjs`,"text/javascript; charset=utf-8"]]),
 ]);
 routes.set("/tsps-game-controller.mjs",["tsps-game-controller.mjs","text/javascript; charset=utf-8"]);

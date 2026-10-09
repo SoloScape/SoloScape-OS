@@ -43,6 +43,15 @@
         <canvas id="server-interface-canvas" aria-label="Server game interfaces" hidden></canvas>
       </div>
       <canvas id="world-menu-canvas" aria-label="Choose Option" hidden></canvas>
+      <aside id="world-performance" aria-label="Game performance" hidden>
+        <button id="world-performance-toggle" type="button" aria-controls="world-performance-stats" aria-expanded="true">PERF <span aria-hidden="true">▾</span></button>
+        <div id="world-performance-stats">
+          <div><span>FPS</span><output data-perf="fps">—</output></div>
+          <div><span>RAM</span><output data-perf="ram" title="JavaScript heap only; unavailable in some browsers">N/A</output></div>
+          <div><span>TICK</span><output data-perf="tick" title="PLAYER_INFO updates received / average interval">0</output></div>
+          <div><span>MS</span><output data-perf="ms" title="Average time between rendered frames, not network ping">—</output></div>
+        </div>
+      </aside>
       <span id="world-status" class="sr-only" role="status" aria-live="polite"></span>
       <div id="world-loading-overlay" class="world-overlay" role="status" aria-live="polite">
         <span>Loading - Please wait.</span>

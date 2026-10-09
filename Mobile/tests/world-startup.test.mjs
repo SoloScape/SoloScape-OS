@@ -97,12 +97,16 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         assert.match(htmlText,/id="login-password"/,"title has native encrypted login fields");
         assert.doesNotMatch(htmlText,/id="login-otp"/,"ordinary login has only username and password");
         assert.match(htmlText,/id="world-canvas"/,"same-session cache-backed world is mounted");
+        assert.match(htmlText,/id="world-performance"/,"gameplay performance HUD is mounted");
+        for(const metric of ["fps","ram","tick","ms"])
+            assert.match(htmlText,new RegExp('data-perf="'+metric+'"'),"missing performance metric "+metric);
         assert.doesNotMatch(htmlText,/id="world-disconnect"|class="world-hud"/,
             "game viewport has no top logout/status overlay");
         assert.doesNotMatch(htmlText,/<header\b|<nav\b|class="development"|class="milestone"|href="\/legacy"/,
             "the homepage contains only the client, with no site navigation or development chrome");
         const clientCss=await (await fetch(root+"/teavm/title-client.css")).text();
         assert.match(clientCss,/height:100dvh/,"game client occupies the viewport");
+        assert.match(clientCss,/#world-performance-toggle/,"touch-safe PERF toggle styles are served");
         assert.match(clientCss,/aspect-ratio:765\/503/,"game title preserves its native layout");
         assert.match(clientCss,/#title-controls/,"original native fixed-position title hit targets");
         const titleJs=await (await fetch(root+"/teavm/title-client.mjs")).text();
@@ -125,7 +129,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
             "/model-composition.mjs","/scene-animation.mjs","/spot-effects.mjs",
             "/login-crypto.mjs","/login-protocol.mjs","/login-pow.mjs","/native-login.mjs","/game-protocol.mjs",
             "/player-sync.mjs","/player-models.mjs","/native-gameplay.mjs","/npc-sync.mjs","/npc-models.mjs","/npc-interactions.mjs","/npc-pointer.mjs","/native-menu.mjs","/native-interfaces.mjs","/interface-canvas.mjs",
-            "/interface-protocol.mjs","/server-interfaces.mjs","/native-scripts.mjs","/cs2-pure-ops.mjs","/cs2-widget-ops.mjs","/dialogue-models.mjs",
+            "/interface-protocol.mjs","/server-interfaces.mjs","/native-scripts.mjs","/cs2-pure-ops.mjs","/cs2-widget-ops.mjs","/game-performance.mjs","/dialogue-models.mjs",
             "/title-screen.mjs","/title-fire.mjs","/title-music.mjs","/title-music-worklet.mjs","/title-audio-cache.mjs",
             "/title-audio-realtime-midi-synth.mjs","/title-audio-audio-context.mjs","/title-audio-vorbis-sample.mjs",
         ];
@@ -157,6 +161,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         }
         assert.ok(checked.has("/cs2-pure-ops.mjs"),"new CS2 dependency must load");
         assert.ok(checked.has("/cs2-widget-ops.mjs"),"new widget opcode dependency must load");
+        assert.ok(checked.has("/game-performance.mjs"),"performance HUD dependency must load");
         // Only the game page is exposed. The TeaVM JavaScript module remains
         // an internal dependency and no original gamepack bytes are served.
         const titleAlias=await fetch(root+"/teavm");
