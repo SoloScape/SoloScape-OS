@@ -382,57 +382,76 @@ export function sortTransparentFaces(batches,matrix,drawLevel=3){
     return faces.sort((a,b)=>b.depth-a.depth);
 }
 
-// Perspective-correct ground picking uses the same triangles/matrix as rendering.
-export function pickTerrainTile(vertices,matrix,nx,ny,bounds=null){
-    const project=(at)=>{
-        const x=vertices[at],y=vertices[at+1],z=vertices[at+2];
-        const p=[0,1,2,3].map(r=>matrix[r]*x+matrix[r+4]*y+matrix[r+8]*z+matrix[r+12]);
-        return p[3]>0?[p[0]/p[3],p[1]/p[3],p[2]/p[3],p[3]]:null;
-    };
-    let best=null,depth=Infinity;
-    for(let i=0;i<vertices.length;i+=18){
-        const a=project(i),b=project(i+6),c=project(i+12);if(!a||!b||!c)continue;
-        const d=(b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1]);if(Math.abs(d)<1e-10)continue;
-        const u=((b[1]-c[1])*(nx-c[0])+(c[0]-b[0])*(ny-c[1]))/d;
-        const v=((c[1]-a[1])*(nx-c[0])+(a[0]-c[0])*(ny-c[1]))/d,w=1-u-v;
-        if(u<0||v<0||w<0)continue;
-        const z=u*a[2]+v*b[2]+w*c[2];if(z< -1||z>1||z>=depth)continue;
-        const weights=[u/a[3],v/b[3],w/c[3]],sum=weights.reduce((n,v)=>n+v,0);
-        const x=weights.reduce((n,t,k)=>n+t*vertices[i+k*6],0)/sum;
-        const y=weights.reduce((n,t,k)=>n+t*vertices[i+k*6+2],0)/sum;
-        if(!withinDrawBounds(x,y,bounds))continue;
-        depth=z;best={x:Math.floor(x+31.5),y:Math.floor(y+31.5)};
-    }
-    return best;
+// Reuse one hit record per scan. Reject triangles outside the draw window before
+// projecting them; exact perspective-correct bounds/depth checks still decide hits.
+function pickTriangle(vertices,i,m,nx,ny,bounds,hit){
+    const ax=vertices[i],ay=vertices[i+1],az=vertices[i+2];
+    const bx=vertices[i+6],by=vertices[i+7],bz=vertices[i+8];
+    const cx=vertices[i+12],cy=vertices[i+13],cz=vertices[i+14];
+    if(bounds&&(Math.max(ax,bx,cx)<bounds[0]||Math.max(az,bz,cz)<bounds[1]||
+        Math.min(ax,bx,cx)>=bounds[2]||Math.min(az,bz,cz)>=bounds[3]))return false;
+    const aw=m[3]*ax+m[7]*ay+m[11]*az+m[15];
+    const bw=m[3]*bx+m[7]*by+m[11]*bz+m[15];
+    const cw=m[3]*cx+m[7]*cy+m[11]*cz+m[15];
+    if(aw<=0||bw<=0||cw<=0)return false;
+    const aX=(m[0]*ax+m[4]*ay+m[8]*az+m[12])/aw;
+    const aY=(m[1]*ax+m[5]*ay+m[9]*az+m[13])/aw;
+    const bX=(m[0]*bx+m[4]*by+m[8]*bz+m[12])/bw;
+    const bY=(m[1]*bx+m[5]*by+m[9]*bz+m[13])/bw;
+    const cX=(m[0]*cx+m[4]*cy+m[8]*cz+m[12])/cw;
+    const cY=(m[1]*cx+m[5]*cy+m[9]*cz+m[13])/cw;
+    const d=(bY-cY)*(aX-cX)+(cX-bX)*(aY-cY);
+    if(Math.abs(d)<1e-10)return false;
+    const u=((bY-cY)*(nx-cX)+(cX-bX)*(ny-cY))/d;
+    const v=((cY-aY)*(nx-cX)+(aX-cX)*(ny-cY))/d,w=1-u-v;
+    if(u<0||v<0||w<0)return false;
+    const depth=u*(m[2]*ax+m[6]*ay+m[10]*az+m[14])/aw+
+        v*(m[2]*bx+m[6]*by+m[10]*bz+m[14])/bw+
+        w*(m[2]*cx+m[6]*cy+m[10]*cz+m[14])/cw;
+    if(depth< -1||depth>1||depth>=hit.depth)return false;
+    const ua=u/aw,vb=v/bw,wc=w/cw,sum=ua+vb+wc;
+    const x=(ua*ax+vb*bx+wc*cx)/sum,z=(ua*az+vb*bz+wc*cz)/sum;
+    if(!withinDrawBounds(x,z,bounds))return false;
+    hit.depth=depth;hit.x=x;hit.z=z;return true;
 }
 
-// Pick real rendered NPC triangles, including textured geometry. Compare clip
-// depths so overlapping NPCs select the visible actor, not insertion order.
+// Bounds belong to uploaded poses, not object origins: large models may straddle
+// the draw window. Refresh them whenever a scene/animation supplies its meshes.
+const pickMeshBounds=new WeakMap();
+function preparePickMeshes(meshes){
+    for(const {vertices} of meshes){
+        if(!(vertices instanceof Float32Array)||vertices.length%18)continue;
+        let minX=Infinity,minZ=Infinity,maxX=-Infinity,maxZ=-Infinity;
+        for(let i=0;i<vertices.length;i+=6){
+            minX=Math.min(minX,vertices[i]);maxX=Math.max(maxX,vertices[i]);
+            minZ=Math.min(minZ,vertices[i+2]);maxZ=Math.max(maxZ,vertices[i+2]);
+        }
+        pickMeshBounds.set(vertices,[minX,minZ,maxX,maxZ]);
+    }
+    return meshes;
+}
+
+export function pickTerrainTile(vertices,matrix,nx,ny,bounds=null){
+    const hit={depth:Infinity,x:0,z:0};let found=false;
+    for(let i=0;i<vertices.length;i+=18){
+        if(pickTriangle(vertices,i,matrix,nx,ny,bounds,hit))found=true;
+    }
+    return found?{x:Math.floor(hit.x+31.5),y:Math.floor(hit.z+31.5)}:null;
+}
+
+// Pick real rendered triangles, including textured geometry, by nearest depth.
 export function pickNpcTriangles(meshes,matrix,nx,ny,bounds=null){
-    let best=null,depth=Infinity;
+    const hit={depth:Infinity,x:0,z:0};let best=null;
     for(const {index,vertices} of meshes){
         if(!(vertices instanceof Float32Array)||vertices.length%18)continue;
-        const project=at=>{
-            const x=vertices[at],y=vertices[at+1],z=vertices[at+2];
-            const v=[0,1,2,3].map(r=>matrix[r]*x+matrix[r+4]*y+matrix[r+8]*z+matrix[r+12]);
-            return v[3]>0?[v[0]/v[3],v[1]/v[3],v[2]/v[3],v[3]]:null;
-        };
+        const extent=pickMeshBounds.get(vertices);
+        if(bounds&&extent&&(extent[2]<bounds[0]||extent[3]<bounds[1]||
+            extent[0]>=bounds[2]||extent[1]>=bounds[3]))continue;
         for(let i=0;i<vertices.length;i+=18){
-            const a=project(i),b=project(i+6),c=project(i+12);if(!a||!b||!c)continue;
-            const denominator=(b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1]);
-            if(Math.abs(denominator)<1e-10)continue;
-            const u=((b[1]-c[1])*(nx-c[0])+(c[0]-b[0])*(ny-c[1]))/denominator;
-            const v=((c[1]-a[1])*(nx-c[0])+(a[0]-c[0])*(ny-c[1]))/denominator,w=1-u-v;
-            if(u<0||v<0||w<0)continue;
-            const z=u*a[2]+v*b[2]+w*c[2];
-            const weights=[u/a[3],v/b[3],w/c[3]],sum=weights.reduce((n,t)=>n+t,0);
-            const x=weights.reduce((n,t,k)=>n+t*vertices[i+k*6],0)/sum;
-            const north=weights.reduce((n,t,k)=>n+t*vertices[i+k*6+2],0)/sum;
-            if(!withinDrawBounds(x,north,bounds))continue;
-            if(z>=-1&&z<=1&&z<depth){depth=z;best={index,depth};}
+            if(pickTriangle(vertices,i,matrix,nx,ny,bounds,hit))best=index;
         }
     }
-    return best;
+    return best===null?null:{index:best,depth:hit.depth};
 }
 
 // Browser context menus are never appropriate over the game canvas.
@@ -509,7 +528,8 @@ export class NativeTerrainViewport {
             const nx=2*(clientX-rect.left)/rect.width-1,ny=1-2*(clientY-rect.top)/rect.height;
             const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,rect.width/rect.height);
             const plane=this.roofContext?.player?.plane??this.visibleLevel;
-            const valid=[...this.sceneryPickMeshes,...(this.dynamicPickMeshes??[])].filter(loc=>loc.plane===plane&&loc.level<=this.visibleRoofLevel());
+            const roofLevel=this.visibleRoofLevel();
+            const valid=[...this.sceneryPickMeshes,...(this.dynamicPickMeshes??[])].filter(loc=>loc.plane===plane&&loc.level<=roofLevel);
             const hit=pickNpcTriangles(valid.map((loc,index)=>({index,vertices:loc.vertices})),matrix,nx,ny,this.drawBounds());
             if(!hit)return null;
             const loc=valid[hit.index];
@@ -637,7 +657,7 @@ export class NativeTerrainViewport {
         this.sceneryLevelCounts=scene?.levelCounts??[this.sceneryCount,0,0,0];
         this.replaceBatches("sceneryBatches",scene?.texturedBatches??[]);
         this.replaceBatches("sceneryAlphaBatches",scene?.transparentBatches??[]);
-        this.sceneryPickMeshes=scene?.pickMeshes??[];
+        this.sceneryPickMeshes=preparePickMeshes(scene?.pickMeshes??[]);
         for(const texture of this.textures.values())this.gl.deleteTexture(texture);
         this.textures.clear();this.textureMeta?.clear();
         this.addTextures(scene?.textures??new Map());
@@ -664,13 +684,13 @@ export class NativeTerrainViewport {
         this.gl.bufferData(this.gl.ARRAY_BUFFER,vertices,this.gl.DYNAMIC_DRAW);this.actorCount=vertices.length/6;
         this.replaceBatches("actorBatches",scene?.texturedBatches??[]);
         this.replaceBatches("actorAlphaBatches",scene?.transparentBatches??[]);
-        this.actorPickMeshes=scene?.npcPickMeshes??[];
+        this.actorPickMeshes=preparePickMeshes(scene?.npcPickMeshes??[]);
         this.addTextures(scene?.textures??new Map());
     }
     setDynamicScenery(scene){
         this.replaceBatches("dynamicBatches",scene?.batches??[]);
         this.replaceBatches("dynamicAlphaBatches",scene?.transparentBatches??[]);
-        this.dynamicPickMeshes=scene?.pickMeshes??[];
+        this.dynamicPickMeshes=preparePickMeshes(scene?.pickMeshes??[]);
     }
     setSceneLevel(level){validateSceneLevel(level);this.visibleLevel=level;}
     setRoofContext(regions,origin,player){this.roofContext={regions,origin,player};}
