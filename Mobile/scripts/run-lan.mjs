@@ -57,7 +57,9 @@ if (!process.argv.includes("--setup-only")) {
     // Fail before starting either listener if public login key material is absent.
     readFileSync(env.SOLOSCAPE_RSA_PUBLIC_KEY_FILE || join(root,"../Server/.data/client.key"));
     const children = ["gateway/cli.mjs","browser/dev-server.mjs"].map(script =>
-        spawn(process.execPath,[script],{cwd:root,env,stdio:"inherit"}));
+        // The gateway session survives preview route changes. Node's watcher
+        // restarts only the preview when its routing code changes on disk.
+        spawn(process.execPath,script.startsWith("browser/")?["--watch",script]:[script],{cwd:root,env,stdio:"inherit"}));
     let stopping = false;
     const stop = () => { stopping = true; for (const child of children) child.kill(); };
     for (const child of children) {

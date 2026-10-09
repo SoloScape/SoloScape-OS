@@ -47,6 +47,14 @@ Stop the launcher with Ctrl+C. To remove phone trust later, remove the CA/profil
 in your phone's settings. This setup is for your trusted LAN; internet hosting
 requires a publicly trusted certificate and deployment configuration.
 
+The development preview watches its routing code and restarts automatically
+when that code changes; the WSS gateway stays running. Refresh the browser after
+an update. If a launcher started before this watch support reports "Failed to
+fetch dynamically imported module", stop that launcher once with Ctrl+C, run
+`npm run dev:lan -- 192.168.0.129` again, then refresh. An old preview process
+can serve new source files with its old route table, making new imports return
+404 even though the title screen still loads.
+
 For manually managed certificates, both servers accept `SOLOSCAPE_TLS_CERT_FILE`
 and `SOLOSCAPE_TLS_KEY_FILE`. The preview also accepts `SOLOSCAPE_PREVIEW_HOST`,
 `SOLOSCAPE_PREVIEW_PORT` and `SOLOSCAPE_NATIVE_GATEWAY_URL`. A non-loopback preview

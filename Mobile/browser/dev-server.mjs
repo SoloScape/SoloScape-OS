@@ -84,7 +84,14 @@ const handler = async (req, res) => {
         res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});
         res.end(JSON.stringify(regionKeys));return;
     }
-    const route = req.method === "GET" ? routes.get(req.url) : undefined;
+    let route = req.method === "GET" ? routes.get(req.url) : undefined;
+    // Generators can add runtime modules while the preview is running. Resolve
+    // only safe filenames inside the existing public runtime directory; never
+    // expand this into a generic browser/source-directory file server.
+    const runtime = req.method === "GET" && req.url.match(/^\/tsps-runtime\/([a-zA-Z0-9-]+\.mjs)$/);
+    if (!route && runtime && (await readdir(join(root,"tsps-runtime"))).includes(runtime[1])) {
+        route = [join("tsps-runtime",runtime[1]),"text/javascript; charset=utf-8"];
+    }
     if (!route) {
         res.writeHead(404, { "Content-Type": "text/plain", "Cache-Control": "no-store" });
         res.end("Not found");

@@ -7,7 +7,7 @@
     "node": ">=22.16.0"
   },
   "scripts": {
-    "dev": "node browser/dev-server.mjs",
+    "dev": "node --watch browser/dev-server.mjs",
     "build:teavm": "node scripts/build-teavm.mjs",
     "build:openosrs-engine": "node scripts/build-openosrs-engine.mjs",
     "test:engine-platform": "node teavm-poc/scripts/verify-platform.mjs",
@@ -33,7 +33,7 @@
     "probe:cache": "node gateway/js5-cache-cli.mjs",
     "probe:cache:verify": "node gateway/js5-reference-cli.mjs",
     "probe:asset": "node gateway/js5-asset-cli.mjs",
-    "dev:native": "node browser/dev-server.mjs",
+    "dev:native": "node --watch browser/dev-server.mjs",
     "dev:lan": "node scripts/run-lan.mjs",
     "dev:tsps": "node scripts/run-client.mjs dev"
   },

@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
-import { access, readFile, mkdtemp, rm } from "node:fs/promises";
+import { access, readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { displayTerrainProgressively } from "../browser/world-startup.mjs";
@@ -65,12 +65,14 @@ test("late floor response for a previous region cannot overwrite a newer world",
 
 test("preview server serves all ESM dependencies of the world client", {timeout:15000}, async()=>{
     const cwd=fileURLToPath(new URL("../",import.meta.url));
+    const lateName=`late-runtime-${process.pid}-${Date.now()}.mjs`;
+    const lateFile=join(cwd,"browser","tsps-runtime",lateName);
     const child=spawn(process.execPath,["browser/dev-server.mjs"],{
         cwd,
         env:{...process.env,SOLOSCAPE_PREVIEW_PORT:"0"},
         stdio:["ignore","pipe","pipe"],
     });
-    let logs="";
+    let logs="",lateCreated=false;
     try{
         const port=await new Promise((resolve,reject)=>{
             const timeout=setTimeout(()=>reject(new Error("Preview server did not start: "+logs)),6000);
@@ -86,6 +88,15 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
             child.once("exit",code=>fail(new Error("Preview server exited "+code+": "+logs)));
         });
         const root=`http://127.0.0.1:${port}`;
+        const lateRoute=root+"/tsps-runtime/"+lateName;
+        assert.equal((await fetch(lateRoute)).status,404);
+        await writeFile(lateFile,"export const generatedAfterStartup = true;\n",{flag:"wx"});
+        lateCreated=true;
+        const lateResponse=await fetch(lateRoute);
+        assert.equal(lateResponse.status,200,"runtime generated after startup must be served without restart");
+        assert.match(lateResponse.headers.get("content-type")??"",/text\/javascript/);
+        assert.match(await lateResponse.text(),/generatedAfterStartup/);
+        assert.equal((await fetch(root+"/tsps-runtime/..%2fpackage.json")).status,404);
         const html=await fetch(root+"/");
         assert.equal(html.status,200);
         const htmlText=await html.text();
@@ -209,6 +220,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
     } finally {
         child.kill("SIGTERM");
         if(child.exitCode===null&&child.signalCode===null)await once(child,"exit");
+        if(lateCreated)await rm(lateFile);
     }
 });
 
