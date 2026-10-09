@@ -9,7 +9,7 @@ export class ServerInterfaces {
         this.view=view;this.session=session;this.onStatus=onStatus;
         this.top=-1;this.mounts=new Map();this.patches=new Map();this.events=[];
         this.loaded=new Map();this.revision=0;this.closed=false;this.queued=false;
-        this.scripts=scripts;this.mobile=mobile;this.scriptMessages=new Map();this.patchStamps=new Map();this.varps=new Map();this.awaiting=null;
+        this.scripts=scripts;this.mobile=mobile;this.scriptMessages=new Map();this.patchStamps=new Map();this.varps=new Map();this.varcs=new Map();this.varcStrings=new Map();this.awaiting=null;
     }
     groupIds(){return new Set([this.top,...[...this.mounts.values()].map(m=>m.groupId)].filter(id=>id>=0));}
     forget(groupId){
@@ -102,7 +102,7 @@ export class ServerInterfaces {
         for(const message of [...this.scriptMessages.values()].sort((a,b)=>a.order-b.order)){
             if(message.groupId>=0&&!ids.has(message.groupId))continue;
             try{
-                await runWidgetScript(this.scripts,message.id,message.args,group,{varps:this.varps,mobile:this.mobile(),
+                await runWidgetScript(this.scripts,message.id,message.args,group,{varps:this.varps,varcs:this.varcs,varcStrings:this.varcStrings,mobile:this.mobile(),
                     isCurrent:()=>!this.closed&&revision===this.revision,
                     canWrite:(w,key)=>w.childIndex!==undefined||(this.patchStamps.get(w.uid)?.get(key)??0)<=message.order,
                     measure:async(id,text,width,height)=>{
@@ -231,6 +231,6 @@ export class ServerInterfaces {
     close(){
         this.closed=true;this.revision++;this.unbindInput?.();this.view.close();
         this.mounts.clear();this.patches.clear();this.events=[];this.loaded.clear();this.top=-1;
-        this.scriptMessages.clear();this.patchStamps.clear();this.varps.clear();this.awaiting=null;
+        this.scriptMessages.clear();this.patchStamps.clear();this.varps.clear();this.varcs.clear();this.varcStrings.clear();this.awaiting=null;
     }
 }

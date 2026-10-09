@@ -3,6 +3,8 @@
 import {ByteBuffer} from "./cache-reader.mjs";
 import {verifiedCatalog,decodeGroup} from "./location-cache.mjs";
 import {unpackArchiveFiles} from "./floor-materials.mjs";
+import {executePureCs2} from "./cs2-pure-ops.mjs";
+import {executeWidgetCs2} from "./cs2-widget-ops.mjs";
 
 export function decodeClientScript(bytes,id){
     const r=new ByteBuffer(bytes);
@@ -65,50 +67,83 @@ export class NativeScripts {
 
 // A dialogue-focused CS2 interpreter: actual verified bytecode drives widget
 // creation, layout and labels. Unknown operations abort; never eval cache code.
-export async function runWidgetScript(loader,id,args,scene,{varps=new Map(),varcs=new Map(),mobile=false,
+export async function runWidgetScript(loader,id,args,scene,{varps=new Map(),varcs=new Map(),varcStrings=new Map(),mobile=false,
     measure=async()=>{throw new Error("Cache font measurement unavailable");},isCurrent=()=>true,
     canWrite=()=>true,maxSteps=20000}={}){
-    const ints=[],strings=[],calls=[],targets=[null,null];let frame,steps=0,created=0;
+    const ints=[],strings=[],longs=[],arrays=new Map(),calls=[],targets=[null,null];let frame,steps=0,created=0;
     const pop=stack=>{if(!stack.length)throw new Error("CS2 stack underflow");return stack.pop();};
     const take=(stack,n)=>{if(n<0||n>stack.length)throw new Error("CS2 argument underflow");return stack.splice(stack.length-n,n);};
-    const enter=(script,i,s)=>({script,pc:0,ints:[...i,...new Array(script.localInts-i.length).fill(0)],
-        strings:[...s,...new Array(script.localStrings-s.length).fill("")]});
-    const first=await loader.load(id),i=args.filter(a=>typeof a==="number"),s=args.filter(a=>typeof a==="string");
-    if(first.longArgs||i.length!==first.intArgs||s.length!==first.stringArgs)throw new Error("Unsupported CS2 argument signature");
-    frame=enter(first,i,s);
+    const enter=(script,i,s,l=[])=>({script,pc:0,ints:[...i,...new Array(script.localInts-i.length).fill(0)],
+        strings:[...s,...new Array(script.localStrings-s.length).fill("")],
+        longs:[...l,...new Array((script.localLongs??0)-l.length).fill(0n)]});
+    const first=await loader.load(id),i=args.filter(a=>typeof a==="number"),s=args.filter(a=>typeof a==="string"),
+        l=args.filter(a=>typeof a==="bigint");
+    if(i.length!==first.intArgs||s.length!==first.stringArgs||l.length!==(first.longArgs??0))
+        throw new Error("Unsupported CS2 argument signature");
+    frame=enter(first,i,s,l);
     const find=uid=>scene.widgets.get(uid>>>0);
     const write=(w,patch)=>{if(!w)throw new Error("Missing CS2 target widget");
         for(const [key,value] of Object.entries(patch))if(canWrite(w,key))w[key]=value;};
     while(frame){
         if(!isCurrent())return false;
-        if(++steps>maxSteps||ints.length>1024||strings.length>1024)throw new Error("CS2 execution budget exceeded");
+        if(++steps>maxSteps||ints.length>1024||strings.length>1024||longs.length>1024)throw new Error("CS2 execution budget exceeded");
         const instruction=frame.script.instructions[frame.pc++];if(!instruction)throw new Error("CS2 PC outside script");
         let {op,value}=instruction;
         if(op===0)ints.push(value);
         else if(op===3)strings.push(value);
+        else if(op===61)longs.push(BigInt(value));
+        else if(op===62)pop(longs);
+        else if(op===63)strings.push(null);
         else if(op===6)frame.pc+=value;
-        else if([7,8,9,10,31,32].includes(op)){
+        else if([68,69,70,71,72,73].includes(op)){
+            const [a,b]=take(longs,2),yes=op===68?a!==b:op===69?a===b:op===70?a<b:op===71?a>b:op===72?a<=b:a>=b;
+            if(yes)frame.pc+=value;
+        }else if([7,8,9,10,31,32].includes(op)){
             const [a,b]=take(ints,2),yes=op===7?a!==b:op===8?a===b:op===9?a<b:op===10?a>b:op===31?a<=b:a>=b;
             if(yes)frame.pc+=value;
         }else if(op===21)frame=calls.pop()??null;
         else if(op===33||op===35){const locals=op===33?frame.ints:frame.strings;if(value>=locals.length||value<0)throw new Error("Invalid CS2 local");(op===33?ints:strings).push(locals[value]);}
         else if(op===34||op===36){const locals=op===34?frame.ints:frame.strings;if(value>=locals.length||value<0)throw new Error("Invalid CS2 local");locals[value]=pop(op===34?ints:strings);}
+        else if(op===66||op===67){
+            if(value<0||value>=frame.longs.length)throw new Error("Invalid CS2 long local");
+            if(op===66)longs.push(frame.longs[value]);else frame.longs[value]=pop(longs);
+        }
         else if(op===37)strings.push(take(strings,value).join(""));
         else if(op===38||op===39)pop(op===38?ints:strings);
         else if(op===40){
             if(calls.length>=64)throw new Error("CS2 call depth exceeded");
-            const next=await loader.load(value);if(next.longArgs)throw new Error("Unsupported CS2 long call");
-            calls.push(frame);frame=enter(next,take(ints,next.intArgs),take(strings,next.stringArgs));
+            const next=await loader.load(value);
+            calls.push(frame);frame=enter(next,take(ints,next.intArgs),take(strings,next.stringArgs),take(longs,next.longArgs??0));
         }else if(op===1)ints.push(varps.get(value)??0);
-        else if(op===25){const b=await loader.varbit(value),mask=b.end-b.start===31?0xffffffff:2**(b.end-b.start+1)-1;ints.push(((varps.get(b.base)??0)>>>b.start)&mask);}
+        else if(op===2)varps.set(value,pop(ints));
+        else if(op===25||op===27){
+            const b=await loader.varbit(value),width=b.end-b.start+1;
+            if(width<1||width>32)throw new Error("Invalid CS2 varbit bounds");
+            const mask=width===32?0xffffffff:2**width-1;
+            if(op===25)ints.push(((varps.get(b.base)??0)>>>b.start)&mask);
+            else{
+                const next=pop(ints);
+                if(next<0||next>mask)throw new Error("CS2 varbit value outside bounds");
+                const old=varps.get(b.base)??0;
+                varps.set(b.base,((old&~(mask<<b.start))|((next&mask)<<b.start))|0);
+            }
+        }
         else if(op===42)ints.push(varcs.get(value)??0);
         else if(op===43)varcs.set(value,pop(ints));
+        else if(op===44){
+            const slot=value>>>16,type=value&65535,length=pop(ints);
+            if(slot>4||length<0||length>5000)throw new Error("CS2 array bounds");
+            arrays.set(slot,new Array(length).fill(type===105?0:-1));
+        }else if(op===45||op===46){
+            const array=arrays.get(value);
+            if(!array)throw new Error("Undefined CS2 array");
+            if(op===45){const index=pop(ints);if(index<0||index>=array.length)throw new Error("CS2 array index");ints.push(array[index]);}
+            else{const [index,item]=take(ints,2);if(index<0||index>=array.length)throw new Error("CS2 array index");array[index]=item;}
+        }
+        else if(op===49)strings.push(varcStrings.get(value)??"");
+        else if(op===50)varcStrings.set(value,pop(strings));
         else if(op===60){const jump=frame.script.switches[value]?.get(pop(ints));if(jump!==undefined)frame.pc+=jump;}
-        else if(op>=4000&&op<=4003){const [a,b]=take(ints,2);if(op===4003&&!b)throw new Error("CS2 division by zero");ints.push((op===4000?a+b:op===4001?a-b:op===4002?a*b:Math.trunc(a/b))|0);}
-        else if(op===4106)strings.push(String(pop(ints)));
-        else if(op===4117)ints.push(pop(strings).length);
-        else if(op===4118){const [start,end]=take(ints,2),text=pop(strings);if(start<0||end<start||end>text.length)throw new Error("CS2 substring bounds");strings.push(text.slice(start,end));}
-        else if(op===4121){const from=pop(ints),[text,needle]=take(strings,2);ints.push(text.indexOf(needle,from));}
+        else if(executePureCs2(op,ints,strings,pop,take,{gender:scene.playerGender})){}
         else if(op===4108||op===4109){const [width,font]=take(ints,2),text=pop(strings);ints.push(await measure(font,text,width,op===4108));}
         else if(op===6518)ints.push(Number(mobile));
         else if(op===6519)ints.push(0); // Native browser uses desktop wire protocol.
@@ -119,25 +154,23 @@ export async function runWidgetScript(loader,id,args,scene,{varps=new Map(),varc
             const w={uid:uid>>>0,parentUid:uid>>>0,groupId:parent.groupId,childIndex:index,type,isIf3:true,
                 rawX:0,rawY:0,rawWidth:0,rawHeight:0,color:0,text:"",fontId:-1,spriteId:-1,hidden:false,flags:0,actions:[],listeners:[]};
             parent.dynamicChildren[index]=w;targets[value===1?1:0]=w;
+        }else if(op===101){
+            const w=targets[value===1?1:0],parent=w&&find(w.parentUid);
+            if(!parent||w.childIndex===undefined)throw new Error("Missing CS2 dynamic child");
+            if(parent.dynamicChildren?.[w.childIndex]===w)parent.dynamicChildren[w.childIndex]=null;
+            targets[value===1?1:0]=null;
         }else if(op===102){const parent=find(pop(ints));if(!parent)throw new Error("Missing CS2 parent");parent.dynamicChildren=[];}
         else if(op===200){const [uid,index]=take(ints,2),parent=find(uid),w=index===-1?parent:parent?.dynamicChildren?.[index];targets[value===1?1:0]=w;ints.push(Number(Boolean(w)));}
+        else if(op===201){const w=find(pop(ints));targets[value===1?1:0]=w;ints.push(Number(Boolean(w)));}
         else {
             let w;if(op>=2000&&op<3000){w=find(pop(ints));op-=1000;}else w=targets[value===1?1:0];
-            if(op===1000){const [x,y,xm,ym]=take(ints,4);write(w,{rawX:x,rawY:y,xPositionMode:xm,yPositionMode:ym});}
-            else if(op===1001){const [width,height,wm,hm]=take(ints,4);write(w,{rawWidth:width,rawHeight:height,widthMode:wm,heightMode:hm});}
-            else if(op===1003)write(w,{hidden:pop(ints)===1});
-            else if(op===1101)write(w,{color:pop(ints)});
-            else if(op===1105)write(w,{spriteId:pop(ints)});
-            else if(op===1112)write(w,{text:pop(strings)});
-            else if(op===1113)write(w,{fontId:pop(ints)});
-            else if(op===1114){const [x,y,line]=take(ints,3);write(w,{xTextAlignment:x,yTextAlignment:y,lineHeight:line});}
-            else if(op===1115)write(w,{textShadowed:pop(ints)===1});
+            if(executeWidgetCs2(op,w,ints,strings,pop,take,write)){}
             else if([1403,1404,1419].includes(op)){
                 const signature=pop(strings);if(!/^[is]*$/.test(signature)||signature.length>64)throw new Error("Unsupported widget listener signature");
                 const listener=new Array(signature.length+1);
                 for(let n=signature.length;n>0;n--)listener[n]=pop(signature[n-1]==="s"?strings:ints);
                 listener[0]=pop(ints);write(w,{[op===1403?"onMouseOver":op===1404?"onMouseLeave":"onKey"]:listener});
-            }else throw new Error("Unsupported dialogue CS2 opcode "+op);
+            }else throw new Error("Unsupported CS2 opcode "+op);
         }
     }
     return true;

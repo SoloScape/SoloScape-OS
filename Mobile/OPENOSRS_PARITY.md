@@ -30,6 +30,31 @@ reach that path rather than only the older `browser/app.mjs`.
 
 ## Work remaining before whole-client parity
 
+### JavaScript CS2 interpreter expansion (9 October 2026)
+
+The active browser interpreter (`browser/native-scripts.mjs`) now delegates
+additional opcode families to `browser/cs2-pure-ops.mjs` and
+`browser/cs2-widget-ops.mjs`. This first incremental port covers core
+long/array stack operations, fixed-size int arrays, varp/varbit and int/string
+varcs, arithmetic/bitwise and string instructions, and cache-widget property
+setters/getters including IF_ UID variants and action labels. State mutations
+respect the existing server-patch precedence callback. Varcs are kept on the
+authenticated interface session and cleared on disconnect.
+
+**This is not every OpenOSRS opcode.** General server-triggered CS2 remains
+whitelisted to the verified dialogue entry points (58, 600, 2379); unsupported
+client operations, inventory/event/DB/game-state handlers, other script
+entry points, and full model/widget rendering remain incomplete. Unsupported
+instructions throw explicitly instead of being declared implemented. Some
+ported property setters update widget state that the current renderer cannot
+yet draw. Opcode numbering was cross-checked against the pinned BSD TSPS
+reference; matching rev-240 OpenOSRS gamepack behavior still needs traces.
+
+`tests/cs2-extended.test.mjs` exercises stack ordering, arithmetic overflow,
+varbits/varcs, arrays, nested long calls, widget updates and bounds failures.
+The broader mobile Node suite is required before any parity claim. Authenticated
+bank/shop/inventory paths and physical-phone testing have not been verified.
+
 ### Whole-engine compilation progress
 
 `npm run build:openosrs-engine` now compiles a separate whole-engine entry
