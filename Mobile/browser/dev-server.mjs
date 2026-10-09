@@ -15,6 +15,8 @@ const routes = new Map([
     // Isolated TeaVM feasibility experiment; no gamepack or Java source served.
     ["/teavm", ["../teavm-poc/site/index.html", "text/html; charset=utf-8"]],
     ["/teavm/probe.mjs", ["../teavm-poc/site/probe.mjs", "text/javascript; charset=utf-8"]],
+    ["/teavm/model-viewer.mjs", ["../teavm-poc/site/model-viewer.mjs", "text/javascript; charset=utf-8"]],
+    ["/teavm/model-payload.mjs", ["../teavm-poc/site/model-payload.mjs", "text/javascript; charset=utf-8"]],
     ["/teavm/probe.css", ["../teavm-poc/site/probe.css", "text/css; charset=utf-8"]],
     ["/teavm/bridge.js", ["../teavm-poc/target/javascript/bridge.js", "text/javascript; charset=utf-8"]],
     ["/diagnostics-app.mjs", ["diagnostics-app.mjs", "text/javascript; charset=utf-8"]],

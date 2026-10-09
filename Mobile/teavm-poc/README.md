@@ -93,3 +93,35 @@ TeaVM and draws the same pixels as the JVM**. It is *not* the OpenOSRS scene
 renderer, texture pipeline, title screen, login or game loop. Expansion to
 authentic models, depth buffers, scene composition and browser input is
 still substantial work.
+
+## Real JS5 model viewer (current step)
+
+The `/teavm` page now also attempts to load an **actual rev-240 model**
+from validated JS5 archive index **7** using SoloScape's existing
+`NativeJs5Cache`, `decodeGroup`, and `decodeModel` utilities.
+It starts around model group 1000 and checks nearby present groups for
+usable geometry. Enter a different model group ID and press **Load verified
+model** to try another. Drag the Rotate slider and release to change yaw.
+A running **native JS5 WebSocket gateway** is required for model downloads.
+
+The model's real vertex positions, face indices and packed-HSL colors
+are sent to compiled TeaVM Java. The new `ModelView` class performs a
+bounded projection, back-to-front triangle sorting and scanline coverage.
+Every painted horizontal span goes through the **unaltered rev-240
+`yw.fn` OpenOSRS bytecode** isolated in the previous milestone.
+The RGB framebuffer is copied to Canvas2D; no streaming or JavaScript
+Canvas triangle drawing is used.
+
+**Accuracy boundary:** The original OpenOSRS 3D triangle entry point
+`ff.al` currently fails TeaVM bytecode parsing. So the 3D projection,
+span coverage, and painter ordering are *new Java bridge code*, not a
+completed port of OpenOSRS's `Rasterizer3D`. Textures, non-opaque faces,
+advanced shading, clipping and depth buffering are omitted in this viewer.
+This is real JS5 geometry displayed by TeaVM plus original 2D rasterizer
+bytecode, **not** yet pixel-perfect game-engine rendering.
+
+`npm run test:teavm` renders the same model geometry fixture at four
+camera angles with (1) TeaVM and original 2D pixel writer and (2)
+a JVM process using the **original untouched `yw.class` in the pinned
+gamepack**. Their complete framebuffer hashes must agree. These tests
+do not substitute for live JS5 or mobile FPS validation.

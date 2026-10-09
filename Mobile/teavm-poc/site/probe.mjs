@@ -57,3 +57,11 @@ try {
         "\nStart the native SoloScape gateway to run the real archive check.";
     console.warn("[teavm-poc] JS5 gateway not ready:",error);
 }
+
+void import("/teavm/model-viewer.mjs")
+    .then(viewer=>viewer.startModelViewer(core))
+    .catch(error=>{
+        document.querySelector("#model-status").textContent=
+            "Real JS5 model viewer unavailable: "+(error?.message||String(error));
+        console.warn("[teavm-model]",error);
+    });

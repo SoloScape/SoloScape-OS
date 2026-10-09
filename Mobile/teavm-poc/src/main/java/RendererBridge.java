@@ -16,7 +16,7 @@ public final class RendererBridge {
 
     private RendererBridge() { }
     public static void main(String[] args) {
-        System.out.println(Integer.toUnsignedString(framebufferHash()));
+        System.out.println(Integer.toUnsignedString(args.length==3?modelHash(args[0],args[1],Integer.parseInt(args[2])):framebufferHash()));
     }
 
     @JSExport public static int revision() { return Js5Core.revision(); }
@@ -63,6 +63,27 @@ public final class RendererBridge {
             i += 6;
         }
         return new String(out);
+    }
+
+    /** Real rev-240 JS5 geometry, projected by TeaVM Java; original yw paints spans. */
+    @JSExport public static String renderModelHex(String vertices,String faces,int yaw) {
+        int[] pixels=ModelView.render(vertices,faces,yaw);
+        char[] out=new char[pixels.length*6];
+        for(int n=0,i=0;n<pixels.length;n++){
+            int pixel=pixels[n];
+            for(int j=5;j>=0;j--){out[i+j]=DIGITS[pixel&15];pixel>>>=4;}
+            i+=6;
+        }
+        return new String(out);
+    }
+
+    @JSExport public static int modelHash(String vertices,String faces,int yaw) {
+        int hash=0x811c9dc5;
+        for(int pixel:ModelView.render(vertices,faces,yaw)){
+            hash^=pixel;
+            hash*=0x01000193;
+        }
+        return hash;
     }
 
     @JSExport public static int sample(int x, int y) {

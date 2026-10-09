@@ -119,7 +119,8 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         assert.match(proofHtml,/TeaVM:/);
         assert.match(proofHtml,/src="\/teavm\/probe\.mjs"/);
         assert.match(proofHtml,/id="genuine-raster"/,"authentic canvas probe mounted");
-        for(const path of ["/teavm/probe.mjs","/teavm/probe.css"]){
+        assert.match(proofHtml,/id="model-canvas"/,"real JS5 model viewer mounted");
+        for(const path of ["/teavm/probe.mjs","/teavm/model-viewer.mjs","/teavm/model-payload.mjs","/teavm/probe.css"]){
             const response=await fetch(root+path);
             assert.equal(response.status,200,path);
             assert.ok((await response.text()).length>100);

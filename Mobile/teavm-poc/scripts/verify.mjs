@@ -56,3 +56,31 @@ const nativeHash=Number(native.stdout.trim());
 assert.ok(Number.isInteger(nativeHash),"Original JVM must emit framebuffer hash");
 assert.equal(hash>>>0,nativeHash,"TeaVM renderer pixels differ from original OpenOSRS JVM bytecode");
 console.log("PASS: Original rev-240 OpenOSRS Rasterizer2D JVM hash exactly equals TeaVM pixel output (256x160).");
+
+const vertices=[
+    -40,-40,-40,40,-40,-40,40,40,-40,-40,40,-40,
+    -40,-40,40,40,-40,40,40,40,40,-40,40,40
+].join(",");
+const faces=[
+    0,1,2,0xcf7153,0,2,3,0xcf7153,
+    4,6,5,0x5098cb,4,7,6,0x5098cb,
+    0,4,5,0xe0a449,0,5,1,0xe0a449,
+    3,2,6,0x67a46a,3,6,7,0x67a46a,
+    0,3,7,0xc07ba0,0,7,4,0xc07ba0,
+    1,5,6,0x948fd8,1,6,2,0x948fd8
+].join(",");
+for(const yaw of [0,45,140,270]){
+    const rgb=module.renderModelHex(vertices,faces,yaw);
+    assert.equal(rgb.length,256*160*6);
+    assert.match(rgb,/^[0-9a-f]+$/);
+    assert.ok(rgb.includes("cf7153")||rgb.includes("5098cb")||rgb.includes("67a46a"),"model face pixels absent");
+    const expected=module.modelHash(vertices,faces,yaw)>>>0;
+    const nativeModel=spawnSync(java,["-cp",[classes,original,api].join(delimiter),"RendererBridge",vertices,faces,String(yaw)],{
+        encoding:"utf8",timeout:15000
+    });
+    assert.equal(nativeModel.status,0,"Original rev-240 JVM model render failed: "+nativeModel.stderr);
+    assert.equal(expected,Number(nativeModel.stdout.trim()),"Original rev-240 pixel raster differs from TeaVM at yaw "+yaw);
+}
+assert.throws(()=>module.renderModelHex("0,0,0","0,1,2,16711680",45),/Invalid model triangle layout/);
+assert.throws(()=>module.renderModelHex(vertices,"0,1,9999,16711680",45),/index or color invalid/);
+console.log("PASS: 12-face model at four yaw angles has exact TeaVM/JVM pixel parity with original rev-240 span fill.");
