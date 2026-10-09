@@ -31,8 +31,8 @@ the cache mute button controls it. Music stops on entering the game.
 Login retains the cache title artwork and masked fields while showing
 "Connecting to server..." The login buttons are hidden while connecting.
 After authentication, the world shows a small top-left "Loading - Please wait."
-label until the first map frame is drawn. There is no custom spinner or tinted
-loading cover; disconnect returns to the title.
+label over a solid black screen until the first map frame is drawn. There is
+no custom spinner; disconnect returns to the title.
 The top bar, sidebar and development overlays are hidden in ordinary play.
 **F10** opens the developer panel with region travel, floor controls,
 disconnect, cache-interface preview and diagnostics. No terrain preview
