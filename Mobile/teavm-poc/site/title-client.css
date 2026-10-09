@@ -1,11 +1,11 @@
-/* Revision-240 OpenOSRS title is rendered in a fixed 765 x 503
-   framebuffer, never reconstructed with CSS layout or generic buttons. */
+/* Revision-240 title artwork fills the window. The original 765x503 UI
+   coordinates scale uniformly with their transparent input targets. */
 :root{color-scheme:dark;background:#000;color:#eee;font-family:Arial,Helvetica,sans-serif}
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
 .app{width:100%;height:100dvh;display:flex;align-items:center;justify-content:center}
-.screen{position:relative;flex:none;width:min(765px,100vw,calc(100dvh * 765 / 503));aspect-ratio:765/503;max-height:100dvh;background:#000;overflow:hidden}
-.in-game .screen{width:min(100vw,calc(100dvh * 765 / 503))}
+.screen{position:relative;flex:none;width:100vw;height:100dvh;background:#000;overflow:hidden}
+.in-game .screen{width:min(100vw,calc(100dvh * 765 / 503));height:auto;aspect-ratio:765/503}
 #title-screen{position:absolute;inset:0;background:#000}
 #title-screen[hidden]{display:none}
 #osrs-title{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}

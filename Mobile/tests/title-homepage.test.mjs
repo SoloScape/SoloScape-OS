@@ -33,6 +33,10 @@ test("mobile homepage keeps scaled title controls, login and world lifecycle in 
                     ctx.fillStyle=color;ctx.font="12px monospace";ctx.fillText(s,x,y);
                 }};
                 this.assets.font=this.assets.small=font;
+                const background=document.createElement("canvas");background.width=545;background.height=671;
+                const backgroundContext=background.getContext("2d");
+                backgroundContext.fillStyle="rgb(20,30,40)";backgroundContext.fillRect(0,0,545,671);
+                this.assets.background=await createImageBitmap(background);
                 this.music={muted:false,show(){},hide(){},dispose(){},unlock(){},
                     toggle(){this.muted=!this.muted;}};
                 window.fixtureTitle=this;this.canvas.dataset.loaded="true";this.showWelcome();
@@ -78,15 +82,24 @@ test("mobile homepage keeps scaled title controls, login and world lifecycle in 
             const form=document.querySelector("#login-form"),status=document.querySelector("#client-status");
             const user=document.querySelector("#login-username"),pass=document.querySelector("#login-password");
             const click=id=>document.getElementById(id).click();
-            for(const width of [765,390,593]){
-                screen.style.width=width+"px";title.paint();
+            const initial=screen.getBoundingClientRect();
+            check(initial.width===innerWidth&&initial.height===innerHeight,"Title does not fill the window");
+            for(const [width,height] of [[765,503],[390,844],[844,390],[1920,1080]]){
+                screen.style.width=width+"px";screen.style.height=height+"px";title.paint();
                 const bounds=title.canvas.getBoundingClientRect(),button=document.querySelector("#title-login").getBoundingClientRect();
-                check(Math.abs(button.left-bounds.left-388.5*bounds.width/765)<1,"Scaled button drifted from artwork");
+                const scale=Math.min(bounds.width/765,bounds.height/503);
+                check(Math.abs(button.left-bounds.left-(bounds.width-765*scale)/2-388.5*scale)<1,"Scaled button drifted from artwork");
+                check(Math.abs(button.top-bounds.top-(bounds.height-503*scale)/2-270.5*scale)<1,"Button vertical alignment drifted");
+                for(const [x,y] of [[0,0],[width-1,0],[0,height-1],[width-1,height-1]]){
+                    const pixel=title.canvas.getContext("2d").getImageData(x,y,1,1).data;
+                    check(pixel[0]===20&&pixel[1]===30&&pixel[2]===40,"Title background leaves a window border");
+                }
                 click("title-world-switch");
                 check(title.mode==="world-select"&&!document.querySelector("#title-world-back").hidden,"World selector failed");
                 check(getComputedStyle(title.stage).transform!=="none","World selector lost its mobile transform");
                 click("title-world-back");
             }
+            screen.style.width="";screen.style.height="";title.paint();
             click("title-login");check(!form.hidden,"Existing user failed to open login");
             check(!document.querySelector("#login-otp"),"Extra authenticator row on ordinary login");
             check(getComputedStyle(user).backgroundColor==="rgba(0, 0, 0, 0)","Browser field chrome remains");

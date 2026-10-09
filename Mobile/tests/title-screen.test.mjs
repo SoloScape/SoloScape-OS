@@ -28,6 +28,20 @@ test("fixed 765 by 503 title aligns reference panel top and mute bottom-right",(
     assert.equal(desktop.scale,1);assert.equal(desktop.y,(1080-503)/2);
 });
 
+test("window title covers background while preserving the centred UI aspect ratio",()=>{
+    for(const [width,height] of [[390,844],[844,390],[1920,1080]]){
+        const layout=titleLayout(width,height,true);
+        assert.ok(1089*layout.backgroundScale>=width);
+        assert.ok(671*layout.backgroundScale>=height);
+        assert.ok(layout.bx<=0&&layout.by<=0);
+        assert.ok(layout.x>=0&&layout.y>=0);
+        assert.ok(765*layout.scale<=width&&503*layout.scale<=height);
+        assert.equal(layout.x+765*layout.scale/2,width/2);
+        assert.equal(layout.y+503*layout.scale/2,height/2);
+    }
+    assert.ok(titleLayout(1920,1080,true).scale>1,"desktop UI expands with its title window");
+});
+
 test("cache-font caret follows native offsets without selectable highlights",()=>{
     const font={measure:text=>text.length*5};
     const field=titleFieldLayout(font,"Alice",1,4,true);

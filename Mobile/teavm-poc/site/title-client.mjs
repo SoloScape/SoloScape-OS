@@ -18,7 +18,7 @@ const worldStatus=document.querySelector("#world-status");
 let core,titleLogin,sessionCache,worldBridge,attemptId=0;
 const say=message=>{status.textContent=message;};
 const title=new NativeTitleScreen({canvas,stage:document.querySelector("#title-controls"),
-    form:loginForm,status,onCancel:cancelLogin});
+    form:loginForm,status,onCancel:cancelLogin,fillWindow:true});
 
 function cancelLogin(){
     ++attemptId;

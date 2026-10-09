@@ -20,11 +20,13 @@ export const OSRS_TITLE_COPY=Object.freeze({
     remember:"Remember username",hide:"Hide username",
     help:"Can't login? Click here.",login:"Login",cancel:"Cancel",
 });
-export function titleLayout(width,height){
-    const scale=Math.min(width/765,height/503,1);
+export function titleLayout(width,height,fillWindow=false){
+    const scale=Math.min(width/765,height/503,fillWindow?Infinity:1);
     const x=(width-765*scale)/2,y=(height-503*scale)/2;
+    const backgroundScale=fillWindow?Math.max(width/1089,height/671):scale;
     return {scale,x,y,panelOffset:0,
-        backgroundScale:scale,bx:x-162*scale,by:y,
+        backgroundScale,bx:fillWindow?(width-1089*backgroundScale)/2:x-162*scale,
+        by:fillWindow?(height-671*backgroundScale)/2:y,
         muteX:x+725*scale,muteY:y+463*scale};
 }
 // Native caret indexes map onto the cache font, including masked
@@ -58,8 +60,9 @@ function spriteCanvas(frame){
     data.data.set(frame.rgba);ctx.putImageData(data,frame.x,frame.y);return canvas;
 }
 export class NativeTitleScreen{
-    constructor({canvas,stage,form,status,onCancel=()=>{}}){
+    constructor({canvas,stage,form,status,onCancel=()=>{},fillWindow=false}){
         this.canvas=canvas;this.stage=stage;this.form=form;this.status=status;this.onCancel=onCancel;
+        this.fillWindow=fillWindow;
         this.form.noValidate=true;
         this.mode="loading";this.percent=0;this.message="Connecting to update server";this.assets={sprites:new Map()};this.visible=true;
         this.newAccount=document.getElementById("title-new-account");this.login=document.getElementById("title-login");
@@ -264,17 +267,21 @@ export class NativeTitleScreen{
         if(!this.visible)return;
         const bounds=this.canvas.parentElement.getBoundingClientRect();
         const ctx=this.canvas.getContext("2d");
-        // Rasterize once in native client pixels. Device density and small
-        // viewports scale only the finished image, never individual glyphs.
-        if(this.canvas.width!==765||this.canvas.height!==503){this.canvas.width=765;this.canvas.height=503;}
-        ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle="#000000";ctx.fillRect(0,0,765,503);ctx.imageSmoothingEnabled=false;
-        const l=titleLayout(765,503),controls=titleLayout(bounds.width,bounds.height),{background}=this.assets;
+        // The window title covers the viewport; its classic UI scales uniformly.
+        // Fixed-title consumers retain their original 765x503 framebuffer.
+        const width=this.fillWindow?Math.max(1,Math.round(bounds.width)):765;
+        const height=this.fillWindow?Math.max(1,Math.round(bounds.height)):503;
+        if(this.canvas.width!==width||this.canvas.height!==height){this.canvas.width=width;this.canvas.height=height;}
+        ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle="#000000";ctx.fillRect(0,0,width,height);ctx.imageSmoothingEnabled=false;
+        const l=titleLayout(width,height,this.fillWindow),controls=titleLayout(bounds.width,bounds.height,this.fillWindow),{background}=this.assets;
         if(this.mode==="world-select"){
             this.stage.style.transform=`translate(${controls.x}px,${controls.y}px) scale(${controls.scale})`;
+            ctx.save();ctx.translate(l.x,l.y);ctx.scale(l.scale,l.scale);
             paintWorldSelect(ctx,{sprites:this.assets.sprites,font:this.assets.font,
                 small:this.assets.small,worldId:this.worldId,
                 sortOption:this.worldSortOption,sortDirection:this.worldSortDirection,
                 hovered:this.worldRowHover});
+            ctx.restore();
             return;
         }
         if(background){
@@ -335,6 +342,7 @@ export class NativeTitleScreen{
             }
         }
         ctx.restore();
+        ctx.save();ctx.translate(l.x,l.y);ctx.scale(l.scale,l.scale);
         if(this.worldButton&&!this.worldButton.hidden){
             // Rev-240 world-select button at the fixed bottom-left. This is
             // outside the titlebox transform, like the original client.
@@ -354,10 +362,11 @@ export class NativeTitleScreen{
                 small.draw(ctx,prompt,55-Math.floor(small.measure(prompt)/2),491,"#ffffff",true);
             }
         }
+        ctx.restore();
         if(!this.mute.hidden){
             this.mute.style.left=controls.muteX+"px";this.mute.style.top=controls.muteY+"px";
             this.mute.style.width=this.mute.style.height=36*controls.scale+"px";
-            const sprite=this.assets.sprites.get("title_mute")?.[this.music?.muted?1:0];if(sprite)ctx.drawImage(sprite,l.muteX,l.muteY);
+            const sprite=this.assets.sprites.get("title_mute")?.[this.music?.muted?1:0];if(sprite)ctx.drawImage(sprite,l.muteX,l.muteY,sprite.width*l.scale,sprite.height*l.scale);
         }
     }
     dispose(){this.usernameInput?.removeEventListener("input",this.saveUsername);cancelAnimationFrame(this.animation);for(const [input,type,handler] of this.fieldListeners)input.removeEventListener(type,handler);window.removeEventListener("resize",this.resize);window.visualViewport?.removeEventListener("resize",this.resize);document.removeEventListener("pointerup",this.gesture,true);document.removeEventListener("keydown",this.gesture,true);document.removeEventListener("keydown",this.worldEscape);this.fire?.destroy();this.music?.dispose();this.assets.background?.close();}
