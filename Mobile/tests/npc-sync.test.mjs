@@ -120,3 +120,33 @@ test("NPC composition selects verified configuration group 9 and actual model ID
     assert.equal(first.model.faceCount,1);
     assert.equal(first.model.faceColors[0],11);
 });
+
+test("stationary NPC mesh is reused only while pose, placement, orientation and region are unchanged",async()=>{
+    const model={verticesCount:3,faceCount:1,verticesX:Int32Array.of(0,128,0),
+        verticesY:Int32Array.of(0,0,128),verticesZ:Int32Array.of(0,0,0),
+        indices1:Int32Array.of(0),indices2:Int32Array.of(1),indices3:Int32Array.of(2),
+        faceColors:Uint16Array.of(2000),faceTextures:Int16Array.of(-1)};
+    let pose=model;
+    const models={textures:{textures:new Map()},
+        animations:{pose:async()=>pose}};
+    const npcs=new NativeNpcModels(models);
+    npcs.composition=async()=>({model,definition:{size:1,idleSeqId:50,
+        walkSeqId:51,runSeqId:-1,ambient:0,contrast:0}});
+    const ground={mapX:50,mapY:50,side:64,heights:new Int32Array(4096),
+        renderFlags:new Uint8Array(4096)};
+    const npc={index:7,type:100,x:3201,y:3201,plane:0,orientation:0,moving:false};
+    const first=await npcs.mesh(npc,ground);
+    const same=await npcs.mesh({...npc},ground);
+    assert.strictEqual(same,first,"same animation and world location skip expensive mesh build");
+    assert.notStrictEqual(await npcs.mesh({...npc,x:3201.3},ground),first);
+    const revisited=await npcs.mesh({...npc},ground);
+    assert.notStrictEqual(revisited,first,"different position invalidates last cached entry");
+    const turned=await npcs.mesh({...npc,orientation:512},ground);
+    assert.notStrictEqual(turned,revisited,"turning changes the model mesh");
+    pose={...model,verticesX:Int32Array.of(0,100,0)};
+    const differentPose=await npcs.mesh({...npc,orientation:512},ground);
+    assert.notStrictEqual(differentPose,turned,"new animation frame invalidates model cache");
+    const changedRegion={...ground,heights:ground.heights.slice()};
+    assert.notStrictEqual(await npcs.mesh({...npc,orientation:512},changedRegion),differentPose,
+        "region rebuild must not reuse old ground geometry");
+});

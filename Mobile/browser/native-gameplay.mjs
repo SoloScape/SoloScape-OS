@@ -43,6 +43,20 @@ export function interpolatePlayer(motion,now){
 // the WebGL RAF. Limit model rebuilding to 20Hz on touch devices; the world
 // continues rendering at the browser's native display cadence.
 export const actorMeshInterval=touch=>touch?50:20;
+// Cached NPC meshes are region-local. Translate copies into the 3x3 world
+// without mutating the cached source; otherwise every successive actor update
+// shifts the same vertices again and corrupts geometry/picking.
+export function translateActorMesh(mesh,dx,dy){
+    if(dx===0&&dy===0)return mesh;
+    const shift=source=>{
+        const vertices=source.slice();
+        for(let i=0;i<vertices.length;i+=6){vertices[i]+=dx;vertices[i+2]+=dy;}
+        return vertices;
+    };
+    return {...mesh,vertices:shift(mesh.vertices),
+        texturedBatches:mesh.texturedBatches.map(batch=>({...batch,vertices:shift(batch.vertices)})),
+        transparentBatches:(mesh.transparentBatches??[]).map(batch=>({...batch,vertices:shift(batch.vertices)}))};
+}
 export function visibleNpcMotions(motions,player,bounds,origin,max=48){
     const px=player?.x??0,py=player?.y??0;
     const candidates=[];
@@ -153,7 +167,7 @@ export class NativeGameplay {
     }
     async loadRebuild(rebuild){
         const generation=++this.generation,current=()=>!this.closed&&generation===this.generation;
-        this.clearNpcMenu();this.npcs.reset();this.npcMotions.clear();this.npcDrawn=0;
+        this.clearNpcMenu();this.npcs.reset();this.npcMotions.clear();this.npcModels.renderedMeshes?.clear();this.npcDrawn=0;
         this.sceneAnimations.reset();
         this.spotEffects.reset();
         this.spotEffects.update("player",this.sync.local?.spotanims,this.now());
@@ -451,9 +465,9 @@ export class NativeGameplay {
         this.drawing=true;
         const add=(mesh,region)=>{
             const dx=(region.mapX-this.origin.mapX)*64,dy=(region.mapY-this.origin.mapY)*64;
-            for(const v of [mesh.vertices,...mesh.texturedBatches.map(b=>b.vertices),...(mesh.transparentBatches??[]).map(b=>b.vertices)])
-                for(let i=0;i<v.length;i+=6){v[i]+=dx;v[i+2]+=dy;}
-            meshes.push(mesh);
+            const worldMesh=translateActorMesh(mesh,dx,dy);
+            meshes.push(worldMesh);
+            return worldMesh;
         };
         try{
             const player=this.playerController.sample(this.localServerId||this.sync?.localIndex||1),appearance=player?.appearance;
@@ -477,15 +491,15 @@ export class NativeGameplay {
                     const mesh=buildPlayerMesh(posed,region,player,{textures:this.models.textures.textures});
                     if(!mesh.vertices.length&&!mesh.texturedBatches.some(batch=>batch.vertices.length)&&!mesh.transparentBatches.some(batch=>batch.vertices.length))
                         throw new Error("Local player model produced no visible triangles");
-                    add(mesh,region);
+                    const worldMesh=add(mesh,region);
                     if(this.closed||generation!==this.generation)return;
                     // The player and complete floor/scenery are sufficient for
                     // first-playable readiness. NPC models can stream in after
                     // the first frame instead of delaying login for every NPC.
                     if(this.scenePrepared&&!this.ready){
-                        this.viewport.setActors({vertices:mesh.vertices,
-                            texturedBatches:mesh.texturedBatches,
-                            transparentBatches:mesh.transparentBatches,
+                        this.viewport.setActors({vertices:worldMesh.vertices,
+                            texturedBatches:worldMesh.texturedBatches,
+                            transparentBatches:worldMesh.transparentBatches,
                             textures:this.models.textures.textures,npcPickMeshes:[]});
                     }
                     const ground=playerGroundHeight(region,player.x-region.mapX*64+.5,player.y-region.mapY*64+.5,player.plane);
@@ -525,11 +539,11 @@ export class NativeGameplay {
             for(const result of npcResults){
                 if(!result){missing++;continue;}
                 const {mesh,effects,region,index}=result;
-                add(mesh,region);drawn++;
+                const worldMesh=add(mesh,region);drawn++;
                 for(const effect of effects)add(effect,region);
-                npcPickMeshes.push({index,vertices:mesh.vertices});
-                for(const batch of mesh.texturedBatches)npcPickMeshes.push({index,vertices:batch.vertices});
-                for(const batch of mesh.transparentBatches??[])npcPickMeshes.push({index,vertices:batch.vertices});
+                npcPickMeshes.push({index,vertices:worldMesh.vertices});
+                for(const batch of worldMesh.texturedBatches)npcPickMeshes.push({index,vertices:batch.vertices});
+                for(const batch of worldMesh.transparentBatches??[])npcPickMeshes.push({index,vertices:batch.vertices});
             }
             if(this.closed||generation!==this.generation)return;
             const length=meshes.reduce((n,m)=>n+m.vertices.length,0),vertices=new Float32Array(length);
@@ -583,5 +597,5 @@ export class NativeGameplay {
         if(typeof this.session.stop==="function")this.session.stop(new Error(message));
         else this.session.close();
     }
-    close(){this.closed=true;this.generation++;clearInterval(this.timer);this.playerController.clear();this.sceneAnimations.reset();this.spotEffects.reset();this.viewport.setDynamicScenery?.(null);this.interfaces?.close();this.clearNpcMenu();this.viewport.setActors(null);this.viewport.setRoofContext?.(null,null,null);this.viewport.onDestination=()=>{};this.viewport.onNpc=()=>{};this.viewport.onObject=()=>{};this.viewport.onNpcCancel=()=>{};this.viewport.onGroundMenu=()=>{};}
+    close(){this.closed=true;this.generation++;clearInterval(this.timer);this.playerController.clear();this.sceneAnimations.reset();this.spotEffects.reset();this.npcModels.renderedMeshes?.clear();this.viewport.setDynamicScenery?.(null);this.interfaces?.close();this.clearNpcMenu();this.viewport.setActors(null);this.viewport.setRoofContext?.(null,null,null);this.viewport.onDestination=()=>{};this.viewport.onNpc=()=>{};this.viewport.onObject=()=>{};this.viewport.onNpcCancel=()=>{};this.viewport.onGroundMenu=()=>{};}
 }

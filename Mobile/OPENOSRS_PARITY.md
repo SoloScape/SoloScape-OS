@@ -69,8 +69,13 @@ lookups and bounded immutable classic animation poses, avoid re-uploading
 dynamic scenery with identical mesh and pick references, and reuse actor
 WebGL vertex buffers across same-size updates via `bufferSubData`.
 All animation-frame changes still produce distinct poses, and newly visible
-actors can trigger buffer growth. Preserve gameplay/server tick cadence. Device screenshots and
-on-device profiling remain necessary to validate actual FPS gains and
+actors can trigger buffer growth. The latest optimization also retains an
+unchanged animated-location scene across actor updates (rechecking visible
+animation frame and exact player position), and caches the region-local NPC
+mesh for unchanged pose, position, facing and terrain. Off-region actor
+mesh translation now copies vertices to avoid mutating these caches; scene
+rebuilds and disconnects clear them. Preserve gameplay/server tick cadence.
+Device screenshots and on-device profiling remain necessary to validate actual FPS gains and
 animation smoothness; lower actor cadence can make movement less fluid.
 
 ### JavaScript CS2 interpreter expansion (9 October 2026)

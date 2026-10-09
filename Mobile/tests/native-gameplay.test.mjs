@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {NativeGameplay,actorMeshInterval,visibleNpcMotions,interpolatePlayer,rebuildRegions} from "../browser/native-gameplay.mjs";
+import {NativeGameplay,translateActorMesh,actorMeshInterval,visibleNpcMotions,interpolatePlayer,rebuildRegions} from "../browser/native-gameplay.mjs";
 import {decodeRebuild,encodeMoveDestination,encodeWindowStatus,WINDOW_STATUS} from "../browser/player-protocol.mjs";
 import {NativePlayerSync} from "../browser/player-sync.mjs";
 import {NativeTspsPlayerController} from "../browser/tsps-game-controller.mjs";
@@ -376,4 +376,20 @@ test("actor profiler separates player, NPC preparation, VBO upload and scenery",
         assert.equal(total,14);
         assert.equal(game.drawing,false);
     }finally{game.close();}
+});
+
+test("reusing region-local NPC meshes never applies the world offset twice",()=>{
+    const local={vertices:Float32Array.of(1,2,3,4,5,6),
+        texturedBatches:[{texture:7,vertices:Float32Array.of(10,11,12,13,14,15)}],
+        transparentBatches:[{alpha:100,vertices:Float32Array.of(8,9,10,11,12,13)}]};
+    assert.strictEqual(translateActorMesh(local,0,0),local);
+    const first=translateActorMesh(local,64,-64);
+    const second=translateActorMesh(local,64,-64);
+    assert.notStrictEqual(first,local);
+    assert.deepEqual([...first.vertices],[65,2,-61,4,5,6]);
+    assert.deepEqual([...second.vertices],[65,2,-61,4,5,6]);
+    assert.deepEqual([...local.vertices],[1,2,3,4,5,6]);
+    assert.equal(first.texturedBatches[0].vertices[0],74);
+    assert.equal(first.transparentBatches[0].vertices[2],-54);
+    assert.equal(local.texturedBatches[0].vertices[0],10);
 });

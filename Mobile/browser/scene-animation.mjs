@@ -26,8 +26,26 @@ export function sceneSequenceFrame(sequence,elapsedMs,{loop=false,location=false
 
 export class NativeSceneAnimations {
     constructor(animations){this.animations=animations;this.entries=[];this.errors=[];}
-    reset(entries=[],started=0){this.entries=entries.map(entry=>({...entry,started,lastFrame:null,mesh:null,scenePart:null,failed:false}));this.errors=[];}
+    reset(entries=[],started=0){
+        this.entries=entries.map(entry=>({...entry,started,lastFrame:null,mesh:null,scenePart:null,failed:false}));
+        this.errors=[];this.previousScene=null;this.previousView=null;
+    }
     async scene(now,origin,player,textures){
+        // Actors update independently from location animations. When the
+        // player position and all *visible* classic frames are unchanged,
+        // preserve the complete scene and its picking/batch references.
+        // Exact position comparison avoids hiding a newly-visible edge object.
+        const view=origin.mapX+":"+origin.mapY+":"+player.x+":"+player.y+":"+(player.plane??0);
+        if(this.previousScene&&this.previousView===view&&this.previousTextures===textures&&
+            this.entries.every(entry=>{
+                const {terrain,loc,definition}=entry;
+                const radius=49+Math.max(definition.sizeX,definition.sizeY);
+                if(entry.failed||Math.max(Math.abs(terrain.mapX*64+loc.x-player.x),
+                    Math.abs(terrain.mapY*64+loc.y-player.y))>radius)return true;
+                return Boolean(entry.sequence&&entry.sequenceResolver===this.animations.sequence&&
+                    entry.lastFrame!==null&&entry.scenePart&&
+                    sceneSequenceFrame(entry.sequence,Math.max(0,now-entry.started),{location:true})===entry.lastFrame);
+            }))return this.previousScene;
         const batches=[],transparentBatches=[],pickMeshes=[];
         for(const entry of this.entries){
             const {terrain,loc,definition,part,model,level}=entry;
@@ -66,6 +84,8 @@ export class NativeSceneAnimations {
                 batches.push(...partBatches);transparentBatches.push(...partAlpha);pickMeshes.push(pickMesh);
             }catch(error){entry.failed=true;this.errors.push({id:loc.id,sequence:definition.seqId,reason:error.message});}
         }
-        return {batches,transparentBatches,pickMeshes};
+        this.previousView=view;this.previousTextures=textures;
+        this.previousScene={batches,transparentBatches,pickMeshes};
+        return this.previousScene;
     }
 }

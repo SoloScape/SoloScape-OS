@@ -282,3 +282,45 @@ test("color actor VBO keeps allocation between updates and does not upload on cl
     assert.deepEqual(calls,[["data",18],["subdata",18]]);
     assert.equal(fake.actorCount,0);
 });
+
+test("unchanged animated scenery returns exact cached scene until frame, tile, or textures change",async()=>{
+    let poses=0;
+    const animations={sequence:async()=>seq,poseFrame:async(m)=>{poses++;return m;}};
+    const runtime=new NativeSceneAnimations(animations),t=terrain(),
+        definition=decodeObjectDefinition(Uint8Array.of(24,0,2,0),5);
+    runtime.reset([{terrain:t,loc:{id:5,x:10,y:10,plane:0,rotation:0,shape:10},
+        definition,part:{type:10,rotation:0,dx:0,dy:0},model:model(),level:0}],1000);
+    const origin={mapX:50,mapY:50},player={x:3210,y:3210,plane:0},textures=new Map();
+    const first=await runtime.scene(1000,origin,player,textures);
+    const same=await runtime.scene(1020,origin,player,textures);
+    assert.strictEqual(same,first,"the full unchanged scene uses identical batch and pick references");
+    assert.equal(poses,1);
+    const moved=await runtime.scene(1020,origin,{...player,x:3211},textures);
+    assert.notStrictEqual(moved,first,"crossing a tile invalidates scenery visibility");
+    const newFrame=await runtime.scene(1060,origin,player,textures);
+    assert.notStrictEqual(newFrame,moved,"advanced classic animation frame rebuilds scenery");
+    assert.equal(poses,2);
+    const newTextures=await runtime.scene(1060,origin,player,new Map());
+    assert.notStrictEqual(newTextures,newFrame,"different texture material set invalidates scene");
+    runtime.reset();
+    const cleared=await runtime.scene(1100,origin,player,textures);
+    assert.notStrictEqual(cleared,newTextures,"map unload invalidates cached scene");
+    assert.deepEqual(cleared.batches,[]);
+});
+
+test("distant uninitialised animations do not disable scenery caching",async()=>{
+    const t=terrain(),definition=decodeObjectDefinition(Uint8Array.of(24,0,2,0),5);
+    const animations={sequence:async()=>seq,poseFrame:async m=>m};
+    const create=(x,region=t)=>({terrain:region,loc:{id:5,x,y:10,plane:0,rotation:0,shape:10},
+        definition,part:{type:10,rotation:0,dx:0,dy:0},model:model(),level:0});
+    const runtime=new NativeSceneAnimations(animations);
+    runtime.reset([create(10),create(10,{...t,mapX:52})],1000);
+    const origin={mapX:50,mapY:50},player={x:3210,y:3210,plane:0},textures=new Map();
+    const first=await runtime.scene(1000,origin,player,textures);
+    const cached=await runtime.scene(1020,origin,player,textures);
+    assert.strictEqual(cached,first,"offscreen animations should not defeat active scene caching");
+    assert.equal(runtime.entries[1].sequence,undefined,"far scenery need not fetch animation frames");
+    const crossed=await runtime.scene(1020,origin,{...player,x:3340},textures);
+    assert.notStrictEqual(crossed,cached,"moving to the distant object loads a new visible scene");
+    assert.ok(crossed.batches.length>0);
+});

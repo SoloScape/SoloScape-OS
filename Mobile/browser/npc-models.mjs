@@ -109,7 +109,7 @@ export function recolourNpcPart(source,definition,index=0){
     return c;
 }
 export class NativeNpcModels{
-    constructor(playerModels){this.playerModels=playerModels;this.definitions=new Map();this.compositions=new Map();}
+    constructor(playerModels){this.playerModels=playerModels;this.definitions=new Map();this.compositions=new Map();this.renderedMeshes=new Map();}
     definition(id){
         if(!Number.isInteger(id)||id<0||id>0xffffff)return Promise.reject(new Error("Invalid NPC type"));
         if(!this.definitions.has(id)){
@@ -147,7 +147,21 @@ export class NativeNpcModels{
         let pose=model;
         if(animId>=0){try{pose=!waitForAssets&&animations.poseAvailable?
             animations.poseAvailable(model,animId,time):await animations.pose(model,animId,time);}catch{pose=model;}}
-        return buildPlayerMesh(pose,terrain,npc,{textures:this.playerModels.textures.textures,
+        // Stationary NPCs often spend multiple 20Hz actor ticks in one
+        // animation frame. Cache the immutable region-local mesh, not just its
+        // animated source model. Moving and newly animated NPCs still rebuild.
+        const key=npc.index;
+        const cached=Number.isInteger(key)?this.renderedMeshes.get(key):null;
+        const coords=[npc.type,npc.x,npc.y,npc.plane,npc.orientation];
+        if(cached&&cached.terrain===terrain&&cached.pose===pose&&
+            cached.coords.every((v,i)=>v===coords[i]))return cached.mesh;
+        const mesh=buildPlayerMesh(pose,terrain,npc,{textures:this.playerModels.textures.textures,
             size:definition.size,ambient:definition.ambient,contrast:82+definition.contrast});
+        if(Number.isInteger(key)){
+            this.renderedMeshes.delete(key);
+            if(this.renderedMeshes.size>=96)this.renderedMeshes.delete(this.renderedMeshes.keys().next().value);
+            this.renderedMeshes.set(key,{terrain,pose,coords,mesh});
+        }
+        return mesh;
     }
 }
