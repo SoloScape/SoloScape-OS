@@ -93,6 +93,8 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         assert.match(htmlText,/id="osrs-title"/,"original title cache canvas is mounted");
         assert.match(htmlText,/id="login-password"/,"title has native encrypted login fields");
         assert.match(htmlText,/id="session-disconnect"/,"authenticated session can be closed");
+        assert.match(htmlText,/id="world-canvas"/,"same-session cache-backed world is mounted");
+        assert.match(htmlText,/id="world-disconnect"/,"native world can be disconnected");
         const legacy=await fetch(root+"/legacy");
         assert.equal(legacy.status,200);
         const legacyHtml=await legacy.text();
@@ -103,6 +105,7 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         // loading spinner displayed forever because the import graph failed.
         const modules=[
             "/teavm/title-client.mjs","/teavm/title-assets.mjs","/title-login-session.mjs",
+            "/teavm-world.mjs",
             "/app.mjs","/native-js5.mjs","/terrain-world.mjs",
             "/world-webgl.mjs","/floor-materials.mjs","/floor-lighting.mjs","/world-startup.mjs",
             "/cache-reader.mjs","/model-codec.mjs","/object-definitions.mjs","/location-cache.mjs","/scenery-models.mjs",

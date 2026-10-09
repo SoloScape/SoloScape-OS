@@ -1328,3 +1328,12 @@ No credentials are persisted in browser storage or sent to ChatGPT.
 The extracted original gamepack-derived bytecode and generated TeaVM output
 remain local and excluded from Git. Redistribution rights must be verified.
 See [the TeaVM port notes](teavm-poc/README.md).
+After the new title authenticates, its **same encrypted session** now
+drives the server-authoritative native world scene and local player using
+revision-240 JS5 terrain, scenery, equipment and animation caches. The
+existing `NativeGameplay` / `NativeTerrainViewport` WebGL renderer is used
+for this integrated gameplay milestone; it is **not yet** the original
+OpenOSRS Java scene renderer transpiled through TeaVM. The world is revealed
+only once actual WebGL scenery and player pixels are ready. Tap ground to
+walk, drag to rotate, or press **Disconnect** to return to the title.
+No login credentials are saved. See [TeaVM port notes](teavm-poc/README.md).

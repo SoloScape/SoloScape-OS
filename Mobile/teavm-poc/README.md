@@ -134,3 +134,31 @@ camera angles with (1) TeaVM and original 2D pixel writer and (2)
 a JVM process using the **original untouched `yw.class` in the pinned
 gamepack**. Their complete framebuffer hashes must agree. These tests
 do not substitute for live JS5 or mobile FPS validation.
+
+## Authenticated world and local-player rendering
+
+After authenticating at `/`, the browser now keeps the **same** native
+revision-240 WebSocket session for gameplay. It attaches the existing
+`NativeGameplay` decoder **synchronously in the native onAuthenticated
+callback**, before the gateway can deliver the first `REBUILD_NORMAL_V2`
+and `PLAYER_INFO` packets in the same frame. No second login is needed.
+
+`TeaVmWorldBridge` is deliberately a separate, disposable adapter: the
+server determines the map/plane/appearance, the existing CRC-verified
+`NativeJs5Cache` downloads real terrain/floor/scenery/model/animation
+assets, and SoloScape's established `NativeTerrainViewport` draws them
+using WebGL. The loading cover remains until both the original cache-backed
+player and map are prepared and a real WebGL scene frame is drawn. Disconnect
+cancels outstanding cache work, tears down the viewport, and returns to the
+title screen. Pointer/touch camera orbit and ground clicks use the existing
+native viewer input and server movement protocol.
+
+**Porting boundary:** This is an integrated *native JavaScript/WebGL*
+rendering bridge under the TeaVM title shell, not yet OpenOSRS's Java
+`Rasterizer3D`, Java input handler, or full original game loop compiled by
+TeaVM. The isolated original renderer bytecode proof under `/teavm/lab`
+remains a separate milestone. This adapter intentionally doesn't try to
+reimplement unported server interface widgets or advanced menus. All models
+and assets must come from the real revision-240 cache, never from a fake
+demo world. Full visual verification on a phone still requires an actual
+account login; automated tests use only fixture accounts and mock packets.

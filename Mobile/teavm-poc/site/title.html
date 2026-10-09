@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#080b10">
-<title>SoloScape — OpenOSRS browser client</title>
+<title>SoloScape — revision-240 browser client</title>
 <link rel="stylesheet" href="/teavm/title-client.css">
 </head>
 <body>
 <main class="app">
   <header class="top">
-    <div class="identity"><span class="brand">SoloScape</span><span class="edition">OpenOSRS / TeaVM · revision 240</span></div>
+    <div class="identity"><span class="brand">SoloScape</span><span class="edition">TeaVM title + native WebGL world · revision 240</span></div>
     <a class="legacy" href="/legacy">Working client <span aria-hidden="true">↗</span></a>
   </header>
   <section class="player" aria-label="OpenOSRS browser port">
@@ -34,15 +34,26 @@
       <div id="session-controls" class="controls" hidden>
         <button id="session-disconnect" type="button" class="hotspot session-disconnect">Disconnect</button>
       </div>
+      <div id="world-stage" class="world-stage" hidden>
+        <canvas id="world-canvas" width="765" height="503" aria-label="Server-authoritative RuneScape world and your cache-derived character"></canvas>
+        <div class="world-hud">
+          <span id="world-status" role="status" aria-live="polite">Waiting for server map...</span>
+          <button type="button" id="world-disconnect">Disconnect</button>
+        </div>
+        <div id="world-loading-overlay" class="world-overlay" role="status" aria-live="polite">
+          <div class="spinner"></div>
+          <span>Loading the real revision-240 world and your character...</span>
+        </div>
+      </div>
     </div>
   </section>
   <div class="foot">
     <p id="client-status" role="status" aria-live="polite">Starting TeaVM runtime…</p>
-    <span class="milestone">Title-screen port · native gameplay not connected</span>
+    <span class="milestone">TeaVM title shell · native WebGL world bridge</span>
   </div>
   <details class="development">
     <summary>Development tools and current progress</summary>
-    <p>This client runs TeaVM-compiled Java and loads the original revision-240 title images and sprites via a CRC-verified native JS5 gateway. The OpenOSRS title/game loop and login/network handling have <strong>not</strong> been fully ported. No credentials are accepted here.</p>
+    <p>This client runs TeaVM-compiled Java and loads the original revision-240 title images and sprites via a CRC-verified native JS5 gateway. The title uses TeaVM-compiled Java state, and authentic login uses SoloScape's native browser WebSocket protocol. After login, world/character rendering uses the existing WebGL client (real JS5 cache and server packets), <strong>not</strong> the original OpenOSRS Java game loop or Rasterizer3D.</p>
     <nav><a href="/teavm/lab">TeaVM renderer and model lab</a><a href="/diagnostics">Cache diagnostics</a><a href="/legacy">Existing playable client</a></nav>
   </details>
 </main>

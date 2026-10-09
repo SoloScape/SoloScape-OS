@@ -12,7 +12,9 @@ test("TeaVM title login uses the verified native protocol and holds the authenti
         config,cache,
         createSession:o=>(options=o,{login:async(credentials,settings)=>{
             seen={...credentials,settings};
-            return {playerIndex:123,member:true,staffModLevel:0};
+            const account={playerIndex:123,member:true,staffModLevel:0};
+            options.onAuthenticated(account);
+            return account;
         },close:()=>closed++}),
         onAuthenticated:x=>authenticated=x,onPacket:x=>packets.push(x)
     });
@@ -61,11 +63,34 @@ test("TeaVM title login checks malformed OTP and credentials before networking",
 test("TeaVM authenticated session shows disconnect without leaking game packet payloads",async()=>{
     let options,closedMessage;
     const adapter=new TitleLoginSession({config,cache,
-        createSession:o=>(options=o,{login:async()=>({playerIndex:5}),close:()=>{}}),
+        createSession:o=>(options=o,{login:async()=>{
+            const account={playerIndex:5};options.onAuthenticated(account);return account;
+        },close:()=>{}}),
         onDisconnected:x=>closedMessage=x});
     await adapter.login(input);
     options.onClose("Server ended the native session");
     assert.equal(closedMessage,"Server ended the native session");
     assert.equal(adapter.session,null);
     assert.equal(adapter.authenticated,false);
+});
+
+test("rev-240 authenticated callback creates scene before first same-frame rebuild packet",async()=>{
+    const order=[],rebuild=Uint8Array.of(1,2,3);
+    const adapter=new TitleLoginSession({config,cache,
+        onAuthenticated:()=>order.push("attach scene"),
+        onGamePacket:packet=>{order.push("rebuild "+packet.name);assert.equal(packet.payload,rebuild);},
+        onPacket:meta=>{order.push("metadata");assert.equal(meta.payload,undefined);},
+        createSession:callbacks=>({
+            login:async()=>{
+                // Mirrors NativeGameSession.drain when login success and first
+                // rebuild share a TCP/WebSocket frame.
+                callbacks.onAuthenticated({playerIndex:48,member:true});
+                callbacks.onPacket({name:"REBUILD_NORMAL_V2",opcode:39,payload:rebuild});
+                return {playerIndex:48,member:true};
+            },close:()=>{}
+        })
+    });
+    await adapter.login(input);
+    assert.deepEqual(order,["attach scene","rebuild REBUILD_NORMAL_V2","metadata"]);
+    adapter.disconnect();
 });

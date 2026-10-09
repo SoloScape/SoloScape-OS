@@ -21,8 +21,13 @@ const submit=document.querySelector("#login-submit");
 const sessionControls=document.querySelector("#session-controls");
 const disconnect=document.querySelector("#session-disconnect");
 const newUser=document.querySelector("#new-user");
+const worldCanvas=document.querySelector("#world-canvas");
+const worldStage=document.querySelector("#world-stage");
+const worldOverlay=document.querySelector("#world-loading-overlay");
+const worldStatus=document.querySelector("#world-status");
+const worldDisconnect=document.querySelector("#world-disconnect");
 let core,background,sprites={},font=null;
-let titleLogin=null,account=null,attemptId=0;
+let titleLogin=null,account=null,attemptId=0,sessionCache=null,worldBridge=null;
 const say=message=>{status.textContent=message;};
 const copy=Object.freeze({
     welcome:"Welcome to RuneScape",
@@ -125,6 +130,7 @@ async function boot(){
         const config=await connectionConfig;
         if(!config.gatewayUrl)throw new Error(config.message||"Native JS5 gateway is unavailable");
         const cache=new NativeJs5Cache({revision:240,url:config.gatewayUrl,timeoutMs:12000});
+        sessionCache=cache;
         await cache.loadMaster();
         say("Verified JS5 master index. Loading original titlewide.jpg…");
         background=await imageFromBytes(await namedTitleAsset(cache,10,"titlewide.jpg"));
@@ -136,24 +142,28 @@ async function boot(){
         core.titleReady();
         titleLogin=new TitleLoginSession({cache,config,
             onStatus:message=>say(message),
+            // Runs synchronously inside the native session's success decoder,
+            // BEFORE it drains REBUILD_NORMAL_V2 and PLAYER_INFO in the same frame.
             onAuthenticated:result=>{
+                worldBridge?.activate(titleLogin.session,result);
                 account=result;
                 username.value="";password.value="";otp.value="";
                 core.titleAuthenticated();
                 paintTitle();
-                say("Authenticated by SoloScape server: player slot "+result.playerIndex+
-                    ". The TeaVM scene/game loop is not yet implemented. Disconnect here or use /legacy to play (separate login).");
+                say("Authenticated as player slot "+result.playerIndex+
+                    ". Loading server world and original cache-backed player model...");
             },
             onDisconnected:message=>{
+                worldBridge?.dispose();worldBridge=null;
                 account=null;
                 core.titleBack();
                 core.titleExistingUser();
                 paintTitle();
                 say("Session ended: "+message+". You can log in again.");
             },
+            onGamePacket:packet=>worldBridge?.handle(packet),
             onPacket:({count})=>{
-                if(count===1||count%25===0)
-                    say("Authenticated; "+count+" encrypted game packets received. TeaVM gameplay is not implemented yet.");
+                if(count===1)console.info("[teavm-world] First encrypted game packet received");
             }
         });
         paintTitle();
@@ -188,16 +198,28 @@ loginForm.addEventListener("submit",async event=>{
     const id=++attemptId;
     submit.disabled=true;
     try{
+        // Finish loading renderer code BEFORE native authentication: the
+        // server may send its first rebuild packet in the login success frame.
+        const {TeaVmWorldBridge}=await import("/teavm-world.mjs");
+        if(id!==attemptId)return;
+        worldBridge?.dispose();
+        worldBridge=new TeaVmWorldBridge({
+            cache:sessionCache,canvas:worldCanvas,stage:worldStage,title:canvas,
+            overlay:worldOverlay,worldStatus,
+            onStatus:message=>say(message),
+            onReady:()=>say("Your cache-backed world and character are visible. Touch to rotate, tap terrain to move. TeaVM Java game loop remains a separate port.")
+        });
         core.titleConnecting();
         paintTitle();
         const attempt=titleLogin.login(details);
         details.password="";details.otp="";
         await attempt;
     }catch(error){
-        if(id===attemptId&&core?.titleMode()===4){
-            core.titleLoginFailed();
+        if(id===attemptId){
+            worldBridge?.dispose();worldBridge=null;
+            if(core?.titleMode()===4)core.titleLoginFailed();
             paintTitle();
-            say("Server login failed: "+(error?.message||String(error)));
+            say("Native world/login failed: "+(error?.message||String(error)));
         }
     }finally{
         details.password="";details.otp="";
@@ -206,22 +228,26 @@ loginForm.addEventListener("submit",async event=>{
 });
 back.addEventListener("click",()=>{
     ++attemptId;titleLogin?.disconnect();account=null;
+    worldBridge?.dispose();worldBridge=null;
     submit.disabled=false;
     username.value="";password.value="";otp.value="";
     core?.titleBack();paintTitle();say("Original revision-240 title assets ready.");
 });
 disconnect.addEventListener("click",()=>{
     ++attemptId;titleLogin?.disconnect();account=null;
+    worldBridge?.dispose();worldBridge=null;
     submit.disabled=false;
     username.value="";password.value="";otp.value="";
     core?.titleBack();paintTitle();
     say("Disconnected from SoloScape. Password, username and session cleared.");
 });
+worldDisconnect.addEventListener("click",()=>disconnect.click());
 newUser.addEventListener("click",()=>{
     say("Account creation is not yet available in the TeaVM client. Use the working /legacy client.");
 });
 window.addEventListener("pagehide",()=>{
     ++attemptId;titleLogin?.disconnect();
+    worldBridge?.dispose();worldBridge=null;
     password.value="";otp.value="";username.value="";
     background?.close?.();
 },{once:true});

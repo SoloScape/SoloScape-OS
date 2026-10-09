@@ -10,6 +10,7 @@ body{background:radial-gradient(ellipse at 50% 25%,#182330,#080b10 75%)}
 .player{display:flex;justify-content:center;width:100%;margin:clamp(10px,7vh,65px) auto 0}
 .screen{position:relative;aspect-ratio:765/503;width:min(100%,765px);background:#000;box-shadow:0 0 0 1px #47515c,0 25px 90px #000a;overflow:hidden}
 #osrs-title{width:100%;height:100%;display:block;image-rendering:auto}
+#osrs-title[hidden]{display:none}
 .overlay{position:absolute;inset:0;background:#070809de;display:grid;place-content:center;justify-items:center;text-align:center;padding:20px;font-size:14px;gap:8px}
 .overlay[hidden]{display:none}.overlay p{margin:0}.spinner{width:26px;height:26px;border:3px solid #6d6860;border-top-color:#e5c891;border-radius:50%;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -26,6 +27,14 @@ body{background:radial-gradient(ellipse at 50% 25%,#182330,#080b10 75%)}
 .login-submit{left:31.5%;top:64%;width:16%;height:9%}
 .login-back{left:52.4%;top:64%;width:16%;height:9%}
 .session-disconnect{left:40%;top:60%;width:20%;height:10%}
+.world-stage{position:absolute;inset:0;background:#000}
+.world-stage[hidden]{display:none}
+#world-canvas{display:block;width:100%;height:100%;touch-action:none}
+.world-hud{position:absolute;inset:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;pointer-events:none;padding:7px 9px;background:linear-gradient(#000d,#0000)}
+.world-hud span{font:12px system-ui,sans-serif;max-width:80%;color:#fff;text-shadow:0 1px 3px #000}
+#world-disconnect{pointer-events:auto;background:#243142ef;color:#f6dfbe;border:1px solid #b59a73;border-radius:5px;font:12px system-ui,sans-serif;padding:7px 9px;cursor:pointer}
+.world-overlay{position:absolute;inset:0;background:#080c17e8;color:#e2d4b7;font:13px system-ui,sans-serif;display:grid;place-content:center;justify-items:center;gap:15px;text-align:center;padding:20px;pointer-events:none}
+.world-overlay[hidden]{display:none}
 @media(max-width:590px){.login-field{font-size:10px}}
 .foot{width:min(100%,765px);margin:0 auto;display:flex;align-items:start;justify-content:space-between;gap:10px;font-size:12px;color:#aebac6}
 .foot p{margin:0;max-width:70%}.milestone{text-align:right;color:#d3b878}

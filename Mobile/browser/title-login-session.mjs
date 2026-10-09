@@ -10,10 +10,12 @@ import {loginCacheCrcs} from "./login-protocol.mjs";
 
 export class TitleLoginSession {
     constructor({cache,config,createSession=options=>new NativeGameSession(options),
-        onStatus=()=>{},onAuthenticated=()=>{},onDisconnected=()=>{},onPacket=()=>{}}={}) {
+        onStatus=()=>{},onAuthenticated=()=>{},onDisconnected=()=>{},onPacket=()=>{},
+        onGamePacket=()=>{}}={}) {
         this.cache=cache;this.config=config;this.createSession=createSession;
         this.onStatus=onStatus;this.onAuthenticated=onAuthenticated;
         this.onDisconnected=onDisconnected;this.onPacket=onPacket;
+        this.onGamePacket=onGamePacket;
         this.session=null;this.pending=false;this.authenticated=false;this.sequence=0;
         this.packetCount=0;
     }
@@ -38,9 +40,19 @@ export class TitleLoginSession {
                 onStatus:message=>{
                     if(sequence===this.sequence)this.onStatus(message);
                 },
+                // NativeGameSession calls onAuthenticated synchronously before
+                // draining the first REBUILD_NORMAL_V2 packet from this frame.
+                onAuthenticated:account=>{
+                    if(sequence!==this.sequence)return;
+                    this.authenticated=true;
+                    this.onAuthenticated({playerIndex:account.playerIndex,member:account.member,
+                        staffModLevel:account.staffModLevel});
+                },
                 onPacket:packet=>{
                     if(sequence!==this.sequence||!this.authenticated)return;
                     this.packetCount++;
+                    // Pass raw payload only to the in-memory game scene decoder.
+                    this.onGamePacket(packet);
                     this.onPacket({count:this.packetCount,opcode:packet.opcode,name:packet.name});
                 },
                 onClose:message=>{
@@ -63,9 +75,6 @@ export class TitleLoginSession {
                 session.close();
                 throw new Error("Login cancelled");
             }
-            this.authenticated=true;
-            this.onAuthenticated({playerIndex:account.playerIndex,member:account.member,
-                staffModLevel:account.staffModLevel});
             return account;
         }catch(error){
             if(sequence===this.sequence){
