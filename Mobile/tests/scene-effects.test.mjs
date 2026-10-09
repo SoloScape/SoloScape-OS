@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {NativeSceneAnimations,sceneSequenceFrame} from "../browser/scene-animation.mjs";
+import {NativeSceneAnimations,sceneSequenceFrame,sceneVisibilityCell,sceneEntryVisible} from "../browser/scene-animation.mjs";
 import {NativeSpotEffects,decodeSpotEffect} from "../browser/spot-effects.mjs";
 import {mergePlayerModels,buildPlayerMesh} from "../browser/player-models.mjs";
 import {combineRegionMeshes,sortTransparentFaces,sortTransparentBatches,mergeOpaqueTextureBatches,sceneCameraMatrix,worldRenderPixels,worldShaderSources,NativeTerrainViewport} from "../browser/world-webgl.mjs";
@@ -409,4 +409,48 @@ test("the renderer requests only WebGL 2, with no WebGL 1 fallback",()=>{
         if(before===undefined)delete globalThis.window;
         else globalThis.window=before;
     }
+});
+
+test("scene frame selection reuses immutable animation timing and preserves loop boundaries",()=>{
+    const lengths=[2,3,4],ids=[10,11,12],sequence={
+        frameLengths:lengths,frameIds:ids,frameStep:2,skeletalId:-1
+    };
+    let reads=0;
+    const instrumented=new Proxy(lengths,{get(target,key,receiver){
+        if(key==="map"){reads++;return target.map.bind(target);}
+        return Reflect.get(target,key,receiver);
+    }});
+    sequence.frameLengths=instrumented;
+    for(let i=0;i<500;i++){
+        assert.equal(sceneSequenceFrame(sequence,0),0);
+        assert.equal(sceneSequenceFrame(sequence,60),1);
+        assert.equal(sceneSequenceFrame(sequence,200,{location:true}),1);
+    }
+    assert.equal(reads,1,"unchanged cache sequence never reallocates frame-length arrays");
+    assert.equal(sceneSequenceFrame(sequence,1e12,{location:true})>=0,true);
+    assert.equal(sceneSequenceFrame({...sequence,frameLengths:[1,1,1]},20),0,
+        "different sequence object has independent timeline");
+});
+
+test("fractional player movement does not rebuild unchanged animated scene or lose edge objects",async()=>{
+    let poses=0;
+    const animations={sequence:async()=>seq,poseFrame:async m=>{poses++;return m;}};
+    const runtime=new NativeSceneAnimations(animations),t=terrain(),
+        definition=decodeObjectDefinition(Uint8Array.of(24,0,2,0),5);
+    const make=(x,y)=>({terrain:t,loc:{id:5,x,y,plane:0,rotation:0,shape:10},
+        definition,part:{type:10,rotation:0,dx:0,dy:0},model:model(),level:0});
+    runtime.reset([make(10,10),make(60,10)],1000);
+    const origin={mapX:50,mapY:50},textures=new Map();
+    const starting={x:3210.05,y:3210.2,plane:0};
+    const initial=await runtime.scene(1000,origin,starting,textures);
+    assert.equal(initial.batches.length,2,"the conservative tile window includes an edge object");
+    assert.strictEqual(await runtime.scene(1020,origin,{...starting,x:3210.97,y:3210.99},textures),initial,
+        "subtile interpolation cannot rebuild the unchanged scene");
+    assert.equal(poses,2,"subtile movement does not recompute animation poses");
+    assert.notStrictEqual(await runtime.scene(1020,origin,{...starting,x:3211.01},textures),initial,
+        "crossing a tile invalidates the visibility set");
+    assert.ok(sceneEntryVisible(runtime.entries[1],sceneVisibilityCell(starting)),
+        "edge scene visibility is conservative");
+    assert.notStrictEqual(await runtime.scene(1060,origin,starting,textures),initial,
+        "the scene still advances on a new animation frame");
 });

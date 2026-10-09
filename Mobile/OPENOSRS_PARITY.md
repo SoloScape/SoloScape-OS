@@ -34,16 +34,18 @@ reach that path rather than only the older `browser/app.mjs`.
 
 Source audited: the locally SHA-256-verified OpenOSRS 1.2.0 / revision-240
 `Client/runelite-client/src/main/java/net/runelite/client/plugins/gpu/GpuPlugin.java`
-and `SceneUploader.java` (see `REFERENCE_OPENOSRS.md`).
+and `SceneUploader.java`, plus `ModelUploader.java`, `Zone.java`, `VAO.java` and
+`runelite-api/src/main/java/net/runelite/api/AnimationController.java`
+(see `REFERENCE_OPENOSRS.md`).
 This **does not** mean the WebGL renderer is running OpenOSRS Java code.
 
 | Concern | OpenOSRS desktop GPU | Active mobile WebGL |
 | --- | --- | --- |
-| Static world upload | Uploads zones, reuses initialized VBOs across scene rebuilds | Uploads cache terrain/scenery buffers; now retains unchanged animated scenery |
-| Dynamic actors | Uploads temporary/sorted model buffers during native engine render callbacks | Rebuilds player/NPC meshes in JavaScript on a separate timer; touch runs at ~20 Hz rather than 30 Hz |
+| Static world upload | Uploads 8×8-tile zones, reuses initialized VAO/VBOs across scene rebuilds | Uploads cache terrain/scenery grouped into broader texture/level batches; retains unchanged animated scenery but lacks per-zone geometry culling |
+| Dynamic actors | Uploads temporary/sorted model buffers during native engine render callbacks; `ModelUploader` retains reusable scratch arrays | Rebuilds player/NPC meshes and allocates geometry in JavaScript on a separate ~20 Hz touch timer; reference client cadence isn't directly equivalent |
 | Scene visibility | Uses scene zones, roof/level filtering, and draw-distance settings | Uses a 25-tile render window and now culls NPC model work conservatively beyond visible bounds (10-tile padding) |
 | Transparency | Keeps separate opaque/alpha buffers and handles sorted alpha models | Batches alpha per material on touch; ordering within batches remains approximate |
-| Opaque rendering | Larger static zone uploads and retained buffers | Groups repeated static texture/level batches; further texture-array/atlas or spatial-zone work is pending |
+| Opaque rendering | Retained per-zone VAO/VBOs and native OpenGL draw ranges | WebGL 2, but still repeats vertex-attribute pointer setup per material batch; needs native WebGL 2 VAOs and zone-based geometry binning |
 | Rendering model | Native desktop OpenGL and game engine | iOS Safari WebGL 2 (GLSL ES 3.00 only; no WebGL 1 fallback) plus JavaScript/async model work; timings not directly comparable |
 
 **Measured user's iPhone samples, different views**:
@@ -71,10 +73,28 @@ WebGL vertex buffers across same-size updates via `bufferSubData`.
 All animation-frame changes still produce distinct poses, and newly visible
 actors can trigger buffer growth. The latest optimization also retains an
 unchanged animated-location scene across actor updates (rechecking visible
-animation frame and exact player position), and caches the region-local NPC
+animation frames and conservative tile-cell visibility, rather than invalidating
+on every fractional movement), and caches the region-local NPC
 mesh for unchanged pose, position, facing and terrain. Off-region actor
 mesh translation now copies vertices to avoid mutating these caches; scene
 rebuilds and disconnects clear them. Preserve gameplay/server tick cadence.
+The pinned animation controller advances stored frame/cycle state; SoloScape
+previously allocated frame-length arrays/totals for every location frame lookup.
+These are now cached per immutable sequence (with looping-tail durations).
+Scene visibility now changes at conservative tile boundaries, not every
+fractional player interpolation sample, reducing SCN array rebuilding and
+GPU/picking churn while preserving animation-frame invalidation.
+
+**Remaining structural mismatches to prioritise**: (1) WebGL 2 VAOs for
+static/dynamic draw buffers (OpenOSRS Zone.setupVao / VAO.init),
+(2) 8×8 tile/zone geometry reuse and CPU-side visibility binning rather
+than sending all same-texture world geometry to the vertex shader,
+(3) retain actor model triangulation and transform position separately where
+animation pose/terrain allow, rather than rebuilding all moving NPC faces,
+(4) compare per-pass GL draw counts, GPU/compositor time and ACT/SCN/NPC in
+the *same camera view*. This architecture review is source-based, not a
+claimed 60-FPS result; WebGL 2 by itself does not remove CPU work.
+
 Device screenshots and on-device profiling remain necessary to validate actual FPS gains and
 animation smoothness; lower actor cadence can make movement less fluid.
 
