@@ -3,7 +3,7 @@ import {test} from "node:test";
 import {NativeSceneAnimations,sceneSequenceFrame,sceneVisibilityCell,sceneEntryVisible} from "../browser/scene-animation.mjs";
 import {NativeSpotEffects,decodeSpotEffect} from "../browser/spot-effects.mjs";
 import {mergePlayerModels,buildPlayerMesh} from "../browser/player-models.mjs";
-import {combineRegionMeshes,sortTransparentFaces,sortTransparentBatches,mergeOpaqueTextureBatches,sceneCameraMatrix,worldRenderPixels,worldShaderSources,NativeTerrainViewport} from "../browser/world-webgl.mjs";
+import {combineRegionMeshes,sortTransparentFaces,sortTransparentBatches,mergeOpaqueTextureBatches,partitionOpaqueScene,partitionColorScene,spatialBoundsOverlap,sceneCameraMatrix,worldRenderPixels,worldShaderSources,NativeTerrainViewport} from "../browser/world-webgl.mjs";
 import {decodeObjectDefinition} from "../browser/object-definitions.mjs";
 
 const model=()=>({verticesCount:3,faceCount:1,verticesX:Int32Array.of(0,128,0),verticesY:Int32Array.of(0,0,-128),
@@ -182,7 +182,7 @@ test("opaque mobile terrain merges duplicate level/texture geometry without chan
         /Invalid opaque/);
 });
 
-test("mobile scenery upload merges opaque textures but preserves alpha objects and desktop batching",()=>{
+test("mobile scenery upload groups same-zone textures and preserves alpha and desktop batching",()=>{
     const tri=Float32Array.from({length:18},(_,i)=>i);
     const scene={vertices:tri,levelCounts:[3,0,0,0],texturedBatches:[
         {level:0,texture:7,vertices:tri},{level:0,texture:7,vertices:tri},
@@ -200,6 +200,10 @@ test("mobile scenery upload merges opaque textures but preserves alpha objects a
         return received;
     };
     const mobile=exercise(true),desktop=exercise(false);
+    assert.equal(mobile.get("sceneryColorBatches").length,1,
+        "mobile scene upload has a separate cullable opaque colour chunk");
+    assert.equal(desktop.get("sceneryColorBatches").length,0,
+        "desktop retains original complete static-colour VBO");
     assert.equal(mobile.get("sceneryBatches").length,2);
     assert.equal(mobile.get("sceneryBatches")[0].vertices.length,tri.length*2);
     assert.equal(desktop.get("sceneryBatches").length,3);
@@ -331,6 +335,9 @@ test("mobile WebGL reuses shader frame state and UV offsets across hundreds of m
     };
     const gl={
         ARRAY_BUFFER:1,TRIANGLES:4,FLOAT:5,TEXTURE0:6,TEXTURE_2D:7,
+        createVertexArray:()=>{record("createVertexArray")();return {};},
+        bindVertexArray:record("bindVertexArray"),
+        deleteVertexArray:record("deleteVertexArray"),
         useProgram:record("useProgram"),uniformMatrix4fv:record("uniformMatrix4fv"),
         uniform4fv:record("uniform4fv"),uniform1i:record("uniform1i"),
         uniform1f:record("uniform1f"),uniform2f:record("uniform2f"),
@@ -362,6 +369,9 @@ test("mobile WebGL reuses shader frame state and UV offsets across hundreds of m
         "scene matrix is uploaded once for 150 texture draws");
     assert.equal(counts.get("uploadFog"),1);
     assert.equal(counts.get("getAttribLocation"),2);
+    assert.equal(counts.get("createVertexArray"),1);
+    assert.equal(counts.get("vertexAttribPointer"),2,
+        "VAOs eliminate repeated attribute pointer calls across 150 draws");
     assert.equal(view.frameTextureOffsets.size,1,
         "all batches sharing a texture use one scroll-offset calculation");
     view.renderMaterialBatch(batch,0,3,matrix,bounds,.5);
@@ -373,6 +383,7 @@ test("mobile WebGL reuses shader frame state and UV offsets across hundreds of m
     assert.equal(counts.get("useProgram"),2,"switch only when changing shader");
     assert.equal(counts.get("uploadFog"),2);
     assert.equal(counts.get("uniformMatrix4fv"),2);
+    assert.equal(counts.get("createVertexArray"),2,"palette shader uses its own VAO");
     view.renderMaterialBatch(batch,0,3,matrix,bounds,1);
     assert.equal(counts.get("useProgram"),3,
         "switch back to textured shader on subsequent batches");
@@ -453,4 +464,112 @@ test("fractional player movement does not rebuild unchanged animated scene or lo
         "edge scene visibility is conservative");
     assert.notStrictEqual(await runtime.scene(1060,origin,starting,textures),initial,
         "the scene still advances on a new animation frame");
+});
+
+test("opaque world geometry is partitioned by material and zone without dropping edge triangles",()=>{
+    const tri=(points,color)=>Float32Array.from(points.flatMap(([x,z])=>[x,0,z,color,.25,.75]));
+    const left=tri([[2,2],[3,2],[2,3]],2000);
+    const far=tri([[80,80],[81,80],[80,81]],2001);
+    const edge=tri([[31,3],[33,3],[33,4]],2002);
+    const input=new Float32Array([...left,...far,...edge]);
+    const materials=[{level:0,texture:7,vertices:input},
+        {level:1,texture:7,vertices:tri([[3,3],[4,3],[3,4]],4000)}];
+    const zones=partitionOpaqueScene(materials,32);
+    assert.equal(zones.length,4,"two local cells, a remote cell and a separate roof level");
+    assert.equal(zones.reduce((n,b)=>n+b.vertices.length,0),input.length+18);
+    assert.ok(zones.every(b=>b.vertices.length%18===0));
+    assert.deepEqual([...input],[...left,...far,...edge],"original mesh remains immutable");
+    const visible=[0,0,31.5,8];
+    const culled=zones.filter(b=>b.level===0&&spatialBoundsOverlap(b.bounds,visible));
+    assert.equal(culled.length,2,"edge triangle survives even if its centroid belongs to next zone");
+    assert.ok(culled.some(b=>b.vertices.includes(33)),
+        "triangle straddling the viewport edge must be kept for shader clipping");
+    assert.ok(!culled.some(b=>b.vertices.includes(80)),"offscreen distant zone is skipped");
+    assert.deepEqual(partitionColorScene(input,[9,0,0,0]).reduce((n,b)=>n+b.vertices.length,0),
+        input.length);
+    assert.throws(()=>partitionOpaqueScene(materials,0),/zone size/);
+    assert.throws(()=>partitionOpaqueScene([{level:0,texture:5,vertices:new Float32Array(10)}]),
+        /Invalid opaque/);
+});
+
+test("WebGL 2 VAOs retain per-program layouts and are released when their buffers disappear",()=>{
+    const log=[],record=name=>(...args)=>log.push([name,...args]);
+    const gl={
+        ARRAY_BUFFER:1,FLOAT:2,STATIC_DRAW:3,
+        createVertexArray:()=>({id:log.filter(x=>x[0]==="createVAO").length+1}),
+        bindVertexArray:record("bindVAO"),deleteVertexArray:record("deleteVAO"),
+        createBuffer:()=>({name:"buffer"}),bindBuffer:record("bindBuffer"),
+        bufferData:record("bufferData"),bufferSubData:record("bufferSubData"),
+        deleteBuffer:record("deleteBuffer"),
+        enableVertexAttribArray:record("enableVertexAttribArray"),
+        vertexAttribPointer:record("vertexAttribPointer")
+    };
+    const view=Object.create(NativeTerrainViewport.prototype);
+    view.gl=gl;
+    const palette={},textured={},buffer={};
+    view.attribute=(_program,name)=>name==="a_position"?0:1;
+    view.bindGeometry(buffer,palette);view.bindGeometry(buffer,palette);
+    assert.equal(log.filter(x=>x[0]==="vertexAttribPointer").length,2);
+    view.bindGeometry(buffer,textured);
+    assert.equal(log.filter(x=>x[0]==="vertexAttribPointer").length,4,
+        "separate shaders need separately configured VAOs");
+    assert.equal(view.vertexArrays.size,1);
+    view.releaseGeometry(buffer);
+    assert.equal(log.filter(x=>x[0]==="deleteVAO").length,2);
+    assert.equal(view.vertexArrays.size,0);
+    // A batch replacement must also delete the VAOs associated with its VBO.
+    view.actorBatches=[];view.replaceBatches("actorBatches",
+        [{texture:3,level:0,vertices:new Float32Array(18)}]);
+    const vb=view.actorBatches[0].buffer;
+    view.bindGeometry(vb,palette);
+    view.replaceBatches("actorBatches",[]);
+    assert.equal(log.filter(x=>x[0]==="deleteVAO").length,3);
+    assert.equal(log.filter(x=>x[0]==="deleteBuffer").length,1);
+    assert.equal(view.vertexArrays.size,0,"unloaded geometry does not leak VAOs");
+    // Attribute layout survives changing VBO contents without changing VAO.
+    view.replaceBatches("actorBatches",[{texture:3,level:0,vertices:new Float32Array(18)}]);
+    const reused=view.actorBatches[0].buffer;
+    view.bindGeometry(reused,palette);
+    const before=log.filter(x=>x[0]==="vertexAttribPointer").length;
+    view.replaceBatches("actorBatches",[{texture:3,level:0,vertices:new Float32Array(18).fill(1)}]);
+    view.bindGeometry(reused,palette);
+    assert.equal(log.filter(x=>x[0]==="vertexAttribPointer").length,before,
+        "bufferSubData updates retain the existing VAO layout");
+    view.replaceBatches("actorBatches",[]);
+});
+
+test("touch render skips offscreen opaque chunks without skipping visible scene or roof masks",()=>{
+    const oldWindow=globalThis.window,submitted=[];
+    const gl={TRIANGLES:4,LINES:1,COLOR_BUFFER_BIT:16384,DEPTH_BUFFER_BIT:256,
+        viewport(){},clear(){},uniform1i(){},uniform2f(){},useProgram(){}};
+    const batch=(label,bounds,level=0,texture=-1)=>({label,bounds,level,texture,
+        buffer:{},count:3,vertices:new Float32Array(18)});
+    const view=Object.create(NativeTerrainViewport.prototype);
+    view.touch=true;view.gl=gl;view.canvas={clientWidth:300,clientHeight:200,width:300,height:200};
+    view.count=3;view.sceneryCount=3;view.actorCount=0;
+    view.program={};view.textureProgram={};view.palette={};view.drawMode=gl.TRIANGLES;
+    view.target=[0,0,0];view.yaw=0;view.pitch=.6;view.distance=30;
+    view.visibleRoofLevel=()=>0;view.drawBounds=()=>[0,0,32,32];
+    view.terrainColorBatches=[batch("ground near",[2,2,10,10]),
+        batch("ground far",[100,100,110,110]),batch("ground roof",[2,2,10,10],1)];
+    view.sceneryColorBatches=[batch("wall near",[31,31,34,34]),
+        batch("wall far",[-80,-80,-60,-60])];
+    view.terrainBatches=[batch("floor textured",[2,2,10,10],0,5),
+        batch("floor texture far",[90,90,100,100],0,5)];
+    view.sceneryBatches=[];view.actorBatches=[];view.dynamicBatches=[];
+    view.textures=new Map([[5,{}]]);
+    view.uniform=()=>0;view.prepareRenderProgram=()=>{};view.bindRenderTexture=()=>{};
+    view.bindGeometry=()=>{};view.frameTextureShift=()=>[0,0];
+    view.renderTransparent=()=>{};view.renderMaterialBatch=b=>submitted.push(b.label);
+    view.drawArrays=(_mode,_first,_count)=>submitted.push("texture draw");
+    try{
+        globalThis.window={devicePixelRatio:1};
+        view.render();
+        assert.deepEqual(submitted,["ground near","wall near","texture draw"]);
+        assert.equal(view.terrainColorBatches.length,3,
+            "culling does not mutate the persisted world or its picking sources");
+    }finally{
+        if(oldWindow===undefined)delete globalThis.window;
+        else globalThis.window=oldWindow;
+    }
 });

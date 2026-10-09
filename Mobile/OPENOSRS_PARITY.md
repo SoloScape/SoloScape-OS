@@ -41,11 +41,11 @@ This **does not** mean the WebGL renderer is running OpenOSRS Java code.
 
 | Concern | OpenOSRS desktop GPU | Active mobile WebGL |
 | --- | --- | --- |
-| Static world upload | Uploads 8×8-tile zones, reuses initialized VAO/VBOs across scene rebuilds | Uploads cache terrain/scenery grouped into broader texture/level batches; retains unchanged animated scenery but lacks per-zone geometry culling |
+| Static world upload | Uploads 8×8-tile zones, reuses initialized VAO/VBOs across scene rebuilds | WebGL 2 uses conservative 64×64-world-tile opaque spatial chunks grouped by material/level, culling offscreen bounding boxes while preserving picking and alpha buffers |
 | Dynamic actors | Uploads temporary/sorted model buffers during native engine render callbacks; `ModelUploader` retains reusable scratch arrays | Rebuilds player/NPC meshes and allocates geometry in JavaScript on a separate ~20 Hz touch timer; reference client cadence isn't directly equivalent |
 | Scene visibility | Uses scene zones, roof/level filtering, and draw-distance settings | Uses a 25-tile render window and now culls NPC model work conservatively beyond visible bounds (10-tile padding) |
 | Transparency | Keeps separate opaque/alpha buffers and handles sorted alpha models | Batches alpha per material on touch; ordering within batches remains approximate |
-| Opaque rendering | Retained per-zone VAO/VBOs and native OpenGL draw ranges | WebGL 2, but still repeats vertex-attribute pointer setup per material batch; needs native WebGL 2 VAOs and zone-based geometry binning |
+| Opaque rendering | Retained per-zone VAO/VBOs and native OpenGL draw ranges | WebGL 2 now retains per-buffer/per-shader VAOs, culls opaque chunks and skips duplicate full-scene GPU uploads on mobile; 64×64 chunks trade coarser culling for fewer Safari draw calls |
 | Rendering model | Native desktop OpenGL and game engine | iOS Safari WebGL 2 (GLSL ES 3.00 only; no WebGL 1 fallback) plus JavaScript/async model work; timings not directly comparable |
 
 **Measured user's iPhone samples, different views**:
@@ -85,15 +85,17 @@ Scene visibility now changes at conservative tile boundaries, not every
 fractional player interpolation sample, reducing SCN array rebuilding and
 GPU/picking churn while preserving animation-frame invalidation.
 
-**Remaining structural mismatches to prioritise**: (1) WebGL 2 VAOs for
-static/dynamic draw buffers (OpenOSRS Zone.setupVao / VAO.init),
-(2) 8×8 tile/zone geometry reuse and CPU-side visibility binning rather
-than sending all same-texture world geometry to the vertex shader,
-(3) retain actor model triangulation and transform position separately where
-animation pose/terrain allow, rather than rebuilding all moving NPC faces,
-(4) compare per-pass GL draw counts, GPU/compositor time and ACT/SCN/NPC in
-the *same camera view*. This architecture review is source-based, not a
-claimed 60-FPS result; WebGL 2 by itself does not remove CPU work.
+**Further structural mismatches**: SoloScape now retains WebGL 2 VAOs per
+shader/VBO, releasing them on replacement and disconnect. Opaque terrain and
+scenery use 64×64 world-unit zones with accurate per-chunk bounds and shader
+clipping, instead of OpenOSRS's more granular 8×8 zones. Moving actors
+reuse rotated poses and tile-local lit/triangulated templates, then allocate
+new position-adjusted vertex snapshots to preserve picking correctness.
+The renderer still lacks true GPU instancing and animation-on-GPU.
+Watch for a tradeoff between culling fewer vertices and submitting more draw
+calls on Safari; compare per-pass GL counts, GPU/compositor time and ACT/NPC
+in the *same camera view*. These are source-driven changes, not a claimed
+60-FPS result.
 
 Device screenshots and on-device profiling remain necessary to validate actual FPS gains and
 animation smoothness; lower actor cadence can make movement less fluid.

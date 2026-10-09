@@ -16,6 +16,16 @@ uses GLSL ES 3.00 vertex/fragment shaders, and intentionally provides no
 WebGL 1 or `experimental-webgl` fallback. A browser without WebGL 2 reports
 a renderer startup error; no degraded WebGL 1 mode is attempted.
 
+The mobile renderer now uses retained VAOs for each GPU buffer/shader layout,
+cleans them up on buffer replacement, and partitions opaque terrain/scenery
+into 64×64-world-unit chunks (grouped by texture and level) so offscreen
+chunks can be skipped without changing alpha ordering or picking meshes.
+64-unit chunks deliberately use fewer draw calls than RuneLite's 8×8-tile
+zones; on-device frame/GL profiling must verify the tradeoff. NPC/player
+mesh preparation reuses immutable posed-model rotations and lit tile-local
+geometry, recalculating interpolated position and ground-height offsets
+without mutating earlier GPU/picking snapshots.
+
 **Starting 8 October 2026**, `npm run dev` (also `npm run dev:native`)
 starts **SoloScape's own WebGL world client** at
 `http://localhost:3001/`, not the collection of JS5 diagnostic buttons.

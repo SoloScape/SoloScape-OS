@@ -4,6 +4,7 @@ import {NativeNpcSync} from "../browser/npc-sync.mjs";
 import {decodeNpcType,recolourNpcPart,NativeNpcModels} from "../browser/npc-models.mjs";
 import {NativeGameplay} from "../browser/native-gameplay.mjs";
 import {NativePlayerSync} from "../browser/player-sync.mjs";
+import {buildPlayerMesh} from "../browser/player-models.mjs";
 
 function bits(...fields){
     const values=[];
@@ -149,4 +150,37 @@ test("stationary NPC mesh is reused only while pose, placement, orientation and 
     const changedRegion={...ground,heights:ground.heights.slice()};
     assert.notStrictEqual(await npcs.mesh({...npc,orientation:512},changedRegion),differentPose,
         "region rebuild must not reuse old ground geometry");
+});
+
+test("moving NPC base triangulation is reused within a tile while height and position still change",()=>{
+    const t={mapX:50,mapY:50,side:64,heights:new Int32Array(4096),
+        renderFlags:new Uint8Array(4096)},textures=new Map();
+    for(let x=0;x<64;x++)for(let y=0;y<64;y++)t.heights[x*64+y]=x*23+y*11;
+    let faceReads=0;
+    const m={verticesCount:3,verticesX:Int32Array.of(0,128,0),
+        verticesY:Int32Array.of(0,0,-128),verticesZ:Int32Array.of(0,0,128),
+        indices1:Int32Array.of(0),indices2:Int32Array.of(1),indices3:Int32Array.of(2),
+        faceColors:Uint16Array.of(2000),faceTextures:Int16Array.of(-1)};
+    Object.defineProperty(m,"faceCount",{enumerable:true,get(){faceReads++;return 1;}});
+    const player={x:3210.04,y:3210.14,plane:0,orientation:192};
+    const first=buildPlayerMesh(m,t,player,{textures});
+    const afterFirst=faceReads;
+    assert.ok(afterFirst>0);
+    const moved=buildPlayerMesh(m,t,{...player,x:3210.35,y:3210.48},{textures});
+    assert.equal(faceReads,afterFirst,
+        "same pose, facing and terrain tile reuse expensive normal/face work");
+    assert.notStrictEqual(first.vertices,moved.vertices,
+        "old and new GPU/pick snapshots must never share mutable vertices");
+    assert.notEqual(first.vertices[0],moved.vertices[0]);
+    assert.notEqual(first.vertices[1],moved.vertices[1],"ground interpolation follows movement");
+    const reference=buildPlayerMesh({...m,faceCount:1},t,{...player,x:3210.35,y:3210.48},{textures});
+    assert.deepEqual([...moved.vertices],[...reference.vertices],
+        "cached tile geometry must equal an uncached fresh model");
+    assert.deepEqual([...first.vertices],[...buildPlayerMesh({...m,faceCount:1},t,player,{textures}).vertices],
+        "subsequent movement never corrupts earlier snapshots");
+    buildPlayerMesh(m,t,{...player,x:3211.04},{textures});
+    assert.ok(faceReads>afterFirst,"moving to another tile rebuilds terrain-dependent geometry");
+    const afterTile=faceReads;
+    buildPlayerMesh(m,t,{...player,orientation:512},{textures});
+    assert.ok(faceReads>afterTile,"facing changes invalidate the mesh template");
 });

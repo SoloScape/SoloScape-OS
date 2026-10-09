@@ -555,6 +555,60 @@ export function mergeOpaqueTextureBatches(batches){
         return {level:group.level,texture:group.texture,vertices};
     });
 }
+// Larger than OpenOSRS's 8x8 zones: fewer state changes on mobile Safari.
+export const MOBILE_SCENE_ZONE_SIZE=64;
+export function spatialBoundsOverlap(batchBounds,drawBounds){
+    return !batchBounds||batchBounds[0]<=drawBounds[2]&&batchBounds[2]>=drawBounds[0]&&
+        batchBounds[1]<=drawBounds[3]&&batchBounds[3]>=drawBounds[1];
+}
+// Partition only opaque triangles, never transparent models. Preserve UVs,
+// HSL layer bias, face order within each material/zone and exact world bounds.
+export function partitionOpaqueScene(batches,zoneSize=MOBILE_SCENE_ZONE_SIZE){
+    if(!Number.isInteger(zoneSize)||zoneSize<1)throw new Error("Invalid scene zone size");
+    const groups=new Map();
+    for(const batch of batches){
+        const vertices=batch.vertices;
+        if(!(vertices instanceof Float32Array)||vertices.length%18)
+            throw new Error("Invalid opaque scene mesh batch");
+        for(let at=0;at<vertices.length;at+=18){
+            const x=(vertices[at]+vertices[at+6]+vertices[at+12])/3;
+            const z=(vertices[at+2]+vertices[at+8]+vertices[at+14])/3;
+            const zx=Math.floor(x/zoneSize),zz=Math.floor(z/zoneSize);
+            const key=batch.level+":"+batch.texture+":"+zx+":"+zz;
+            let group=groups.get(key);
+            if(!group){
+                group={level:batch.level,texture:batch.texture,segments:[],
+                    count:0,bounds:[Infinity,Infinity,-Infinity,-Infinity]};
+                groups.set(key,group);
+            }
+            group.segments.push([vertices,at]);group.count+=18;
+            for(let k=at;k<at+18;k+=6){
+                group.bounds[0]=Math.min(group.bounds[0],vertices[k]);
+                group.bounds[1]=Math.min(group.bounds[1],vertices[k+2]);
+                group.bounds[2]=Math.max(group.bounds[2],vertices[k]);
+                group.bounds[3]=Math.max(group.bounds[3],vertices[k+2]);
+            }
+        }
+    }
+    return [...groups.values()].map(group=>{
+        const vertices=new Float32Array(group.count);
+        let at=0;
+        for(const [source,i] of group.segments){
+            vertices.set(source.subarray(i,i+18),at);at+=18;
+        }
+        return {level:group.level,texture:group.texture,
+            vertices,bounds:group.bounds};
+    });
+}
+export function partitionColorScene(vertices,levelCounts,zoneSize=MOBILE_SCENE_ZONE_SIZE){
+    const batches=[];let at=0;
+    for(let level=0;level<4;level++){
+        const length=(levelCounts?.[level]??(level===0?vertices.length/6:0))*6;
+        if(length)batches.push({level,texture:-1,vertices:vertices.subarray(at,at+length)});
+        at+=length;
+    }
+    return partitionOpaqueScene(batches,zoneSize);
+}
 export class NativeTerrainViewport {
     constructor(canvas,{onDestination=()=>{}}={}) {
         this.canvas=canvas;
@@ -723,12 +777,18 @@ export class NativeTerrainViewport {
         this.pickVertices=mesh;this.pickLevelCounts=scene.levelCounts;
         this.drawMode=terrain.floorMaterials?gl.TRIANGLES:gl.LINES;
         const vertices=terrain.floorMaterials?mesh:terrainWireframe(mesh);
-        gl.bindBuffer(gl.ARRAY_BUFFER,this.buf);
-        gl.bufferData(gl.ARRAY_BUFFER,vertices,gl.STATIC_DRAW);
+        // Mobile draws chunk VBOs; avoid uploading an additional full-scene
+        // copy that would never be drawn. Wireframe keeps its original VBO.
+        if(!this.touch||this.drawMode===gl.LINES){
+            gl.bindBuffer(gl.ARRAY_BUFFER,this.buf);
+            gl.bufferData(gl.ARRAY_BUFFER,vertices,gl.STATIC_DRAW);
+        }
         this.count=vertices.length/6;
         this.terrainLevelCounts=this.drawMode===gl.LINES?scene.levelCounts.map(n=>n*2):scene.levelCounts;
         this.replaceBatches("terrainBatches",this.touch?
-            mergeOpaqueTextureBatches(scene.texturedBatches):scene.texturedBatches);
+            partitionOpaqueScene(scene.texturedBatches):scene.texturedBatches);
+        this.replaceBatches("terrainColorBatches",this.touch&&this.drawMode===gl.TRIANGLES?
+            partitionColorScene(mesh,scene.levelCounts):[]);
         if(resetCamera){
             this.target=[0,-terrain.heights[32*64+32]/128,0];
             this.setScenery(null);
@@ -738,12 +798,16 @@ export class NativeTerrainViewport {
         this.setDynamicScenery(null);
         const vertices=scene?.vertices??new Float32Array();
         if(!(vertices instanceof Float32Array)||vertices.length%18)throw new Error("Invalid scenery mesh");
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER,this.sceneryBuf);
-        this.gl.bufferData(this.gl.ARRAY_BUFFER,vertices,this.gl.STATIC_DRAW);
+        if(!this.touch){
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER,this.sceneryBuf);
+            this.gl.bufferData(this.gl.ARRAY_BUFFER,vertices,this.gl.STATIC_DRAW);
+        }
         this.sceneryCount=vertices.length/6;
         this.sceneryLevelCounts=scene?.levelCounts??[this.sceneryCount,0,0,0];
         const opaque=scene?.texturedBatches??[];
-        this.replaceBatches("sceneryBatches",this.touch?mergeOpaqueTextureBatches(opaque):opaque);
+        this.replaceBatches("sceneryBatches",this.touch?partitionOpaqueScene(opaque):opaque);
+        this.replaceBatches("sceneryColorBatches",this.touch?
+            partitionColorScene(vertices,this.sceneryLevelCounts):[]);
         this.replaceBatches("sceneryAlphaBatches",scene?.transparentBatches??[]);
         this.sceneryPickMeshes=preparePickMeshes(scene?.pickMeshes??[]);
         for(const texture of this.textures.values())this.gl.deleteTexture(texture);
@@ -907,10 +971,47 @@ export class NativeTerrainViewport {
                     capacity=bytes;
                 }
             }
-            return {buffer,capacity,count:b.vertices.length/6,texture:b.texture,level:b.level,alpha:b.alpha,vertices:b.vertices,
+            return {buffer,capacity,count:b.vertices.length/6,texture:b.texture,level:b.level,
+                bounds:b.bounds,alpha:b.alpha,vertices:b.vertices,
                 isWater:isKnownWaterTextureId(b.texture)};
         });
-        for(const old of previous)if(!used.has(old))gl.deleteBuffer(old.buffer);
+        for(const old of previous)if(!used.has(old)){
+            this.releaseGeometry?.(old.buffer);
+            gl.deleteBuffer(old.buffer);
+        }
+    }
+    // WebGL 2 VAOs retain the buffer format for each shader/buffer pairing.
+    // Attribute indices are program-specific; never reuse one program's VAO
+    // blindly with the other program.
+    bindGeometry(buffer,program){
+        if(!this.vertexArrays)this.vertexArrays=new Map();
+        let programs=this.vertexArrays.get(buffer);
+        if(!programs){programs=new Map();this.vertexArrays.set(buffer,programs);}
+        let vao=programs.get(program);
+        if(!vao){
+            const gl=this.gl;
+            vao=gl.createVertexArray();
+            if(!vao)throw new Error("WebGL 2 could not allocate a vertex array");
+            programs.set(program,vao);
+            gl.bindVertexArray(vao);
+            gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+            const pos=this.attribute(program,"a_position"),color=this.attribute(program,"a_color");
+            gl.enableVertexAttribArray(pos);gl.vertexAttribPointer(pos,3,gl.FLOAT,false,24,0);
+            gl.enableVertexAttribArray(color);gl.vertexAttribPointer(color,3,gl.FLOAT,false,24,12);
+            this.boundVertexArray=vao;
+        }else if(this.boundVertexArray!==vao){
+            this.gl.bindVertexArray(vao);
+            this.boundVertexArray=vao;
+        }
+    }
+    releaseGeometry(buffer){
+        const programs=this.vertexArrays?.get(buffer);
+        if(!programs)return;
+        for(const vao of programs.values()){
+            this.gl.deleteVertexArray(vao);
+            if(this.boundVertexArray===vao)this.boundVertexArray=null;
+        }
+        this.vertexArrays.delete(buffer);
     }
     drawArrays(mode,first,count){
         this.drawCallCount++;
@@ -931,6 +1032,7 @@ export class NativeTerrainViewport {
         // Any non-rendering upload may have changed WebGL's active program
         // since the last requestAnimationFrame callback.
         this.boundRenderProgram=null;
+        this.boundVertexArray=null;
         const {width:w,height:h}=worldRenderPixels(canvas.clientWidth,canvas.clientHeight,
             window.devicePixelRatio||1,this.touch);
         if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
@@ -945,22 +1047,29 @@ export class NativeTerrainViewport {
         this.prepareRenderProgram(this.program,matrix,bounds);
         this.bindRenderTexture(this.palette);
         gl.uniform1i(this.uniform(this.program,"u_wireframe"),this.drawMode===gl.LINES?1:0);
-        gl.bindBuffer(gl.ARRAY_BUFFER,this.buf);
-        const a=this.attribute(this.program,"a_position"),c=this.attribute(this.program,"a_color");
-        gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);
-        gl.enableVertexAttribArray(c);gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
-        this.drawArrays(this.drawMode,0,this.terrainLevelCounts?.slice(0,drawLevel+1).reduce((a,b)=>a+b,0)??this.count);
+        if(!this.touch||this.drawMode===gl.LINES)this.bindGeometry(this.buf,this.program);
+        if(this.touch&&this.drawMode===gl.TRIANGLES){
+            for(const batch of this.terrainColorBatches??[]){
+                if(batch.level<=drawLevel&&spatialBoundsOverlap(batch.bounds,bounds))
+                    this.renderMaterialBatch(batch,0,batch.count,matrix,bounds,1);
+            }
+        }else this.drawArrays(this.drawMode,0,
+            this.terrainLevelCounts?.slice(0,drawLevel+1).reduce((a,b)=>a+b,0)??this.count);
         if(this.sceneryCount){
             gl.uniform1i(this.uniform(this.program,"u_wireframe"),0);
-            gl.bindBuffer(gl.ARRAY_BUFFER,this.sceneryBuf);
-            gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);
-            gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
-            this.drawArrays(gl.TRIANGLES,0,this.sceneryLevelCounts.slice(0,drawLevel+1).reduce((a,b)=>a+b,0));
+            if(this.touch){
+                for(const batch of this.sceneryColorBatches??[]){
+                    if(batch.level<=drawLevel&&spatialBoundsOverlap(batch.bounds,bounds))
+                        this.renderMaterialBatch(batch,0,batch.count,matrix,bounds,1);
+                }
+            }else{
+                this.bindGeometry(this.sceneryBuf,this.program);
+                this.drawArrays(gl.TRIANGLES,0,this.sceneryLevelCounts.slice(0,drawLevel+1).reduce((a,b)=>a+b,0));
+            }
         }
         if(this.actorCount){
             gl.uniform1i(this.uniform(this.program,"u_wireframe"),0);
-            gl.bindBuffer(gl.ARRAY_BUFFER,this.actorBuf);
-            gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
+            this.bindGeometry(this.actorBuf,this.program);
             this.drawArrays(gl.TRIANGLES,0,this.actorCount);
         }
         // Only the wireframe ground pass uses line mode; later opaque and
@@ -968,16 +1077,18 @@ export class NativeTerrainViewport {
         this.useRenderProgram(this.program);
         gl.uniform1i(this.uniform(this.program,"u_wireframe"),0);
         this.prepareRenderProgram(this.textureProgram,matrix,bounds);
-        const ta=this.attribute(this.textureProgram,"a_position"),tc=this.attribute(this.textureProgram,"a_color");
-        gl.enableVertexAttribArray(ta);gl.enableVertexAttribArray(tc);
-        for(const batch of [...this.terrainBatches,...this.sceneryBatches,...this.actorBatches]){
-            const texture=this.textures.get(batch.texture);if(!texture||batch.level>drawLevel)continue;
+        // The VAO stores both vertex attributes, even when texture changes.
+        // Iterate stable batch arrays without concatenating hundreds of
+        // wrapper objects on every requestAnimationFrame.
+        for(const batchSet of [this.terrainBatches,this.sceneryBatches,this.actorBatches])
+        for(const batch of batchSet){
+            const texture=this.textures.get(batch.texture);
+            if(!texture||batch.level>drawLevel||!spatialBoundsOverlap(batch.bounds,bounds))continue;
             const offset=this.frameTextureShift(batch.texture);
             gl.uniform2f(this.uniform(this.textureProgram,"u_textureShift"),offset[0],offset[1]);
             // Water IDs retain the pinned TSPS classification in batch metadata.
             // Foam, normals and water-material passes are not yet ported.
-            this.bindRenderTexture(texture);gl.bindBuffer(gl.ARRAY_BUFFER,batch.buffer);
-            gl.vertexAttribPointer(ta,3,gl.FLOAT,false,24,0);gl.vertexAttribPointer(tc,3,gl.FLOAT,false,24,12);
+            this.bindRenderTexture(texture);this.bindGeometry(batch.buffer,this.textureProgram);
             this.drawArrays(gl.TRIANGLES,0,batch.count);
         }
         for(const batch of this.dynamicBatches??[]){
@@ -1019,10 +1130,7 @@ export class NativeTerrainViewport {
             const offset=this.frameTextureShift(batch.texture);
             gl.uniform2f(this.uniform(p,"u_textureShift"),...offset);
         }
-        gl.bindBuffer(gl.ARRAY_BUFFER,batch.buffer);
-        const a=this.attribute(p,"a_position"),c=this.attribute(p,"a_color");
-        gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);
-        gl.enableVertexAttribArray(c);gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
+        this.bindGeometry(batch.buffer,p);
         this.drawArrays(gl.TRIANGLES,first,count);
     }
     dispose(){
@@ -1032,10 +1140,18 @@ export class NativeTerrainViewport {
             this.canvas.removeEventListener(name,fn);
         }
         window.removeEventListener("keydown",this.onKey);
+        // A VAO retains its vertex-buffer reference: release all VAOs first.
+        for(const programs of this.vertexArrays?.values()??[])
+            for(const vao of programs.values())this.gl.deleteVertexArray(vao);
+        this.vertexArrays?.clear();this.boundVertexArray=null;
         this.gl.deleteBuffer(this.buf);this.gl.deleteBuffer(this.sceneryBuf);this.gl.deleteBuffer(this.actorBuf);this.gl.deleteTexture(this.palette);
         this.gl.deleteProgram(this.program);
         this.gl.deleteProgram(this.textureProgram);
         for(const texture of this.textures.values())this.gl.deleteTexture(texture);
-        for(const batch of [...this.terrainBatches,...this.sceneryBatches,...this.actorBatches,...(this.sceneryAlphaBatches??[]),...(this.actorAlphaBatches??[]),...(this.dynamicBatches??[]),...(this.dynamicAlphaBatches??[])])this.gl.deleteBuffer(batch.buffer);
+        for(const batch of [...this.terrainBatches,...this.sceneryBatches,...this.actorBatches,
+            ...(this.terrainColorBatches??[]),...(this.sceneryColorBatches??[]),
+            ...(this.sceneryAlphaBatches??[]),...(this.actorAlphaBatches??[]),
+            ...(this.dynamicBatches??[]),...(this.dynamicAlphaBatches??[])])
+            this.gl.deleteBuffer(batch.buffer);
     }
 }

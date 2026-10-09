@@ -9,6 +9,7 @@ test("map loading frame callback waits for completed nonempty WebGL terrain draw
     const gl=new Proxy({
         LINES:1,TRIANGLES:4,COLOR_BUFFER_BIT:16384,DEPTH_BUFFER_BIT:256,
         ARRAY_BUFFER:34962,TEXTURE0:33984,TEXTURE_2D:3553,FLOAT:5126,
+        createVertexArray:()=>({}),bindVertexArray:()=>{},
         getAttribLocation:()=>0,getUniformLocation:()=>({}),
         drawArrays:(mode,from,count)=>draw.push([mode,from,count]),
     },{get:(target,field)=>field in target?target[field]:()=>{}});
