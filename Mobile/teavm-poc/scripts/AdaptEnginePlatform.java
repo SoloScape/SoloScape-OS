@@ -1,0 +1,74 @@
+import java.nio.file.*;
+import java.util.*;
+import java.util.jar.*;
+import java.io.*;
+import org.objectweb.asm.*;
+import org.objectweb.asm.commons.*;
+
+/** Rewrite platform boundaries in both the client and its public API. */
+public final class AdaptEnginePlatform implements Opcodes {
+    private static final String PLATFORM = "org/soloscape/teavm/platform/";
+    public static void main(String[] args) throws Exception {
+        if (args.length != 2) throw new IllegalArgumentException("Expected input and output jar");
+        Remapper remapper = new Remapper() {
+            @Override public String map(String name) {
+                if (name.equals("org/slf4j/LoggerFactory")) return PLATFORM + "BrowserLoggerFactory";
+                if (name.equals("java/util/concurrent/Executors")) return PLATFORM + "BrowserExecutors";
+                if (name.equals("java/util/concurrent/locks/ReentrantLock")) return PLATFORM + "ReentrantLock";
+                if (name.equals("java/lang/ThreadGroup")) return PLATFORM + "BrowserThreadGroup";
+                if (name.startsWith("java/util/concurrent/") && Arrays.asList("ExecutorService", "Future", "TimeoutException", "ThreadFactory", "ScheduledExecutorService", "ScheduledFuture", "ThreadPoolExecutor", "LinkedBlockingQueue", "Semaphore").contains(name.substring(name.lastIndexOf('/') + 1)))
+                    return PLATFORM + name.substring(name.lastIndexOf('/') + 1);
+                if (name.startsWith("java/awt/"))
+                    return PLATFORM + "awt/" + name.substring(9);
+                return name;
+            }
+        };
+        try (JarFile input = new JarFile(args[0]); JarOutputStream output = new JarOutputStream(Files.newOutputStream(Paths.get(args[1])))) {
+            for (JarEntry entry : Collections.list(input.entries())) {
+                if (entry.getName().matches("META-INF/[^/]+\\.(SF|RSA|DSA|EC)")) continue;
+                byte[] bytes = input.getInputStream(entry).readAllBytes();
+                if (entry.getName().endsWith(".class")) {
+                    ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+                    ClassVisitor visitor = new ClassRemapper(writer, remapper) {
+                        private String owner;
+                        @Override public void visit(int version, int access, String name, String signature, String parent, String[] interfaces) {
+                            owner = name;
+                            super.visit(version, access, name, signature, "java/lang/Thread".equals(parent) ? PLATFORM + "BrowserThread" : parent, interfaces);
+                        }
+                        @Override public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                            MethodVisitor next = super.visitMethod(access, name, descriptor, signature, exceptions);
+                            // This pinned method only selects the optional reflectcheck JAR loader.
+                            if (owner.equals("client") && name.equals("tx") && descriptor.equals("()Ljava/lang/ClassLoader;")) {
+                                next.visitCode(); next.visitMethodInsn(INVOKESTATIC, PLATFORM + "BrowserClasses", "engineLoader", descriptor, false);
+                                next.visitInsn(ARETURN); next.visitMaxs(1, 0); next.visitEnd(); return null;
+                            }
+                            return new MethodVisitor(ASM9, next) {
+                                @Override public void visitTypeInsn(int opcode, String type) {
+                                    super.visitTypeInsn(opcode, opcode == NEW && type.equals("java/lang/Thread") ? PLATFORM + "BrowserThread" : type);
+                                }
+                                @Override public void visitMethodInsn(int opcode, String type, String method, String desc, boolean itf) {
+                                    if ((type.equals("java/lang/ClassLoader") || type.equals("java/lang/Class")) &&
+                                        Arrays.asList("getResourceAsStream", "getResource", "getResources", "getSystemResourceAsStream", "getSystemResource", "getSystemResources").contains(method)) {
+                                        String result=Type.getReturnType(desc).getDescriptor();
+                                        String adapted=method.equals("getResourceAsStream")?"stream":method.equals("getResource")?"resource":method.equals("getResources")?"resources":method.equals("getSystemResourceAsStream")?"systemStream":method.equals("getSystemResource")?"systemResource":"systemResources";
+                                        String receiver=opcode==INVOKESTATIC?"":type.equals("java/lang/Class")?"Ljava/lang/Class;":"Ljava/lang/Object;";
+                                        if(type.equals("java/lang/Class"))adapted=method.equals("getResourceAsStream")?"classStream":"classResource";
+                                        super.visitMethodInsn(INVOKESTATIC, PLATFORM+"BrowserResources",adapted,"("+receiver+"Ljava/lang/String;)"+result,false);
+                                    } else if (type.equals("java/lang/Thread") && method.equals("<init>")) {
+                                        super.visitMethodInsn(opcode, PLATFORM + "BrowserThread", method, desc, false);
+                                    } else if ((type.equals("java/lang/Thread") || type.equals("java/lang/SecurityManager")) && method.equals("getThreadGroup")) {
+                                        super.visitMethodInsn(INVOKESTATIC, PLATFORM + "BrowserThreads", "group", "(Ljava/lang/Object;)L" + PLATFORM + "BrowserThreadGroup;", false);
+                                    } else if (type.equals("java/util/regex/Matcher") && method.equals("replaceAll") && desc.equals("(Ljava/util/function/Function;)Ljava/lang/String;")) {
+                                        super.visitMethodInsn(INVOKESTATIC, PLATFORM + "BrowserRegex", "replaceAll", "(Ljava/util/regex/Matcher;Ljava/util/function/Function;)Ljava/lang/String;", false);
+                                    } else super.visitMethodInsn(opcode, type, method, desc, itf);
+                                }
+                            };
+                        }
+                    };
+                    new ClassReader(bytes).accept(visitor, 0); bytes = writer.toByteArray();
+                }
+                JarEntry copy = new JarEntry(entry.getName()); copy.setTime(0); output.putNextEntry(copy); output.write(bytes); output.closeEntry();
+            }
+        }
+    }
+}

@@ -64,10 +64,15 @@ reachability. All 735 classes and 18,979 adapted methods now parse successfully.
 Synthetic JVM fixtures verify the adaptation in
 `tests/openosrs-engine-constants.test.mjs`.
 
-The full engine still fails runtime dependency checking: AWT, executor/queue
-APIs, dynamic class/resource loading, logging binding and a regex overload
-need browser-compatible implementations. See `../OPENOSRS_PARITY.md` for
-the evidence and remaining porting gates. SLF4J/Guava API versions match the
+The initial AWT, executor/queue, class/resource, logging and regex diagnostics
+are resolved by `engine-src/org/soloscape/teavm/platform` adapters. Both the
+gamepack and API jar are remapped to the same platform types. Game methods
+are retained; the optional reflection-check JAR loader uses the browser's
+ahead-of-time class contract and explicitly rejects external JARs.
+The full engine still fails on filesystem, sockets/HTTPS, native/Unsafe,
+reflection/serialization, JVM diagnostics, JSON/crypto, ImageIO and audio.
+See `../OPENOSRS_PARITY.md` for the evidence, adapter limits and remaining
+porting gates. SLF4J/Guava API versions match the
 reference build. A small Java 8-source classlib implementation supplies the
 standard BootstrapMethodError type missing from TeaVM; Maven still runs
 under JDK 17 or newer.
@@ -75,6 +80,13 @@ under JDK 17 or newer.
 failure exits nonzero and removes any partially emitted engine module.
 Even a successful build is `compiled-unverified`.
 The probe does not serve its generated module or change the active homepage.
+
+Run `npm run test:engine-platform` to compile the separate `PlatformProof`
+entry point and test the actual emitted JavaScript. Set `CHROME_BIN` to also
+verify Canvas 2D ARGB pixels/readback and DOM input in real Chrome. Its
+`platform.js` is separate from `engine.js`; passing this proof does not mark
+the whole-engine report as compiled. The future host must configure its
+canvas and preload named classpath resource bytes before engine startup.
 
 The separate local OpenOSRS `injected-client.oprs` is a compiled desktop
 JVM game engine. It cannot be directly embedded in the mobile browser; TeaVM

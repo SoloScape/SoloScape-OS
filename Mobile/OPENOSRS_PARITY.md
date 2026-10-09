@@ -56,12 +56,44 @@ methods in the adapted archive with zero failures**; the extra 12 methods
 are generated constant getters and concatenation helpers. This proves the
 bytecode parsing gate, not engine runtime parity.
 
-The complete engine build still fails at runtime dependency checking. Current
-diagnostics include AWT Panel/Toolkit and input listeners, executors and
-LinkedBlockingQueue, URLClassLoader/resource enumeration, the SLF4J binding
-and `Matcher.replaceAll(Function)`. The build now supplies the reference
-SLF4J/Guava API dependencies and TeaVM's missing BootstrapMethodError type.
-No desktop methods are stubbed out to manufacture a successful compilation.
+The five initial platform dependency groups now have browser adapters.
+`AdaptEnginePlatform` rewrites both the normalized gamepack and API jar so
+platform types remain consistent across interface descriptors. Original game
+methods remain present; the optional `client.tx()` reflection-JAR loader is
+replaced by the ahead-of-time browser class-loader contract.
+
+- AWT: component bounds, containment and listeners, Canvas 2D drawing,
+  ARGB framebuffer upload/readback, input consumption and font measurement.
+  `configureCanvas(elementId)` selects the host canvas before initialization.
+- Executors: cooperative FIFO workers, fixed worker pools, futures, queued
+  cancellation, timeouts, fixed-rate scheduling, queues, semaphores and
+  reentrant locks. These yield through TeaVM threads rather than native threads.
+- Classes/resources: linked classes and registered byte resources, fresh
+  streams, relative class lookups and resource URL enumeration. Hosts call
+  `registerResource(name, hex)` before startup. External reflectcheck JARs
+  fail explicitly because browser modules cannot execute downloaded Java code.
+- Logging: cached SLF4J loggers write formatted messages and exceptions to
+  the browser console without desktop binding/resource discovery.
+- Regex: functional replacement uses TeaVM's existing matcher with group
+  substitution, escaping and zero-length matches. This targets the engine's
+  pure stack-trace callback; visible matcher mutations are rejected, but
+  TeaVM exposes no modification counter for complete JDK mutation detection.
+
+`npm run test:engine-platform` compiles a separate adapter proof and executes
+the emitted JavaScript. With `CHROME_BIN`, it also checks actual Chrome
+canvas pixels/readback and DOM keyboard consumption. JVM transform fixtures
+check method retention, receiver/descriptor rewriting and resource bytes.
+The proof is separate from the engine and cannot establish gameplay parity.
+Desktop window management is not reproduced; clipboard ownership is local
+to the module, and font metrics use browser fonts. Image decoding and audio
+still require their own adapters.
+
+The whole-engine build still fails, now on filesystem/environment APIs,
+raw sockets/HTTPS, native/Unsafe calls, reflection/serialization, JVM process
+and memory diagnostics, JSON, message digests, ImageIO and sampled audio.
+There are no remaining compiler diagnostics in the five initial groups.
+SLF4J/Guava versions continue to match the reference; the build also supplies
+TeaVM's missing BootstrapMethodError type.
 
 The command returns a failure exit code and writes local diagnostics to
 `teavm-poc/target/engine/report.json` and `compiler.log`, plus normalization and

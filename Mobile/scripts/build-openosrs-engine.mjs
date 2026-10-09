@@ -53,10 +53,10 @@ export function buildOpenOsrsEngine({root=mobile,env=process.env,platform=proces
         const result=run(jdk.binary,["-version"],{env:buildEnv,encoding:"utf8"});
         if(result.error||result.status!==0)throw new Error("Selected JDK is unavailable.");
         report.stage="bytecode-normalization";
-        const prepared=normalize({root,target,gamepack,jdk,env:buildEnv,run});
+        const prepared=normalize({root,target,gamepack,api,jdk,env:buildEnv,run});
         report.adaptation=prepared.adaptation;report.parser=prepared.parser;
         const args=["-B","-e","-f",join(root,"teavm-poc/engine-pom.xml"),
-            `-Dgamepack.path=${prepared.gamepack}`,`-Dapi.path=${api}`,"package"];
+            `-Dgamepack.path=${prepared.gamepack}`,`-Dapi.path=${prepared.api||api}`,"package"];
         report.stage="toolchain";
         // Maven's Windows launcher is a .cmd. Use its Java entry point directly
         // so paths containing spaces/metacharacters never require shell interpolation.

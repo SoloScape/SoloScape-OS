@@ -9,6 +9,8 @@
     <maven.compiler.release>8</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <teavm.version>0.15.0</teavm.version>
+    <engine.mainClass>EngineBridge</engine.mainClass>
+    <engine.outputName>engine.js</engine.outputName>
   </properties>
   <dependencies>
     <!-- Match the pinned reference client's logging API dependency. -->
@@ -28,8 +30,8 @@
       <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.13.0</version></plugin>
       <plugin><groupId>org.teavm</groupId><artifactId>teavm-maven-plugin</artifactId><version>${teavm.version}</version>
         <executions><execution><phase>process-classes</phase><goals><goal>compile</goal></goals>
-          <configuration><mainClass>EngineBridge</mainClass><targetType>JAVASCRIPT</targetType>
-            <jsModuleType>ES2015</jsModuleType><targetFileName>engine.js</targetFileName>
+          <configuration><mainClass>${engine.mainClass}</mainClass><targetType>JAVASCRIPT</targetType>
+            <jsModuleType>ES2015</jsModuleType><targetFileName>${engine.outputName}</targetFileName>
             <sourceMapsGenerated>false</sourceMapsGenerated><minifying>false</minifying>
           </configuration>
         </execution></executions>

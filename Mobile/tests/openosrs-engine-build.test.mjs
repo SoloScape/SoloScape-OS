@@ -80,3 +80,15 @@ test("normalization failure prevents Maven and cannot retain a stale module",t=>
     assert.equal(probes,1);assert.equal(report.stage,"bytecode-normalization");
     assert.match(report.reason,/Unsupported bootstrap/);assert.equal(report.status,"blocked");
 });
+
+test("whole-engine compilation adapts the API jar together with the gamepack",t=>{
+    const f=fixture(t),adaptedApi=f.env.SOLOSCAPE_OPENOSRS_API+".browser.jar";
+    const {report}=buildOpenOsrsEngine({...f,normalize:({api,gamepack})=>{
+        assert.equal(api,f.env.SOLOSCAPE_OPENOSRS_API);
+        return {gamepack,api:adaptedApi,adaptation:{},parser:{failures:0}};
+    },run:(command,args)=>{
+        if(command==="mvn")assert.ok(args.includes(`-Dapi.path=${adaptedApi}`));
+        return {status:0,stdout:""};
+    }});
+    assert.equal(report.stage,"output");
+});
