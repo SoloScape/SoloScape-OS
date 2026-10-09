@@ -12,6 +12,13 @@ import {paintWorldSelect} from "./world-select-screen.mjs";
 
 // Wording confirmed against rev-240 OpenOSRS injected game class kk.
 export const OSRS_TITLE_FONT_IDS=Object.freeze({bold12:496,plain11:494});
+export const SERVER_CONNECTION_ERROR="Error connecting to server. Please check your network connection and try again";
+export function titleErrorMessage(error,prefix=""){
+    const message=error?.message||String(error);
+    const offline=[8,23].includes(error?.code)||
+        /^(?:Native (?:game|JS5) (?:WebSocket failed|connection closed.*)|Native login timed out|JS5 request timed out|Native game transport is not open|Failed to fetch|NetworkError.*|Load failed)$/i.test(message);
+    return offline?SERVER_CONNECTION_ERROR:prefix+message;
+}
 export const OSRS_TITLE_COPY=Object.freeze({
     loading:"RuneScape is loading - please wait...",
     welcome:"Welcome to RuneScape",newUser:"New User",existingUser:"Existing User",
@@ -188,7 +195,7 @@ export class NativeTitleScreen{
                 this.paint();await steps[i][1]();this.percent=Math.round((i+1)*100/steps.length);
             }
             this.canvas.dataset.loaded="true";this.showWelcome();
-        }catch(error){this.mode="error";this.message=error.message;this.status.textContent="Title cache unavailable: "+error.message;this.syncControls();}
+        }catch(error){this.mode="error";this.message=titleErrorMessage(error,"Title cache unavailable: ");this.status.textContent=this.message;this.syncControls();this.paint();}
     }
     persistRememberedUsername(){
         try{
@@ -299,11 +306,15 @@ export class NativeTitleScreen{
         this.stage.style.transform=`translate(${controls.x}px,${controls.y+controls.panelOffset*controls.scale}px) scale(${controls.scale})`;
         ctx.save();ctx.translate(l.x,l.y);ctx.scale(l.scale,l.scale);
         const logo=this.assets.sprites.get("logo")?.[0];if(logo)ctx.drawImage(logo,382-Math.floor(logo.width/2),18);
-        if(this.mode==="loading"||this.mode==="error"){
-            this.text(ctx,this.mode==="error"?"Unable to load title screen":OSRS_TITLE_COPY.loading,382,237);
+        if(this.mode==="error"){
+            const words=this.message.split(" "),rows=[];let line="";
+            for(const word of words){const next=line?line+" "+word:word;if(line&&(this.assets.font?.measure(next)??next.length*7)>320){rows.push(line);line=word;}else line=next;}if(line)rows.push(line);
+            rows.forEach((row,i)=>this.text(ctx,row,382,237+i*15));
+        }else if(this.mode==="loading"){
+            this.text(ctx,OSRS_TITLE_COPY.loading,382,237);
             ctx.strokeStyle="#8c1111";ctx.strokeRect(230.5,245.5,303,33);ctx.strokeStyle="#000000";ctx.strokeRect(231.5,246.5,301,31);
             ctx.fillStyle="#000000";ctx.fillRect(232,247,300,30);ctx.fillStyle="#8c1111";ctx.fillRect(232,247,this.percent*3,30);
-            this.text(ctx,this.mode==="error"?"Check your connection and reload":this.message,382,268);
+            this.text(ctx,this.message,382,268);
         }else{
             ctx.translate(0,l.panelOffset);
             const box=this.assets.sprites.get("titlebox")?.[0];if(box)ctx.drawImage(box,202,170);

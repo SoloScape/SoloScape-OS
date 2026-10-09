@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {NativeTitleScreen,titleLayout,titleFieldLayout,OSRS_TITLE_COPY,OSRS_TITLE_FONT_IDS} from "../browser/title-screen.mjs";
+import {NativeTitleScreen,titleLayout,titleFieldLayout,OSRS_TITLE_COPY,OSRS_TITLE_FONT_IDS,titleErrorMessage,SERVER_CONNECTION_ERROR} from "../browser/title-screen.mjs";
+import {NativeLoginError} from "../browser/login-protocol.mjs";
 import {paintWorldSelect,WORLD_SELECT_LAYOUT} from "../browser/world-select-screen.mjs";
 import {NativeAudioCache,retryOnMissingGroup} from "../browser/title-audio-cache.mjs";
 import {NativeTitleMusic} from "../browser/title-music.mjs";
@@ -96,7 +97,17 @@ test("OpenOSRS rev-240 in-game title uses cache b12_full, p11_full and original 
         help:"Can't login? Click here.",login:"Login",cancel:"Cancel",
     });
 });
-test("title form draws original cache labels and works with optional remembered/hidden username",()=>{
+test("connection errors use the requested message without replacing account or protocol errors",()=>{
+    for(const message of ["Native game WebSocket failed","Native JS5 WebSocket failed",
+        "Native game connection closed before login completed","Native JS5 connection closed before group completed",
+        "Native login timed out","JS5 request timed out","Failed to fetch"])
+        assert.equal(titleErrorMessage(new Error(message),"Unable to log in: "),SERVER_CONNECTION_ERROR);
+    for(const code of [8,23])assert.equal(titleErrorMessage(new NativeLoginError(code)),SERVER_CONNECTION_ERROR);
+    for(const code of [3,4,7,56])assert.equal(titleErrorMessage(new NativeLoginError(code)),new NativeLoginError(code).message);
+    assert.equal(titleErrorMessage(new Error("Reference-table CRC mismatch")),"Reference-table CRC mismatch");
+});
+
+test("title form draws original cache labels and works with optional remembered/hidden username",async()=>{
     const saved=Object.fromEntries(["document","window","localStorage","requestAnimationFrame","cancelAnimationFrame"]
         .map(k=>[k,globalThis[k]]));
     const stored=new Map(),drawn=[],smallDrawn=[],circles=[],elements=new Map();
@@ -221,6 +232,14 @@ test("title form draws original cache labels and works with optional remembered/
         title.showLogin("Login unsuccessful");
         assert.ok(drawn.includes("Login unsuccessful"),
             "returning to login still allows a visible failure message");
+        drawn.length=0;
+        title.showLogin(SERVER_CONNECTION_ERROR);
+        assert.ok(drawn.join(" ").includes(SERVER_CONNECTION_ERROR),"the complete connection message must fit on the login panel");
+        await title.start({loadMaster:async()=>{throw new Error("Native JS5 WebSocket failed");}});
+        drawn.length=0;title.paint();
+        assert.equal(title.mode,"error");
+        assert.equal(status.textContent,SERVER_CONNECTION_ERROR);
+        assert.ok(drawn.join(" ").includes(SERVER_CONNECTION_ERROR),"offline startup must visibly render the complete message");
         title.dispose();
     }finally{
         for(const [key,value] of Object.entries(saved)){

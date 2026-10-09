@@ -27,7 +27,7 @@ test("mobile homepage keeps scaled title controls, login and world lifecycle in 
             export const titleAuthenticated=()=>{if(mode===4)mode=3;};
             export const titleLoginFailed=()=>{if(mode===4)mode=2;};
             export const titleBack=()=>mode=1;`],
-        ["/title-screen.mjs",`import {NativeTitleScreen} from "/fixture-title.mjs";
+        ["/title-screen.mjs",`import {NativeTitleScreen,titleErrorMessage} from "/fixture-title.mjs";
             NativeTitleScreen.prototype.start=async function(){
                 const font={measure:s=>s.length*6,draw:(ctx,s,x,y,color)=>{
                     ctx.fillStyle=color;ctx.font="12px monospace";ctx.fillText(s,x,y);
@@ -41,7 +41,7 @@ test("mobile homepage keeps scaled title controls, login and world lifecycle in 
                     toggle(){this.muted=!this.muted;}};
                 window.fixtureTitle=this;this.canvas.dataset.loaded="true";this.showWelcome();
             };
-            export {NativeTitleScreen};`],
+            export {NativeTitleScreen,titleErrorMessage};`],
         ["/native-login.mjs",`export class NativeGameSession {
             constructor(options){
                 this.options=options;this.connected=false;
@@ -52,6 +52,7 @@ test("mobile homepage keeps scaled title controls, login and world lifecycle in 
                 if(!details.password)throw new Error("Password was cleared too early");
                 await new Promise(r=>setTimeout(r,20));
                 if(username==="rejected")throw new Error("Invalid username or password");
+                if(username==="offline")throw new Error("Native game WebSocket failed");
                 this.connected=true;
                 const account={playerIndex:7,member:true};
                 this.options.onAuthenticated(account);
@@ -107,6 +108,10 @@ test("mobile homepage keeps scaled title controls, login and world lifecycle in 
             user.value="rejected";pass.value="fixture-password";form.requestSubmit();
             await wait(()=>title.mode==="login"&&status.textContent.includes("Invalid username"));
             check(pass.value===""&&!document.querySelector("#login-submit").disabled,"Rejected login left stale controls/password");
+            user.value="offline";pass.value="fixture-password";form.requestSubmit();
+            await wait(()=>title.mode==="login"&&status.textContent.startsWith("Error connecting to server."));
+            check(status.textContent==="Error connecting to server. Please check your network connection and try again","Offline message has unexpected text");
+            check(pass.value===""&&!document.querySelector("#login-submit").disabled,"Offline login did not allow retry");
             user.value="accepted";pass.value="fixture-password";form.requestSubmit();
             await wait(()=>!title.visible);
             check(document.querySelector("#title-screen").hidden&&!document.querySelector("#world-stage").hidden,"Title covered authenticated world");

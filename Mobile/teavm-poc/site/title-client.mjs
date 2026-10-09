@@ -1,7 +1,7 @@
 // Cache-rendered OpenOSRS title with the TeaVM state bridge and native session.
 import {NativeJs5Cache} from "/native-js5.mjs";
 import {connectionConfig} from "/connection-config.mjs";
-import {NativeTitleScreen} from "/title-screen.mjs";
+import {NativeTitleScreen,titleErrorMessage} from "/title-screen.mjs";
 import {TitleLoginSession} from "/title-login-session.mjs";
 
 const canvas=document.querySelector("#osrs-title");
@@ -54,7 +54,7 @@ async function boot(){
                 worldBridge?.dispose();worldBridge=null;
                 core.titleBack();core.titleExistingUser();
                 submit.disabled=false;
-                title.showLogin("Disconnected: "+message);
+                title.showLogin(titleErrorMessage(message,"Disconnected: "));
             },
             onGamePacket:packet=>worldBridge?.handle(packet)
         });
@@ -62,8 +62,8 @@ async function boot(){
         if(title.mode==="welcome")core.titleReady();
     }catch(error){
         title.mode="error";
-        title.message=error?.message||String(error);
-        say("Unable to load game: "+title.message);
+        title.message=titleErrorMessage(error,"Unable to load game: ");
+        say(title.message);
         title.syncControls();title.paint();
         console.error("[teavm-title]",error);
     }
@@ -96,7 +96,7 @@ loginForm.addEventListener("submit",async event=>{
         if(id===attemptId){
             worldBridge?.dispose();worldBridge=null;
             core.titleLoginFailed();
-            title.showLogin("Unable to log in: "+(error?.message||String(error)));
+            title.showLogin(titleErrorMessage(error,"Unable to log in: "));
         }
     }finally{
         details.password="";
