@@ -101,6 +101,42 @@ test("authenticated NPCs share actor buffers and clear on despawn",async()=>{
     gameplay.close();
 });
 
+test("map rebuild preserves retained NPC updates while terrain is loading",async()=>{
+    let finishTerrain;
+    const pendingTerrain=new Promise(resolve=>{finishTerrain=resolve;});
+    const viewport={setActors(){},setScenery(){}};
+    const game=new NativeGameplay({cache:{},viewport,session:{sendGame(){}},
+        loadTerrain:()=>pendingTerrain});
+    game.sync={local:{x:3201,y:3201,plane:0}};
+    game.rebuild={zoneX:400,zoneY:400,baseX:3152,baseY:3152};
+    game.handle({name:"SET_NPC_UPDATE_ORIGIN",payload:Uint8Array.of(49,49)});
+    game.handle({name:"NPC_INFO_SMALL_V6",payload:spawn({index:7,dx:1,dy:1})});
+    const retained=game.npcs.npcs.get(7);
+    game.npcModels.renderedMeshes.set(7,{oldTerrain:true});
+    game.rebuild={zoneX:408,zoneY:400,baseX:3216,baseY:3152};
+    const loading=game.loadRebuild(game.rebuild);
+    try{
+        assert.equal(game.loading,true);
+        assert.deepEqual(game.npcs.high,[7]);
+        assert.strictEqual(game.npcs.npcs.get(7),retained);
+        assert.equal(game.npcModels.renderedMeshes.size,0,"discard old terrain geometry");
+        assert.equal(game.npcMotions.size,0,"discard old interpolation snapshots");
+        game.handle({name:"SET_NPC_UPDATE_ORIGIN",payload:Uint8Array.of(1,49)});
+        game.handle({name:"NPC_INFO_SMALL_V6",payload:bits([1,8],[1,1],[1,2],[4,3],[0,1])});
+        assert.equal(game.npcs.npcs.get(7).x,retained.x+1);
+        assert.equal(game.npcs.npcs.get(7).y,retained.y);
+        assert.equal(game.npcMotions.size,1);
+        game.handle({name:"NPC_INFO_SMALL_V6",payload:bits([1,8],[1,1],[3,2])});
+        assert.equal(game.npcs.npcs.size,0,"server update still owns NPC removal");
+        assert.deepEqual(game.npcs.high,[]);
+        const fresh=new NativeGameplay({cache:{},viewport,session:{sendGame(){}}});
+        assert.deepEqual(fresh.npcs.high,[],"new sessions never inherit retained NPCs");
+        fresh.close();
+    }finally{
+        game.close();finishTerrain(null);await loading;
+    }
+});
+
 test("NPC composition selects verified configuration group 9 and actual model IDs",async()=>{
     const reads=[],models={
         config:async(group,id,Type)=>{

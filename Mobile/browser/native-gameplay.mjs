@@ -171,7 +171,9 @@ export class NativeGameplay {
     }
     async loadRebuild(rebuild){
         const generation=++this.generation,current=()=>!this.closed&&generation===this.generation;
-        this.clearNpcMenu();this.npcs.reset();this.npcMotions.clear();this.npcModels.renderedMeshes?.clear();this.npcDrawn=0;
+        // Map rebuilds replace render resources, not the session's retained NPC
+        // list. The next NPC_INFO may still reference NPCs from the old map.
+        this.clearNpcMenu();this.npcMotions.clear();this.npcModels.renderedMeshes?.clear();this.npcDrawn=0;
         this.sceneAnimations.reset();
         this.spotEffects.reset();
         this.spotEffects.update("player",this.sync.local?.spotanims,this.now());
