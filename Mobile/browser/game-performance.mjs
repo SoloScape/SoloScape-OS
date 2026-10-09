@@ -50,7 +50,9 @@ export class GamePerformanceMetrics {
 }
 
 export class GamePerformanceOverlay {
-    constructor(root,{metrics=new GamePerformanceMetrics(),interval=setInterval,clear=clearInterval}={}){
+    constructor(root,{metrics=new GamePerformanceMetrics(),timers=globalThis,
+        interval=(callback,delay)=>timers.setInterval(callback,delay),
+        clear=id=>timers.clearInterval(id)}={}){
         if(!root)throw new Error("Performance overlay root required");
         this.root=root;this.metrics=metrics;this.interval=interval;this.clear=clear;
         this.button=root.querySelector("#world-performance-toggle");

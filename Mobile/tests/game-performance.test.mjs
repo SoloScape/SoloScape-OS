@@ -95,3 +95,27 @@ test("native gameplay reports server ticks only after successfully decoded PLAYE
     assert.deepEqual(tickTimes,[1000,1600]);
     game.closed=true;
 });
+
+test("Safari Window timer methods are called on their owning object during login and disconnect",()=>{
+    const {root}=fixture(),calls=[];
+    const timers={
+        setInterval(callback,delay){
+            assert.strictEqual(this,timers,"WebKit rejects detached Window.setInterval");
+            assert.equal(delay,1000);
+            assert.equal(typeof callback,"function");
+            calls.push("scheduled");
+            return 77;
+        },
+        clearInterval(id){
+            assert.strictEqual(this,timers,"WebKit rejects detached Window.clearInterval");
+            assert.equal(id,77);
+            calls.push("cleared");
+        },
+    };
+    const overlay=new GamePerformanceOverlay(root,{timers});
+    overlay.start();
+    overlay.frame(100);overlay.frame(120);
+    overlay.dispose();
+    assert.deepEqual(calls,["scheduled","cleared"]);
+    assert.equal(root.hidden,true);
+});
