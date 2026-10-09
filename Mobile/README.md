@@ -5,6 +5,14 @@
 This directory integrates the pinned upstream browser client as a Git submodule at `tsps-upstream/`, based on [RSPSApp/tsps](https://github.com/RSPSApp/tsps), which provides a React/TypeScript/WebGL OSRS-style game client. Track the work in [issue #32](https://github.com/SoloScape/SoloScape-OS/issues/32).
 
 Whole-client OpenOSRS parity is tracked in [OPENOSRS_PARITY.md](OPENOSRS_PARITY.md).
+The 9 October mobile scene integration adds skeletal poses, authenticated
+object morphs, joined static lighting and classic terrain shadows, rotated
+instanced chunks, and additional built-in GPU shader settings to the active
+homepage. [Renderer captures](RENDER_CAPTURES.md) documents PNG/state export and
+strict frame comparison. No matched RuneLite captures or physical-phone
+verification establish exact parity yet; native projection, priority ordering
+and other engine differences remain. This current status supersedes older
+dated renderer limitations below for the implemented subsystems.
 The active TeaVM homepage now connects the existing NPC/object/ground menus,
 server interfaces and dialogue portraits to its authenticated session. Full
 engine, widget-script and visual parity remain incomplete.
@@ -32,8 +40,8 @@ changed geometry uploads with `bufferSubData`; growth reallocates storage in
 the same buffer, and disappearing materials/placements release their resources.
 Opaque and alpha batches keep separate identities and existing alpha sorting.
 Unchanged picking geometry also retains its cached bounds. This is an incremental
-mobile renderer improvement; dynamic loc morphs and skeletal sequences remain
-unsupported, and on-device profiling is still needed.
+mobile renderer improvement; dynamic loc morphs and skeletal sequences now use
+the shared verified animation path, and on-device profiling is still needed.
 
 The rendering target is the pinned revision-240 RuneLite/OpenOSRS **built-in
 GPU renderer**, excluding HD and other visual plugins. Mobile transparency

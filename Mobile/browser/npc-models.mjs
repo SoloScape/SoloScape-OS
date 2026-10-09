@@ -2,6 +2,7 @@
 // TSPS NpcType (BSD-2-Clause; upstream licence retained in player-config.mjs).
 import {ByteBuffer} from "./cache-reader.mjs";
 import {mergePlayerModels,buildPlayerMesh} from "./player-models.mjs";
+import {activeActorTint,actorTintKey} from "./actor-tint.mjs";
 import {availableAsset} from "./player-animation.mjs";
 
 const none=id=>id===65535?-1:id;
@@ -136,7 +137,7 @@ export class NativeNpcModels{
         }
         return this.compositions.get(id);
     }
-    async mesh(npc,terrain,{elapsed=0,sequenceElapsed=0,waitForAssets=true}={}){
+    async mesh(npc,terrain,{elapsed=0,sequenceElapsed=0,waitForAssets=true,renderTime=NaN}={}){
         const pending=this.composition(npc.type);
         const composition=waitForAssets?await pending:availableAsset(pending);
         if(!composition)return null;
@@ -152,11 +153,11 @@ export class NativeNpcModels{
         // animated source model. Moving and newly animated NPCs still rebuild.
         const key=npc.index;
         const cached=Number.isInteger(key)?this.renderedMeshes.get(key):null;
-        const coords=[npc.type,npc.x,npc.y,npc.plane,npc.orientation];
+        const coords=[npc.type,npc.x,npc.y,npc.plane,npc.orientation,actorTintKey(activeActorTint(npc.tint,renderTime-npc.tintStartedAt))];
         if(cached&&cached.terrain===terrain&&cached.pose===pose&&
             cached.coords.every((v,i)=>v===coords[i]))return cached.mesh;
         const mesh=buildPlayerMesh(pose,terrain,npc,{textures:this.playerModels.textures.textures,
-            size:definition.size,ambient:definition.ambient,contrast:82+definition.contrast});
+            size:definition.size,ambient:definition.ambient,contrast:82+definition.contrast,renderTime});
         if(Number.isInteger(key)){
             this.renderedMeshes.delete(key);
             if(this.renderedMeshes.size>=96)this.renderedMeshes.delete(this.renderedMeshes.keys().next().value);

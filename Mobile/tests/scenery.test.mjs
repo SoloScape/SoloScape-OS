@@ -4,9 +4,10 @@ import { gzipSync, crc32 } from "node:zlib";
 import { Js5GroupReader, NativeJs5Cache } from "../browser/native-js5.mjs";
 import { decryptLocationContainer, decodeLocations, decodeGroup } from "../browser/location-cache.mjs";
 import { decodeObjectDefinition } from "../browser/object-definitions.mjs";
-import { decodeModel, buildObjectMesh, placementParts, loadStaticScenery } from "../browser/scenery-models.mjs";
+import { decodeModel, buildObjectMesh, prepareObjectGeometry, placementParts, loadStaticScenery } from "../browser/scenery-models.mjs";
 import { djb2 } from "../browser/terrain-world.mjs";
 import { normalizeRegionKeys } from "../browser/region-keys.mjs";
+import {NativeSceneAnimations} from "../browser/scene-animation.mjs";
 
 function triangle(format=0){
     // Three delta-coded vertices (-64,0,-64), (64,0,-64), (0,-128,64).
@@ -108,6 +109,18 @@ test("wall corners and decorations select both models with authentic rotation/di
     assert.equal(placementParts({shape:11,rotation:0},d)[0].diagonal,true);
 });
 
+test("ground-contoured object normals follow deformed vertices without mutating cache geometry",()=>{
+    const terrain=flatTerrain(),d=decodeObjectDefinition(Buffer.from([5,1,0,1,21,22,0]),1);
+    for(let x=0;x<64;x++)for(let y=0;y<64;y++)terrain.heights[x*64+y]=-x*128;
+    const loc={x:10,y:10,rotation:0,shape:10},part=placementParts(loc,d)[0],model=decodeModel(triangle());
+    const flat=prepareObjectGeometry([model],d,part);
+    const contoured=prepareObjectGeometry([model],d,part,{terrain,loc});
+    assert.notDeepEqual(contoured.normals,flat.normals);
+    assert.notDeepEqual(contoured.normalVertices,contoured.vertices);
+    assert.deepEqual([...model.verticesY],[0,0,-128]);
+    assert.deepEqual(contoured.vertices,flat.vertices,"contouring never accumulates into bind vertices");
+});
+
 test("missing textures are omitted while alpha faces retain their real material",()=>{
     const terrain=flatTerrain(),d=decodeObjectDefinition(Buffer.from([5,1,0,1,0]),1),loc={x:10,y:10,shape:10,rotation:0};
     const model=decodeModel(triangle());model.faceTextures=new Int16Array([3]);
@@ -141,13 +154,13 @@ function reference(group,bytes,files,name){
     const ids=files.map(id=>{const data=Buffer.alloc(2);data.writeUInt16BE(id-last);last=id;return data;});
     return plainContainer(Buffer.concat([head,hash,checksum,Buffer.alloc(4),count,...ids,Buffer.alloc(named?files.length*4:0)]));
 }
-function sceneCache(corrupt=false){
+function sceneCache(corrupt=false,{definitionBytes=Buffer.from([5,1,0,1,0]),definitionIds=[5]}={}){
     const locationBytes=Buffer.from([6,0x80,0x43,40,0,0]);
     const table=Buffer.alloc(8);table.writeInt32BE(1,0);table.writeInt32BE(locationBytes.length-1,4);
     const map=plainContainer(Buffer.concat([Buffer.from([0]),locationBytes,table,Buffer.from([1])]));
-    const definition=plainContainer(Buffer.from([5,1,0,1,0])),model=plainContainer(triangle());
+    const definition=plainContainer(definitionBytes),model=plainContainer(triangle());
     const groups=new Map([["5:97",map],["2:6",definition],["7:1",model]]);
-    const refs=new Map([[5,reference(97,map,[0,1],"m50_50")],[2,reference(6,definition,[5])],[7,reference(1,model,[0])]]);
+    const refs=new Map([[5,reference(97,map,[0,1],"m50_50")],[2,reference(6,definition,definitionIds)],[7,reference(1,model,[0])]]);
     const master=Buffer.alloc(8*8);
     for(const [index,ref] of refs){master.writeUInt32BE(crc32(ref),index*8);master.writeUInt32BE(240,index*8+4);}
     if(corrupt)model[10]^=1;
@@ -183,6 +196,24 @@ test("scenery loading after Travel does not return an obsolete scene",async()=>{
     cache.loadGroup=async(a,g)=>{const bytes=await original(a,g);if(a===7)current=false;return bytes;};
     const result=await loadStaticScenery(cache,{...flatTerrain(),mapX:50,mapY:50,group:97},{isCurrent:()=>current});
     assert.equal(result,null);
+});
+
+test("verified scene morphs load selected definitions/models and follow authenticated varps",async()=>{
+    const base=Buffer.from([77,255,255,0,3,0,0,6,0]);
+    const child=Buffer.from([5,1,0,1,2,68,111,111,114,0,30,79,112,101,110,0,0]);
+    const chunks=Buffer.alloc(8);chunks.writeInt32BE(base.length,0);chunks.writeInt32BE(child.length-base.length,4);
+    const {cache,requests}=sceneCache(false,{definitionBytes:Buffer.concat([base,child,chunks,Buffer.from([1])]),definitionIds:[5,6]});
+    const terrain={...flatTerrain(),mapX:50,mapY:50,group:97},varps=new Map([[3,0]]);
+    const source=await loadStaticScenery(cache,terrain,{varps});
+    assert.equal(source.vertices.length,0);assert.equal(source.animatedLocations.length,1);
+    const scenes=new NativeSceneAnimations({});scenes.reset(source.animatedLocations,0);
+    const origin={mapX:50,mapY:50},player={x:3201,y:3202,plane:0};
+    const visible=await scenes.scene(0,origin,player,new Map());
+    assert.equal(visible.pickMeshes[0].id,5);assert.equal(visible.pickMeshes[0].name,"Door");
+    assert.deepEqual(visible.pickMeshes[0].actions,["Open"]);
+    varps.set(3,1);assert.equal((await scenes.scene(20,origin,player,new Map())).pickMeshes.length,0);
+    varps.set(3,0);assert.equal((await scenes.scene(40,origin,player,new Map())).pickMeshes.length,1);
+    assert.equal(requests.filter(r=>r==="7:1").length,1);
 });
 
 test("upper-plane locations use physical heights and bridge origin demotion without duplicate models",async()=>{

@@ -11,6 +11,52 @@ requires the same cache revision, scene state, camera, brightness and GPU
 settings, followed by reference image comparisons. Passing unit/browser tests
 alone is not evidence of whole-scene pixel parity.
 
+### Mobile scene parity integration (9 October 2026)
+
+The active `TeaVmWorldBridge` now reaches these implementations:
+
+- Skeletal sequences use pinned cache bone hierarchies, inverse bind matrices,
+  Maya curves, weighted vertices and alpha curves. Composition preserves bone
+  weights; actors, animated scenery, portraits and spot effects use the shared
+  loader. Classic animation remains supported. Runtime generation is reproducible
+  with `npm run generate:tsps-skeletal`, with no additional npm dependency.
+- Object morphs retain revision-240 varp/varbit selectors and fallback IDs,
+  resolve authenticated interface/CS2 state, and rebuild child model parts,
+  footprints, materials, names and actions. Null transforms disappear and can
+  return. Picking and interactions retain the original placement ID. Cache
+  failures retry, and rebuilds cancel obsolete animation continuations.
+- Static merge-normal scenery joins original normal contributions across loaded
+  region boundaries and eligible current/next-plane neighbours. Shared faces
+  are hidden only where appropriate; ground contouring affects normals and
+  matching. Classic object shade strengths populate shared physical-plane
+  terrain grids before the final floor upload. These are cache-style terrain
+  shadows; the built-in GPU baseline does not require an HD shadow-map pass.
+- `REBUILD_REGION_V2` decodes the 4×13×13 chunk templates, loads distinct source
+  maps, rotates floor metadata and object footprints, and interprets copied
+  height opcodes relative to destination planes. Missing chunks inherit height
+  seams. Destination-coordinate regions reach the same actor, roof, picking
+  and scenery pipeline as normal maps. `REBUILD_WORLDENTITY*` remains unsupported.
+- GPU shader settings now cover brightness, smooth/quantised banding, raw texture
+  gamma, bright-texture lighting, colourblind correction and reference-style
+  vertex fog (default depth zero), mipmaps and optional device-clamped anisotropic
+  filtering. Actor tint windows are connected to decoded server updates.
+  See `GPU_SETTINGS` for supported renderer configuration.
+
+Focused fixtures and real Chrome WebGL pixels exercise these paths. They do
+not substitute for authenticated phone testing or matched reference frames.
+Remaining differences include native projection/clipping, exact scene extent,
+occluders, complete reference zone/model transparency and special priority
+render modes. Skeletal blending/interleave behaviour and all live content still
+need reference checks. Performance must be measured on the same phone/view.
+
+`TeaVmWorldBridge.capture()` exports a world PNG and a whitelisted cache,
+scene/camera/settings/tick manifest. The comparison CLI rejects incompatible
+metadata and dimensions, then reports pixel error. See [capture procedure](RENDER_CAPTURES.md).
+No matched RuneLite pair was available or produced during this implementation.
+Public screenshots/videos are qualitative references; they do not establish
+pixel parity. Earlier dated progress entries below describe their own change's
+state and are superseded by this integration where explicitly listed above.
+
 ### Indexed mobile transparency (9 October 2026)
 
 The active touch renderer now sorts alpha triangles and uploads their order

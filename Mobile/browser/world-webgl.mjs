@@ -35,7 +35,6 @@ import {terrainPlane,sceneLevel,validateSceneLevel} from "./scene-planes.mjs";
 import {NpcLongPress} from "./npc-pointer.mjs";
 import {nativeRoofPlaneLimit} from "./native-roof-adapter.mjs";
 import {isKnownWaterTextureId} from "./tsps-runtime/common-world-WaterTextureIds.mjs";
-import {resolveFogRange,HD_AUTO_FOG_DEPTH_FACTOR} from "./tsps-runtime/render-RenderDistancePolicy.mjs";
 // Native scene distances are tiles, unlike RuneLite's client zoom values.
 export const GAME_CAMERA_ZOOM=Object.freeze({default:12,min:6,max:24});
 // Local OpenOSRS rev-240 CameraService policy and CameraController drag adapter.
@@ -49,6 +48,31 @@ export function rotateCamera(camera,dx,dy){
     camera.pitch=Math.max(minPitch,Math.min(maxPitch,camera.pitch+dy*radiansPerPixel));
 }
 export const CLASSIC_DRAW_DISTANCE=25;
+export const GPU_SETTINGS=Object.freeze({brightness:.8,smoothBanding:true,brightTextures:false,
+    fogDepth:0,colorBlindMode:0,colorBlindIntensity:100,anisotropicFilteringLevel:1});
+
+export function validateGpuSettings(settings={}){
+    const result={...GPU_SETTINGS,...settings};
+    if(!Number.isFinite(result.brightness)||result.brightness<=0||result.brightness>2||
+        typeof result.smoothBanding!=="boolean"||typeof result.brightTextures!=="boolean"||
+        !Number.isInteger(result.fogDepth)||result.fogDepth<0||result.fogDepth>100||
+        !Number.isInteger(result.colorBlindMode)||result.colorBlindMode<0||result.colorBlindMode>3||
+        !Number.isFinite(result.colorBlindIntensity)||result.colorBlindIntensity<0||result.colorBlindIntensity>100)
+        throw new Error("Invalid GPU settings");
+    if(!Number.isInteger(result.anisotropicFilteringLevel)||result.anisotropicFilteringLevel<0||result.anisotropicFilteringLevel>16)
+        throw new Error("Invalid GPU filtering level");
+    return result;
+}
+
+/** RuneLite vert.glsl scene-edge fog; positions and bounds are in tiles. */
+export function gpuFogAmount(x,z,bounds,depth){
+    if(depth<=0)return 0;
+    const xd=Math.min(x-bounds[0],bounds[2]-x),zd=Math.min(z-bounds[1],bounds[3]-z);
+    const nearest=Math.min(xd,zd),second=Math.max(xd,zd);
+    // The reference adds 2.25 in client units, while rounding is 1.5 tiles.
+    const distance=nearest-1.5*Math.max(0,(nearest+2.25/128)/(second+2.25/128));
+    return 1-Math.max(0,Math.min(1,distance/depth));
+}
 
 // OpenOSRS TextureManager.computeTextureAnimations and gpu/vert.glsl:
 // integer client ticks, directions 1/3 vertical and 2/4 horizontal, 1/128 UV.
@@ -90,18 +114,7 @@ function shader(gl,type,source){
     return sh;
 }
 export function worldShaderSources(textured=false){
-    const vertex=`#version 300 es
-in vec3 a_position;
-in vec3 a_color;
-uniform mat4 u_mvp;
-uniform float u_brightness;
-out highp vec3 v_rgb;
-out highp float v_hsl_w;
-out highp float v_w;
-out highp vec2 v_uv;
-out highp vec2 v_scenePosition;
-// RuneLite gpu/hsl_to_rgb.glsl: convert HSL and apply brightness before
-// perspective-correct RGB interpolation (default remove-colour-banding mode).
+    const hslConversion=`
 float hueChannel(float t,float low,float high){
     if(t>1.0)t-=1.0;
     if(t<0.0)t+=1.0;
@@ -110,16 +123,36 @@ float hueChannel(float t,float low,float high){
     if(3.0*t<2.0)return low+(high-low)*(0.6666666666666666-t)*6.0;
     return low;
 }
-vec3 gpuHslRgb(float packed){
-    int hsl=int(packed);
-    float hue=float((hsl>>10)&63)/64.0+0.0078125;
-    float sat=float((hsl>>7)&7)/8.0+0.0625;
-    float lum=float(hsl&127)/128.0;
+vec3 gpuHslComponents(vec3 hsl){
+    float hue=hsl.x/64.0+0.0078125;
+    float sat=hsl.y/8.0+0.0625;
+    float lum=hsl.z/128.0;
     float high=lum<0.5?lum*(1.0+sat):lum+sat-lum*sat;
     float low=2.0*lum-high;
     return pow(vec3(hueChannel(hue+0.3333333333333333,low,high),
         hueChannel(hue,low,high),hueChannel(hue-0.3333333333333333,low,high)),vec3(u_brightness));
 }
+vec3 gpuHslRgb(float packed){
+    int hsl=int(packed);
+    return gpuHslComponents(vec3((hsl>>10)&63,(hsl>>7)&7,hsl&127));
+}`;
+    const vertex=`#version 300 es
+in vec3 a_position;
+in vec3 a_color;
+uniform mat4 u_mvp;
+uniform float u_brightness;
+uniform vec4 u_fogBounds;
+uniform float u_fogDepth;
+uniform float u_fogEnabled;
+out highp vec3 v_rgb;
+centroid out highp float v_hsl_w;
+centroid out highp float v_w;
+out highp vec2 v_uv;
+out highp vec2 v_scenePosition;
+out highp float v_fog;
+// RuneLite gpu/hsl_to_rgb.glsl: convert HSL and apply brightness before
+// perspective-correct RGB interpolation (default remove-colour-banding mode).
+${hslConversion}
 void main(){
     vec4 v=u_mvp*vec4(a_position,1.0);
     // Match TSPS's small view-depth priority layers without moving world
@@ -129,44 +162,75 @@ void main(){
     gl_Position=v;
     v_hsl_w=floor(a_color.x)*v.w;
     v_rgb=gpuHslRgb(floor(a_color.x));
+    ${textured?"":`// Actor tint targets are packed signed bytes; textures retain untouched UVs.
+    if(a_color.z>0.0){
+        int packed=int(a_color.y),color=int(floor(a_color.x));
+        ivec3 target=ivec3((packed>>16)&255,(packed>>8)&255,packed&255);
+        target=ivec3(target.x>=128?target.x-256:target.x,target.y>=128?target.y-256:target.y,target.z>=128?target.z-256:target.z);
+        vec3 hsl=vec3((color>>10)&63,(color>>7)&7,color&127);
+        hsl+=(vec3(target)-hsl)*a_color.z/128.0;
+        v_rgb=gpuHslComponents(hsl);
+        int tinted=((int(hsl.x)&63)<<10)|((int(hsl.y)&7)<<7)|(int(hsl.z)&127);
+        v_hsl_w=float(tinted)*v.w;
+    }`}
     v_w=v.w;
     v_uv=a_color.yz;
     v_scenePosition=a_position.xz;
+    vec2 edge=min(a_position.xz-u_fogBounds.xy,u_fogBounds.zw-a_position.xz);
+    float nearest=min(edge.x,edge.y),second=max(edge.x,edge.y);
+    float d=nearest-1.5*max(0.0,(nearest+0.017578125)/(second+0.017578125));
+    v_fog=(1.0-clamp(d/max(0.0001,u_fogDepth),0.0,1.0))*u_fogEnabled;
 }`;
     const fragment=`#version 300 es
 precision highp float;
+precision highp int;
 uniform sampler2D u_palette;
 uniform bool u_wireframe;
-uniform sampler2D u_texture;
+uniform highp sampler2D u_texture;
 uniform vec2 u_textureShift;
 uniform vec4 u_drawBounds;
-uniform vec2 u_fogPlayer;
-uniform float u_fogDepth;
-uniform float u_fogEnd;
 uniform vec3 u_fogColor;
-uniform float u_fogEnabled;
 uniform float u_opacity;
-in highp float v_hsl_w;
-in highp float v_w;
+uniform float u_brightness;
+uniform float u_textureBrightness;
+uniform float u_smoothBanding;
+uniform float u_textureLightMode;
+uniform int u_colorBlindMode;
+uniform float u_colorBlindIntensity;
+centroid in highp float v_hsl_w;
+centroid in highp float v_w;
 in highp vec2 v_uv;
 in highp vec2 v_scenePosition;
 in highp vec3 v_rgb;
+in highp float v_fog;
 out vec4 fragColor;
+${hslConversion}
+// RuneLite gpu/colorblind.glsl, using row-vector matrix multiplication.
+vec3 correctColor(vec3 color){
+    if(u_colorBlindMode==0)return color;
+    mat3 rgb2lms=mat3(vec3(17.8824,43.5161,4.11935),vec3(3.45565,27.1554,3.86714),vec3(0.0299566,0.184309,1.46709));
+    vec3 lms=color*rgb2lms;
+    if(u_colorBlindMode==1)lms=lms*mat3(vec3(0.0,2.02344,-2.52581),vec3(0.0,1.0,0.0),vec3(0.0,0.0,1.0));
+    else if(u_colorBlindMode==2)lms=lms*mat3(vec3(1.0,0.0,0.0),vec3(0.494207,0.0,1.24827),vec3(0.0,0.0,1.0));
+    else lms=lms*mat3(vec3(1.0,0.0,0.0),vec3(0.0,1.0,0.0),vec3(-0.395913,0.801109,0.0));
+    vec3 error=color-lms*inverse(rgb2lms);
+    vec3 correction=error*mat3(vec3(0.0,0.0,0.0),vec3(0.7,1.0,0.0),vec3(0.7,0.0,1.0));
+    return color+correction*clamp(u_colorBlindIntensity/100.0,0.0,1.0);
+}
 void main(){
     if(v_scenePosition.x<u_drawBounds.x||v_scenePosition.y<u_drawBounds.y||
         v_scenePosition.x>=u_drawBounds.z||v_scenePosition.y>=u_drawBounds.w)discard;
     ${textured?`vec4 texel=texture(u_texture,v_uv+u_textureShift);
-    if(texel.a<1.0)discard;
+    // Exact nearest base-level alpha, independent of mipmap interpolation.
+    ivec2 baseTexel=ivec2(fract(v_uv+u_textureShift)*vec2(textureSize(u_texture,0)));
+    if(texelFetch(u_texture,baseTexel,0).a<1.0)discard;
     float light=clamp(v_hsl_w/v_w,2.0,126.0)/127.0;
-    fragColor=vec4(texel.rgb*light,1.0);`:""}
+    vec3 mul=mix(vec3(light),v_rgb,u_textureLightMode);
+    fragColor=vec4(pow(texel.rgb,vec3(u_textureBrightness))*mul,1.0);`:""}
     if(u_wireframe){fragColor=vec4(1.0);return;}
-    if(!${textured?"true":"false"})fragColor=vec4(v_rgb,1.0);
-    vec2 delta=abs(v_scenePosition-u_fogPlayer);
-    float d=max(delta.x,delta.y)-u_fogEnd;
-    float ramp=max(0.0001,u_fogEnd-u_fogDepth);
-    float fog=clamp(d/ramp+1.0,0.0,1.0);
-    fog=fog*fog*(3.0-2.0*fog)*u_fogEnabled;
-    fragColor=vec4(mix(fragColor.rgb,u_fogColor,fog),fragColor.a*u_opacity);
+    if(!${textured?"true":"false"})fragColor=vec4(mix(v_rgb,gpuHslRgb(v_hsl_w/v_w),u_smoothBanding),1.0);
+    fragColor.rgb=correctColor(fragColor.rgb);
+    fragColor=vec4(mix(fragColor.rgb,u_fogColor,v_fog),fragColor.a*u_opacity);
 }`;
     return {vertex,fragment};
 }
@@ -647,8 +711,9 @@ export function partitionColorScene(vertices,levelCounts,zoneSize=MOBILE_SCENE_Z
     return partitionOpaqueScene(batches,zoneSize);
 }
 export class NativeTerrainViewport {
-    constructor(canvas,{onDestination=()=>{}}={}) {
+    constructor(canvas,{onDestination=()=>{},gpuSettings={}}={}) {
         this.canvas=canvas;
+        this.gpuSettings=validateGpuSettings(gpuSettings);
         this.touch=Boolean(window.matchMedia?.("(pointer: coarse)")?.matches);
         // SoloScape requires WebGL 2; do not silently fall back to WebGL 1.
         this.gl=canvas.getContext("webgl2",{antialias:!this.touch,alpha:false});
@@ -810,6 +875,13 @@ export class NativeTerrainViewport {
     }
     setTerrain(terrain,{resetCamera=true}={}){
         const gl=this.gl;
+        const regions=terrain.regions??[terrain];
+        this.fogSceneBounds=[
+            Math.min(...regions.map(r=>((r.mapX??0)-(terrain.mapX??0))*64))-30.5,
+            Math.min(...regions.map(r=>((r.mapY??0)-(terrain.mapY??0))*64))-30.5,
+            Math.max(...regions.map(r=>((r.mapX??0)-(terrain.mapX??0))*64))+31.5,
+            Math.max(...regions.map(r=>((r.mapY??0)-(terrain.mapY??0))*64))+31.5,
+        ];
         const scene=buildTerrainScene(terrain),mesh=scene.vertices;
         this.pickVertices=mesh;this.pickLevelCounts=scene.levelCounts;
         this.drawMode=terrain.floorMaterials?gl.TRIANGLES:gl.LINES;
@@ -863,8 +935,30 @@ export class NativeTerrainViewport {
             gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
             gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
             gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
-            gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,data.size,data.size,0,gl.RGBA,gl.UNSIGNED_BYTE,data.pixels);
+            gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,data.size,data.size,0,gl.RGBA,gl.UNSIGNED_BYTE,data.rawPixels??data.pixels);
+            // Real WebGL 2 always supplies mipmaps; lightweight test GLs may omit it.
+            gl.generateMipmap?.(gl.TEXTURE_2D);
+            this.applyTextureFiltering(texture);
         }
+    }
+    applyTextureFiltering(texture){
+        const gl=this.gl,level=(this.gpuSettings??GPU_SETTINGS).anisotropicFilteringLevel;
+        gl.bindTexture?.(gl.TEXTURE_2D,texture);
+        gl.texParameteri?.(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,level>0?(gl.NEAREST_MIPMAP_LINEAR??gl.NEAREST):gl.NEAREST);
+        gl.texParameteri?.(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+        if(this.anisotropicExtension===undefined)this.anisotropicExtension=
+            gl.getExtension?.("EXT_texture_filter_anisotropic")??gl.getExtension?.("WEBKIT_EXT_texture_filter_anisotropic")??null;
+        const ext=this.anisotropicExtension;
+        if(ext&&gl.texParameterf&&gl.getParameter){
+            const max=gl.getParameter(ext.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+            gl.texParameterf(gl.TEXTURE_2D,ext.TEXTURE_MAX_ANISOTROPY_EXT,Math.max(1,Math.min(max,level)));
+        }
+    }
+    refreshTextureFiltering(){
+        const level=(this.gpuSettings??GPU_SETTINGS).anisotropicFilteringLevel;
+        if(this.appliedFilteringLevel===level)return;
+        for(const texture of this.textures.values())this.applyTextureFiltering(texture);
+        this.appliedFilteringLevel=level;
     }
     setActors(scene){
         const vertices=scene?.vertices??new Float32Array();
@@ -959,7 +1053,12 @@ export class NativeTerrainViewport {
         gl.uniform1i(this.uniform(program,"u_wireframe"),0);
         gl.uniform1i(this.uniform(program,program===this.textureProgram?"u_texture":"u_palette"),0);
         gl.uniform1f(this.uniform(program,"u_opacity"),1);
-        if(program===this.program)gl.uniform1f(this.uniform(program,"u_brightness"),0.8);
+        const settings=this.gpuSettings??GPU_SETTINGS;
+        gl.uniform1f(this.uniform(program,"u_brightness"),settings.brightness);
+        gl.uniform1f(this.uniform(program,"u_smoothBanding"),settings.smoothBanding?0:1);
+        gl.uniform1f(this.uniform(program,"u_textureLightMode"),settings.brightTextures?1:0);
+        gl.uniform1i(this.uniform(program,"u_colorBlindMode"),settings.colorBlindMode);
+        gl.uniform1f(this.uniform(program,"u_colorBlindIntensity"),settings.colorBlindIntensity);
         this.framePreparedPrograms?.add(program);
         this.frameOpacity?.set(program,1);
     }
@@ -973,17 +1072,25 @@ export class NativeTerrainViewport {
         }
         return this.frameTextureOffsets.get(texture);
     }
+    uploadTextureBrightness(texture){
+        const value=this.textureMeta?.get(texture)?.rawPixels?(this.gpuSettings??GPU_SETTINGS).brightness:1;
+        if(value===this.boundTextureBrightness)return;
+        this.gl.uniform1f(this.uniform(this.textureProgram,"u_textureBrightness"),value);
+        this.boundTextureBrightness=value;
+    }
     uploadFog(program){
-        const gl=this.gl,ctx=this.roofContext,active=!!ctx?.player&&!!ctx?.origin;
-        const x=active?ctx.player.x-ctx.origin.mapX*64-31.5:0;
-        const y=active?ctx.player.y-ctx.origin.mapY*64-31.5:0;
-        gl.uniform2f(this.uniform(program,"u_fogPlayer"),x,y);
-        const {fogEnd,fogDepth}=resolveFogRange({renderDistance:CLASSIC_DRAW_DISTANCE,
-            autoFogDepth:true,autoFogDepthFactor:HD_AUTO_FOG_DEPTH_FACTOR,manualFogDepth:24});
-        gl.uniform1f(this.uniform(program,"u_fogEnd"),fogEnd);
-        gl.uniform1f(this.uniform(program,"u_fogDepth"),fogDepth);
+        const gl=this.gl,depth=(this.gpuSettings??GPU_SETTINGS).fogDepth;
+        const target=this.target??[0,0,0],yaw=this.yaw??0,pitch=this.pitch??0,distance=this.distance??0;
+        const x=target[0]+Math.sin(yaw)*Math.cos(pitch)*distance;
+        const z=target[2]-Math.cos(yaw)*Math.cos(pitch)*distance;
+        const scene=this.fogSceneBounds??[-30.5,-30.5,31.5,31.5];
+        gl.uniform4fv(this.uniform(program,"u_fogBounds"),[
+            Math.max(scene[0],x-CLASSIC_DRAW_DISTANCE),Math.max(scene[1],z-CLASSIC_DRAW_DISTANCE),
+            Math.min(scene[2],x+CLASSIC_DRAW_DISTANCE),Math.min(scene[3],z+CLASSIC_DRAW_DISTANCE),
+        ]);
+        gl.uniform1f(this.uniform(program,"u_fogDepth"),depth);
         gl.uniform3f(this.uniform(program,"u_fogColor"),0,0,0);
-        gl.uniform1f(this.uniform(program,"u_fogEnabled"),active?1:0);
+        gl.uniform1f(this.uniform(program,"u_fogEnabled"),depth>0?1:0);
     }
     replaceBatches(name,batches){
         const gl=this.gl;
@@ -1068,6 +1175,7 @@ export class NativeTerrainViewport {
     }
     render(){
         const gl=this.gl,canvas=this.canvas;
+        this.refreshTextureFiltering();
         this.drawCallCount=0;
         if(!this.framePreparedPrograms)this.framePreparedPrograms=new Set();
         else this.framePreparedPrograms.clear();
@@ -1135,6 +1243,7 @@ export class NativeTerrainViewport {
             if(!texture||batch.level>drawLevel||!spatialBoundsOverlap(batch.bounds,bounds))continue;
             const offset=this.frameTextureShift(batch.texture);
             gl.uniform2f(this.uniform(this.textureProgram,"u_textureShift"),offset[0],offset[1]);
+            this.uploadTextureBrightness(batch.texture);
             // Water IDs retain the pinned TSPS classification in batch metadata.
             // Foam, normals and water-material passes are not yet ported.
             this.bindRenderTexture(texture);this.bindGeometry(batch.buffer,this.textureProgram);
@@ -1214,6 +1323,7 @@ export class NativeTerrainViewport {
         if(textured){
             const offset=this.frameTextureShift(batch.texture);
             gl.uniform2f(this.uniform(p,"u_textureShift"),...offset);
+            this.uploadTextureBrightness(batch.texture);
         }
         this.bindGeometry(batch.buffer,p);
         if(batch.orderBuffer){

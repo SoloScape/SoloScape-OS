@@ -11,6 +11,7 @@ import {sampleTerrain} from "./floor-lighting.mjs";
 import {SceneTextures} from "./texture-cache.mjs";
 import {NativePlayerAnimations} from "./player-animation.mjs";
 import {mapBounded} from "./bounded-work.mjs";
+import {activeActorTint,tintActorMesh} from "./actor-tint.mjs";
 
 export function recolourPlayerModel(source,definition,appearance,custom=null){
     const model={...source,verticesX:source.verticesX.slice(),verticesY:source.verticesY.slice(),verticesZ:source.verticesZ.slice(),
@@ -74,7 +75,7 @@ export function rotatedActorModel(model,orientation=0){
     entries.set(orientation,rotated);
     return rotated;
 }
-export function buildPlayerMesh(model,terrain,player,{textures=new Map(),size=1,ambient=0,contrast=82}={}){
+export function buildPlayerMesh(model,terrain,player,{textures=new Map(),size=1,ambient=0,contrast=82,renderTime=NaN}={}){
     if(!Number.isInteger(size)||size<1||size>8)throw new Error("Invalid actor footprint");
     const x=player.x-terrain.mapX*64,y=player.y-terrain.mapY*64;
     const tx=Math.floor(x),ty=Math.floor(y),ground=playerGroundHeight(terrain,x+size/2,y+size/2,player.plane);
@@ -104,11 +105,11 @@ export function buildPlayerMesh(model,terrain,player,{textures=new Map(),size=1,
         }
         return vertices;
     };
-    return {vertices:shift(mesh.vertices),
+    return tintActorMesh({vertices:shift(mesh.vertices),
         texturedBatches:Array.from(mesh.texturedBatches,([texture,vertices])=>
             ({level:player.plane,texture,vertices:shift(vertices)})),
         transparentBatches:mesh.transparentBatches.map(b=>
-            ({...b,level:player.plane,vertices:shift(b.vertices)})),textures};
+            ({...b,level:player.plane,vertices:shift(b.vertices)})),textures},activeActorTint(player.tinting??player.tint,renderTime-player.tintStartedAt));
 }
 
 export class NativePlayerModels {

@@ -57,6 +57,28 @@ test("rebuild region selection follows the server's six-zone build area",()=>{
     assert.ok(regions.some(({x,y})=>x===50&&y===50));
     assert.ok(regions.every(({x,y})=>x>=49&&x<=50&&y>=49&&y<=50));
 });
+
+test("authenticated instanced rebuild reaches scenery and never requests overworld target maps",async()=>{
+    const region=terrain(50,50);region.locationSource={group:null,locations:[],keyUsed:false};
+    const uploaded=[],packets=[];
+    const vp={...viewport(),setTerrain:value=>uploaded.push(value)};
+    const game=new NativeGameplay({cache:{},viewport:vp,session:{sendGame:opcode=>packets.push(opcode)},
+        models:{animations:{},textures:{textures:new Map()}},
+        loadTerrain:()=>{throw new Error("Instance destination must not load overworld terrain");},
+        loadInstancedScene:async()=>({regions:new Map([["50,50",region]])}),
+        loadMaterials:async()=>({underlays:new Map(),overlays:new Map()}),
+        loadScenery:async(cache,terrain,options)=>{
+            assert.equal(options.locationSource,region.locationSource);
+            return {vertices:new Float32Array(18),levelCounts:[3,0,0,0],texturedBatches:[],pickMeshes:[],animatedLocations:[]};
+        },now:()=>0});
+    game.sync={local:{x:3200,y:3200,plane:0}};game.drawActors=async()=>{};
+    const rebuild={instance:true,zoneX:400,zoneY:400,baseX:3152,baseY:3152,templates:[]};
+    await game.loadRebuild(rebuild);
+    assert.equal(game.loading,false);assert.equal(game.scenePrepared,true);
+    assert.equal(game.regions.get("50,50"),region);assert.ok(uploaded.length>=2);
+    assert.ok(packets.includes(27),"map completion acknowledges assembled instance");
+    game.close();
+});
 test("interpolation moves between authoritative server positions",()=>{
     const motion={from:{x:100,y:200},target:{x:101,y:201},started:1000};
     assert.deepEqual(interpolatePlayer(motion,1000),{x:100,y:200,moving:true});

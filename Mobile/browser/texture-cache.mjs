@@ -57,7 +57,7 @@ export function decodeTextureDefinition(bytes,id,revision=240){
 export function texturePixels(def,frame,brightness=.8){
     const size=frame.sheetWidth;
     if((size!==64&&size!==128)||frame.sheetHeight!==size)throw new Error("Unsupported texture sprite dimensions");
-    const pixels=new Uint8Array(size*size*4),transform=def.transforms[0];
+    const pixels=new Uint8Array(size*size*4),rawPixels=new Uint8Array(size*size*4),transform=def.transforms[0];
     for(let y=0;y<frame.height;y++)for(let x=0;x<frame.width;x++){
         const src=(y*frame.width+x)*4,dst=((y+frame.y)*size+x+frame.x)*4;
         let rgb=frame.rgba[src]<<16|frame.rgba[src+1]<<8|frame.rgba[src+2];
@@ -65,10 +65,11 @@ export function texturePixels(def,frame,brightness=.8){
             const blue=rgb&255;
             rgb=(((transform&0xff00ff)*blue>>8)&0xff00ff)|(((transform>>>8&255)*blue)&0xff00);
         }
+        rawPixels.set([rgb>>>16&255,rgb>>>8&255,rgb&255,frame.rgba[src+3]],dst);
         rgb=brightenRgb(rgb,brightness);
         pixels.set([rgb>>>16&255,rgb>>>8&255,rgb&255,frame.rgba[src+3]],dst);
     }
-    return {id:def.id,size,pixels,opaque:def.opaque,animationDirection:def.animationDirection,animationSpeed:def.animationSpeed};
+    return {id:def.id,size,pixels,rawPixels,opaque:def.opaque,animationDirection:def.animationDirection,animationSpeed:def.animationSpeed};
 }
 
 /** One scene's lazy, CRC-verified texture/sprite loads; failures never invent a material. */

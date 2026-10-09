@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {test} from "node:test";
 import {nativeRoofPlaneLimit,roofMapManager} from "../browser/native-roof-adapter.mjs";
 import {computeRoofPlaneLimit} from "../browser/tsps-runtime/game-roof-RoofVisibility.mjs";
-import {NativeTerrainViewport} from "../browser/world-webgl.mjs";
+import {NativeTerrainViewport,gpuFogAmount,validateGpuSettings,GPU_SETTINGS} from "../browser/world-webgl.mjs";
 
 const origin={mapX:50,mapY:50};
 function fixture(){
@@ -49,22 +49,40 @@ test("WebGL roof filtering is disabled without a loaded authenticated region",()
     regions.get("50,50").planes[0].renderFlags[32*64+32]=4;
     assert.equal(viewport.visibleRoofLevel(),0);
 });
-test("fog shader receives a player-centred TSPS 25-tile range",()=>{
+test("RuneLite fog defaults off and uses camera/scene boundaries when enabled",()=>{
     const calls=[];
     const viewport=Object.create(NativeTerrainViewport.prototype);
     viewport.gl={getUniformLocation:(_p,id)=>id,uniform1f:(key,value)=>calls.push([key,value]),
-        uniform2f:(key,x,y)=>calls.push([key,x,y]),
+        uniform4fv:(key,value)=>calls.push([key,...value]),
         uniform3f:(key,x,y,z)=>calls.push([key,x,y,z])};
     viewport.uploadFog({});
     assert.deepEqual(calls.find(([key])=>key==="u_fogEnabled"),["u_fogEnabled",0]);
     calls.length=0;
     const {regions,options}=fixture();
     viewport.setRoofContext(regions,origin,options.player);
+    viewport.gpuSettings=validateGpuSettings({fogDepth:6});
+    viewport.target=[0,0,0];viewport.yaw=0;viewport.pitch=0;viewport.distance=10;
     viewport.uploadFog({});
     assert.deepEqual(calls.find(([key])=>key==="u_fogEnabled"),["u_fogEnabled",1]);
-    assert.deepEqual(calls.find(([key])=>key==="u_fogPlayer"),["u_fogPlayer",.5,.5]);
-    assert.deepEqual(calls.find(([key])=>key==="u_fogEnd"),["u_fogEnd",25]);
-    assert.deepEqual(calls.find(([key])=>key==="u_fogDepth"),["u_fogDepth",21.25]);
+    assert.deepEqual(calls.find(([key])=>key==="u_fogBounds"),["u_fogBounds",-25,-30.5,25,15]);
+    assert.deepEqual(calls.find(([key])=>key==="u_fogDepth"),["u_fogDepth",6]);
     assert.deepEqual(calls.find(([key])=>key==="u_fogColor"),["u_fogColor",0,0,0],
         "distance fog must blend into the black sky");
+});
+
+test("GPU fog matches the reference client-unit formula including rounded corners",()=>{
+    const bounds=[-25,-25,25,25];
+    for(const [x,z] of [[0,0],[20,0],[20,20],[25,0],[24,24],[-22,12]]){
+        const xd=Math.min((x+25)*128,(25-x)*128),zd=Math.min((z+25)*128,(25-z)*128);
+        const near=Math.min(xd,zd),far=Math.max(xd,zd);
+        const distance=near-1.5*128*Math.max(0,(near+2.25)/(far+2.25));
+        const expected=1-Math.max(0,Math.min(1,distance/(6*128)));
+        assert.ok(Math.abs(gpuFogAmount(x,z,bounds,6)-expected)<1e-12);
+    }
+    assert.equal(gpuFogAmount(25,25,bounds,0),0);
+    assert.ok(gpuFogAmount(20,20,bounds,6)>gpuFogAmount(20,0,bounds,6));
+    assert.equal(GPU_SETTINGS.fogDepth,0);
+    assert.equal(validateGpuSettings({smoothBanding:false}).smoothBanding,false);
+    for(const settings of [{brightness:NaN},{fogDepth:-1},{colorBlindMode:4},{brightTextures:1}])
+        assert.throws(()=>validateGpuSettings(settings),/GPU settings/);
 });

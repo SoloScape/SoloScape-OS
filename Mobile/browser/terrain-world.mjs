@@ -267,6 +267,8 @@ export function baseTileHeight(x,y) {
  */
 function decodeTerrainTiles(data,mapX,mapY,opcodeWidth) {
     const heights=new Int32Array(PLANES*SIDE*SIDE);
+    const heightOpcodes=new Uint8Array(PLANES*SIDE*SIDE);
+    const heightValues=new Uint8Array(PLANES*SIDE*SIDE);
     const underlays=new Uint16Array(PLANES*SIDE*SIDE);
     const overlays=new Int16Array(PLANES*SIDE*SIDE);
     const overlayShapes=new Uint8Array(PLANES*SIDE*SIDE);
@@ -303,6 +305,7 @@ function decodeTerrainTiles(data,mapX,mapY,opcodeWidth) {
             }
             if(op===1){
                 let h=heightByte();if(h===1)h=0;
+                heightOpcodes[loc]=1;heightValues[loc]=h;
                 heights[loc]=plane===0?-h*8:heights[loc-SIDE*SIDE]-h*8;
                 ended=true;
                 break;
@@ -320,7 +323,7 @@ function decodeTerrainTiles(data,mapX,mapY,opcodeWidth) {
     }
     const planes=Array.from({length:PLANES},(_,plane)=>{
         const start=plane*SIDE*SIDE,end=start+SIDE*SIDE;
-        return Object.fromEntries(Object.entries({heights,underlays,overlays,overlayShapes,overlayRotations,renderFlags})
+        return Object.fromEntries(Object.entries({heights,heightOpcodes,heightValues,underlays,overlays,overlayShapes,overlayRotations,renderFlags})
             .map(([key,values])=>[key,values.subarray(start,end)]));
     });
     return {

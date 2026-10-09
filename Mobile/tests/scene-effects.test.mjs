@@ -511,7 +511,7 @@ test("mobile WebGL reuses shader frame state and UV offsets across hundreds of m
         "all batches sharing a texture use one scroll-offset calculation");
     view.renderMaterialBatch(batch,0,3,matrix,bounds,.5);
     view.renderMaterialBatch(batch,0,3,matrix,bounds,.5);
-    assert.equal(counts.get("uniform1f"),2,
+    assert.equal(log.filter(([name,key])=>name==="uniform1f"&&key==="u_opacity").length,2,
         "opacity updates only when value actually changes");
     const paletteBatch={...batch,texture:-1};
     view.renderMaterialBatch(paletteBatch,0,3,matrix,bounds,1);
@@ -522,6 +522,37 @@ test("mobile WebGL reuses shader frame state and UV offsets across hundreds of m
     view.renderMaterialBatch(batch,0,3,matrix,bounds,1);
     assert.equal(counts.get("useProgram"),3,
         "switch back to textured shader on subsequent batches");
+});
+
+test("GPU textures generate mipmaps and clamp anisotropy while keeping nearest magnification",()=>{
+    const calls=[],extension={MAX_TEXTURE_MAX_ANISOTROPY_EXT:99,TEXTURE_MAX_ANISOTROPY_EXT:100};
+    const gl={TEXTURE_2D:1,TEXTURE_MIN_FILTER:2,TEXTURE_MAG_FILTER:3,NEAREST:4,NEAREST_MIPMAP_LINEAR:5,
+        TEXTURE_WRAP_S:6,TEXTURE_WRAP_T:7,REPEAT:8,RGBA:9,UNSIGNED_BYTE:10,
+        createTexture:()=>({}),bindTexture(){},texImage2D(){},
+        texParameteri:(...args)=>calls.push(["integer",...args]),
+        generateMipmap:target=>calls.push(["mipmap",target]),
+        getExtension:()=>extension,getParameter:()=>8,texParameterf:(...args)=>calls.push(["float",...args])};
+    const view=Object.create(NativeTerrainViewport.prototype);
+    view.gl=gl;view.textures=new Map();view.textureMeta=new Map();
+    view.addTextures(new Map([[1,{size:64,pixels:new Uint8Array(64*64*4)}]]));
+    assert.equal(calls.filter(([kind])=>kind==="mipmap").length,1);
+    assert.deepEqual(calls.at(-1),["float",1,100,1],"reference default has mipmaps with anisotropy off");
+    view.gpuSettings={anisotropicFilteringLevel:16};view.applyTextureFiltering(view.textures.get(1));
+    assert.deepEqual(calls.at(-1),["float",1,100,8],"requested anisotropy is capped by the device");
+    view.gpuSettings={anisotropicFilteringLevel:0};view.applyTextureFiltering(view.textures.get(1));
+    assert.ok(calls.some(c=>JSON.stringify(c)===JSON.stringify(["integer",1,2,4])));
+    assert.deepEqual(calls.at(-1),["float",1,100,1]);
+    view.anisotropicExtension=null;view.gpuSettings={anisotropicFilteringLevel:1};
+    view.applyTextureFiltering(view.textures.get(1));
+    assert.deepEqual(calls.at(-2),["integer",1,2,5],"mipmaps work without anisotropy extension");
+    assert.deepEqual(calls.at(-1),["integer",1,3,4]);
+    view.refreshTextureFiltering();
+    view.gpuSettings={anisotropicFilteringLevel:0};
+    view.addTextures(new Map([[2,{size:64,pixels:new Uint8Array(64*64*4)}]]));
+    assert.equal(view.appliedFilteringLevel,1,"new textures do not declare old textures updated");
+    const touched=[];view.applyTextureFiltering=texture=>touched.push(texture);
+    view.refreshTextureFiltering();
+    assert.deepEqual(touched,[...view.textures.values()],"settings changes update old and newly added textures");
 });
 
 test("the native renderer uses WebGL 2 GLSL ES 3.00 for both palette and textured shaders",()=>{
@@ -539,10 +570,10 @@ test("the native renderer uses WebGL 2 GLSL ES 3.00 for both palette and texture
         assert.match(fragment,/\bfragColor=vec4\(mix\(/);
         if(textured){
             assert.match(fragment,/texture\(u_texture,v_uv\+u_textureShift\)/);
-            assert.match(fragment,/if\(texel\.a<1\.0\)discard/);
+            assert.match(fragment,/if\(texelFetch\(u_texture,baseTexel,0\)\.a<1\.0\)discard/);
         }else{
             assert.match(vertex,/v_rgb=gpuHslRgb\(floor\(a_color\.x\)\)/);
-            assert.match(fragment,/fragColor=vec4\(v_rgb,1\.0\)/);
+            assert.match(fragment,/fragColor=vec4\(mix\(v_rgb,gpuHslRgb\(v_hsl_w\/v_w\),u_smoothBanding\),1\.0\)/);
             assert.doesNotMatch(fragment,/floor\(v_hsl_w\/v_w/);
         }
     }
@@ -680,7 +711,7 @@ test("WebGL 2 VAOs retain per-program layouts and are released when their buffer
 test("touch render skips offscreen opaque chunks without skipping visible scene or roof masks",()=>{
     const oldWindow=globalThis.window,submitted=[];
     const gl={TRIANGLES:4,LINES:1,COLOR_BUFFER_BIT:16384,DEPTH_BUFFER_BIT:256,
-        viewport(){},clear(){},uniform1i(){},uniform2f(){},useProgram(){}};
+        viewport(){},clear(){},uniform1i(){},uniform1f(){},uniform2f(){},useProgram(){}};
     const batch=(label,bounds,level=0,texture=-1)=>({label,bounds,level,texture,
         buffer:{},count:3,vertices:new Float32Array(18)});
     const view=Object.create(NativeTerrainViewport.prototype);

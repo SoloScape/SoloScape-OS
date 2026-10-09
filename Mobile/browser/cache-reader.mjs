@@ -19,6 +19,10 @@ export class ByteBuffer {
     readUnsignedByte(){return this.readByte()&255;}
     readUnsignedShort(){return this.readUnsignedByte()<<8|this.readUnsignedByte();}
     readShort(){return this.readUnsignedShort()<<16>>16;}
+    readFloat(){
+        const bits=this.readInt(),data=new DataView(new ArrayBuffer(4));
+        data.setInt32(0,bits);return data.getFloat32(0);
+    }
     readMedium(){return this.readUnsignedByte()<<16|this.readUnsignedShort();}
     readInt(){return this.readUnsignedByte()<<24|this.readUnsignedByte()<<16|this.readUnsignedShort();}
     readUnsignedSmart(){return this.getUnsignedByte(this.offset)<128?this.readUnsignedByte():this.readUnsignedShort()-32768;}

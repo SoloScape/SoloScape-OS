@@ -31,7 +31,7 @@ Run from Mobile:
 npm run verify:openosrs-reference
 ~~~
 
-Override the local folder with SOLOSCAPE_OPENOSRS_ROOT or pass a custom path to node scripts/verify-openosrs-reference.mjs --root PATH. The offline script validates thirteen source-file SHA-256 values and the declared revision, game dependency version and hash. The pin includes GPU alpha sorting, shader colour conversion and GPU defaults. The source tree is not tracked by Git, so re-audit after any failed fingerprint before updating openosrs-reference.json. The script makes no network requests and does not read credentials or copy game binaries.
+Override the local folder with SOLOSCAPE_OPENOSRS_ROOT or pass a custom path to node scripts/verify-openosrs-reference.mjs --root PATH. The offline script validates fifteen source-file SHA-256 values and the declared revision, game dependency version and hash. The pin includes GPU alpha sorting, shader colour conversion, colourblind correction, texture filtering and GPU defaults. The source tree is not tracked by Git, so re-audit after any failed fingerprint before updating openosrs-reference.json. The script makes no network requests and does not read credentials or copy game binaries.
 
 Regular npm test does not require the external source checkout, and remains CI-compatible.
 

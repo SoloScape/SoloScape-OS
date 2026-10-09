@@ -4,7 +4,8 @@ import {NativeNpcSync} from "./npc-sync.mjs";
 import {NativeNpcModels} from "./npc-models.mjs";
 import {encodeNpcInteraction,encodeNpcExamine,npcActionOptions} from "./npc-interactions.mjs";
 import {encodeLocInteraction,encodeLocExamine,objectActionOptions} from "./loc-interactions.mjs";
-import {decodeRebuild,encodeMoveDestination,encodeWindowStatus,MOVE_GAMECLICK,MAP_BUILD_COMPLETE,WINDOW_STATUS} from "./player-protocol.mjs";
+import {decodeRebuild,decodeInstanceRebuild,encodeMoveDestination,encodeWindowStatus,MOVE_GAMECLICK,MAP_BUILD_COMPLETE,WINDOW_STATUS} from "./player-protocol.mjs";
+import {loadInstance} from "./instance-scene.mjs";
 import {loadNativeTerrain} from "./terrain-world.mjs";
 import {loadFloorMaterials} from "./floor-materials.mjs";
 import {loadStaticScenery} from "./scenery-models.mjs";
@@ -14,6 +15,7 @@ import {SceneTextures} from "./texture-cache.mjs";
 import {mapBounded} from "./bounded-work.mjs";
 import {NativeSceneAnimations} from "./scene-animation.mjs";
 import {NativeSpotEffects} from "./spot-effects.mjs";
+import {joinSceneNormals} from "./scene-lighting.mjs";
 
 export function rebuildRegions(rebuild,player){
     const regions=[];
@@ -81,12 +83,12 @@ export function visibleNpcMotions(motions,player,bounds,origin,max=48){
 }
 export class NativeGameplay {
     constructor({cache,viewport,session,interfaces=null,onStatus=()=>{},onRegion=()=>{},onLoading=()=>{},onReady=()=>{},onNpcMenu=()=>{},onExamine=()=>{},run=()=>false,
-        loadTerrain=loadNativeTerrain,loadMaterials=loadFloorMaterials,loadScenery=loadStaticScenery,
+        loadTerrain=loadNativeTerrain,loadInstancedScene=loadInstance,loadMaterials=loadFloorMaterials,loadScenery=loadStaticScenery,
         models=new NativePlayerModels(cache),now=()=>performance.now(),onServerTick=()=>{},onActorUpdate=()=>{},onActorStages=()=>{}}={}){
         this.cache=cache;this.viewport=viewport;this.session=session;this.onStatus=onStatus;this.onRegion=onRegion;this.onNpcMenu=onNpcMenu;this.onExamine=onExamine;this.run=run;
         this.interfaces=interfaces;
         this.onReady=onReady;this.onLoading=onLoading;this.onServerTick=onServerTick;this.onActorUpdate=onActorUpdate;this.onActorStages=onActorStages;
-        this.loadTerrain=loadTerrain;this.loadMaterials=loadMaterials;this.loadScenery=loadScenery;this.models=models;this.now=now;
+        this.loadTerrain=loadTerrain;this.loadInstancedScene=loadInstancedScene;this.loadMaterials=loadMaterials;this.loadScenery=loadScenery;this.models=models;this.now=now;
         this.generation=0;this.closed=false;this.regions=new Map();this.packetCount=0;this.animationStarted=now();
         this.scenePrepared=false;this.ready=false;this.lastWindowSize=null;
         this.playerController=new NativeTspsPlayerController(this.models.animations,now);
@@ -129,8 +131,8 @@ export class NativeGameplay {
             if(["IF_OPENTOP","IF_OPENSUB","IF_RESYNC_V2"].includes(packet.name))this.clearNpcMenu();
             return;
         }
-        if(packet.name==="REBUILD_NORMAL_V2"){
-            this.rebuild=decodeRebuild(packet.payload,this.sync);
+        if(packet.name==="REBUILD_NORMAL_V2"||packet.name==="REBUILD_REGION_V2"){
+            this.rebuild=packet.name==="REBUILD_REGION_V2"?decodeInstanceRebuild(packet.payload):decodeRebuild(packet.payload,this.sync);
             this.updateMotion(this.sync.local);
             const loading=this.loadRebuild(this.rebuild),generation=this.generation;
             void loading.catch(error=>{if(generation===this.generation)this.fail(error);});
@@ -144,13 +146,15 @@ export class NativeGameplay {
         }else if(packet.name==="NPC_INFO_SMALL_V6"||packet.name==="NPC_INFO_LARGE_V6"){
             this.npcs.decode(packet.payload,{large:packet.name==="NPC_INFO_LARGE_V6",plane:this.sync.local?.plane??0});
             this.updateNpcMotions();this.report();
-        }else if(packet.name==="REBUILD_REGION_V2"||packet.name.startsWith("REBUILD_WORLDENTITY")){
-            // Never place an instanced player into the preceding overworld geometry.
-            throw new Error("Instanced region rendering is not yet supported");
+        }else if(packet.name.startsWith("REBUILD_WORLDENTITY")){
+            // Sailing/world-entity rebuilds have a separate protocol and scene.
+            throw new Error("World-entity region rendering is not yet supported");
         }
     }
     updateMotion(player){
         if(!player)return;
+        if(player.tinting!==this.motion?.target?.tinting)player.tintStartedAt=this.now();
+        else player.tintStartedAt=this.motion?.target?.tintStartedAt;
         this.spotEffects.update("player",player.spotanims,this.now());
         const previous=this.motion?.target;
         this.playerController.accept(this.localServerId||this.sync?.localIndex||1,player);
@@ -198,18 +202,33 @@ export class NativeGameplay {
                 unavailable.push(`${x},${y}`);
             }
         };
-        await loadRegion({x:origin.mapX,y:origin.mapY});
+        if(rebuild.instance){
+            let keys={};
+            try{const response=await fetch("/region-keys.json");if(response.ok)keys=await response.json();}catch{}
+            const instance=await this.loadInstancedScene(this.cache,rebuild,{keys,isCurrent:current,loadTerrain:this.loadTerrain});
+            if(!current())return;
+            this.regions=instance.regions;
+            const center=this.regions.get(`${origin.mapX},${origin.mapY}`);
+            if(!center)throw new Error("Instanced map centre did not load");
+            this.viewport.setTerrain(center);this.viewport.setSceneLevel(player.plane);this.onRegion(center);
+        }else await loadRegion({x:origin.mapX,y:origin.mapY});
         if(!current())return;
         this.recordStage("spawn terrain");
         const neighbours=targets.filter(({x,y})=>x!==origin.mapX||y!==origin.mapY);
         // A bounded worker pool fills the map edges without the latency of
         // waiting for each previous 3-region batch to finish.
-        await mapBounded(neighbours,6,loadRegion);
+        if(!rebuild.instance)await mapBounded(neighbours,6,loadRegion);
         if(!current())return;
         this.recordStage("neighbour terrain");
         const center=this.regions.get(`${origin.mapX},${origin.mapY}`);
         if(!center)throw new Error("Server map centre did not load");
         const regions=[...this.regions.values()];
+        // Allocate shared physical-plane shade grids before plane views snapshot
+        // their halo. Scenery writes through these arrays, including map edges.
+        for(const region of regions){
+            for(const plane of region.planes??[region])plane.lightOcclusions=new Uint8Array(4096);
+            region.lightOcclusions=(region.planes?.[0]??region).lightOcclusions;
+        }
         for(const region of regions){
             region.neighbours=new Map();
             for(const other of regions)
@@ -287,6 +306,8 @@ export class NativeGameplay {
                 try{
                     scene=await this.loadScenery(this.cache,region,{
                         key:keys[region.mapX<<8|region.mapY],isCurrent:current,textureSource,modelStore,
+                        locationSource:region.locationSource,varps:this.interfaces?.varps,
+                        varbit:id=>this.interfaces.scripts.varbit(id),
                     });
                 }catch(error){
                     if(!current())return;
@@ -308,7 +329,11 @@ export class NativeGameplay {
                 return {scene,dx:(region.mapX-origin.mapX)*64,dy:(region.mapY-origin.mapY)*64};
             });
         if(!current())return;
+        joinSceneNormals(scenes.filter(Boolean).flatMap(({scene})=>scene.lightingEntries??[]));
+        for(const {scene} of scenes.filter(Boolean))scene.relight?.();
+        for(const {scene} of scenes.filter(Boolean))scene.releaseLighting?.();
         this.viewport.addTextures(textureSource.textures);
+        this.viewport.setTerrain({...center,regions},{resetCamera:false});
         // Keep the GPU's scene textures even when a scenery region has no meshes.
         this.viewport.setScenery({
             ...combineRegionMeshes(scenes.filter(Boolean)),
@@ -436,7 +461,8 @@ export class NativeGameplay {
         }
         for(const [index,npc] of this.npcs.npcs){
             this.spotEffects.update(`npc:${index}`,npc.spotanims,now);
-            const previous=this.npcMotions.get(index),target={...npc},old=previous?.target;
+            const previous=this.npcMotions.get(index),old=previous?.target;
+            const target={...npc,tintStartedAt:npc.tint!==old?.tint?now:old?.tintStartedAt};
             const changed=!old||old.x!==npc.x||old.y!==npc.y||old.plane!==npc.plane||old.type!==npc.type;
             const snap=!old||npc.teleported||old.plane!==npc.plane||old.type!==npc.type||
                 Math.max(Math.abs(old.x-npc.x),Math.abs(old.y-npc.y))>2;
@@ -488,7 +514,7 @@ export class NativeGameplay {
                     if(id>=0)try{posed=this.models.animations.poseFrameAvailable?
                         this.models.animations.poseFrameAvailable(model,id,frame):await this.models.animations.poseFrame(model,id,frame);this.animationRenderError=null;}
                     catch(error){this.animationRenderError=error.message;}
-                    const mesh=buildPlayerMesh(posed,region,player,{textures:this.models.textures.textures});
+                    const mesh=buildPlayerMesh(posed,region,player,{textures:this.models.textures.textures,renderTime:now});
                     if(!mesh.vertices.length&&!mesh.texturedBatches.some(batch=>batch.vertices.length)&&!mesh.transparentBatches.some(batch=>batch.vertices.length))
                         throw new Error("Local player model produced no visible triangles");
                     const worldMesh=add(mesh,region);
@@ -527,6 +553,7 @@ export class NativeGameplay {
                 try{
                     const mesh=await this.npcModels.mesh(npc,region,{
                         waitForAssets:false,
+                        renderTime:now,
                         elapsed:Math.max(0,now-motion.animationStarted),
                         sequenceElapsed:Math.max(0,now-motion.sequenceStarted-(npc.sequence?.delay??0)*20)});
                     if(!mesh)return null;

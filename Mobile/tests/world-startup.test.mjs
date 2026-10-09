@@ -222,11 +222,11 @@ test("real WebGL shader renders RuneLite GPU colours, ordered alpha and releases
     const html=`<!doctype html><html><body><canvas id="scene" style="width:128px;height:128px"></canvas>
 <script type="module">
 try{
-    const {NativeTerrainViewport}=await import("/world-webgl.mjs");
+    const {NativeTerrainViewport,GPU_SETTINGS}=await import("/world-webgl.mjs");
     // Float HSL conversion oracle for the reference GPU's default brightness.
     // The CPU palette truncates channels before gamma and is not its pixel oracle.
-    const gpuChannels=packed=>{
-        const h=(packed>>10&63)/64+1/128,s=(packed>>7&7)/8+1/16,l=(packed&127)/128;
+    const gpuComponents=(hue,saturation,lightness)=>{
+        const h=hue/64+1/128,s=saturation/8+1/16,l=lightness/128;
         const q=l<.5?l*(1+s):l+s-l*s,p=2*l-q;
         const channel=t=>{
             t=(t+1)%1;
@@ -235,6 +235,7 @@ try{
         };
         return [channel(h+1/3),channel(h),channel(h-1/3)];
     };
+    const gpuChannels=packed=>gpuComponents(packed>>10&63,packed>>7&7,packed&127);
     const gpuColor=packed=>gpuChannels(packed).map(c=>Math.round(c*255)).reduce((rgb,c)=>rgb*256+c,0);
     const viewport=new NativeTerrainViewport(document.getElementById("scene"));
     if(!(viewport.gl instanceof WebGL2RenderingContext))throw new Error("WebGL 2 context required");
@@ -293,6 +294,16 @@ try{
     const gradientWant=[0,1,2].map(k=>255*weights.reduce((n,w,i)=>n+w*colors[i][k],0)/sum);
     gl.readPixels(px,py,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
     if(gradientWant.some((v,i)=>Math.abs(v-pixel[i])>2))throw new Error("GPU RGB gradient incorrect: "+pixel+" expected "+gradientWant+" at "+[px,py]+" camera "+[viewport.yaw,viewport.pitch,viewport.distance]+" projected "+projected);
+    // Keep HSL interpolation within a single hue/saturation band, avoiding
+    // multisample coverage across a discontinuity in the 7-bit lightness.
+    const bandedColors=[2000,2010,2030];
+    viewport.setScenery({vertices:new Float32Array(gradientPositions.flatMap((p,i)=>[...p,bandedColors[i],0,0]))});
+    viewport.gpuSettings={...GPU_SETTINGS,smoothBanding:false};viewport.render();
+    gl.readPixels(px,py,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    const bandedHsl=Math.trunc(wa*bandedColors[0]+wb*bandedColors[1]+(1-wa-wb)*bandedColors[2]);
+    const bandedWant=gpuChannels(bandedHsl).map(v=>v*255);
+    if(bandedWant.some((v,i)=>Math.abs(v-pixel[i])>2))throw new Error("GPU banded HSL mode incorrect: "+pixel+" expected "+bandedWant);
+    viewport.gpuSettings=GPU_SETTINGS;
     const texPixels=new Uint8Array(64*64*4);
     for(let i=0;i<texPixels.length;i+=4)texPixels.set([128,64,32,255],i);
     const textured=new Float32Array(object);
@@ -305,6 +316,14 @@ try{
     viewport.setSceneLevel(1);viewport.render();
     gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
     if([64,32,16,255].some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("Lit texture pixel "+pixel);
+    gl.bindTexture(gl.TEXTURE_2D,viewport.textures.get(3));
+    if(gl.getTexParameter(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER)!==gl.NEAREST_MIPMAP_LINEAR)
+        throw new Error("Default GPU mipmap filtering was not applied");
+    viewport.gpuSettings={...GPU_SETTINGS,anisotropicFilteringLevel:0};viewport.render();
+    gl.bindTexture(gl.TEXTURE_2D,viewport.textures.get(3));
+    if(gl.getTexParameter(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER)!==gl.NEAREST)
+        throw new Error("Disabling GPU mipmaps did not update existing textures");
+    viewport.gpuSettings=GPU_SETTINGS;viewport.render();
     const oldTexture=viewport.textures.get(3),oldBuffer=viewport.sceneryBatches[0].buffer;
     for(let i=3;i<texPixels.length;i+=4)texPixels[i]=128;
     viewport.setScenery(texturedScene);viewport.render();
@@ -433,6 +452,40 @@ try{
         if(inside.every((n,i)=>Math.abs(n-clear[i])<=1))throw new Error("Draw window hid nearby marker");
         if(outside.some((n,i)=>Math.abs(n-clear[i])>1))throw new Error("Distant marker survived draw cutoff: "+outside);
     }
+    // Cache textures retain raw RGB so GPU gamma is applied after sampling.
+    viewport.target=[0,0,0];viewport.pitch=1.3;viewport.yaw=0;viewport.distance=50;
+    viewport.setSceneLevel(0);viewport.setActors(null);
+    for(let i=3;i<texPixels.length;i+=4)texPixels[i]=255;
+    viewport.setScenery({vertices:new Float32Array(),texturedBatches:[{level:0,texture:10,vertices:textured}],
+        textures:new Map([[10,{size:64,pixels:texPixels,rawPixels:texPixels}]])});
+    for(const brightness of [.6,.8,1.2])for(const brightTextures of [false,true]){
+        viewport.gpuSettings={...GPU_SETTINGS,brightness,brightTextures};viewport.render();
+        gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        const mul=brightTextures?gpuChannels(64).map(v=>Math.pow(v,brightness/.8)):[64/127,64/127,64/127];
+        const want=[128,64,32].map((v,i)=>255*Math.pow(v/255,brightness)*mul[i]);
+        if(want.some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("GPU texture gamma/light mode incorrect: "+pixel+" expected "+want);
+    }
+    viewport.setScenery({vertices:object});
+    for(const mode of [1,2,3]){
+        viewport.gpuSettings={...GPU_SETTINGS,colorBlindMode:mode,colorBlindIntensity:0};viewport.render();
+        gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        if(objectExpected.some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("Zero colorblind intensity changed original color");
+        viewport.gpuSettings={...GPU_SETTINGS,colorBlindMode:mode,colorBlindIntensity:100};viewport.render();
+        gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        if(objectExpected.every((v,i)=>Math.abs(v-pixel[i])<=1))throw new Error("Colorblind correction did not run for mode "+mode);
+    }
+    viewport.gpuSettings=GPU_SETTINGS;
+    const tinted=object.slice();
+    for(let i=0;i<tinted.length;i+=6){tinted[i+4]=(12<<16)|(3<<8)|81;tinted[i+5]=64;}
+    viewport.setScenery({vertices:tinted});
+    for(const smoothBanding of [true,false]){
+        viewport.gpuSettings={...GPU_SETTINGS,smoothBanding};viewport.render();
+        gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        // Packed HSL 2000 is (1,7,80). A half-strength tint targets (12,3,81).
+        const want=(smoothBanding?gpuComponents(6.5,5,80.5):gpuComponents(6,5,80)).map(v=>v*255);
+        if(want.some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("GPU fractional entity tint incorrect: "+pixel+" expected "+want);
+    }
+    viewport.gpuSettings=GPU_SETTINGS;
     if(gl.getError()!==gl.NO_ERROR)throw new Error("WebGL error");
     const palette=viewport.palette;
     const sceneryBuffer=viewport.sceneryBuf;

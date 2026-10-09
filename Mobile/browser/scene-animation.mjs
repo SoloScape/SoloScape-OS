@@ -17,7 +17,14 @@ function timing(sequence){
 // loop tail; they must not use the perpetual actor locomotion cycle.
 export function sceneSequenceFrame(sequence,elapsedMs,{loop=false,location=false}={}){
     if(!Number.isFinite(elapsedMs)||elapsedMs<0)return -1;
-    if(sequence.skeletalId>=0)throw new Error("Scene sequence requires skeletal animation");
+    if(sequence.skeletalId>=0){
+        const duration=(sequence.skeletalEnd??0)-(sequence.skeletalStart??0),cycle=Math.floor(elapsedMs/20);
+        if(duration<=0)throw new Error("Scene skeletal sequence has no frames");
+        if(cycle<duration)return cycle;
+        const tail=location?sequence.frameStep:loop?duration:0;
+        if(!Number.isInteger(tail)||tail<=0||tail>duration)return -1;
+        return duration-tail+(cycle-duration)%tail;
+    }
     const stats=timing(sequence),lengths=stats.lengths,total=stats.total;
     if(!lengths.length||lengths.length!==sequence.frameIds.length)throw new Error("Scene sequence has no classic frames");
     let cycle=Math.floor(elapsedMs/20),frame=0;
@@ -56,39 +63,60 @@ export function sceneEntryVisible(entry,cell){
 export class NativeSceneAnimations {
     constructor(animations){this.animations=animations;this.entries=[];this.errors=[];}
     reset(entries=[],started=0){
+        this.revision=(this.revision??0)+1;
         this.entries=entries.map(entry=>({...entry,started,lastFrame:null,mesh:null,scenePart:null,failed:false,batchKeys:new Map()}));
         this.errors=[];this.previousScene=null;this.previousView=null;
     }
     async scene(now,origin,player,textures){
+        const revision=this.revision,obsolete=()=>revision!==this.revision;
+        const empty=()=>({batches:[],transparentBatches:[],pickMeshes:[]});
         // Actors update independently from location animations. Keep the
         // complete scene and pick references until the tile cell or a visible
         // animation frame changes. Conservative culling covers sub-tile edges.
         const cell=sceneVisibilityCell(player);
+        for(const entry of this.entries){
+            if(!entry.resolve||now<(entry.retryAt??0)||!sceneEntryVisible(entry,cell))continue;
+            try{
+                const resolved=await entry.resolve();
+                if(obsolete())return empty();
+                if(resolved!==entry.resolved){
+                    entry.resolved=resolved;
+                    entry.children=(resolved??[]).map(child=>({...entry,...child,resolve:null,
+                        started:now,lastFrame:null,mesh:null,scenePart:null,sequence:null,batchKeys:new Map()}));
+                    this.previousScene=null;
+                }
+            }catch(error){if(obsolete())return empty();entry.retryAt=now+1000;entry.resolved=undefined;entry.children=[];this.previousScene=null;
+                if(!entry.morphError){this.errors.push({id:entry.loc.id,reason:error.message});entry.morphError=true;}}
+        }
+        const entries=this.entries.flatMap(entry=>entry.resolve?entry.children??[]:[entry]);
         const view=origin.mapX+":"+origin.mapY+":"+cell.x+":"+cell.y+":"+(player.plane??0);
         if(this.previousScene&&this.previousView===view&&this.previousTextures===textures&&
-            this.entries.every(entry=>{
+            entries.every(entry=>{
                 if(entry.failed||!sceneEntryVisible(entry,cell))return true;
+                if(entry.definition.seqId<0)return Boolean(entry.scenePart);
                 return Boolean(entry.sequence&&entry.sequenceResolver===this.animations.sequence&&
                     entry.lastFrame!==null&&entry.scenePart&&
                     sceneSequenceFrame(entry.sequence,Math.max(0,now-entry.started),{location:true})===entry.lastFrame);
             }))return this.previousScene;
         const batches=[],transparentBatches=[],pickMeshes=[];
-        for(const entry of this.entries){
+        for(const entry of entries){
             const {terrain,loc,definition,part,model,level}=entry;
             const dx=(terrain.mapX-origin.mapX)*64,dy=(terrain.mapY-origin.mapY)*64;
             // Conservatively include edge tiles. The shader still clips to
             // the actual camera draw window, not this animation cache radius.
             if(entry.failed||!sceneEntryVisible(entry,cell))continue;
             try{
-                if(!entry.sequence||entry.sequenceResolver!==this.animations.sequence){
+                if(definition.seqId>=0&&(!entry.sequence||entry.sequenceResolver!==this.animations.sequence)){
                     entry.sequence=await this.animations.sequence(definition.seqId);
+                    if(obsolete())return empty();
                     entry.sequenceResolver=this.animations.sequence;
                     entry.mesh=null;
                 }
                 const sequence=entry.sequence;
-                const frame=sceneSequenceFrame(sequence,Math.max(0,now-entry.started),{location:true});
+                const frame=definition.seqId<0?-1:sceneSequenceFrame(sequence,Math.max(0,now-entry.started),{location:true});
                 if(!entry.mesh||frame!==entry.lastFrame){
                     entry.posed=frame<0?model:await this.animations.poseFrame(model,definition.seqId,frame);
+                    if(obsolete())return empty();
                 }
                 if(!entry.mesh||frame!==entry.lastFrame||entry.meshTextures!==textures){
                     entry.mesh=buildObjectMesh(terrain,loc,definition,part,[entry.posed],{textures});entry.lastFrame=frame;
@@ -118,7 +146,7 @@ export class NativeSceneAnimations {
                     x:loc.x+dx,y:loc.y+dy,plane:loc.plane,level,vertices};
                 entry.scenePart={dx,dy,batches:partBatches,transparentBatches:partAlpha,pickMesh};
                 batches.push(...partBatches);transparentBatches.push(...partAlpha);pickMeshes.push(pickMesh);
-            }catch(error){entry.failed=true;this.errors.push({id:loc.id,sequence:definition.seqId,reason:error.message});}
+            }catch(error){if(obsolete())return empty();entry.failed=true;this.errors.push({id:loc.id,sequence:definition.seqId,reason:error.message});}
         }
         this.previousView=view;this.previousTextures=textures;
         this.previousScene={batches,transparentBatches,pickMeshes};

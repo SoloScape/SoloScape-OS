@@ -49,7 +49,7 @@ routes.set("/native-loading-lifecycle.mjs",["native-loading-lifecycle.mjs","text
 routes.set("/native-roof-adapter.mjs",["native-roof-adapter.mjs","text/javascript; charset=utf-8"]);
 routes.set("/mouse-cross.mjs",["mouse-cross.mjs","text/javascript; charset=utf-8"]);
 routes.set("/loc-interactions.mjs",["loc-interactions.mjs","text/javascript; charset=utf-8"]);
-for(const name of ["model-composition","scene-animation","spot-effects"])
+for(const name of ["model-composition","scene-animation","spot-effects","object-morphs","instance-scene","scene-lighting","render-capture","actor-tint"])
     routes.set(`/${name}.mjs`,[`${name}.mjs`,"text/javascript; charset=utf-8"]);
 for(const name of (await readdir(join(root,"tsps-runtime"))).filter(name=>/^[a-zA-Z0-9-]+\.mjs$/.test(name)))
     routes.set("/tsps-runtime/"+name,[join("tsps-runtime",name),"text/javascript; charset=utf-8"]);

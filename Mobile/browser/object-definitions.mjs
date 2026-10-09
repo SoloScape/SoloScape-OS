@@ -33,7 +33,7 @@ export function decodeObjectDefinition(bytes,id){
     const d={id,name:"null",models:[],types:null,sizeX:1,sizeY:1,isRotated:false,
         modelSizeX:128,modelSizeHeight:128,modelSizeY:128,offsetX:0,offsetHeight:0,offsetY:0,
         ambient:0,contrast:0,contour: -1,seqId:-1,transforms:null,decorDisplacement:16,
-        recolors:[],retextures:[],actions:[],mergeNormals:false};
+        recolors:[],retextures:[],actions:[],mergeNormals:false,clipped:true,transformVarbit:-1,transformVarp:-1};
     const pairs=()=>Array.from({length:b.readUnsignedByte()},()=>[b.readUnsignedShort(),b.readUnsignedShort()]);
     for(let count=0;count<4096;count++){
         const op=b.readUnsignedByte();
@@ -66,6 +66,7 @@ export function decodeObjectDefinition(bytes,id){
         else if(op===40)d.recolors=pairs();
         else if(op===41)d.retextures=pairs();
         else if(op===62)d.isRotated=true;
+        else if(op===64)d.clipped=false;
         else if(op===65)d.modelSizeX=b.readUnsignedShort();
         else if(op===66)d.modelSizeHeight=b.readUnsignedShort();
         else if(op===67)d.modelSizeY=b.readUnsignedShort();
@@ -73,7 +74,8 @@ export function decodeObjectDefinition(bytes,id){
         else if(op===71)d.offsetHeight=b.readShort();
         else if(op===72)d.offsetY=b.readShort();
         else if(op===77||op===92){
-            b.readUnsignedShort();b.readUnsignedShort();
+            const varbit=b.readUnsignedShort(),varp=b.readUnsignedShort();
+            d.transformVarbit=varbit===65535?-1:varbit;d.transformVarp=varp===65535?-1:varp;
             const fallback=op===92?b.readUnsignedShort():65535;
             d.transforms=Array.from({length:b.readUnsignedByte()+1},()=>b.readUnsignedShort());d.transforms.push(fallback);
         }else if(op===78){b.readUnsignedShort();b.readUnsignedByte();b.readUnsignedByte();}
@@ -85,7 +87,7 @@ export function decodeObjectDefinition(bytes,id){
             for(let n=b.readUnsignedByte();n>0;n--){const string=b.readUnsignedByte();b.readMedium();if(string)b.readString();else b.readInt();}
         }else if([19,69,75,91,95,96,104].includes(op))b.readUnsignedByte();
         else if([42,44,45,60,61,68,82,107,167].includes(op))b.readUnsignedShort();
-        else if([17,18,23,25,27,64,73,74,88,89,90,94,97,98,103,105,168,169,177].includes(op)){}
+        else if([17,18,23,25,27,73,74,88,89,90,94,97,98,103,105,168,169,177].includes(op)){}
         else throw new Error("Unsupported revision-240 object opcode "+op);
     }
     throw new Error("Object definition opcode limit exceeded");

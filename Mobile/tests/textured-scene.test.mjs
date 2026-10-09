@@ -26,6 +26,8 @@ test("texture pixels normalize sprite offsets, preserve cutouts, apply tint and 
     assert.deepEqual([...tex.pixels.slice(i,i+8)],[127,0,0,255,0,0,0,0]);
     assert.equal(tex.pixels[3],0);assert.equal(frame.rgba[0],128);
     assert.ok(texturePixels({...def,transforms:[0]},frame).pixels[i]>128);
+    assert.deepEqual([...texturePixels({...def,transforms:[0]},frame).rawPixels.slice(i,i+8)],
+        [128,128,128,255,0,0,0,0],"GPU gamma starts from original RGB and retains cutout alpha");
     assert.throws(()=>texturePixels(def,{...frame,sheetWidth:96}),/dimensions/);
 });
 

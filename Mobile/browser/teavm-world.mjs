@@ -15,6 +15,7 @@ import {NativeInterfaceCanvas} from "./interface-canvas.mjs";
 import {ServerInterfaces} from "./server-interfaces.mjs";
 import {NativeDialogueModels} from "./dialogue-models.mjs";
 import {GamePerformanceOverlay,measurePreviewLatency} from "./game-performance.mjs";
+import {captureWorldFrame} from "./render-capture.mjs";
 
 export class TeaVmWorldBridge {
     constructor({cache,canvas,stage,title,overlay,worldStatus,menuCanvas,interfaceCanvas,performanceRoot=null,onStatus=()=>{},onReady=()=>{},
@@ -143,6 +144,11 @@ export class TeaVmWorldBridge {
             // Fatal protocol errors must end the session, never leave it half-alive.
             this.session?.stop?.(new Error(message));
         }
+    }
+
+    capture(options){
+        if(!this.active)throw new Error("No authenticated world to capture");
+        return captureWorldFrame({viewport:this.viewport,gameplay:this.gameplay,cache:this.cache},options);
     }
 
     dispose(){
