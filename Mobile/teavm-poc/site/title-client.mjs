@@ -103,9 +103,6 @@ loginForm.addEventListener("submit",async event=>{
         if(id===attemptId)submit.disabled=false;
     }
 });
-document.querySelector("#world-disconnect").addEventListener("click",()=>{
-    cancelLogin();title.showWelcome();
-});
 window.addEventListener("pagehide",()=>{
     cancelLogin();username.value="";title.dispose();
 },{once:true});

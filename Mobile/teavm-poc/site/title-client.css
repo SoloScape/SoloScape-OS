@@ -42,9 +42,6 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
 .world-stage{position:absolute;inset:0;background:#000}
 .world-stage[hidden]{display:none}
 #world-canvas{display:block;width:100%;height:100%;touch-action:none}
-.world-hud{position:absolute;inset:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;pointer-events:none;padding:7px 9px;background:linear-gradient(#000c,#0000)}
-.world-hud span{font:12px Arial,sans-serif;max-width:75%;color:#f6eedf;text-shadow:0 1px 3px #000}
-#world-disconnect{pointer-events:auto;background:#251e12d9;color:#e9d8a9;border:1px solid #8a7550;border-radius:3px;font:12px Arial,sans-serif;padding:6px 9px;cursor:pointer}
 .world-overlay{position:absolute;inset:0;background:#050607ea;color:#e9d8a9;font:13px Arial,sans-serif;display:grid;place-content:center;justify-items:center;gap:15px;text-align:center;padding:20px;pointer-events:none}
 .world-overlay[hidden]{display:none}
 .spinner{width:25px;height:25px;border:3px solid #544b36;border-top-color:#d8c287;border-radius:50%;animation:spin .9s linear infinite}

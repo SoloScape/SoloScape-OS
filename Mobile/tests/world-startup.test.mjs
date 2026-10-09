@@ -97,7 +97,8 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         assert.match(htmlText,/id="login-password"/,"title has native encrypted login fields");
         assert.doesNotMatch(htmlText,/id="login-otp"/,"ordinary login has only username and password");
         assert.match(htmlText,/id="world-canvas"/,"same-session cache-backed world is mounted");
-        assert.match(htmlText,/id="world-disconnect"/,"native world can be disconnected");
+        assert.doesNotMatch(htmlText,/id="world-disconnect"|class="world-hud"/,
+            "game viewport has no top logout/status overlay");
         assert.doesNotMatch(htmlText,/<header\b|<nav\b|class="development"|class="milestone"|href="\/legacy"/,
             "the homepage contains only the client, with no site navigation or development chrome");
         const clientCss=await (await fetch(root+"/teavm/title-client.css")).text();

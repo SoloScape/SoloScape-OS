@@ -39,7 +39,10 @@ test("mobile homepage keeps scaled title controls, login and world lifecycle in 
             };
             export {NativeTitleScreen};`],
         ["/native-login.mjs",`export class NativeGameSession {
-            constructor(options){this.options=options;this.connected=false;}
+            constructor(options){
+                this.options=options;this.connected=false;
+                window.fixtureDisconnect=()=>{this.connected=false;options.onClose("Server disconnected");};
+            }
             async login(details){
                 const username=details.username;
                 if(!details.password)throw new Error("Password was cleared too early");
@@ -94,8 +97,9 @@ test("mobile homepage keeps scaled title controls, login and world lifecycle in 
             user.value="accepted";pass.value="fixture-password";form.requestSubmit();
             await wait(()=>!title.visible);
             check(document.querySelector("#title-screen").hidden&&!document.querySelector("#world-stage").hidden,"Title covered authenticated world");
-            click("world-disconnect");
-            check(title.visible&&title.mode==="welcome"&&!document.querySelector("#title-screen").hidden,"Logout did not restore title");
+            check(!document.querySelector("#world-disconnect")&&!document.querySelector(".world-hud"),"Top logout/status overlay remains");
+            window.fixtureDisconnect();
+            check(title.visible&&title.mode==="login"&&!document.querySelector("#title-screen").hidden,"Disconnect did not restore title");
             click("title-mute");check(title.music.muted,"Mute control is disconnected");
             title.dispose();await fetch("/result?status=pass");
         }catch(error){await fetch("/result?status="+encodeURIComponent(error.stack));}
