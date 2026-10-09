@@ -60,6 +60,7 @@ export class TeaVmWorldBridge {
                 this.performanceOverlay.start();
                 this.viewport.onFrame=timestamp=>this.performanceOverlay?.frame(timestamp);
                 this.viewport.onDrawTime=ms=>this.performanceOverlay?.draw?.(ms);
+                this.viewport.onDrawCalls=count=>this.performanceOverlay?.drawCalls?.(count);
                 this.viewport.onRenderError=error=>{
                     const message="WebGL rendering stopped: "+(error?.message||String(error));
                     this.onStatus(message);

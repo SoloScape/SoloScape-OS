@@ -13,7 +13,7 @@ function fixture(){
         click(){this.listeners.get("click")?.();}
     });
     const root=make(),button=make(),details=make();
-    const fields=Object.fromEntries(["fps","ram","tick","ms","draw","net"].map(name=>[name,make()]));
+    const fields=Object.fromEntries(["fps","ram","tick","ms","draw","net","gl"].map(name=>[name,make()]));
     root.hidden=true;
     root.querySelector=selector=>selector==="#world-performance-toggle"?button:
         selector==="#world-performance-stats"?details:
@@ -53,7 +53,9 @@ test("performance HUD displays N/A for protected memory, samples cheaply and tog
     assert.equal(button.attributes.get("aria-expanded"),"true");
     for(let i=0;i<=45;i++)overlay.frame(i*20);
     overlay.tick(0);overlay.tick(600);overlay.tick(1200);
+    overlay.drawCalls(42);
     refresh();
+    assert.equal(fields.gl.textContent,"42");
     assert.equal(fields.fps.textContent,"50.0");
     assert.equal(fields.ram.textContent,"N/A");
     assert.equal(fields.tick.textContent,"3 / 600 ms");

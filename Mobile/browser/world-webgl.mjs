@@ -382,6 +382,33 @@ export function sortTransparentFaces(batches,matrix,drawLevel=3){
     return faces.sort((a,b)=>b.depth-a.depth);
 }
 
+// Low-overhead transparency sorting for mobile. The desktop renderer sorts
+// every alpha triangle for exact blending; on iOS that creates one draw call
+// plus uniforms/buffer bindings per face, often thousands every RAF. Sort
+// larger material/alpha batches instead: one GL draw per batch, at the cost of
+// approximate alpha ordering *inside* foliage, water and glass batches.
+const alphaCenters=new WeakMap();
+export function sortTransparentBatches(batches,matrix,drawLevel=3){
+    const visible=[];
+    for(const batch of batches){
+        if(batch.level>drawLevel||!batch.vertices?.length)continue;
+        let center=alphaCenters.get(batch.vertices);
+        if(!center){
+            const values=batch.vertices;
+            let x=0,y=0,z=0,count=0;
+            // Estimate the batch centroid once per mesh, not once per frame.
+            for(let at=0;at<values.length;at+=6){
+                x+=values[at];y+=values[at+1];z+=values[at+2];count++;
+            }
+            center=[x/count,y/count,z/count];
+            alphaCenters.set(batch.vertices,center);
+        }
+        const depth=matrix[3]*center[0]+matrix[7]*center[1]+matrix[11]*center[2]+matrix[15];
+        visible.push({batch,first:0,count:batch.count??batch.vertices.length/6,depth});
+    }
+    return visible.sort((a,b)=>b.depth-a.depth);
+}
+
 // Reuse one hit record per scan. Reject triangles outside the draw window before
 // projecting them; exact perspective-correct bounds/depth checks still decide hits.
 function pickTriangle(vertices,i,m,nx,ny,bounds,hit){
@@ -726,17 +753,26 @@ export class NativeTerrainViewport {
             position:this.target,yaw:this.yaw,pitch:this.pitch,distance:this.distance});
     }
     drawBounds(){return sceneDrawBounds(this.target,this.yaw,this.pitch,this.distance);}
+    // Safari incurs bridge overhead for every uniform-location lookup. The
+    // WebGLProgram's uniforms are stable for its lifetime; cache locations.
+    uniform(program,name){
+        if(!this.uniformLocations)this.uniformLocations=new WeakMap();
+        let locations=this.uniformLocations.get(program);
+        if(!locations){locations=new Map();this.uniformLocations.set(program,locations);}
+        if(!locations.has(name))locations.set(name,this.gl.getUniformLocation(program,name));
+        return locations.get(name);
+    }
     uploadFog(program){
         const gl=this.gl,ctx=this.roofContext,active=!!ctx?.player&&!!ctx?.origin;
         const x=active?ctx.player.x-ctx.origin.mapX*64-31.5:0;
         const y=active?ctx.player.y-ctx.origin.mapY*64-31.5:0;
-        gl.uniform2f(gl.getUniformLocation(program,"u_fogPlayer"),x,y);
+        gl.uniform2f(this.uniform(program,"u_fogPlayer"),x,y);
         const {fogEnd,fogDepth}=resolveFogRange({renderDistance:CLASSIC_DRAW_DISTANCE,
             autoFogDepth:true,autoFogDepthFactor:HD_AUTO_FOG_DEPTH_FACTOR,manualFogDepth:24});
-        gl.uniform1f(gl.getUniformLocation(program,"u_fogEnd"),fogEnd);
-        gl.uniform1f(gl.getUniformLocation(program,"u_fogDepth"),fogDepth);
-        gl.uniform3f(gl.getUniformLocation(program,"u_fogColor"),0,0,0);
-        gl.uniform1f(gl.getUniformLocation(program,"u_fogEnabled"),active?1:0);
+        gl.uniform1f(this.uniform(program,"u_fogEnd"),fogEnd);
+        gl.uniform1f(this.uniform(program,"u_fogDepth"),fogDepth);
+        gl.uniform3f(this.uniform(program,"u_fogColor"),0,0,0);
+        gl.uniform1f(this.uniform(program,"u_fogEnabled"),active?1:0);
     }
     replaceBatches(name,batches){
         const gl=this.gl;
@@ -755,8 +791,13 @@ export class NativeTerrainViewport {
         });
         for(const b of previous.values())gl.deleteBuffer(b.buffer);
     }
+    drawArrays(mode,first,count){
+        this.drawCallCount++;
+        this.gl.drawArrays(mode,first,count);
+    }
     render(){
         const gl=this.gl,canvas=this.canvas;
+        this.drawCallCount=0;
         const {width:w,height:h}=worldRenderPixels(canvas.clientWidth,canvas.clientHeight,
             window.devicePixelRatio||1,this.touch);
         if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
@@ -766,54 +807,55 @@ export class NativeTerrainViewport {
         const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,w/h);
         const drawLevel=this.visibleRoofLevel();
         gl.useProgram(this.program);this.uploadFog(this.program);
-        gl.uniform1f(gl.getUniformLocation(this.program,"u_opacity"),1);
+        gl.uniform1f(this.uniform(this.program,"u_opacity"),1);
         const bounds=this.drawBounds();
-        gl.uniform4fv(gl.getUniformLocation(this.program,"u_drawBounds"),bounds);
+        gl.uniform4fv(this.uniform(this.program,"u_drawBounds"),bounds);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D,this.palette);
-        gl.uniform1i(gl.getUniformLocation(this.program,"u_palette"),0);
-        gl.uniform1i(gl.getUniformLocation(this.program,"u_wireframe"),this.drawMode===gl.LINES?1:0);
-        gl.uniformMatrix4fv(gl.getUniformLocation(this.program,"u_mvp"),false,matrix);
+        gl.uniform1i(this.uniform(this.program,"u_palette"),0);
+        gl.uniform1i(this.uniform(this.program,"u_wireframe"),this.drawMode===gl.LINES?1:0);
+        gl.uniformMatrix4fv(this.uniform(this.program,"u_mvp"),false,matrix);
         gl.bindBuffer(gl.ARRAY_BUFFER,this.buf);
         const a=gl.getAttribLocation(this.program,"a_position"),c=gl.getAttribLocation(this.program,"a_color");
         gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);
         gl.enableVertexAttribArray(c);gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
-        gl.drawArrays(this.drawMode,0,this.terrainLevelCounts?.slice(0,drawLevel+1).reduce((a,b)=>a+b,0)??this.count);
+        this.drawArrays(this.drawMode,0,this.terrainLevelCounts?.slice(0,drawLevel+1).reduce((a,b)=>a+b,0)??this.count);
         if(this.sceneryCount){
-            gl.uniform1i(gl.getUniformLocation(this.program,"u_wireframe"),0);
+            gl.uniform1i(this.uniform(this.program,"u_wireframe"),0);
             gl.bindBuffer(gl.ARRAY_BUFFER,this.sceneryBuf);
             gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);
             gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
-            gl.drawArrays(gl.TRIANGLES,0,this.sceneryLevelCounts.slice(0,drawLevel+1).reduce((a,b)=>a+b,0));
+            this.drawArrays(gl.TRIANGLES,0,this.sceneryLevelCounts.slice(0,drawLevel+1).reduce((a,b)=>a+b,0));
         }
         if(this.actorCount){
-            gl.uniform1i(gl.getUniformLocation(this.program,"u_wireframe"),0);
+            gl.uniform1i(this.uniform(this.program,"u_wireframe"),0);
             gl.bindBuffer(gl.ARRAY_BUFFER,this.actorBuf);
             gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
-            gl.drawArrays(gl.TRIANGLES,0,this.actorCount);
+            this.drawArrays(gl.TRIANGLES,0,this.actorCount);
         }
         gl.useProgram(this.textureProgram);this.uploadFog(this.textureProgram);
-        gl.uniform1f(gl.getUniformLocation(this.textureProgram,"u_opacity"),1);
-        gl.uniform4fv(gl.getUniformLocation(this.textureProgram,"u_drawBounds"),bounds);
-        gl.uniformMatrix4fv(gl.getUniformLocation(this.textureProgram,"u_mvp"),false,matrix);
-        gl.uniform1i(gl.getUniformLocation(this.textureProgram,"u_texture"),0);
+        gl.uniform1f(this.uniform(this.textureProgram,"u_opacity"),1);
+        gl.uniform4fv(this.uniform(this.textureProgram,"u_drawBounds"),bounds);
+        gl.uniformMatrix4fv(this.uniform(this.textureProgram,"u_mvp"),false,matrix);
+        gl.uniform1i(this.uniform(this.textureProgram,"u_texture"),0);
         const ta=gl.getAttribLocation(this.textureProgram,"a_position"),tc=gl.getAttribLocation(this.textureProgram,"a_color");
         gl.enableVertexAttribArray(ta);gl.enableVertexAttribArray(tc);
         for(const batch of [...this.terrainBatches,...this.sceneryBatches,...this.actorBatches]){
             const texture=this.textures.get(batch.texture);if(!texture||batch.level>drawLevel)continue;
             const meta=this.textureMeta?.get(batch.texture);
             const offset=textureAnimationOffset(meta,performance.now()-this.textureClock);
-            gl.uniform2f(gl.getUniformLocation(this.textureProgram,"u_textureShift"),offset[0],offset[1]);
+            gl.uniform2f(this.uniform(this.textureProgram,"u_textureShift"),offset[0],offset[1]);
             // Water IDs retain the pinned TSPS classification in batch metadata.
             // Foam, normals and water-material passes are not yet ported.
             gl.bindTexture(gl.TEXTURE_2D,texture);gl.bindBuffer(gl.ARRAY_BUFFER,batch.buffer);
             gl.vertexAttribPointer(ta,3,gl.FLOAT,false,24,0);gl.vertexAttribPointer(tc,3,gl.FLOAT,false,24,12);
-            gl.drawArrays(gl.TRIANGLES,0,batch.count);
+            this.drawArrays(gl.TRIANGLES,0,batch.count);
         }
         for(const batch of this.dynamicBatches??[]){
             if(batch.level<=drawLevel)this.renderMaterialBatch(batch,0,batch.count,matrix,bounds,1);
         }
         this.renderTransparent(matrix,drawLevel,bounds);
+        this.onDrawCalls?.(this.drawCallCount);
         // Notify the loading tracker only after actual WebGL draw calls.
         // Wireframe and actor-only frames are not a fully constructed map.
         const groundReady=this.drawMode===gl.TRIANGLES&&
@@ -822,12 +864,14 @@ export class NativeTerrainViewport {
     }
     renderTransparent(matrix,drawLevel,bounds){
         const gl=this.gl;
-        const faces=sortTransparentFaces([...(this.sceneryAlphaBatches??[]),...(this.actorAlphaBatches??[]),...(this.dynamicAlphaBatches??[])],matrix,drawLevel);
+        const batches=[...(this.sceneryAlphaBatches??[]),...(this.actorAlphaBatches??[]),...(this.dynamicAlphaBatches??[])];
+        const faces=this.touch?sortTransparentBatches(batches,matrix,drawLevel):
+            sortTransparentFaces(batches,matrix,drawLevel);
         if(!faces.length)return;
         gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);
         try{
-            for(const {batch,first} of faces){
-                this.renderMaterialBatch(batch,first,3,matrix,bounds,1-batch.alpha/255);
+            for(const {batch,first,count=3} of faces){
+                this.renderMaterialBatch(batch,first,count,matrix,bounds,1-batch.alpha/255);
             }
         }finally{gl.depthMask(true);gl.disable(gl.BLEND);}
     }
@@ -836,21 +880,21 @@ export class NativeTerrainViewport {
         if(textured&&!texture)return;
         const p=textured?this.textureProgram:this.program;
         gl.useProgram(p);this.uploadFog(p);
-        gl.uniformMatrix4fv(gl.getUniformLocation(p,"u_mvp"),false,matrix);
-        gl.uniform4fv(gl.getUniformLocation(p,"u_drawBounds"),bounds);
-        gl.uniform1i(gl.getUniformLocation(p,"u_wireframe"),0);
-        gl.uniform1f(gl.getUniformLocation(p,"u_opacity"),opacity);
+        gl.uniformMatrix4fv(this.uniform(p,"u_mvp"),false,matrix);
+        gl.uniform4fv(this.uniform(p,"u_drawBounds"),bounds);
+        gl.uniform1i(this.uniform(p,"u_wireframe"),0);
+        gl.uniform1f(this.uniform(p,"u_opacity"),opacity);
         gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,textured?texture:this.palette);
-        gl.uniform1i(gl.getUniformLocation(p,textured?"u_texture":"u_palette"),0);
+        gl.uniform1i(this.uniform(p,textured?"u_texture":"u_palette"),0);
         if(textured){
             const offset=textureAnimationOffset(this.textureMeta.get(batch.texture),performance.now()-this.textureClock);
-            gl.uniform2f(gl.getUniformLocation(p,"u_textureShift"),...offset);
+            gl.uniform2f(this.uniform(p,"u_textureShift"),...offset);
         }
         gl.bindBuffer(gl.ARRAY_BUFFER,batch.buffer);
         const a=gl.getAttribLocation(p,"a_position"),c=gl.getAttribLocation(p,"a_color");
         gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,3,gl.FLOAT,false,24,0);
         gl.enableVertexAttribArray(c);gl.vertexAttribPointer(c,3,gl.FLOAT,false,24,12);
-        gl.drawArrays(gl.TRIANGLES,first,count);
+        this.drawArrays(gl.TRIANGLES,first,count);
     }
     dispose(){
         this.disposed=true;this.onSceneFrame=null;this.longPress.cancel();cancelAnimationFrame(this.raf);

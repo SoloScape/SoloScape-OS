@@ -3,7 +3,7 @@ import {test} from "node:test";
 import {NativeSceneAnimations,sceneSequenceFrame} from "../browser/scene-animation.mjs";
 import {NativeSpotEffects,decodeSpotEffect} from "../browser/spot-effects.mjs";
 import {mergePlayerModels,buildPlayerMesh} from "../browser/player-models.mjs";
-import {combineRegionMeshes,sortTransparentFaces,sceneCameraMatrix,worldRenderPixels} from "../browser/world-webgl.mjs";
+import {combineRegionMeshes,sortTransparentFaces,sortTransparentBatches,sceneCameraMatrix,worldRenderPixels,NativeTerrainViewport} from "../browser/world-webgl.mjs";
 import {decodeObjectDefinition} from "../browser/object-definitions.mjs";
 
 const model=()=>({verticesCount:3,faceCount:1,verticesX:Int32Array.of(0,128,0),verticesY:Int32Array.of(0,0,-128),
@@ -112,4 +112,51 @@ test("mobile GPU framebuffer is capped and desktop quality remains unchanged",()
     const huge=worldRenderPixels(3000,1500,3,true);
     assert.ok(huge.width*huge.height<850000,
         "large or zoomed iPhone viewport must not explode GPU fill rate");
+});
+test("mobile alpha render batches hundreds of transparent faces in one draw per material batch",()=>{
+    const triangles=150,vertices=new Float32Array(triangles*18);
+    for(let i=0;i<triangles;i++){
+        for(let j=0;j<3;j++){
+            const v=i*18+j*6;vertices[v]=i*.01;vertices[v+1]=j;vertices[v+2]=i*.01;
+        }
+    }
+    const batch={vertices,count:triangles*3,alpha:128,texture:-1,level:0};
+    const matrix=sceneCameraMatrix([0,0,0],.8,.6,14,1.5);
+    assert.equal(sortTransparentFaces([batch],matrix,0).length,triangles);
+    const coarse=sortTransparentBatches([batch],matrix,0);
+    assert.equal(coarse.length,1);
+    assert.equal(coarse[0].first,0);assert.equal(coarse[0].count,triangles*3);
+    assert.equal(sortTransparentBatches([batch],matrix,-1).length,0,"invisible plane excluded");
+    const calls=[],gl={BLEND:10,SRC_ALPHA:1,ONE_MINUS_SRC_ALPHA:2,
+        enable(){},disable(){},blendFunc(){},depthMask(){}};
+    const fake={gl,touch:true,sceneryAlphaBatches:[batch],
+        renderMaterialBatch:(b,first,count,_m,_bounds,opacity)=>calls.push({b,first,count,opacity})};
+    NativeTerrainViewport.prototype.renderTransparent.call(fake,matrix,0,[0,0,64,64]);
+    assert.equal(calls.length,1,"iPhone submits one alpha draw for one mesh instead of 150 draws");
+    assert.equal(calls[0].count,450);
+    assert.ok(Math.abs(calls[0].opacity-(1-128/255))<.00001);
+    fake.touch=false;calls.length=0;
+    NativeTerrainViewport.prototype.renderTransparent.call(fake,matrix,0,[0,0,64,64]);
+    assert.equal(calls.length,triangles,"desktop maintains exact per-face alpha sorting");
+    assert.ok(calls.every(c=>c.count===3));
+});
+
+test("WebGL uniform locations are cached by program and name",()=>{
+    let lookups=0;
+    const gl={getUniformLocation(program,name){lookups++;return {program,name};}};
+    const view={gl},main={},textured={};
+    const uniform=NativeTerrainViewport.prototype.uniform;
+    const first=uniform.call(view,main,"u_mvp");
+    assert.strictEqual(uniform.call(view,main,"u_mvp"),first);
+    assert.notStrictEqual(uniform.call(view,textured,"u_mvp"),first);
+    assert.strictEqual(uniform.call(view,main,"u_color"),uniform.call(view,main,"u_color"));
+    assert.equal(lookups,3,"thousands of draw calls do not repeatedly call getUniformLocation");
+});
+
+test("GL draw call counter increments once per submitted call",()=>{
+    const seen=[],view={drawCallCount:0,gl:{drawArrays:(...args)=>seen.push(args)}};
+    NativeTerrainViewport.prototype.drawArrays.call(view,4,0,450);
+    NativeTerrainViewport.prototype.drawArrays.call(view,4,450,3);
+    assert.equal(view.drawCallCount,2);
+    assert.deepEqual(seen,[[4,0,450],[4,450,3]]);
 });

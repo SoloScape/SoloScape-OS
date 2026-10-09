@@ -67,7 +67,7 @@ export class GamePerformanceOverlay {
         this.now=now;this.networkProbe=networkProbe;
         this.button=root.querySelector("#world-performance-toggle");
         this.details=root.querySelector("#world-performance-stats");
-        this.fields=Object.fromEntries(["fps","ram","tick","ms","draw","net"].map(name=>
+        this.fields=Object.fromEntries(["fps","ram","tick","ms","draw","net","gl"].map(name=>
             [name,root.querySelector('[data-perf="'+name+'"]')]));
         if(!this.button||!this.details||Object.values(this.fields).some(value=>!value))
             throw new Error("Performance overlay elements unavailable");
@@ -76,12 +76,12 @@ export class GamePerformanceOverlay {
             this.button.setAttribute("aria-expanded",String(!this.details.hidden));
         };
         this.running=false;this.timer=null;this.runId=0;
-        this.net=null;this.netFailed=false;this.probing=false;this.refreshCount=0;
+        this.net=null;this.netFailed=false;this.probing=false;this.refreshCount=0;this.calls=null;
     }
     start(){
         if(this.running)return;
         this.metrics.reset();this.running=true;this.runId++;
-        this.startedAt=this.now();this.net=null;this.netFailed=false;this.refreshCount=0;
+        this.startedAt=this.now();this.net=null;this.netFailed=false;this.refreshCount=0;this.calls=null;
         this.details.hidden=false;this.root.hidden=false;
         this.button.setAttribute("aria-expanded","true");
         this.button.addEventListener("click",this.toggle);
@@ -90,6 +90,7 @@ export class GamePerformanceOverlay {
     }
     frame(timestamp){if(this.running)this.metrics.recordFrame(timestamp);}
     draw(duration){if(this.running)this.metrics.recordDraw(duration);}
+    drawCalls(count){if(this.running&&Number.isInteger(count)&&count>=0)this.calls=count;}
     tick(timestamp){if(this.running)this.metrics.recordTick(timestamp);}
     async sampleNetwork(){
         if(!this.running||this.probing||!this.networkProbe)return;
@@ -113,6 +114,7 @@ export class GamePerformanceOverlay {
         this.fields.tick.textContent=tickMs===null?String(ticks):ticks+" / "+tickMs.toFixed(0)+" ms";
         this.fields.ms.textContent=stopped?"—":frameMs===null?"—":frameMs.toFixed(1);
         this.fields.draw.textContent=drawMs===null?"—":drawMs.toFixed(1);
+        this.fields.gl.textContent=this.calls===null?"—":String(this.calls);
         this.fields.net.textContent=this.net===null?(this.netFailed?"ERR":"—"):this.net.toFixed(0)+" ms";
         // Never send a probe per frame. One same-origin HTTPS request every 5s.
         if(this.networkProbe&&this.refreshCount++%5===0)void this.sampleNetwork();
