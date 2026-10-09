@@ -241,3 +241,23 @@ test("TSPS-compatible store refuses a corrupted archive group and never exposes 
         await world.close();
     }
 });
+
+test("cached CRC-verified gzip reference-table container decodes without a second WebSocket",async()=>{
+    const expectedCrc=nodeCrc32(reference);
+    let calls=[];
+    const store={
+        get:async(index,group,crc)=>
+            index===255&&group===0&&crc===expectedCrc?Uint8Array.from(reference):null,
+        put:async()=>true,
+        remove:async()=>true,
+    };
+    const cache=new NativeJs5Cache({WebSocketClass:class{},persistentStore:store});
+    cache.fetchRawGroup=async(index,groupId)=>{
+        calls.push(index+":"+groupId);
+        if(index===255&&groupId===255)return group(255,255,master);
+        throw new Error("Should not re-fetch warm CRC-verified reference "+index+":"+groupId);
+    };
+    const catalog=await cache.loadIndex(0);
+    assert.equal(catalog.groups.get(0),nodeCrc32(asset));
+    assert.deepEqual(calls,["255:255"],"Warm reference group must avoid network");
+});

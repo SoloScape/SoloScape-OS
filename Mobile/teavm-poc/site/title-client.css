@@ -1,0 +1,30 @@
+:root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;background:#080b10;color:#dce5ef}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;width:100%}
+body{background:radial-gradient(ellipse at 50% 25%,#182330,#080b10 75%)}
+.app{width:min(100%,1040px);margin:0 auto;min-height:100dvh;padding:clamp(12px,3vw,30px);display:flex;flex-direction:column;gap:16px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:4px 0}
+.identity{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap}.brand{font-weight:750;font-size:20px;color:#f1d5a2;letter-spacing:-.03em}
+.edition{font-size:12px;color:#9caab9;letter-spacing:.03em}
+.legacy{font-size:13px;color:#c3d0df;text-decoration:none;border:1px solid #435264;background:#16202d;border-radius:7px;padding:9px 12px;white-space:nowrap}
+.legacy:hover,.legacy:focus-visible{border-color:#ddb971}
+.player{display:flex;justify-content:center;width:100%;margin:clamp(10px,7vh,65px) auto 0}
+.screen{position:relative;aspect-ratio:765/503;width:min(100%,765px);background:#000;box-shadow:0 0 0 1px #47515c,0 25px 90px #000a;overflow:hidden}
+#osrs-title{width:100%;height:100%;display:block;image-rendering:auto}
+.overlay{position:absolute;inset:0;background:#070809de;display:grid;place-content:center;justify-items:center;text-align:center;padding:20px;font-size:14px;gap:8px}
+.overlay[hidden]{display:none}.overlay p{margin:0}.spinner{width:26px;height:26px;border:3px solid #6d6860;border-top-color:#e5c891;border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.controls{position:absolute;inset:0;pointer-events:none}.controls[hidden]{display:none}
+.hotspot{position:absolute;border:1px solid transparent;appearance:none;background:transparent;color:transparent;pointer-events:auto;cursor:pointer;text-decoration:none;text-align:center;border-radius:3px;font-size:0}
+.hotspot:focus-visible{outline:2px solid #fce39f;background:#ffe49a22}
+.hotspot:hover{background:#ffde9022}
+.welcome-new{left:31.5%;top:53%;width:15.8%;height:9%}
+.welcome-existing{left:52.4%;top:53%;width:15.8%;height:9%}
+.login-handoff{left:30%;top:59%;width:20%;height:9%}
+.login-back{left:51%;top:59%;width:19%;height:9%}
+.foot{width:min(100%,765px);margin:0 auto;display:flex;align-items:start;justify-content:space-between;gap:10px;font-size:12px;color:#aebac6}
+.foot p{margin:0;max-width:70%}.milestone{text-align:right;color:#d3b878}
+.development{width:min(100%,765px);margin:0 auto;color:#a4b2c0;font-size:13px;border-top:1px solid #293443;padding:10px 0;line-height:1.6}
+.development summary{cursor:pointer;font-weight:600;color:#c5ced8}.development nav{display:flex;flex-wrap:wrap;gap:16px}
+.development a{color:#d4bd89}
+@media(max-width:590px){.app{padding:12px 8px}.top{padding:0 3px}.brand{font-size:17px}.edition{font-size:10px}.legacy{font-size:11px;padding:8px}.player{margin:clamp(35px,16vh,95px) auto 0}.foot{display:block;padding:0 4px}.foot p{max-width:100%}.milestone{display:block;text-align:left;margin-top:5px}}
+@media(prefers-reduced-motion:reduce){.spinner{animation:none}}

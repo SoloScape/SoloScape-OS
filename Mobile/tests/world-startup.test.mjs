@@ -89,12 +89,19 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         const html=await fetch(root+"/");
         assert.equal(html.status,200);
         const htmlText=await html.text();
-        assert.match(htmlText,/src="\/app\.mjs"/);
-        assert.match(htmlText,/id="osrs-menu-canvas"/);
-        assert.doesNotMatch(htmlText,/class="npc-menu"/);
+        assert.match(htmlText,/src="\/teavm\/title-client\.mjs"/,"homepage is TeaVM title client");
+        assert.match(htmlText,/id="osrs-title"/,"original title cache canvas is mounted");
+        assert.doesNotMatch(htmlText,/id="login-password"/,"incomplete TeaVM login must not collect credentials");
+        const legacy=await fetch(root+"/legacy");
+        assert.equal(legacy.status,200);
+        const legacyHtml=await legacy.text();
+        assert.match(legacyHtml,/src="\/app\.mjs"/,"prior browser client remains playable");
+        assert.match(legacyHtml,/id="osrs-menu-canvas"/);
+        assert.doesNotMatch(legacyHtml,/class="npc-menu"/);
         // Regression: absent floor-materials.mjs used to leave the static
         // loading spinner displayed forever because the import graph failed.
         const modules=[
+            "/teavm/title-client.mjs","/teavm/title-assets.mjs",
             "/app.mjs","/native-js5.mjs","/terrain-world.mjs",
             "/world-webgl.mjs","/floor-materials.mjs","/floor-lighting.mjs","/world-startup.mjs",
             "/cache-reader.mjs","/model-codec.mjs","/object-definitions.mjs","/location-cache.mjs","/scenery-models.mjs",
@@ -113,7 +120,10 @@ test("preview server serves all ESM dependencies of the world client", {timeout:
         }
         // TeaVM is isolated: only the probe page and original-source JS/CSS
         // are served. No OpenOSRS gamepack bytes can be downloaded.
-        const proof=await fetch(root+"/teavm");
+        const titleAlias=await fetch(root+"/teavm");
+        assert.equal(titleAlias.status,200);
+        assert.match(await titleAlias.text(),/id="osrs-title"/);
+        const proof=await fetch(root+"/teavm/lab");
         assert.equal(proof.status,200);
         const proofHtml=await proof.text();
         assert.match(proofHtml,/TeaVM:/);

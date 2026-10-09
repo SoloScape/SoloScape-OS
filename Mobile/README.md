@@ -1301,17 +1301,21 @@ bottleneck. Performance tests ensure concurrency is limited, asset order,
 CRC protection, stale-scene cancellation, and first playable state while
 optional NPC models are still pending.
 
-### Experimental TeaVM browser target
+### TeaVM/OpenOSRS title-screen homepage
 
-The isolated [TeaVM renderer spike](teavm-poc/README.md) runs actual
-revision-240 OpenOSRS Rasterizer2D fill/clipping bytecode on HTML Canvas.
-`npm run build:teavm` selects JDK 17+ automatically, verifies the local
-pinned gamepack and produces a browser-only module. Open `/teavm` in the
-existing preview, then run `npm run test:teavm` to compare its framebuffer
-with the original JVM gamepack. JS5 master-index validation remains optional.
+The homepage (`/`) is now the **TeaVM/OpenOSRS development client**, with
+a CRC-verified cache titlewide.jpg, logo, titlebox, titlebutton and an initial
+TeaVM Java title-state bridge. The previous working native browser client
+remains intact at **`/legacy`**, and the rasterizer/model experiments are at
+**`/teavm/lab`** (`/teavm` also opens the new homepage).
 
-This is an authentic software-rendering *primitive* test, not a running
-OpenOSRS game engine, title screen or 3D scene. The binary gamepack,
-locally extracted methods, and generated gamepack-derived JavaScript are
-never committed; the latter is served only by the local development preview
-and must not be redistributed without appropriate permissions.
+Run `npm run build:teavm` with JDK 17+ and Maven, start the HTTPS preview and
+native JS5 gateway, then open `https://192.168.0.129:3443/`. The real title
+art and Java state transitions are bootstrapped, but the original OpenOSRS
+title game loop, login and gameplay have **not** yet been ported to TeaVM.
+The new homepage never collects or submits credentials; use `/legacy` for
+login and gameplay until that work is complete.
+
+See [the TeaVM port notes](teavm-poc/README.md). The extracted original
+gamepack-derived bytecode and generated TeaVM output remain local and excluded
+from version control and must not be redistributed without appropriate rights.

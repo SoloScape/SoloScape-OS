@@ -84,3 +84,12 @@ for(const yaw of [0,45,140,270]){
 assert.throws(()=>module.renderModelHex("0,0,0","0,1,2,16711680",45),/Invalid model triangle layout/);
 assert.throws(()=>module.renderModelHex(vertices,"0,1,9999,16711680",45),/index or color invalid/);
 console.log("PASS: 12-face model at four yaw angles has exact TeaVM/JVM pixel parity with original rev-240 span fill.");
+
+assert.equal(typeof module.titleReset,"function");
+module.titleReset();assert.equal(module.titleMode(),0);
+module.titleExistingUser();assert.equal(module.titleMode(),0,"login cannot open until JS5 title assets are ready");
+module.titleReady();assert.equal(module.titleMode(),1);
+module.titleExistingUser();assert.equal(module.titleMode(),2);
+module.titleBack();assert.equal(module.titleMode(),1);
+module.titleReset();assert.equal(module.titleMode(),0);
+console.log("PASS: compiled TeaVM Java title boot/welcome/login-handoff state transitions.");

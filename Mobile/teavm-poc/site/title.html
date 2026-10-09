@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#080b10">
+<title>SoloScape — OpenOSRS browser client</title>
+<link rel="stylesheet" href="/teavm/title-client.css">
+</head>
+<body>
+<main class="app">
+  <header class="top">
+    <div class="identity"><span class="brand">SoloScape</span><span class="edition">OpenOSRS / TeaVM · revision 240</span></div>
+    <a class="legacy" href="/legacy">Working client <span aria-hidden="true">↗</span></a>
+  </header>
+  <section class="player" aria-label="OpenOSRS browser port">
+    <div class="screen" id="screen">
+      <canvas id="osrs-title" width="765" height="503" aria-label="Revision-240 OSRS title loaded from verified JS5 cache"></canvas>
+      <div id="loading-overlay" class="overlay" aria-live="polite"><div class="spinner"></div><p>Loading original RuneScape title assets…</p></div>
+      <div id="welcome-controls" class="controls" hidden>
+        <button id="new-user" type="button" class="hotspot welcome-new">New User</button>
+        <button id="existing-user" type="button" class="hotspot welcome-existing">Existing User</button>
+      </div>
+      <div id="login-controls" class="controls" hidden>
+        <a class="hotspot login-handoff" href="/legacy" aria-label="Open working SoloScape client to log in">Continue in working client</a>
+        <button id="login-back" type="button" class="hotspot login-back">Cancel</button>
+      </div>
+    </div>
+  </section>
+  <div class="foot">
+    <p id="client-status" role="status" aria-live="polite">Starting TeaVM runtime…</p>
+    <span class="milestone">Title-screen port · native gameplay not connected</span>
+  </div>
+  <details class="development">
+    <summary>Development tools and current progress</summary>
+    <p>This client runs TeaVM-compiled Java and loads the original revision-240 title images and sprites via a CRC-verified native JS5 gateway. The OpenOSRS title/game loop and login/network handling have <strong>not</strong> been fully ported. No credentials are accepted here.</p>
+    <nav><a href="/teavm/lab">TeaVM renderer and model lab</a><a href="/diagnostics">Cache diagnostics</a><a href="/legacy">Existing playable client</a></nav>
+  </details>
+</main>
+<script type="module" src="/teavm/title-client.mjs"></script>
+</body>
+</html>

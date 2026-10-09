@@ -19,11 +19,11 @@ node scripts\verify.mjs
 ```
 
 The generated module is `target/javascript/bridge.js` (not committed).
-With the existing SoloScape LAN preview, visit
-**https://192.168.0.129:3443/teavm**. The preview only serves the generated
-module and the static, original-source probe page; `/` remains the existing
-working SoloScape browser client. The renderer diagnostic works without a JS5 gateway; only the optional live
-master-index validation requires a running gateway.
+On your LAN visit **https://192.168.0.129:3443/** for the new
+cache-backed title bootstrap. **/legacy** is the previous working native
+WebGL/mobile client. **/teavm/lab** hosts the previous rasterizer/model lab,
+and **/teavm** aliases the new homepage. The title screen needs the native JS5
+gateway; the old renderer lab works without a gateway (its live tests are optional).
 It never sends account credentials or bundles OpenOSRS gamepack classes.
 
 ## Why this is not an OpenOSRS engine port

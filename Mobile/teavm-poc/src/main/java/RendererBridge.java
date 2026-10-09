@@ -23,6 +23,20 @@ public final class RendererBridge {
     @JSExport public static int mapSquare(int x, int y) { return Js5Core.mapSquare(x, y); }
     @JSExport public static int crc32Hex(String data) { return Js5Core.crc32Hex(data); }
 
+    // Browser title-flow foothold. The original gamepack's title state machine
+    // is not yet ported; these exported states make that boundary explicit.
+    // 0 boot, 1 cache-backed welcome, 2 login handoff (no credentials accepted).
+    private static int titleMode=0;
+    @JSExport public static int titleMode() { return titleMode; }
+    @JSExport public static void titleReset() { titleMode=0; }
+    @JSExport public static void titleReady() { titleMode=1; }
+    @JSExport public static void titleExistingUser() {
+        if(titleMode==1)titleMode=2;
+    }
+    @JSExport public static void titleBack() {
+        if(titleMode==2)titleMode=1;
+    }
+
     @JSExport public static int width() { return WIDTH; }
     @JSExport public static int height() { return HEIGHT; }
 

@@ -10,10 +10,17 @@ import {previewEnvironment} from "../scripts/tls-config.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const routes = new Map([
-    ["/", ["index.html", "text/html; charset=utf-8"]],
+    // The homepage is the native TeaVM/OpenOSRS development client.
+    // The existing working renderer remains independently accessible at /legacy.
+    ["/", ["../teavm-poc/site/title.html", "text/html; charset=utf-8"]],
+    ["/legacy", ["index.html", "text/html; charset=utf-8"]],
     ["/diagnostics", ["diagnostics.html", "text/html; charset=utf-8"]],
     // Isolated TeaVM feasibility experiment; no gamepack or Java source served.
-    ["/teavm", ["../teavm-poc/site/index.html", "text/html; charset=utf-8"]],
+    ["/teavm", ["../teavm-poc/site/title.html", "text/html; charset=utf-8"]],
+    ["/teavm/lab", ["../teavm-poc/site/index.html", "text/html; charset=utf-8"]],
+    ["/teavm/title-client.mjs", ["../teavm-poc/site/title-client.mjs", "text/javascript; charset=utf-8"]],
+    ["/teavm/title-assets.mjs", ["../teavm-poc/site/title-assets.mjs", "text/javascript; charset=utf-8"]],
+    ["/teavm/title-client.css", ["../teavm-poc/site/title-client.css", "text/css; charset=utf-8"]],
     ["/teavm/probe.mjs", ["../teavm-poc/site/probe.mjs", "text/javascript; charset=utf-8"]],
     ["/teavm/model-viewer.mjs", ["../teavm-poc/site/model-viewer.mjs", "text/javascript; charset=utf-8"]],
     ["/teavm/model-payload.mjs", ["../teavm-poc/site/model-payload.mjs", "text/javascript; charset=utf-8"]],

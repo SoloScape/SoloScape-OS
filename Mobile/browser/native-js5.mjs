@@ -161,7 +161,11 @@ export async function decodeCacheContainer(result, maxDecodedBytes = MAX_DECODED
     const start = compression === 0 ? 5 : 9;
     if (u32(bytes, 1) !== bytes.length - start) throw new Error("Cache container size mismatch");
     const expected = compression === 0 ? bytes.length - start : u32(bytes, 5);
-    if (expected > maxDecodedBytes || expected !== result.uncompressedBytes) {
+    // Warm CRC-verified CacheStorage entries preserve container bytes, but not
+    // the optional wire-reader uncompressedBytes metadata. Still enforce the
+    // bounded length encoded in the container before allocating/decompressing.
+    if (expected > maxDecodedBytes ||
+        (result.uncompressedBytes != null && expected !== result.uncompressedBytes)) {
         throw new Error("Unsafe cache expansion length");
     }
     if (compression === 0) return bytes.subarray(5);
