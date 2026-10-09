@@ -69,3 +69,38 @@ test("TeaVM world treats malformed rev-240 game packet as a fatal session error"
     assert.deepEqual(stopped,["Revision-240 world packet failed: Invalid rebuild"]);
     world.dispose();
 });
+
+test("active mobile world attaches server interfaces and routes every context menu action",async()=>{
+    const elements=ui(),events=[],calls=[];
+    let options,menuOptions,closed=0,disposed=0;
+    elements.canvas.parentElement={};
+    const view={active:null,paint(){},close(){}};
+    const interfaces={view,bindInput:surface=>events.push(["bind",surface]),close:()=>closed++};
+    const menu={load:async()=>{},open:info=>events.push(["menu",info]),close:()=>events.push("menu closed"),dispose:()=>disposed++};
+    const world=new TeaVmWorldBridge({...elements,interfaceCanvas:{},menuCanvas:{},
+        createViewport:()=>({dispose(){}}),createInterfaceView:()=>view,
+        createInterfaces:settings=>{assert.equal(settings.session.connected,true);return interfaces;},
+        createMenu:(_canvas,settings)=>{menuOptions=settings;return menu;},
+        createGameplay:settings=>{
+            options=settings;assert.equal(settings.interfaces,interfaces);
+            return {models:{},authenticated(){events.push("authenticated");},handle(){},close(){},
+                move:info=>calls.push(["walk",info]),interactNpc:(...args)=>calls.push(["npc",...args]),
+                interactObject:(...args)=>calls.push(["object",...args]),
+                examineNpc:index=>calls.push(["examine",index]),examineObject:()=>calls.push(["examine-object"])};
+        }
+    });
+    world.activate({connected:true},{playerIndex:7});
+    assert.deepEqual(events.slice(0,2),[["bind",elements.canvas.parentElement],"authenticated"]);
+    const info={index:12,slot:1,tile:{x:3,y:4},x:100,y:110,run:true};
+    menuOptions.onEntry({kind:"walk"},info);assert.equal(calls.length,0,"loading cover blocks actions");
+    options.onReady();world.viewport.onSceneFrame();
+    options.onNpcMenu(info);assert.deepEqual(events.at(-1),["menu",info]);
+    for(const kind of ["walk","npc","object","examine","examine-object"])
+        menuOptions.onEntry({kind,slot:1},info);
+    assert.deepEqual(calls,[["walk",{x:3,y:4,run:true,screenX:100,screenY:110}],
+        ["npc",12,1,{run:true}],["object",1,{run:true}],["examine",12],["examine-object"]]);
+    options.onLoading();assert.equal(events.at(-1),"menu closed");
+    world.dispose();assert.equal(closed,1);assert.equal(disposed,1);
+    const before=calls.length;menuOptions.onEntry({kind:"walk"},info);assert.equal(calls.length,before);
+    await Promise.resolve();
+});

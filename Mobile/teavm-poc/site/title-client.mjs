@@ -87,6 +87,8 @@ loginForm.addEventListener("submit",async event=>{
         if(id!==attemptId)return;
         worldBridge?.dispose();
         worldBridge=new TeaVmWorldBridge({cache:sessionCache,canvas:worldCanvas,
+            menuCanvas:document.querySelector("#world-menu-canvas"),
+            interfaceCanvas:document.querySelector("#server-interface-canvas"),
             stage:worldStage,title:titleStage,overlay:worldOverlay,worldStatus,
             onStatus:say,onReady:()=>{worldStatus.textContent="";}});
         const attempt=titleLogin.login(details);

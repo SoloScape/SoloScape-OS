@@ -42,7 +42,11 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
 .world-stage{position:absolute;inset:0;background:#000}
 .world-stage[hidden]{display:none}
 #world-canvas{display:block;width:100%;height:100%;touch-action:none}
-.world-overlay{position:absolute;inset:0;background:#000;color:#fff;font:13px Arial,sans-serif;pointer-events:none}
+#world-input-surface{position:absolute;inset:0}
+#server-interface-canvas,#world-menu-canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
+#server-interface-canvas{pointer-events:none}
+#world-menu-canvas{z-index:2;touch-action:none}
+.world-overlay{position:absolute;inset:0;z-index:3;background:#000;color:#fff;font:13px Arial,sans-serif;pointer-events:auto;touch-action:none}
 .world-overlay span{position:absolute;top:6px;left:6px;border:1px solid #ddd;padding:3px 5px}
 .world-overlay[hidden]{display:none}
 

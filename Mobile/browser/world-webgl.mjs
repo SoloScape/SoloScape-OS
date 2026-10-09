@@ -37,6 +37,16 @@ import {isKnownWaterTextureId,ANIM_DIRECTION_UV} from "./tsps-runtime/common-wor
 import {resolveFogRange,HD_AUTO_FOG_DEPTH_FACTOR} from "./tsps-runtime/render-RenderDistancePolicy.mjs";
 // Native scene distances are tiles, unlike RuneLite's client zoom values.
 export const GAME_CAMERA_ZOOM=Object.freeze({default:12,min:6,max:24});
+// Local OpenOSRS rev-240 CameraService policy and CameraController drag adapter.
+export const GAME_CAMERA_ROTATION=Object.freeze({
+    units:16384,minPitch:1024*2*Math.PI/16384,maxPitch:3064*2*Math.PI/16384,
+    radiansPerPixel:16*2*Math.PI/16384,
+});
+export function rotateCamera(camera,dx,dy){
+    const {minPitch,maxPitch,radiansPerPixel}=GAME_CAMERA_ROTATION;
+    camera.yaw=((camera.yaw-dx*radiansPerPixel)%(2*Math.PI)+2*Math.PI)%(2*Math.PI);
+    camera.pitch=Math.max(minPitch,Math.min(maxPitch,camera.pitch+dy*radiansPerPixel));
+}
 export const CLASSIC_DRAW_DISTANCE=25;
 
 // Pinned TSPS SpriteTextureLoader ANIM_DIRECTION_UV and main.vert.glsl
@@ -510,7 +520,7 @@ export class NativeTerrainViewport {
             // right-click opens the menu. Touch dragging remains camera orbit.
             this.pointer.dragged ||=Math.hypot(e.clientX-this.pointer.startX,e.clientY-this.pointer.startY)>6;
             if(!shouldRotateCameraDrag(this.pointer.button,this.pointer.pointerType)||!this.pointer.dragged)return;
-            this.yaw+=dx*.007;this.pitch=Math.max(.18,Math.min(1.38,this.pitch+dy*.007));
+            rotateCamera(this,dx,dy);
             this.pointer.x=e.clientX;this.pointer.y=e.clientY;
         };
         this.onPointerUp=e=>{
@@ -563,15 +573,12 @@ export class NativeTerrainViewport {
         this.onWheel=e=>{e.preventDefault();this.distance=cameraWheelDistance(this.distance,e);};
         this.onKey=e=>{
             if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName||""))return;
-            const step=3;
-            if(e.key==="ArrowLeft"||e.key.toLowerCase()==="a")this.target[0]-=step;
-            else if(e.key==="ArrowRight"||e.key.toLowerCase()==="d")this.target[0]+=step;
-            else if(e.key==="ArrowUp"||e.key.toLowerCase()==="w")this.target[2]+=step;
-            else if(e.key==="ArrowDown"||e.key.toLowerCase()==="s")this.target[2]-=step;
+            if(e.key==="ArrowLeft"||e.key.toLowerCase()==="a")rotateCamera(this,6,0);
+            else if(e.key==="ArrowRight"||e.key.toLowerCase()==="d")rotateCamera(this,-6,0);
+            else if(e.key==="ArrowUp"||e.key.toLowerCase()==="w")rotateCamera(this,0,3);
+            else if(e.key==="ArrowDown"||e.key.toLowerCase()==="s")rotateCamera(this,0,-3);
             else return;
             e.preventDefault();
-            this.target[0]=Math.max(-30,Math.min(30,this.target[0]));
-            this.target[2]=Math.max(-30,Math.min(30,this.target[2]));
         };
         canvas.addEventListener("pointerdown",this.onPointerDown);
         canvas.addEventListener("pointermove",this.onPointerMove);

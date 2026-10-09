@@ -38,7 +38,11 @@
       <p id="client-status" class="sr-only" role="status" aria-live="polite"></p>
     </section>
     <div id="world-stage" class="world-stage" hidden>
-      <canvas id="world-canvas" width="765" height="503" aria-label="RuneScape world"></canvas>
+      <div id="world-input-surface">
+        <canvas id="world-canvas" width="765" height="503" aria-label="RuneScape world"></canvas>
+        <canvas id="server-interface-canvas" aria-label="Server game interfaces" hidden></canvas>
+      </div>
+      <canvas id="world-menu-canvas" aria-label="Choose Option" hidden></canvas>
       <span id="world-status" class="sr-only" role="status" aria-live="polite"></span>
       <div id="world-loading-overlay" class="world-overlay" role="status" aria-live="polite">
         <span>Loading - Please wait.</span>

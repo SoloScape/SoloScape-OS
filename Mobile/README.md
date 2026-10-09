@@ -4,6 +4,11 @@
 
 This directory integrates the pinned upstream browser client as a Git submodule at `tsps-upstream/`, based on [RSPSApp/tsps](https://github.com/RSPSApp/tsps), which provides a React/TypeScript/WebGL OSRS-style game client. Track the work in [issue #32](https://github.com/SoloScape/SoloScape-OS/issues/32).
 
+Whole-client OpenOSRS parity is tracked in [OPENOSRS_PARITY.md](OPENOSRS_PARITY.md).
+The active TeaVM homepage now connects the existing NPC/object/ground menus,
+server interfaces and dialogue portraits to its authenticated session. Full
+engine, widget-script and visual parity remain incomplete.
+
 ## The actual native WebGL client (current active development)
 
 **Starting 8 October 2026**, `npm run dev` (also `npm run dev:native`)
@@ -78,8 +83,11 @@ choosing the nearest real named region when fallback is requested explicitly.
 Developer Travel requests remain exact, with a clear failure if absent.
 No mock map or stand-in terrain is rendered.
 
-Touch/drag or mouse/drag rotates the camera; wheel zooms; WASD/arrows
-pan along map axes (W/up north, S/down south, A/left west, D/right east).
+Touch drag or middle-mouse drag rotates the camera; wheel zooms; WASD/arrows
+rotate and tilt around the player. Tilt follows the local OpenOSRS standard
+22.5–67.3 degree limits. Mouse drag direction and sensitivity use the local
+OpenOSRS camera controller's 16 angle units per pixel estimate. Keyboard
+rotation currently follows browser key repeats rather than native tick acceleration.
 The native camera starts 12 tiles from its target, with wheel zoom bounded
 between 6 and 24 tiles. Ctrl + wheel restores the default. Login resets the
 distance before player assets load; walking and map rebuilds preserve your zoom.
