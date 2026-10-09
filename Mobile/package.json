@@ -20,6 +20,7 @@
     "generate:tsps-water": "node scripts/adapt-tsps-water.mjs",
     "test:rsprot": "node scripts/verify-native-login.mjs",
     "test:interfaces:rsprot": "node scripts/verify-native-interfaces.mjs",
+    "test:objects:rsprot": "node scripts/verify-native-objects.mjs",
     "gateway": "node gateway/cli.mjs",
     "probe": "node gateway/probe-cli.mjs",
     "probe:game": "node gateway/game-probe-cli.mjs",

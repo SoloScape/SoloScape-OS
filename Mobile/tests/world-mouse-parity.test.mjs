@@ -24,23 +24,24 @@ test("revision-240 cache action strings preserve Open, Close and hidden slots",(
     assert.deepEqual(buildNativeMenuEntries({kind:"object",name:def.name,actions:objectActionOptions(def)})
         .map(e=>e.option),["Open","Close","Examine","Cancel"]);
 });
-test("all revision-240 OPLOC actions use the pinned TSPS packet permutations",()=>{
+test("all revision-240 OPLOC V2 actions use the server's eight-byte layouts",()=>{
     const id=0x1234,x=0x123,y=0x456;
     const expected=[
-        [96,[1,163,86,4,255,180,18]],
-        [28,[163,1,214,4,127,18,52]],
-        [42,[86,4,52,18,163,1,127]],
-        [38,[1,163,52,18,4,214,255]],
-        [51,[1,35,129,4,214,18,180]]
+        [74,[127,214,4,0,163,1,18,180]],
+        [90,[4,86,0,127,18,52,35,1]],
+        [8,[128,127,4,214,180,18,1,35]],
+        [69,[129,52,18,4,86,128,1,35]],
+        [77,[86,4,1,35,128,127,180,18]]
     ];
     for(const [slot,[opcode,bytes]] of expected.entries()){
         const packet=encodeLocInteraction(id,x,y,slot,{controlKey:true});
         assert.equal(packet.opcode,opcode);
         assert.deepEqual([...packet.payload],bytes);
     }
-    assert.deepEqual([...encodeLocExamine(id).payload],[180,18]);
-    assert.equal(encodeLocExamine(id).opcode,85);
+    assert.deepEqual([...encodeLocExamine(id).payload],[52,18]);
+    assert.equal(encodeLocExamine(id).opcode,105);
     assert.throws(()=>encodeLocInteraction(5,-1,20,0),/world X/);
+    assert.throws(()=>encodeLocInteraction(5,20,20,0,{subop:256}),/suboption/);
 });
 test("right-click picks nearest visible object before ground, without the browser menu",()=>{
     const calls=[],evt={clientX:100,clientY:120,shiftKey:false,
@@ -76,14 +77,15 @@ test("object left-click Open and right-click Examine send valid action packets a
         tileX:12,tileY:15,plane:0,x:60,y:80};
     try{
         game.selectObject({...hit,mode:"default"});
-        assert.equal(sent[0][0],96);
+        assert.equal(sent[0][0],74);
+        assert.equal(sent[0][1].length,8);
         assert.deepEqual(cross[0],[60,80]);
         game.selectObject({...hit,mode:"menu"});
         assert.deepEqual(menu.at(-1).actions,[{slot:0,label:"Open"},{slot:2,label:"Close"}]);
         assert.equal(game.interactObject(1),false,"no unadvertised action");
         assert.equal(game.examineObject(),true);
-        assert.equal(sent[1][0],85);
-        assert.deepEqual([...sent[1][1]],[153,0]); // shortAddLE(25)
+        assert.equal(sent[1][0],105);
+        assert.deepEqual([...sent[1][1]],[25,0]); // revision-240 g2Alt1
     }finally{game.close();}
 });
 test("TSPS 100ms yellow click cross shrinks and clears, without stealing mouse input",()=>{

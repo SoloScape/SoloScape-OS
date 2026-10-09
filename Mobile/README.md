@@ -1192,8 +1192,8 @@ switch to CRC-verified cache \`b12_full\` when that font finishes downloading.
 The cache object decoder now keeps revision-240 location action strings. Static
 location geometry retains per-placement triangle picking (including textured
 faces), combined region coordinates and original action-slot identity. Menu
-actions, including **Open** when defined, send the pinned revision-240
-\`OPLOC1–5\` permutations; Examine uses \`EXAMINE_LOC\`. Selection is cleared on
+actions, including **Open** when defined, send revision-240
+`OPLOC1_V2` through `OPLOC5_V2`; Examine uses `OPLOC6`. Selection is cleared on
 rebuild, dismissal and disconnect. Dynamic/animated/varbit-transformed locs
 that the standalone scene loader does not yet render cannot be picked or
 interacted with through this static-mesh path; inventory/ground-item/player
@@ -1204,6 +1204,17 @@ Regression checks are in \`tests/world-mouse-parity.test.mjs\`,
 menu ordering, packets, mouse modes, cache actions and cross animation. A live
 authenticated device/browser session is still needed to verify the interaction
 look and feel against RuneLite.
+
+Object packets are checked against the installed revision-240 rsprot JVM
+decoders with `npm run test:objects:rsprot` (JDK 21+, set `JAVA_BIN` as needed).
+The old TSPS opcodes and seven-byte action payloads belonged to a different
+protocol: an Open click could be decoded as a three-byte world-entity action,
+leaving bytes that corrupted the next opcode and later friend-list decoding.
+The corrected eight-byte V2 actions include suboption zero and the server's
+field permutations. The encrypted-stream oracle verifies all five action slots,
+control-key states, suboptions, Examine, and following heartbeat boundaries.
+Refresh and reconnect after updating; an already desynchronized session cannot
+recover its packet boundaries.
 
 ### Main in-game RuneScape title screen (OpenOSRS revision 240)
 
