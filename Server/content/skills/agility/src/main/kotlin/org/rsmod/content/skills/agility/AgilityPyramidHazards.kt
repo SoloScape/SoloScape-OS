@@ -165,8 +165,11 @@ internal object AgilityPyramidHazardData {
         tiltVarbit: String,
         safeDx: Int?,
         safeDz: Int?,
-        vararg tiles: CoordGrid,
-    ) = PyramidStoneTrap(tiltVarbit, safeDx, safeDz, tiles.toSet())
+        tile1: CoordGrid,
+        tile2: CoordGrid,
+        tile3: CoordGrid,
+        tile4: CoordGrid,
+    ) = PyramidStoneTrap(tiltVarbit, safeDx, safeDz, setOf(tile1, tile2, tile3, tile4))
 
     private const val STONE_BASE_LEVEL = 30
     private const val STONE_NO_FAIL_LEVEL = 70
