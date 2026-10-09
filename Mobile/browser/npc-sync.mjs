@@ -6,7 +6,7 @@ const STEPS=[[-1,1],[0,1],[1,1],[-1,0],[1,0],[-1,-1],[0,-1],[1,-1]];
 const ANGLES=[768,1024,1280,512,1536,256,0,1792];
 const TYPE_BITS=[12,14,17,24],CLOCK_BITS=[18,19,20,32];
 const MASK_BITS=0x200|0x200000|0x2|0x80000|0x10000|0x400|0x2000000|
-    0x10|0x1|0x800|0x2000|0x4|0x20000|0x8000|0x100|0x8|0x80|0x100000;
+    0x10|0x1|0x800|0x2000|0x4|0x20000|0x8000|0x100|0x8|0x80|0x1000000;
 const nullable=id=>id===65535?-1:id;
 const signed=(n,bits)=>n>>(bits-1)?n-(2**bits):n;
 const clone=n=>({...n,sequence:n.sequence&&{...n.sequence}});
@@ -76,7 +76,7 @@ function readMask(r,n){
         else if(kind!==3)throw new Error("Unsupported NPC facing kind");
         n.facing=facing;if(facing.angle!==undefined)n.orientation=facing.angle&2047;
     }
-    if(flags&0x100000){
+    if(flags&0x1000000){
         n.headbars=[];
         for(let count=r.u8(1);count>0;count--){
             const type=r.smart(),endTime=r.smart();

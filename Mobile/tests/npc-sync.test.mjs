@@ -51,6 +51,38 @@ test("revision-240 NPC V6 spawn, masks, walk, run, removal and atomic failure",(
     assert.equal(sync.npcs.size,0);
     assert.deepEqual(sync.high,[]);
 });
+test("revision-240 combat mask 0x1061026 decodes health bars after spotanims, sequence and hits",()=>{
+    for(const large of [false,true]){
+        const sync=new NativeNpcSync();
+        sync.setOrigin(Uint8Array.of(10,12),3190,3180);
+        // RSProx v240 HEADBARS=0x1000000; 0x100000 is legacy body customisation.
+        const combatMask=Uint8Array.of(0x26,0x10,0x06,0x01,
+            127,0,0,7,5,0,10,0,129, // One looping spotanim, height 10, delay 5.
+            123,0,128, // Sequence 123, delay 0.
+            129,1,12,2,30, // One hit.
+            131, // Three health bars: timed fill, immediate fill, removal.
+            0,10,2,98,236,
+            1,0,0,113,
+            2,255,255);
+        sync.decode(concat(spawn({extended:true,large}),combatMask),{large});
+        const npc=sync.npcs.get(9);
+        assert.deepEqual(npc.spotanims,[{slot:0,id:7,height:10,delay:5,loop:true}]);
+        assert.deepEqual(npc.sequence,{id:123,delay:0});
+        assert.deepEqual(npc.hits,[{type:1,value:12,delay:2,limit:30}]);
+        assert.deepEqual(npc.headbars,[
+            {type:0,endTime:10,startTime:2,startFill:30,endFill:20},
+            {type:1,endTime:0,startTime:0,startFill:15,endFill:15},
+            {type:2,removed:true},
+        ]);
+        const retained=bits([1,8],[1,1],[0,2],[65535,16]);
+        assert.throws(()=>sync.decode(concat(retained,combatMask.subarray(0,-1)),{large}),/Truncated/);
+        assert.strictEqual(sync.npcs.get(9),npc,"truncated health bars preserve committed NPC state");
+        sync.decode(concat(retained,[0x20,0x10,0x04,0x01,128]),{large});
+        assert.deepEqual(sync.npcs.get(9).headbars,[],"four-byte health-bar mask stays aligned");
+        assert.throws(()=>sync.decode(concat(retained,[0x20,0x10,0x10])),/Unknown NPC update mask/,
+            "legacy body customisation must not be decoded as health bars");
+    }
+});
 test("large NPC offsets, extended spawn clock, origin requirements and truncated bitstream",()=>{
     const sync=new NativeNpcSync();
     assert.throws(()=>sync.decode(spawn()),/before update origin/);
