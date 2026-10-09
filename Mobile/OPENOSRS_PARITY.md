@@ -30,6 +30,42 @@ reach that path rather than only the older `browser/app.mjs`.
 
 ## Work remaining before whole-client parity
 
+### Whole-engine compilation attempt
+
+`npm run build:openosrs-engine` now compiles a separate whole-engine entry
+point: `EngineBridge.initialize()` constructs the unstripped pinned `client`
+and invokes its original `initialize()`. It checks the gamepack SHA-256 from
+`openosrs-reference.json`, uses the built local RuneLite API and JDK 17+, and
+keeps output separate from the existing rasterizer proof and active homepage.
+
+The October 9, 2026 local attempt compiled the Java bridge but **failed in
+TeaVM 0.15.0's bytecode parser** with `IllegalArgumentException` at
+`ProgramParser$1.visitLdcInsn` (line 745). Inspection with JDK 17 `javap -v`
+confirmed `ConstantDynamic` entries in `client`, including
+`ConstantBootstraps.invoke` calls returning string arrays, boolean arrays,
+properties and strings. The parser stack does not identify the individual
+constant it rejected; dynamic constants are the leading diagnosis, not yet
+a proven fix. This failure prevents a browser engine module from being built.
+
+The command returns a failure exit code and writes local diagnostics to
+`teavm-poc/target/engine/report.json` and `compiler.log`. All gamepack-derived
+output remains ignored. A successful future compilation is labelled
+`compiled-unverified`; it cannot mark any parity row complete.
+
+Next engine-port gates, in order:
+
+1. Support the original dynamic-constant bootstrap semantics and prove any
+   bytecode adaptation against JVM fixtures, including caching and failures.
+   Do not strip the failing methods or replace constants with placeholders.
+2. Re-run whole-engine reachability and enumerate actual missing runtime APIs.
+   Replace reachable desktop canvas/input, scheduling, audio, sockets,
+   resources and reflection with browser contracts.
+3. Run the original initialization and game loop, exposing real framebuffers
+   and connecting the verified JS5/game transport. Integrate on the active
+   homepage while retaining touch and the explicit SoloScape loading/login UI.
+4. Supply the matched tick, packet, widget, audio and frame comparisons below,
+   plus real-phone performance/input checks, before claiming engine parity.
+
 | Area | Current limit | Required proof |
 | --- | --- | --- |
 | Camera | Browser key-repeat timing; tile-distance zoom; no inversion/remapping preferences, compass control or native camera packet handling | Native-vs-browser traces for held keys, drag direction, sensitivity, compass, zoom and server-directed camera changes |
