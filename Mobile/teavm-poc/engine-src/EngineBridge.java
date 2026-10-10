@@ -333,6 +333,32 @@ public final class EngineBridge {
         return true;
     }
 
+
+    /**
+     * Touch displacement adjusts the authentic revision-240 camera targets.
+     * Their game tick still owns camera interpolation, clipping and rendering.
+     * No obfuscated fields, synthetic scenes or alternative renderer.
+     */
+    @JSExport public static boolean rotateOriginalCamera(int yawDelta,int pitchDelta) {
+        if (!(engine instanceof net.runelite.api.Client)) return false;
+        net.runelite.api.Client original=(net.runelite.api.Client)engine;
+        if (original.getGameState()!=net.runelite.api.GameState.LOGGED_IN)
+            return false;
+        if (yawDelta < -8192 || yawDelta > 8192 ||
+            pitchDelta < -8192 || pitchDelta > 8192)
+            return false;
+        if (yawDelta != 0) {
+            int target=(original.getCameraYawTarget()+yawDelta)&2047;
+            original.setCameraYawTarget(target);
+        }
+        if (pitchDelta != 0) {
+            int target=original.getCameraPitchTarget()+pitchDelta;
+            target=Math.max(128,Math.min(383,target));
+            original.setCameraPitchTarget(target);
+        }
+        return true;
+    }
+
     @JSExport public static boolean hasClientThread() {
         return engine != null && ((net.runelite.api.GameEngine) engine).getClientThread() != null;
     }

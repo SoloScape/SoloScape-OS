@@ -169,18 +169,25 @@ Safari's framebuffer by Retina pixel density. This is not a second
 WebGL renderer. It requires a TeaVM rebuild and a manual iPhone test of
 both layout variants, including rotating the phone.
 
-## iPhone long-press camera rotation
+## iPhone drag sensitivity (original game camera targets)
 
-Within the original 3D game viewport, an ordinary finger swipe (12 px
-to distinguish movement from a tap), or a 320 ms hold followed by a
-drag, rotates the original Java camera through standard AWT arrow-key
-keydown/up events. This is an input-only browser shim, not custom camera
-rendering or a reimplementation. Releasing the finger, pausing the drag,
-leaving the game, losing the page, or canceling a pointer releases any held
-key. A quick tap still reaches the original Java click handler (walking,
-NPCs and interfaces), and holds on inventory/chat areas are not converted
-into camera drags. Safari's text selection, callout bubble and tap
-highlight are suppressed on the original canvas. The original AWT
-keyboard adapter maps synthetic Arrow key names to Java virtual-key
-codes 37-40 on iOS even when WebKit reports keyCode=0.
-Rebuild the original TeaVM engine after changing this adapter.
+The original revision-240 RuneLite-injected `Client` already exposes
+`getCameraYawTarget`/`setCameraYawTarget` and
+`getCameraPitchTarget`/`setCameraPitchTarget`. The TeaVM Java bridge
+uses exactly these native client APIs after `LOGGED_IN`; the game itself
+still interpolates, constrains and renders the camera. Mobile pointer
+movement is translated into relative target deltas: **4 yaw units per
+CSS pixel** and **1.75 pitch units per CSS pixel**, with fractional
+movement preserved, yaw wrapped to the 2048-unit compass and pitch
+limited to 128–383. Distance, not touch event frequency or swipe time,
+determines rotation. The user-visible choice between Fixed, Classic
+and Modern does not change sensitivity.
+
+The 12 CSS-pixel threshold protects quick walk/interact taps; a 320 ms
+long press followed by a drag still works. Gestures only begin within
+the game world, not the chat, minimap or inventory. Lifting the finger,
+pointer cancellation, page blur or logout ends movement immediately,
+without momentum. Safari text selection/callouts remain suppressed on
+the original canvas. These sensitivity constants are initial tuning
+values, not claimed measurements from the official OSRS Mobile client.
+Manual iPhone playtesting should determine whether they need adjustment.

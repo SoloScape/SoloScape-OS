@@ -1,194 +1,192 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
-import {runInNewContext} from "node:vm";
-import {attachOriginalTouchCamera,CAMERA_HOLD_MS} from "../teavm-poc/site/original-touch-camera.mjs";
+import {
+ attachOriginalTouchCamera,CAMERA_HOLD_MS,CAMERA_DRAG_START_PX,
+ CAMERA_YAW_UNITS_PER_PIXEL,CAMERA_PITCH_UNITS_PER_PIXEL
+} from "../teavm-poc/site/original-touch-camera.mjs";
 
-function fixture({state="LOGGED_IN",resized=false}={}){
-    const handlers=new Map(),timers=new Map(),dispatched=[];
+function fixture({state="LOGGED_IN",resized=false,allowRotation=true}={}){
+    const handlers=new Map(),timers=new Map(),turns=[],captures=[];
     let stamp=10000,serial=0,mode=state;
-    const rect={left:0,top:0,width:resized?920:765,height:resized?720:503};
+    const r={left:0,top:0,width:resized?920:765,height:resized?720:503};
     const canvas={
-        width:rect.width,height:rect.height,
-        getBoundingClientRect:()=>rect,
-        addEventListener(type,fn){const list=handlers.get("canvas:"+type)??[];list.push(fn);handlers.set("canvas:"+type,list);},
+        width:r.width,height:r.height,
+        getBoundingClientRect:()=>r,
+        addEventListener(type,fn){const a=handlers.get("canvas:"+type)??[];a.push(fn);handlers.set("canvas:"+type,a);},
         removeEventListener(type,fn){handlers.set("canvas:"+type,(handlers.get("canvas:"+type)??[]).filter(f=>f!==fn));},
-        dispatchEvent(event){dispatched.push(event);return true;},
-        setPointerCapture(){},releasePointerCapture(){}
+        setPointerCapture:id=>captures.push(["start",id]),
+        releasePointerCapture:id=>captures.push(["end",id])
     };
     const page={
-        addEventListener(type,fn){const list=handlers.get("page:"+type)??[];list.push(fn);handlers.set("page:"+type,list);},
+        addEventListener(type,fn){const a=handlers.get("page:"+type)??[];a.push(fn);handlers.set("page:"+type,a);},
         removeEventListener(type,fn){handlers.set("page:"+type,(handlers.get("page:"+type)??[]).filter(f=>f!==fn));}
     };
     const camera=attachOriginalTouchCamera({
-        canvas,page,getGameState:()=>mode,
-        createKeyEvent:(type,key)=>({type,key}),
+        canvas,page,getGameState:()=>mode,rotateCamera:(yaw,pitch)=>{turns.push([yaw,pitch]);return allowRotation;},
         schedule:(fn,ms)=>{const id=++serial;timers.set(id,{fn,ms});return id;},
         cancel:id=>timers.delete(id),now:()=>stamp
     });
     const fire=(where,type,values={})=>{
         const event={
             type,pointerType:"touch",isPrimary:true,pointerId:1,
-            clientX:180,clientY:150,cancelable:true,
-            prevented:false,stopped:false,
+            clientX:150,clientY:150,cancelable:true,prevented:false,stopped:false,
             preventDefault(){this.prevented=true;},
-            stopImmediatePropagation(){this.stopped=true;},...values
+            stopImmediatePropagation(){this.stopped=true;},
+            ...values
         };
         for(const fn of handlers.get(where+":"+type)??[])fn(event);
         return event;
     };
     const tick=ms=>{
         stamp+=ms;
-        const due=[...timers].filter(([,v])=>v.ms<=ms);
-        for(const [id,v] of due){if(!timers.has(id))continue;timers.delete(id);v.fn();}
+        const batch=[...timers];
+        for(const [id,{fn,ms:wait}] of batch)if(wait<=ms&&timers.has(id)){
+            timers.delete(id);fn();
+        }
     };
-    return {camera,canvas,page,handlers,timers,dispatched,fire,tick,
+    return {camera,turns,captures,handlers,timers,fire,tick,
         setState:s=>mode=s,advance:ms=>stamp+=ms};
 }
-test("short iPhone taps leave original canvas mousedown/mouseup/click available",()=>{
-    const f=fixture();const down=f.fire("canvas","pointerdown");
+const sum=turns=>turns.reduce((tot,[x,y])=>[tot[0]+x,tot[1]+y],[0,0]);
+
+test("quick tap and tiny drift preserve original Java walking and menus",()=>{
+    const f=fixture();
+    const down=f.fire("canvas","pointerdown");
     assert.equal(down.prevented,false);
-    f.fire("page","pointerup");f.tick(400);
-    assert.equal(f.dispatched.length,0);
-    const click=f.fire("canvas","click");
-    assert.equal(click.stopped,false);
-    assert.equal(click.prevented,false);
+    f.fire("canvas","pointermove",{clientX:158,clientY:156});
+    f.fire("page","pointerup");
+    assert.deepEqual(f.turns,[]);
+    assert.equal(f.fire("canvas","click").stopped,false);
     assert.equal(f.timers.size,0);
 });
-test("hold and drag rotates with native Java AWT arrow-key events and releases when idle",()=>{
-    const f=fixture(),down=f.fire("canvas","pointerdown");
-    assert.equal(down.prevented,false);
-    const timer=[...f.timers.values()][0];
-    assert.equal(timer.ms,CAMERA_HOLD_MS);
-    f.tick(CAMERA_HOLD_MS);
-    const drag=f.fire("canvas","pointermove",{clientX:212,clientY:121});
-    assert.equal(drag.prevented,true);
-    assert.deepEqual(f.dispatched.map(e=>[e.type,e.key]),[
-        ["keydown","ArrowRight"],["keydown","ArrowUp"]
-    ]);
-    f.tick(100);
-    assert.deepEqual(f.dispatched.slice(2).map(e=>[e.type,e.key]),[
-        ["keyup","ArrowRight"],["keyup","ArrowUp"]
-    ]);
-    f.fire("page","pointerup");
-    const compat=f.fire("canvas","click");
-    assert.equal(compat.stopped,true);
-    f.advance(701);
-    assert.equal(f.fire("canvas","click").stopped,false);
-});
-test("a normal swipe immediately starts camera rotation without waiting 320 ms",()=>{
+
+test("fast 100px swipe turns native yaw by 400 units and stops on lift",()=>{
     const f=fixture();
     f.fire("canvas","pointerdown");
-    f.fire("canvas","pointermove",{clientX:188});
-    assert.equal(f.dispatched.length,0,"small drift remains a normal tap");
-    const swipe=f.fire("canvas","pointermove",{clientX:205,clientY:150});
-    assert.equal(swipe.prevented,true);
-    assert.deepEqual(f.dispatched.map(e=>[e.type,e.key]),[["keydown","ArrowRight"]]);
+    const drag=f.fire("canvas","pointermove",{clientX:250});
+    assert.equal(drag.prevented,true);
+    assert.deepEqual(f.turns,[[100*CAMERA_YAW_UNITS_PER_PIXEL,0]]);
     f.fire("page","pointerup");
-    assert.equal(f.dispatched.at(-1).type,"keydown",
-        "brief swipes must hold direction until the next Java game tick");
-    f.tick(90);
-    assert.deepEqual(f.dispatched.at(-1),{type:"keyup",key:"ArrowRight"});
-    assert.equal(f.fire("canvas","click").stopped,true,"don't walk after a camera swipe");
-    // A new tap immediately after swiping must still click a world destination.
-    f.fire("canvas","pointerdown");
-    f.fire("page","pointerup");
+    assert.deepEqual(f.turns,[[400,0]]);
+    assert.equal(f.fire("canvas","click").stopped,true);
+    f.advance(601);
     assert.equal(f.fire("canvas","click").stopped,false);
+    assert.deepEqual(f.captures,[["start",1],["end",1]]);
 });
-test("cancel, blur, logout and multitouch release pressed keys",()=>{
+
+test("distance—not event frequency, duration or swipe velocity—determines angle",()=>{
+    const fast=fixture(),slow=fixture();
+    fast.fire("canvas","pointerdown");
+    fast.fire("canvas","pointermove",{clientX:270,clientY:215});
+    fast.fire("page","pointerup");
+    slow.fire("canvas","pointerdown");
+    for(let i=1;i<=30;i++){
+        slow.fire("canvas","pointermove",{clientX:150+i*4,clientY:150+i*65/30});
+        slow.advance(25);
+    }
+    slow.fire("page","pointerup");
+    assert.deepEqual(sum(fast.turns),sum(slow.turns));
+    assert.deepEqual(sum(fast.turns),[120*CAMERA_YAW_UNITS_PER_PIXEL,
+        Math.trunc(65*CAMERA_PITCH_UNITS_PER_PIXEL)]);
+});
+
+test("slow subpixel drags accumulate fractional pitch without losing movement",()=>{
+    const f=fixture();
+    f.fire("canvas","pointerdown");
+    for(let i=1;i<=30;i++)
+        f.fire("canvas","pointermove",{clientX:150+i,clientY:150+i/3});
+    f.fire("page","pointerup");
+    const [yaw,pitch]=sum(f.turns);
+    assert.equal(yaw,30*CAMERA_YAW_UNITS_PER_PIXEL);
+    assert.equal(pitch,Math.trunc(10*CAMERA_PITCH_UNITS_PER_PIXEL));
+});
+
+test("long press followed by drag still controls camera",()=>{
     const f=fixture();f.fire("canvas","pointerdown");
-    f.tick(320);f.fire("canvas","pointermove",{clientX:204});
-    f.fire("page","pointercancel",{pointerId:2});
-    assert.equal(f.dispatched.length,1);
-    f.fire("page","pointercancel");
-    assert.equal(f.dispatched.at(-1).type,"keyup");
-    f.fire("canvas","pointerdown");f.tick(320);
-    f.fire("canvas","pointermove",{clientY:170});
-    f.setState("LOGIN_SCREEN");f.camera.update();
-    assert.equal(f.dispatched.at(-1).type,"keyup");
-    f.fire("canvas","pointerdown");f.tick(320);
-    assert.equal(f.dispatched.filter(e=>e.type==="keydown").length,2);
-    f.camera.dispose();
-    assert.equal((f.handlers.get("canvas:pointerdown")??[]).length,0);
+    assert.equal([...f.timers.values()][0].ms,CAMERA_HOLD_MS);
+    f.tick(CAMERA_HOLD_MS);
+    const drag=f.fire("canvas","pointermove",{clientX:170,clientY:170});
+    assert.equal(drag.prevented,true);
+    assert.deepEqual(f.turns,[[80,35]]);
+    f.fire("page","pointerup");
+    assert.deepEqual(f.turns,[[80,35]]);
 });
-test("login screen, mouse pointers and interface buttons have no camera long press",()=>{
-    const f=fixture({state:"LOGIN_SCREEN"});
-    f.fire("canvas","pointerdown");f.tick(400);
-    assert.equal(f.dispatched.length,0);
-    const g=fixture();
-    g.fire("canvas","pointerdown",{pointerType:"mouse"});
-    g.fire("canvas","pointerdown",{clientX:700,clientY:390});
-    g.tick(400);assert.equal(g.dispatched.length,0);
-    const h=fixture({resized:true});
-    h.fire("canvas","pointerdown",{clientX:850,clientY:600});
-    h.tick(400);assert.equal(h.dispatched.length,0);
+
+test("opposite drags cancel, no inertia or post-lift synthetic key states",()=>{
+    const f=fixture();
+    f.fire("canvas","pointerdown");
+    f.fire("canvas","pointermove",{clientX:220,clientY:190});
+    f.fire("canvas","pointermove",{clientX:150,clientY:150});
+    assert.deepEqual(sum(f.turns),[0,0]);
+    f.fire("page","pointerup");
+    const before=f.turns.length;
+    f.tick(700);
+    assert.equal(f.turns.length,before,"no rotation after finger is lifted");
 });
-test("Safari context callout and text-selection are suppressed on original game canvas",()=>{
+
+test("Safari selection is blocked without capturing menu/UI touch",()=>{
     const f=fixture();
     assert.equal(f.fire("canvas","contextmenu").prevented,true);
     assert.equal(f.fire("canvas","selectstart").prevented,true);
-    f.setState("LOGIN_SCREEN");
-    assert.equal(f.fire("canvas","contextmenu").prevented,false);
-});
-test("synthetic camera keyboard keys reach real Java AWT keycode mapping",async()=>{
-    const src=await readFile(new URL("../teavm-poc/engine-src/org/soloscape/teavm/platform/awt/NativeCanvas.java",import.meta.url),"utf8");
-    const js=src.match(/@JSBody\(params=\{"canvas","handler"\},script="([^"]*)"\)/)?.[1];
-    assert.ok(js);
-    const listeners=new Map(),received=[];
-    const canvas={
-        width:765,height:503,tabIndex:-1,
-        getBoundingClientRect:()=>({left:0,top:0,width:765,height:503}),
-        addEventListener:(name,fn)=>listeners.set(name,fn),
-        dispatchEvent:e=>{listeners.get(e.type)?.({clientX:200,clientY:180,
-            button:0,deltaY:0,key:e.key,keyCode:0,preventDefault(){}});return true;}
-    };
-    const scope={canvas,handler:(...args)=>{received.push(args);return false;},
-        document:{getElementById:()=>null}};
-    scope.globalThis=scope;runInNewContext(js,scope);
-    for(const key of ["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"])
-        canvas.dispatchEvent({type:"keydown",key});
-    assert.deepEqual(received.map(r=>r[6]),[37,39,38,40]);
-    assert.ok(received.every(r=>r[0]===401));
-});
-test("original page integrates hold gesture without a gameplay replacement",async()=>{
-    const page=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
-    const css=await readFile(new URL("../teavm-poc/site/engine-smoke.css",import.meta.url),"utf8");
-    assert.match(page,/attachOriginalTouchCamera\(/);
-    assert.match(page,/touchCamera\.update\(\)/);
-    assert.match(css,/-webkit-touch-callout:none/);
-    assert.match(css,/-webkit-user-select:none/);
-    assert.match(css,/user-select:none/);
-    assert.doesNotMatch(page,/replace.*engine|synthetic.*gameplay/i);
-});
-
-test("continuous drag holds camera direction across pointer events until finger rests",()=>{
-    const f=fixture();f.fire("canvas","pointerdown");f.tick(320);
-    f.fire("canvas","pointermove",{clientX:202});
-    f.fire("canvas","pointermove",{clientX:232});
-    f.fire("canvas","pointermove",{clientX:270});
-    assert.deepEqual(f.dispatched.map(e=>[e.type,e.key]),[
-        ["keydown","ArrowRight"]
-    ],"repeated touchmove must not release camera key before original game tick");
-    f.fire("canvas","pointermove",{clientX:240});
-    assert.deepEqual(f.dispatched.map(e=>[e.type,e.key]),[
-        ["keydown","ArrowRight"],["keyup","ArrowRight"],["keydown","ArrowLeft"]
-    ]);
+    f.fire("canvas","pointerdown",{clientX:700,clientY:400});
+    f.fire("canvas","pointermove",{clientX:770,clientY:400});
     f.fire("page","pointerup");
-    f.tick(90);
-    assert.deepEqual(f.dispatched.at(-1),{type:"keyup",key:"ArrowLeft"});
+    assert.deepEqual(f.turns,[]);
+    const r=fixture({resized:true});
+    r.fire("canvas","pointerdown",{clientX:850,clientY:600});
+    r.fire("canvas","pointermove",{clientX:700,clientY:600});
+    assert.deepEqual(r.turns,[]);
+    assert.equal(r.fire("canvas","click").stopped,false);
 });
 
+test("login, mouse input, non-primary pointers and game logout cannot rotate",()=>{
+    const f=fixture({state:"LOGIN_SCREEN"});
+    f.fire("canvas","pointerdown");
+    f.fire("canvas","pointermove",{clientX:230});
+    assert.deepEqual(f.turns,[]);
+    const g=fixture();g.fire("canvas","pointerdown",{pointerType:"mouse"});
+    g.fire("canvas","pointerdown",{pointerId:2,isPrimary:false});
+    g.fire("canvas","pointermove",{clientX:230});
+    assert.deepEqual(g.turns,[]);
+    g.fire("canvas","pointerdown");
+    g.fire("canvas","pointermove",{clientX:230});
+    const count=g.turns.length;
+    g.setState("LOGIN_SCREEN");
+    g.camera.update();
+    g.fire("canvas","pointermove",{clientX:260});
+    assert.equal(g.turns.length,count);
+    g.camera.dispose();
+    assert.equal((g.handlers.get("canvas:pointerdown")??[]).length,0);
+});
 
-test("starting another swipe releases any post-lift camera direction first",()=>{
+test("pointercancel and page blur stop drags immediately",()=>{
     const f=fixture();
     f.fire("canvas","pointerdown");
     f.fire("canvas","pointermove",{clientX:200});
-    f.fire("page","pointerup");
-    assert.deepEqual(f.dispatched.at(-1),{type:"keydown",key:"ArrowRight"});
-    f.fire("canvas","pointerdown",{clientX:180});
-    assert.deepEqual(f.dispatched.at(-1),{type:"keyup",key:"ArrowRight"});
-    f.fire("canvas","pointermove",{clientX:140});
-    assert.deepEqual(f.dispatched.at(-1),{type:"keydown",key:"ArrowLeft"});
+    f.fire("page","pointercancel",{pointerId:2});
+    f.fire("canvas","pointermove",{clientX:250});
+    assert.equal(f.turns.length,2);
     f.fire("page","pointercancel");
-    assert.deepEqual(f.dispatched.at(-1),{type:"keyup",key:"ArrowLeft"});
+    f.fire("canvas","pointermove",{clientX:310});
+    assert.equal(f.turns.length,2);
+    f.fire("canvas","pointerdown");
+    f.fire("page","blur");
+    f.fire("canvas","pointermove",{clientX:250});
+    assert.equal(f.turns.length,2);
+});
+
+test("authentic Java interface implements target wrapping, pitch clamp, and in-game gating",async()=>{
+    const java=await readFile(new URL("../teavm-poc/engine-src/EngineBridge.java",import.meta.url),"utf8");
+    assert.match(java,/rotateOriginalCamera\(int yawDelta,int pitchDelta\)/);
+    assert.match(java,/getGameState\(\)!=net\.runelite\.api\.GameState\.LOGGED_IN/);
+    assert.match(java,/getCameraYawTarget\(\)/);
+    assert.match(java,/setCameraYawTarget\(target\)/);
+    assert.match(java,/getCameraPitchTarget\(\)/);
+    assert.match(java,/setCameraPitchTarget\(target\)/);
+    assert.match(java,/Math\.max\(128,Math\.min\(383,target\)\)/);
+    assert.match(java,/&2047/);
+    const page=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
+    assert.match(page,/rotateCamera:\(yaw,pitch\)=>engine\?\.rotateOriginalCamera\?\.\(yaw,pitch\)/);
+    assert.doesNotMatch(page,/cameraYaw\s*=|cameraPitch\s*=/);
 });

@@ -33,7 +33,8 @@ state.pageRestartedAfterTitleTap=pageLifecycle.restartedAfterTitleTap;
 const loginCamera=attachOriginalLoginCamera({
     canvas:$("original-engine-canvas"),getGameState:()=>state.gameState});
 const touchCamera=attachOriginalTouchCamera({
-    canvas:$("original-engine-canvas"),getGameState:()=>state.gameState});
+    canvas:$("original-engine-canvas"),getGameState:()=>state.gameState,
+    rotateCamera:(yaw,pitch)=>engine?.rotateOriginalCamera?.(yaw,pitch)??false});
 // Fixed, read-only scene count snapshot for debugging missing original world locs.
 window.engineSmokeSceneCounts=()=>engine?.sceneLocCounts?.()??null;
 const fpsSamples=[];
