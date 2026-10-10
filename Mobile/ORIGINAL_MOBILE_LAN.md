@@ -72,3 +72,24 @@ Runtime status, exceptions and original Java game-cycle counters stay available
 to local development tools without a visible diagnostic control panel.
 No passwords, session tokens or original RSA private keys are exposed in the
 diagnostic page or health endpoint.
+
+
+## Login disconnect investigation (developer-only)
+
+If the original Java client displays "You were disconnected from the server"
+after pressing Login, first check the Java game server (TCP 43594) and the
+trusted-LAN WebSocket gateway (43595). A working /health endpoint only verifies
+the page server, not a successful game login.
+
+The gateway now keeps the last 30 **credential-free** connection summaries,
+available only from the development PC at
+`http://127.0.0.1:3097/original-session-diagnostics`. Each summary shows
+only an anonymous sequential connection number, open time, counts of
+client-to-server and server-to-client frames, and a fixed close reason/code.
+It does not store or reveal IPs, names, passwords, packet bytes, session
+tokens, or the original Java game's input fields. A close reason such as
+`Upstream closed` identifies the direction of closure; it does not prove
+whether the server rejected a login packet or a successfully established game
+session ended. Reproduce with manual login, then inspect the newest
+summary on the PC. **Restart only the development LAN gateway to enable
+new Node gateway code**; do not restart or modify the Java game server.

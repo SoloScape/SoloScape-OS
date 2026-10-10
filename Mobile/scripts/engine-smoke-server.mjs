@@ -20,7 +20,7 @@ const files=new Map([
     ["/original-resource/runelite/index",["teavm-poc/target/engine/resources/runelite/index","application/octet-stream"]],
 ]);
 export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.env.SOLOSCAPE_ENGINE_LOCAL_CACHE_ROOT,
-    gatewayPort=null,loginRsaPublic=null,publicClientConfig=null,
+    gatewayPort=null,loginRsaPublic=null,publicClientConfig=null,sessionDiagnostics=null,
     isAllowedPeer=isLocalPeer,allowedHosts=null}={}) {
     return createServer(async(req,res)=>{
         const peer=req.socket.remoteAddress;
@@ -36,6 +36,14 @@ export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.e
                 "Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'"});
             res.end('<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#000"><title>SoloScape LAN check</title><body style="background:#080808;color:#fff;font:18px system-ui;padding:2rem"><h1>SoloScape connection OK</h1><p>Your phone can reach the local page. This check does not load the original Java gamepack or its cache.</p></body></html>');
             return;
+        }
+        // Read-only, loopback-only gateway lifecycle diagnostics. No packet
+        // contents, client addresses, usernames or authentication data.
+        if(sessionDiagnostics&&isLocalPeer(peer)&&
+            req.method==="GET"&&req.url==="/original-session-diagnostics"){
+            res.writeHead(200,{"Content-Type":"application/json; charset=utf-8",
+                "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});
+            res.end(JSON.stringify(sessionDiagnostics()));return;
         }
         if(gatewayPort&&req.method==="GET"&&req.url==="/original-gateway"){
             res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store",

@@ -57,8 +57,10 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
         });
     });
 
+    let sessionSequence=0;
     wss.on("connection", (ws) => {
-        onActivity("connected",0);
+        const session=++sessionSequence;
+        onActivity("connected",0,session);
         let tcp = null;
         let queued = [];
         let queuedBytes = 0;
@@ -67,6 +69,9 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
         const stop = (code = 1000, reason = "upstream closed") => {
             if (ended) return;
             ended = true;
+            // Only a fixed lifecycle reason and WebSocket status are reported.
+            // Never inspect or record usernames, packet bytes or credentials.
+            onActivity("closed:"+reason,code,session);
             queued = [];
             queuedBytes = 0;
             tcp?.destroy();
@@ -84,7 +89,7 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
                 return;
             }
             const bytes = Buffer.isBuffer(data) ? data : Buffer.from(data);
-            onActivity("upstreamBytes",bytes.length);
+            onActivity("upstreamBytes",bytes.length,session);
             if (bytes.length === 0) {
                 stop(1003, "Empty handshake");
                 return;
@@ -111,7 +116,7 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
                 });
                 tcp.on("drain", () => { if (!ended) ws.resume(); });
                 tcp.on("data", (chunk) => {
-                    onActivity("downstreamBytes",chunk.length);
+                    onActivity("downstreamBytes",chunk.length,session);
                     if (ended || ws.readyState !== WebSocket.OPEN) return;
                     if (ws.bufferedAmount > MAX_BUFFER_BYTES) {
                         stop(1009, "Downstream too slow");
@@ -139,7 +144,7 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
             }
         });
         ws.on("error", () => stop(1011, "WebSocket failed"));
-        ws.on("close", () => stop());
+        ws.on("close", () => stop(1000, "Browser closed"));
     });
 
     async function close() {

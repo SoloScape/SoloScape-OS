@@ -272,3 +272,21 @@ test("opt-in native cache is loopback-only, allowlisted, and source files remain
         server.close();await once(server,"close");await rm(root,{recursive:true,force:true});
     }
 });
+
+test("original gateway lifecycle diagnostics are read-only, bounded and localhost-only",async()=>{
+    const server=createEngineSmokeServer({sessionDiagnostics:()=>({
+        sessions:[{id:1,clientFrames:1,serverFrames:0,closedBy:"Upstream closed",closeCode:1000}]
+    })});
+    server.listen(0,"127.0.0.1");
+    await once(server,"listening");
+    try{
+        const origin="http://127.0.0.1:"+server.address().port;
+        const response=await fetch(origin+"/original-session-diagnostics");
+        assert.equal(response.status,200);
+        assert.equal(response.headers.get("cache-control"),"no-store");
+        assert.deepEqual(await response.json(),{sessions:[{
+            id:1,clientFrames:1,serverFrames:0,closedBy:"Upstream closed",closeCode:1000
+        }]});
+        assert.equal((await fetch(origin+"/original-session-diagnostics",{method:"POST"})).status,404);
+    }finally{server.close();await once(server,"close");}
+});

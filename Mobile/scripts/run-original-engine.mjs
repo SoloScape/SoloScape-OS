@@ -37,11 +37,30 @@ const {rsa:loginRsaPublic}=await loadPublicLoginConfig({
     keyPath:resolve(process.env.SOLOSCAPE_ENGINE_PUBLIC_RSA_KEY_FILE||join(mobile,"../Server/.data/client.key")),
     gatewayUrl:"ws://127.0.0.1:43595/"
 });
+// A fixed, credential-free record of gateway socket lifecycles; only the
+// developer on the host PC can fetch it. No packet content or peer identity.
+const recentSessions=[];
+function gatewayActivity(type,code,session){
+    let current=recentSessions.find(item=>item.id===session);
+    if(type==="connected"){
+        current={id:session,openedAt:new Date().toISOString(),clientFrames:0,
+            serverFrames:0,closedBy:null,closeCode:null};
+        recentSessions.push(current);
+        if(recentSessions.length>30)recentSessions.shift();
+    }else if(current){
+        if(type==="upstreamBytes")current.clientFrames++;
+        else if(type==="downstreamBytes")current.serverFrames++;
+        else if(type.startsWith("closed:")){
+            current.closedBy=type.slice(7);
+            current.closeCode=code;
+        }
+    }
+}
 const gateway=createGateway({tcpHost:"127.0.0.1",tcpPort:upstreamPort,
     allowedOrigins:new Set([origin,"http://localhost:"+port,...(lanOrigin?[lanOrigin]:[])]),
-    isAllowedPeer});
+    isAllowedPeer,onActivity:gatewayActivity});
 const server=createEngineSmokeServer({nativeCacheRoot,gatewayPort,loginRsaPublic,
-    isAllowedPeer,allowedHosts});
+    isAllowedPeer,allowedHosts,sessionDiagnostics:()=>({sessions:recentSessions})});
 function listen(instance,port){
     return new Promise((resolve,reject)=>{
         instance.once("error",reject);

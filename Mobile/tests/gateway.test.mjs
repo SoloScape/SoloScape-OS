@@ -89,3 +89,41 @@ test("gateway bridges a native binary handshake and rejects TSPS opcodes and unt
         await tcp.close();
     }
 });
+
+test("gateway reports only fixed upstream close lifecycle without packet contents", {timeout:10000}, async()=>{
+    const sockets=new Set();
+    const tcp=createTcpServer(socket=>{
+        sockets.add(socket);
+        socket.on("close",()=>sockets.delete(socket));
+        socket.once("data",()=>socket.end());
+    });
+    tcp.listen(0,"127.0.0.1");
+    await once(tcp,"listening");
+    const observed=[];
+    const {httpServer,close}=createGateway({
+        tcpHost:"127.0.0.1",tcpPort:tcp.address().port,
+        allowedOrigins:new Set(["http://localhost:3001"]),
+        onActivity:(kind,value,id)=>observed.push({kind,value,id})
+    });
+    httpServer.listen(0,"127.0.0.1");
+    await once(httpServer,"listening");
+    try{
+        const address="ws://127.0.0.1:"+httpServer.address().port+"/";
+        const ws=new WebSocket(address,{origin:"http://localhost:3001"});
+        await once(ws,"open");
+        ws.send(Buffer.from([14]));
+        await once(ws,"close");
+        assert.ok(observed.some(e=>e.kind==="connected"));
+        assert.ok(observed.some(e=>e.kind==="upstreamBytes"));
+        const terminal=observed.filter(e=>e.kind.startsWith("closed:"));
+        assert.equal(terminal.length,1,"each socket has exactly one terminal event");
+        assert.equal(terminal[0].kind,"closed:Upstream closed");
+        assert.equal(terminal[0].value,1000);
+        assert.equal(terminal[0].id,observed[0].id);
+        assert.ok(observed.every(e=>Object.keys(e).every(k=>["kind","value","id"].includes(k))));
+    }finally{
+        await close();
+        for(const s of sockets)s.destroy();
+        await new Promise(resolve=>tcp.close(resolve));
+    }
+});
