@@ -12,7 +12,7 @@ This is not the separate WebGL/TSPS homepage and is not intended for public host
    It listens at `43594` on the development PC.
 3. From `Mobile/`, build the pinned original engine if necessary with
    `npm run build:openosrs-engine`, then launch
-   `npm run dev:original-engine:lan`. This **explicitly opts in** to exposing
+   `npm run dev:original-engine` (or double-click `Mobile/run.bat`). This enables
    the development host (`3097`) and game WebSocket gateway (`43595`) to
    authorized peers on your private subnet. Do not port-forward either port.
 4. On the phone, open the **LAN URL printed by the server**, for example
@@ -70,7 +70,7 @@ the original game cache.
   Java server (`43594`) and LAN gateway (`43595`) are running and reachable.
   No LAN proxy can substitute for a stopped Java game server.
 - The local host and gateway are HTTP and WS, not HTTPS or WSS. Only use
-  the opted-in server on a trusted private network; do not expose the
+  the server on a trusted private network; do not expose the
   gamepack/cache externally. Mobile browser support is still experimental.
 
 Runtime status, exceptions and original Java game-cycle counters stay available

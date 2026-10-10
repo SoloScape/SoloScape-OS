@@ -1,5 +1,5 @@
 // Original revision-240 engine development page and game gateway.
-// Loopback by default; trusted private LAN access is opt-in.
+// Trusted private LAN access by default; explicit LAN=0 keeps a loopback-only session.
 import {existsSync} from "node:fs";
 import {resolve,join,dirname} from "node:path";
 import {fileURLToPath} from "node:url";
@@ -25,7 +25,7 @@ for(const value of [port,upstreamPort])
         throw new Error("Invalid local port");
 if(port===gatewayPort||upstreamPort===gatewayPort)
     throw new Error("Local diagnostic, native server and WebSocket gateway need separate ports");
-const lanEnabled=process.env.SOLOSCAPE_ENGINE_LAN==="1";
+const lanEnabled=process.env.SOLOSCAPE_ENGINE_LAN!=="0";
 const lan=lanEnabled?createLanPolicy({preferredIp:process.env.SOLOSCAPE_ENGINE_LAN_IP||null}):null;
 const bindHost=lanEnabled?"0.0.0.0":"127.0.0.1";
 const origin="http://127.0.0.1:"+port;

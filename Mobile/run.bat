@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
 
-rem SoloScape original OpenOSRS dev launcher (Windows, local only).
+rem SoloScape original OpenOSRS dev launcher (Windows, trusted LAN enabled).
 rem Launches the original-engine diagnostic and the Stage 1 MCP stdio process.
 rem The stdio process is not an MCP connection: an MCP host must spawn its own.
 cd /d "%~dp0" || (
@@ -16,6 +16,9 @@ if not "%~1"=="" goto :usage_error
 
 call :prerequisites
 if errorlevel 1 exit /b 1
+
+rem Phone access is always enabled by this launcher.
+set "SOLOSCAPE_ENGINE_LAN=1"
 
 rem Only the original revision-240 engine diagnostic is supported by Stage 1.
 rem Do not start npm run dev (that is the separate WebGL preview).

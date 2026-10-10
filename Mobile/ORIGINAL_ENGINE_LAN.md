@@ -16,8 +16,9 @@ The original Java renderer remains unchanged.
 2. Start the existing Java game server using `Server/run.bat` (port 43594).
    Do **not** expose the Java TCP port to the phone; the gateway runs on the PC.
 3. Close an older `npm run dev:original-engine` terminal on port 3097.
-4. Double-click `Mobile/run-original-lan.bat`, or in `Mobile/` run:
-   `npm run dev:original-engine:lan`.
+4. Double-click `Mobile/run.bat`, or in `Mobile/` run:
+   `npm run dev:original-engine`. LAN access is enabled by default;
+   `run-original-lan.bat` and `dev:original-engine:lan` remain compatible aliases.
 5. Find the URL printed after `TRUSTED LAN ONLY:` in the console, and open
    it in the phone browser. The current PC IPv4 address is
    **http://192.168.0.129:3097/** (it can change after reconnecting).
@@ -31,23 +32,22 @@ Leave `Server/run.bat` and `run-original-lan.bat` open while playing.
 
 ## Windows Firewall
 
-If the page fails to open from the phone, check that Windows treats the
-connected network as **Private**, not Public. You may need to explicitly
-allow inbound TCP **3097 and 43595** from `LocalSubnet` on the **Private**
-profile. An administrator can use:
+If the page fails to open from the phone, allow inbound TCP **3097 and 43595**
+from `LocalSubnet`. The rule below applies even when Windows labels your
+trusted home LAN as Public. Run it once in PowerShell as administrator:
 
 ```powershell
-New-NetFirewallRule -DisplayName "SoloScape Original Client LAN" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3097,43595 -Profile Private -RemoteAddress LocalSubnet
+New-NetFirewallRule -DisplayName "SoloScape Original Engine LAN" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 3097,43595 -Profile Any -RemoteAddress LocalSubnet
 ```
 
-The launcher does not change your firewall automatically. Do not allow these
-ports for Public networks, expose them to the Internet, or configure router
-port forwarding. To disable LAN sharing, stop the LAN terminal and restart
-the loopback-only `npm run dev:original-engine` command.
+The launcher does not change your firewall automatically. Keep the source-subnet
+restriction, use a trusted LAN, and do not expose these services to the Internet or configure router
+port forwarding. For an explicit loopback-only diagnostic session, stop the
+launcher and set `SOLOSCAPE_ENGINE_LAN=0` before `npm run dev:original-engine`.
 
 ## Security and mobile limitations
 
-LAN access is **opt-in**. The server picks an active private IPv4 adapter
+LAN access is **enabled by default**. The server picks an active private IPv4 adapter
 (override using `SOLOSCAPE_ENGINE_LAN_IP` if multiple are available),
 restricts HTTP by Host and source subnet, restricts the WebSocket gateway by
 source subnet and exact browser Origin, and never changes the underlying
@@ -66,7 +66,7 @@ themselves prove all gameplay input works on a phone.
 
 Development telemetry and the original gamepack source are not exposed as
 extra HTML panels. The internal telemetry remains for the local bridge.
-`Mobile/run.bat` remains the standard loopback-only development launcher.
+`Mobile/run.bat` enables trusted LAN access on every launch.
 
 ## White screen troubleshooting on iPhone
 

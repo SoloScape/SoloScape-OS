@@ -1,4 +1,4 @@
-// Opt-in trusted-LAN access to the original-engine development page.
+// Trusted-LAN access policy for the original-engine development page.
 // Never use this listener on an untrusted Wi-Fi or route it to the Internet.
 import {networkInterfaces} from "node:os";
 import {isIP} from "node:net";
