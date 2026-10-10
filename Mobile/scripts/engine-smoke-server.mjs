@@ -12,6 +12,7 @@ const files=new Map([
     ["/",["teavm-poc/site/engine-smoke.html","text/html; charset=utf-8"]],
     ["/engine-smoke.mjs",["teavm-poc/site/engine-smoke.mjs","text/javascript; charset=utf-8"]],
     ["/engine-smoke.css",["teavm-poc/site/engine-smoke.css","text/css; charset=utf-8"]],
+    ["/original-cache-loader.mjs",["teavm-poc/site/original-cache-loader.mjs","text/javascript; charset=utf-8"]],
     ["/engine.js",["teavm-poc/target/engine/javascript/engine.js","text/javascript; charset=utf-8"]],
     ["/original-resource/client.serial",["teavm-poc/target/engine/resources/client.serial","application/octet-stream"]],
     ["/original-resource/compilercontrol.json",["teavm-poc/target/engine/resources/compilercontrol.json","application/json"]],
@@ -26,6 +27,15 @@ export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.e
             res.writeHead(403);res.end("Trusted local network required");return;
         }
         const gatewayHost=allowedHosts?req.headers.host.split(":")[0]:"127.0.0.1";
+        // Small LAN connectivity test: never imports or allocates the Java
+        // gamepack or original 239 MB native cache in the phone browser.
+        if(req.method==="GET"&&req.url==="/health"){
+            res.writeHead(200,{"Content-Type":"text/html; charset=utf-8",
+                "Cache-Control":"no-store","X-Content-Type-Options":"nosniff",
+                "Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'"});
+            res.end('<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#000"><title>SoloScape LAN check</title><body style="background:#080808;color:#fff;font:18px system-ui;padding:2rem"><h1>SoloScape connection OK</h1><p>Your phone can reach the local page. This check does not load the original Java gamepack or its cache.</p></body></html>');
+            return;
+        }
         if(gatewayPort&&req.method==="GET"&&req.url==="/original-gateway"){
             res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store",
                 "X-Content-Type-Options":"nosniff"});

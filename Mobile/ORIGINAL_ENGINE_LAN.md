@@ -64,3 +64,27 @@ themselves prove all gameplay input works on a phone.
 Development telemetry and the original gamepack source are not exposed as
 extra HTML panels. The internal telemetry remains for the local bridge.
 `Mobile/run.bat` remains the standard loopback-only development launcher.
+
+## White screen troubleshooting on iPhone
+
+Open `http://192.168.0.129:3097/health` (use the IP from the
+`TRUSTED LAN ONLY:` server message if it changes). This deliberately
+**does not load** the Java gamepack or original cache.
+
+- If it displays **SoloScape connection OK**, the phone can reach the
+  authorized LAN webpage. Try the normal `/` page again; it now displays
+  game-cache download progress and catches ordinary startup errors.
+- If the health page does **not** load, check private Wi-Fi, router guest
+  isolation, LAN IP, Windows Firewall port 3097 and the LAN launcher.
+- If the health page works but the game tab goes completely blank or is
+  reloaded, mobile browser memory exhaustion is a possibility. The pinned
+  compiled original gamepack is about 12 MB of JavaScript and the current
+  original native cache is about 239 MB. The cache files are now loaded
+  **sequentially, using streaming into one final buffer each** to reduce
+  temporary memory spikes, but the full cache must still reside in browser
+  memory. iOS browser support remains experimental; this does not guarantee
+  the original Java engine fits within WebKit memory limits.
+- Leave the original game server on port 43594 running; `/health` alone
+  does not prove the server or game protocol is available.
+
+Do not expose development ports to the public Internet. Login stays manual.

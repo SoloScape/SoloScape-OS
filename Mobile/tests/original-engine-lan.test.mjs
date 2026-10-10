@@ -47,6 +47,13 @@ test("LAN HTTP page uses allowed Host, a phone-reachable WebSocket route and CSP
         const page=await get("/","192.168.0.129:3097");
         assert.equal(page.status,200);
         assert.match(page.headers["content-security-policy"],/ws:\/\/192\.168\.0\.129:43595/);
+        const health=await get("/health","192.168.0.129:3097");
+        assert.equal(health.status,200);
+        assert.match(health.body,/SoloScape connection OK/);
+        assert.doesNotMatch(health.body,/engine-smoke.mjs|engine.js|original-cache/);
+        const loader=await get("/original-cache-loader.mjs","192.168.0.129:3097");
+        assert.equal(loader.status,200);
+        assert.match(loader.headers["content-type"],/javascript/);
         const route=await get("/original-gateway","192.168.0.129:3097");
         assert.equal(route.status,200);
         const payload=JSON.parse(route.body);
