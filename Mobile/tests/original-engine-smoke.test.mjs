@@ -29,6 +29,23 @@ test("original engine diagnostic serves only explicit localhost resources", asyn
     }finally{server.close();await once(server,"close");}
 });
 
+test("isolated Chrome tests supply public parameters without player-facing forms",async()=>{
+    const publicClientConfig={
+        parameters:{"4":"1","9":"public-test-parameter"},
+        routes:[{host:"127.0.0.1",port:43594,url:"ws://127.0.0.1:43595/"}]
+    };
+    const server=createEngineSmokeServer({publicClientConfig});
+    server.listen(0,"127.0.0.1");
+    await once(server,"listening");
+    try{
+        const url="http://127.0.0.1:"+server.address().port+"/original-public-config";
+        const response=await fetch(url);
+        assert.equal(response.status,200);
+        assert.equal(response.headers.get("cache-control"),"no-store");
+        assert.deepEqual(await response.json(),publicClientConfig);
+    }finally{server.close();await once(server,"close");}
+});
+
 test("original engine browser harness measures game cycles and canvas, not a synthetic success flag",async()=>{
     const fs=await import("node:fs/promises");
     const url=new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url);
