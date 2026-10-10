@@ -9,7 +9,6 @@ const fpsSamples=[];
 function event(message){
     const safe=String(message).slice(0,1000);
     state.events.push(safe);if(state.events.length>25)state.events.shift();
-    $("events").textContent=state.events.join("\n");
 }
 function signature(){
     const canvas=$("original-engine-canvas");
@@ -28,13 +27,11 @@ function signature(){
 function collect(){
     try{
         state.step=engine.startupStep();
-        $("status").textContent=state.phase+" ("+state.step+")";
         const hooksError=engine.callbackError();
         if(hooksError && hooksError!==state.callbackError){
             state.callbackError=hooksError;
             state.phase="error";
             state.error="original client thread: "+hooksError;
-            $("status").textContent="error (client thread)";
             state.callbackTrace=engine.callbackTrace?.()??"";
             event("Original client callback error: "+hooksError);
             if(state.callbackTrace)event("Original client callback frames: "+state.callbackTrace);
@@ -46,9 +43,6 @@ function collect(){
         state.socketAttempts=globalThis.soloscapeEngineSocketAttempts??[];
         state.resourceLookups=globalThis.soloscapeOriginalResourceLookups??[];
         state.filePaths=(globalThis.soloscapeOriginalFilePaths??[]).filter(path=>/cache|jagex|oldschool|random\.dat|\.idx/i.test(path)).slice(-40);
-        const gameState=document.getElementById("game-state");
-        if(gameState)gameState.textContent=state.gameState;
-        $("cycle").textContent=String(cycle);
         state.originalFps=engine.originalFps();
         state.presentedFrames=engine.presentedFrames();
         state.clockStats={
@@ -68,33 +62,20 @@ function collect(){
                 }
             }
         }
-        $("original-fps").textContent=state.originalFps<0?"unavailable":String(state.originalFps);
-        $("presented-fps").textContent=state.presentedFps.toFixed(1);
-        $("cycle-rate").textContent=state.cycleRate.toFixed(1);
-        $("thread").textContent=state.clientThread?"Present":"Missing";
         const current=signature();
         state.canvasSampleColors=current?.colors??0;
         if(current&&initialPixelSignature&&current.hash!==initialPixelSignature.hash)
             state.frameChanged=true;
-        $("frame").textContent=state.frameChanged?"Yes":"No";
-        const progressed=state.cycles.filter(c=>c>=0);
-        const running=progressed.length>=2&&progressed.at(-1)>progressed[0];
-        $("result").textContent=running&&state.frameChanged
-            ?"Original game cycles are advancing and the canvas changed."
-            : "Initialization alone is not gameplay proof. Checking original cycles and canvas pixels.";
     }catch(error){state.error=String(error);event("Telemetry error: "+state.error);}
 }
-function parseJson(id,kind){
-    const value=JSON.parse($(id).value);
-    if(kind==="object"&&(!value||Array.isArray(value)||typeof value!=="object"))throw new Error(id+" must be a JSON object");
-    if(kind==="array"&&!Array.isArray(value))throw new Error(id+" must be a JSON array");
-    return value;
-}
-$("codebase").value=window.location.origin+"/";
-$("start").addEventListener("click",async()=>{
-    $("start").disabled=true;
+// The page owns startup; opening it is the only initialization action.
+// Keep the original public configuration, original cache, RSA and gateway.
+async function initializeOriginalEngine(){
     try{
-        const params=parseJson("params","object"),routes=parseJson("routes","array");
+        const params=JSON.parse($("params").textContent);
+        if(!params||Array.isArray(params)||typeof params!=="object")
+            throw new Error("Original public startup parameters are invalid");
+        const routes=[];
         // The pinned original gamepack writes jav_config parameter 9 into its
         // login packet. Omitting it leaves a null Java String and crashes the
         // original packet writer (JavaScript string property dereference).
@@ -112,7 +93,7 @@ $("start").addEventListener("click",async()=>{
                 if(Array.isArray(defaults))routes.push(...defaults);
             }
         }
-        state.phase="loading";$("status").textContent="Importing engine";
+        state.phase="loading";
         engine=await import("/engine.js");
         for(const name of ["configureClient","configureClientParameter","initializeAsync","gameCycle","hasClientThread"])
             if(typeof engine[name]!=="function")throw new Error("Engine rebuild required: "+name+" missing");
@@ -151,7 +132,7 @@ $("start").addEventListener("click",async()=>{
             engine.registerResource(name,Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join(""));
         }
         engine.configureCanvas("original-engine-canvas");
-        engine.configureClient($("codebase").value);
+        engine.configureClient(window.location.origin+"/");
         for(const [name,value] of Object.entries(params)){
             if(typeof value!=="string")throw new Error("Parameter "+name+" must be a string");
             engine.configureClientParameter(name,value);
@@ -171,18 +152,18 @@ $("start").addEventListener("click",async()=>{
             event("Original title-only smoke: local login RSA not configured");
         }else throw new Error("SoloScape public login key unavailable");
         initialPixelSignature=signature();
-        $("status").textContent="Initializing";
         event("Original engine initializeAsync invoked");
         framePoll=setInterval(collect,500);
         engine.initializeAsync(error=>{
             state.phase=error?"error":"initialized";
             state.error=error||"";
-            $("status").textContent=state.phase;
             event(error?"Original engine initialization error: "+error:"Initialize returned (cycles not yet proven)");
         });
     }catch(error){
         state.phase="error";state.error=String(error);
-        $("status").textContent="error";event(state.error);
+        event(state.error);
     }
-},{once:true});
+}
 window.addEventListener("pagehide",()=>{if(framePoll)clearInterval(framePoll);},{once:true});
+// Automatic, exactly once on page load; login itself remains manual.
+void initializeOriginalEngine();
