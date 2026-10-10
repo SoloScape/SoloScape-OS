@@ -6,7 +6,7 @@ import dev.openrune.rscm.RSCM.asRSCM
 import dev.openrune.rscm.RSCMType
 import dev.openrune.types.aconverted.enum
 import dev.openrune.types.dbcol.DbColumnCodec.ComponentTypeCodec
-import org.rsmod.api.enums.RedirectEnums
+import dev.openrune.types.dbcol.DbColumnCodec.IntCodec
 import org.rsmod.api.table.GameframeRow
 import org.rsmod.game.ui.Component
 
@@ -36,8 +36,12 @@ internal class GameframeLoader {
         val mobileTop = "interface.toplevel_osm"
         val mobileId = mobileTop.asRSCM(RSCMType.INTERFACE)
         if (mobileId !in mapped) {
-            val mobileMappings = RedirectEnums.mobile_pane_redirect.filterValuesNotNull()
-                .associate { Component(it.key.packed) to Component(it.value.packed) }
+            // Redirects include packed pseudo-components (for example 600:65535)
+            // without widget definitions. Preserve their IDs instead of resolving
+            // them through the nullable ComponentType codec.
+            val mobileMappings = enum("enum.mobile_pane_redirect", IntCodec, IntCodec)
+                .filter { it.key != -1 && it.value != -1 }
+                .associate { Component(it.key) to Component(it.value) }
             mapped[mobileId] = Gameframe(
                 topLevel = mobileTop,
                 overlays = overlays,

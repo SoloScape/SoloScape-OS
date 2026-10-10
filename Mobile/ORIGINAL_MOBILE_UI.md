@@ -20,6 +20,9 @@ The server registers the cache's mobile redirect mappings and handles that
 command using its existing gameframe move queue. It sets the original resizable
 mode and moves the existing overlays into mobile containers. A saved mobile
 frame is excluded from PC login fallback; the current browser requests it again.
+Mobile redirects are decoded as packed IDs: enum 1745 includes pseudo-components
+such as `600:65535` that have no widget definition. Resolving every key through
+the nullable component-definition codec prevents server startup.
 
 Both the Java engine and Kotlin server must be rebuilt. Stop the running server
 before packaging its replacement: Windows locks the active `build/direct/lib`
