@@ -10,12 +10,13 @@ const root=join(dirname(fileURLToPath(import.meta.url)),"..");
 const files=new Map([
     ["/",["teavm-poc/site/engine-smoke.html","text/html; charset=utf-8"]],
     ["/engine-smoke.mjs",["teavm-poc/site/engine-smoke.mjs","text/javascript; charset=utf-8"]],
+    ["/engine-smoke.css",["teavm-poc/site/engine-smoke.css","text/css; charset=utf-8"]],
     ["/engine.js",["teavm-poc/target/engine/javascript/engine.js","text/javascript; charset=utf-8"]],
     ["/original-resource/client.serial",["teavm-poc/target/engine/resources/client.serial","application/octet-stream"]],
     ["/original-resource/compilercontrol.json",["teavm-poc/target/engine/resources/compilercontrol.json","application/json"]],
     ["/original-resource/runelite/index",["teavm-poc/target/engine/resources/runelite/index","application/octet-stream"]],
 ]);
-export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.env.SOLOSCAPE_ENGINE_LOCAL_CACHE_ROOT,gatewayPort=null,loginRsaPublic=null}={}) {
+export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.env.SOLOSCAPE_ENGINE_LOCAL_CACHE_ROOT,gatewayPort=null,loginRsaPublic=null,publicClientConfig=null}={}) {
     return createServer(async(req,res)=>{
         const peer=req.socket.remoteAddress;
         if(!["127.0.0.1","::1","::ffff:127.0.0.1"].includes(peer)){
@@ -32,6 +33,14 @@ export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.e
             res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store",
                 "X-Content-Type-Options":"nosniff"});
             res.end(JSON.stringify({exponent:loginRsaPublic.exponent,modulus:loginRsaPublic.modulus}));return;
+        }
+        // Only isolated browser tests use this endpoint to override *public*
+        // gamepack parameters without a visible diagnostic form. Never serve
+        // private keys, credentials, account data or arbitrary scripts here.
+        if(publicClientConfig&&req.method==="GET"&&req.url==="/original-public-config"){
+            res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store",
+                "X-Content-Type-Options":"nosniff"});
+            res.end(JSON.stringify(publicClientConfig));return;
         }
         // Explicit, opt-in local *read-only* snapshot of original cache files.
         // Stream the 237 MB data file; never read it into the Node heap.

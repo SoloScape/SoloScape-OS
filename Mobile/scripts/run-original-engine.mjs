@@ -48,7 +48,7 @@ try{
 console.log("Original OpenOSRS title diagnostic (loopback only): "+origin+"/");
 console.log("Reads existing original cache into browser memory; never writes to server cache.");
 console.log("Requires native revision-240 JS5 server listening at 127.0.0.1:"+upstreamPort);
-console.log("Click Initialize original engine; LOGIN_SCREEN and original title art are the proof.");
+console.log("Original Java engine initializes automatically on page load; log in manually.");
 let closing=false;
 async function shutdown(){
     if(closing)return;closing=true;
