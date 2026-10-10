@@ -42,8 +42,9 @@ Have the local SoloScape **native revision-240 JS5 server** listening
 on `127.0.0.1:43594` (the existing server). Open `http://127.0.0.1:3097/`.
 The original engine **initializes automatically on page load**; there is
 no Initialize button or visible diagnostic panel. The original 765 × 503 Java
-software framebuffer is scaled to fill the browser viewport (without
-reimplementing the renderer). The game login remains manual. Startup uses
+software framebuffer is fitted within the browser viewport without distortion
+or changes to the renderer. Empty space around the canvas is black.
+The game login remains manual. Startup uses
 the pinned public parameters and, when launched with `npm run
 dev:original-engine`, the loopback-only gateway routes automatically. The local development host
 reads **only** `Server/.data/client.key` (the generated public RSA key), serves

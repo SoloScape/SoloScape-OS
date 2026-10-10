@@ -2,9 +2,10 @@
 
 This serves the **actual original revision-240 Java gamepack**, compiled with
 TeaVM, and its original Java software renderer. The page now starts the engine
-**automatically** and displays only the original game canvas. The fullscreen CSS scales its
-765×503 framebuffer across the viewport; the original Java renderer remains
-unchanged.
+**automatically** and displays only the original game canvas. The fullscreen CSS fits the
+765x503 framebuffer inside the viewport without stretching, with black space
+where the screen has a different aspect ratio.
+The original Java renderer remains unchanged.
 
 ## Connect
 
@@ -54,9 +55,10 @@ gamepack and cache to **devices on your subnet**, without HTTPS or app-level
 authentication, so use **only a private network and disposable test account**.
 Check gamepack/cache distribution rights before sharing beyond personal testing.
 
-The 765×503 original framebuffer fills the browser viewport using CSS
-without replacing the **original Java renderer**; portrait view may stretch
-the display. Landscape orientation is recommended. Native phone touch
+The 765x503 original framebuffer is centred and scaled uniformly to fit the
+browser viewport without cropping or replacing the **original Java renderer**.
+Black bars are expected when the screen has a different aspect ratio.
+Landscape orientation is recommended. Native phone touch
 gestures, long-press context menus and on-screen keyboard support may still
 need further work; opening the page and displaying the title do not by
 themselves prove all gameplay input works on a phone.

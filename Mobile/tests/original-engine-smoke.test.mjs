@@ -75,7 +75,8 @@ test("original engine autostarts into a canvas-only fullscreen viewport",async()
     assert.match(css,/#original-soft-keyboard\{[^}]*opacity:0/);
     assert.match(html,/<canvas id="original-engine-canvas"/);
     assert.match(css,/#original-engine-canvas\{/);
-    assert.match(css,/height:100dvh/);
+    assert.match(css,/aspect-ratio:765\/503/);
+    assert.match(css,/width:min\(100vw,152\.0875dvh\)/);
     assert.match(css,/overflow:hidden/);
 });
 

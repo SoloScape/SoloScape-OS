@@ -10,11 +10,11 @@ const source=await readFile(new URL("../teavm-poc/engine-src/org/soloscape/teavm
 const inputScript=source.match(/@JSBody\(params=\{"canvas","handler"\},script="([^"]*)"\)/)?.[1];
 assert.ok(inputScript,"NativeCanvas must retain a fixed canvas-only input bridge");
 
-function createCanvas(consume=()=>false){
+function createCanvas(consume=()=>false,rect={left:0,top:0,width:765,height:503}){
     const handlers=new Map(),sent=[];
     const canvas={
         width:765,height:503,tabIndex:-1,
-        getBoundingClientRect:()=>({left:0,top:0,width:765,height:503}),
+        getBoundingClientRect:()=>rect,
         addEventListener(type,fn,opts){handlers.set(type,{fn,opts});}
     };
     const handler=(...args)=>{sent.push(args);return consume(...args);};
@@ -75,4 +75,20 @@ test("preventDefault is limited to game canvas and respects consumption for ordi
     const backspace=input.fire("keydown",{key:"Backspace",keyCode:0});
     assert.equal(backspace.defaultPrevented,false);
     assert.equal(input.sent.at(-1)[6],8,"synthetic mobile Backspace must use original Java keycode");
+});
+
+test("letterboxed portrait and landscape canvas input maps to original 765x503 pixels",()=>{
+    // Portrait 390x844: fit by width, with equal bars above/below.
+    const height=390*503/765;
+    const portrait=createCanvas(()=>false,{left:0,top:(844-height)/2,width:390,height});
+    portrait.fire("mousedown",{clientX:195,clientY:422});
+    assert.equal(portrait.sent[0][3],382);
+    assert.equal(portrait.sent[0][4],251);
+
+    // Landscape 932x430: fit by height, centred between two side bars.
+    const width=430*765/503;
+    const landscape=createCanvas(()=>false,{left:(932-width)/2,top:0,width,height:430});
+    landscape.fire("mousedown",{clientX:(932-width)/2+width/4,clientY:430*0.75});
+    assert.equal(landscape.sent[0][3],191);
+    assert.equal(landscape.sent[0][4],377);
 });
