@@ -13,7 +13,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
 export function actionArguments(action,args={}){
     if(!args||typeof args!=="object"||Array.isArray(args))throw new Error("Invalid arguments");
     const rules={
-        status:[],start:[],initialize:[],diagnostics:[],screenshot:[],
+        status:[],start:[],initialize:[],diagnostics:[],screenshot:[],heap:[],
         "smoke-test":["durationMs"],profile:["durationMs","cpu"],
         wait:["gameState","timeoutMs"],click:["x","y","button"],
         key:["key"],"rebuild-and-test":[],shutdown:[]
@@ -80,6 +80,14 @@ export class DesktopController {
                 case "initialize":return await this.bridge.initializeEngine();
                 case "wait":return await this.bridge.waitForState(args);
                 case "diagnostics":return await this.bridge.getDiagnostics();
+                case "heap":{
+                    // Read-only Chrome heap telemetry for the bridge-owned tab.
+                    await this.bridge.requireWorld();
+                    const usage=await this.bridge.browser.command("Runtime.getHeapUsage");
+                    const n=v=>typeof v==="number"&&Number.isFinite(v)&&v>=0?v:null;
+                    return {usedBytes:n(usage?.usedSize),totalBytes:n(usage?.totalSize),
+                        note:"JavaScript heap only; not full browser process resident memory"};
+                }
                 case "screenshot":{
                     const png=await this.bridge.captureScreen();
                     return await this.writeCapture(png);

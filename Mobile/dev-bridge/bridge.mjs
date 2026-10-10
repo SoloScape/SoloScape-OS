@@ -13,7 +13,8 @@ gameCycle:s.cycles?.at(-1),originalFps:s.originalFps,
 presentedFrames:s.presentedFrames,presentedFps:s.presentedFps,
 cycleRate:s.cycleRate,clientThread:s.clientThread,frameChanged:s.frameChanged,
 clockStats:s.clockStats,callbackError:s.callbackError,callbackTrace:s.callbackTrace,
-hasError:!!s.error});})()`;
+hasError:!!s.error,pageVisibility:document.visibilityState,
+pageFocused:document.hasFocus()});})()`;
 const rectExpr=`(()=>{const c=document.getElementById('original-engine-canvas');
 if(!c)return null;const r=c.getBoundingClientRect();
 return JSON.stringify({left:r.left,top:r.top,width:r.width,height:r.height,
@@ -51,6 +52,8 @@ export function sanitizeState(raw){
     const stats=raw.clockStats;
     return {
         phase:word(raw.phase),startupStep:word(raw.step),
+        pageVisibility:["visible","hidden"].includes(raw.pageVisibility)?raw.pageVisibility:"UNAVAILABLE",
+        pageFocused:raw.pageFocused===true,
         gameState:word(raw.gameState),gameCycle:finite(raw.gameCycle),
         originalFps:finite(raw.originalFps),presentedFps:finite(raw.presentedFps),
         presentedFrames:finite(raw.presentedFrames),cyclesPerSecond:finite(raw.cycleRate),

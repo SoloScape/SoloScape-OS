@@ -176,6 +176,30 @@ For direct standalone use (without `run.bat`):
 not start the Java game server or original-engine diagnostic; those must
 already be running. Commands report an error if no controller is available.
 
+## Phase 2 authenticated stability verification
+
+For the original Java gamepack, run a **15–30-minute logged-in session** with
+`node dev-bridge/verify-gameplay.mjs 20`. It waits briefly for **manual**
+login, then records sanitized FPS, original game cycles, software frame counts,
+state transitions, browser visibility/focus, and fatal callback indicators.
+`node dev-bridge/controller-cli.mjs heap` reports the Chrome JavaScript heap
+only (requires a healthy `LOGGED_IN` state); it does not read game data,
+username, secrets or networking packets.
+
+On Windows, `powershell -NoProfile -File
+dev-bridge/verify-chrome-memory.ps1 -Minutes 15` records private/working-set
+memory of **only** the bridge-owned Chrome profile, not any other browser.
+Local JSON/CSV results are in ignored
+`teavm-poc/target/engine/phase2-reports/`.
+
+**Current evidence and unresolved blockers:**
+[PHASE2_GAMEPLAY_VERIFICATION.md](../PHASE2_GAMEPLAY_VERIFICATION.md).
+The 10 October 2026 20-minute session did **not** pass: severe late-session
+timer throttling preceded a transition to `CONNECTION_LOST` and
+`LOGIN_SCREEN`. Repeat with the Chrome test window foregrounded; do not
+infer the client is stable from the median 50 game cycles/s or treat title
+and simulated test fixtures as authenticated NPC/banking/chat proof.
+
 ## Verification
 
 ```powershell

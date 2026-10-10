@@ -17,6 +17,7 @@ export const usage=`SoloScape original-engine Desktop Commander controller:
   node dev-bridge/controller-cli.mjs smoke-test [durationMs]
   node dev-bridge/controller-cli.mjs profile [durationMs] [--cpu]
   node dev-bridge/controller-cli.mjs diagnostics
+  node dev-bridge/controller-cli.mjs heap
   node dev-bridge/controller-cli.mjs rebuild-and-test
   node dev-bridge/controller-cli.mjs shutdown
 No passwords, arbitrary JavaScript, external ports, or custom gameplay renderer.`;
@@ -30,6 +31,7 @@ export function parseCommand(argv){
         case "start":
         case "initialize":
         case "diagnostics":
+        case "heap":
         case "screenshot":
         case "rebuild-and-test":
         case "shutdown":

@@ -60,6 +60,8 @@ test("read-only sanitized original-game telemetry excludes login and cache secre
     assert.equal(result.gameState,"LOGGED_IN");
     assert.equal(result.gameCycle,150);
     assert.equal(result.originalFps,21);
+    assert.equal(result.pageVisibility,"UNAVAILABLE");
+    assert.equal(result.pageFocused,false);
     assert.equal(result.presentedFps,21.5);
     assert.equal(result.callbackError,"java.lang.RuntimeException");
     assert.equal(result.callbackFrames,"ED:66:432 | J4:67:158");
