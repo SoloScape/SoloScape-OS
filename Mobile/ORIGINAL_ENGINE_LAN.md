@@ -1,8 +1,9 @@
 # SoloScape original OpenOSRS client on a phone (trusted LAN)
 
 This serves the **actual original revision-240 Java gamepack**, compiled with
-TeaVM, and its original Java software renderer. The page now starts the engine
-**automatically** and displays only the original game canvas. The fullscreen CSS fits the
+TeaVM, and its original Java software renderer. The page starts the engine
+**automatically**. A small text-free loading animation appears immediately
+and disappears once the original game canvas paints its first frames. The fullscreen CSS fits the
 765x503 framebuffer inside the viewport without stretching, with black space
 where the screen has a different aspect ratio.
 The original Java renderer remains unchanged.

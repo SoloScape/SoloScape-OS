@@ -2,7 +2,12 @@
 import {loadOriginalCache} from "/original-cache-loader.mjs";
 import {attachOriginalKeyboard} from "/original-mobile-keyboard.mjs";
 const $=id=>document.getElementById(id);
+function dismissStartupSplash(){
+    const splash=$("startup-splash");
+    if(splash)splash.hidden=true;
+}
 function showStartupError(message){
+    dismissStartupSplash();
     const box=$("startup-error");
     if(box){box.textContent=message;box.hidden=false;}
 }
@@ -79,6 +84,10 @@ function collect(){
         state.canvasSampleColors=current?.colors??0;
         if(current&&initialPixelSignature&&current.hash!==initialPixelSignature.hash)
             state.frameChanged=true;
+        // Never hide the first-paint placeholder just because JS loaded.
+        // Wait for pixels or an original software frame to be presented.
+        if(state.frameChanged||state.presentedFrames>0)
+            dismissStartupSplash();
     }catch(error){state.error=String(error);event("Telemetry error: "+state.error);}
 }
 // The page owns startup; opening it is the only initialization action.

@@ -19,6 +19,11 @@ test("original game page uses an external trusted stylesheet rather than CSP-blo
     assert.match(css,/background:\s*#000/);
     assert.doesNotMatch(markup,/id="internal-diagnostics"|id="start"/);
     assert.doesNotMatch(markup,/id="loading-status"/);
+    assert.match(markup,/id="startup-splash" role="status"/);
+    assert.match(css,/#startup-splash\{position:fixed/);
+    assert.match(css,/#startup-splash::after\{content:""/);
+    assert.match(css,/@keyframes startup-spin/);
+    assert.match(css,/@media \(prefers-reduced-motion:reduce\)/);
     assert.match(markup,/id="startup-error" role="alert" hidden/);
 });
 

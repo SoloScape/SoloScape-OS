@@ -19,8 +19,9 @@ This is not the separate WebGL/TSPS homepage and is not intended for public host
    `http://192.168.0.129:3097/`. Engine initialization starts automatically.
    Log in **manually** using your disposable test account.
 
-The page shows only the original game canvas during normal startup, with a
-message only if initialization fails or stalls. The gamepack retains its native
+A small text-free loading animation appears as soon as the page is received,
+then disappears when the original game draws. An error message appears only
+if initialization fails or stalls. The gamepack retains its native
 765x503 software framebuffer, fitted within the viewport without stretching or
 a replacement renderer. Black bars are expected on screens with other ratios.
 

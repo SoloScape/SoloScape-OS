@@ -51,6 +51,8 @@ test("iOS client loads original game without a startup text overlay",async()=>{
     const script=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
     assert.doesNotMatch(html,/id="loading-status"/);
     assert.match(html,/id="original-engine-canvas"/);
+    assert.match(html,/<div id="startup-splash" role="status" aria-label="Loading SoloScape"><\/div>/);
+    assert.ok(html.indexOf('id="startup-splash"')<html.indexOf('src="/engine-smoke.mjs"'));
     const css=await readFile(new URL("../teavm-poc/site/engine-smoke.css",import.meta.url),"utf8");
     assert.match(css,/background:#000/);
     assert.match(html,/viewport-fit=cover/);
@@ -58,6 +60,8 @@ test("iOS client loads original game without a startup text overlay",async()=>{
     assert.match(script,/state\.gameState==="LOGIN_SCREEN"/);
     assert.doesNotMatch(script,/Loading original game data|Starting original game/);
     assert.match(script,/void initializeOriginalEngine\(\)/);
+    assert.match(script,/if\(state\.frameChanged\|\|state\.presentedFrames>0\)\s*dismissStartupSplash\(\)/);
+    assert.match(script,/function showStartupError\(message\)\{\s*dismissStartupSplash\(\)/);
     assert.doesNotMatch(script,/Promise\.all\(manifest\.files/);
     assert.doesNotMatch(script,/\.submit\(\)|autoLogin|loginPassword/);
 });
