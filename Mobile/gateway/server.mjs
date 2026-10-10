@@ -2,6 +2,7 @@ import { createServer as createHttpServer } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import { createConnection } from "node:net";
 import { WebSocket, WebSocketServer } from "ws";
+import {createGameLoginStatusObserver} from "./original-login-status.mjs";
 
 const MAX_FRAME_BYTES = 64 * 1024;
 const MAX_BUFFER_BYTES = 1024 * 1024;
@@ -66,6 +67,7 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
         let queuedBytes = 0;
         let firstPacketAccepted = false;
         let ended = false;
+        let gameStatus=null;
         const stop = (code = 1000, reason = "upstream closed") => {
             if (ended) return;
             ended = true;
@@ -90,6 +92,9 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
             }
             const bytes = Buffer.isBuffer(data) ? data : Buffer.from(data);
             onActivity("upstreamBytes",bytes.length,session);
+            // The observer only counts client frames; it never reads login
+            // packet bodies, user IDs or encrypted credentials.
+            gameStatus?.clientFrame();
             if (bytes.length === 0) {
                 stop(1003, "Empty handshake");
                 return;
@@ -106,6 +111,11 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
                     bytes[0]===14?"GAME_INIT":
                     bytes[0]===16?"GAME_LOGIN":"GAME_RECONNECT";
                 onActivity("handshake",family,session);
+                if(family==="GAME_INIT")
+                    gameStatus=createGameLoginStatusObserver((kind,value)=>
+                        onActivity(kind,value,session));
+                // Count the opening game-init frame too.
+                gameStatus?.clientFrame();
                 tcp = createConnection({ host: tcpHost, port: tcpPort });
                 tcp.setNoDelay(true);
                 tcp.setTimeout(TCP_CONNECT_TIMEOUT_MS, () => {
@@ -123,6 +133,10 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
                 tcp.on("drain", () => { if (!ended) ws.resume(); });
                 tcp.on("data", (chunk) => {
                     onActivity("downstreamBytes",chunk.length,session);
+                    // Process only the game's unencrypted result status.
+                    // All opaque challenge bytes and account packets remain
+                    // unexamined and are forwarded without modification.
+                    gameStatus?.serverFrame(chunk);
                     if (ended || ws.readyState !== WebSocket.OPEN) return;
                     if (ws.bufferedAmount > MAX_BUFFER_BYTES) {
                         stop(1009, "Downstream too slow");

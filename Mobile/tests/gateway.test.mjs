@@ -129,3 +129,43 @@ test("gateway reports only fixed upstream close lifecycle without packet content
         await new Promise(resolve=>tcp.close(resolve));
     }
 });
+
+
+test("gateway logs public native login result code but never any client login packet body", {timeout:10000}, async()=>{
+    const sockets=new Set();
+    const loginPayload=Buffer.from([16,77,88,99,44,55]); // synthetic fixture only
+    const tcp=createTcpServer(socket=>{
+        sockets.add(socket);socket.on("close",()=>sockets.delete(socket));
+        let frames=0;
+        socket.on("data",data=>{
+            frames++;
+            if(frames===1)socket.write(Buffer.from([0,11,12,13,14,15,16,17,18]));
+            else if(frames===2)socket.end(Buffer.from([7]));
+        });
+    });
+    tcp.listen(0,"127.0.0.1");await once(tcp,"listening");
+    const observed=[];
+    const {httpServer,close}=createGateway({
+        tcpHost:"127.0.0.1",tcpPort:tcp.address().port,
+        allowedOrigins:new Set(["http://localhost:3001"]),
+        onActivity:(kind,value,id)=>observed.push({kind,value,id})
+    });
+    httpServer.listen(0,"127.0.0.1");await once(httpServer,"listening");
+    try{
+        const ws=new WebSocket("ws://127.0.0.1:"+httpServer.address().port+"/",
+            {origin:"http://localhost:3001"});
+        await once(ws,"open");
+        ws.send(Buffer.from([14]));
+        await once(ws,"message");
+        ws.send(loginPayload);
+        await once(ws,"close");
+        assert.deepEqual(observed.filter(e=>e.kind==="gameInitStatus").map(e=>e.value),[0]);
+        assert.deepEqual(observed.filter(e=>e.kind==="gameLoginStatus").map(e=>e.value),[7]);
+        const summary=JSON.stringify(observed);
+        assert.equal(summary.includes(loginPayload.toString("hex")),false);
+        assert.ok(observed.every(e=>Object.keys(e).every(k=>["kind","value","id"].includes(k))));
+    }finally{
+        await close();for(const socket of sockets)socket.destroy();
+        await new Promise(resolve=>tcp.close(resolve));
+    }
+});

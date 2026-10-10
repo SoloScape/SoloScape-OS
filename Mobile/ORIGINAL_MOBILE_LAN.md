@@ -101,6 +101,14 @@ session ended. Reproduce with manual login, then inspect the newest
 summary on the PC. **Restart only the development LAN gateway to enable
 new Node gateway code**; do not restart or modify the Java game server.
 
+The gateway also records ONLY the single public, unencrypted status byte
+for the initial game handshake and the subsequent server login response.
+The result fields are `gameInitStatus` (normally `0` when accepted) and
+`gameLoginStatus` (`null` if no server login response arrived). The
+eight-byte game challenge, encrypted client login packet, username, password,
+session data and other packets are not retained, printed or exported.
+This read-only observer never changes the original protocol.
+
 ## iPhone welcome-screen restarts (developer-only)
 
 The original title still uses the original Java gamepack. To distinguish a
