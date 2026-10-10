@@ -89,6 +89,13 @@ test("browser AWT dummy draw events do not accumulate without a desktop event-di
     assert.match(canvas,/canvas\.addEventListener/);
 });
 
+test("browser keyboard sends DOM Enter as Java AWT VK_ENTER 10 without changing game input",async()=>{
+    const {readFile}=await import("node:fs/promises");
+    const code=await readFile(new URL("../teavm-poc/engine-src/org/soloscape/teavm/platform/awt/NativeCanvas.java",import.meta.url),"utf8");
+    assert.match(code,/e\.key==='Enter'\?10:e\.keyCode\|\|0/);
+    assert.match(code,/canvas\.addEventListener\('mousemove'/);
+});
+
 test("pinned original game clock reports its catch-up cycle count without replacing clock decisions",async()=>{
     const {readFile}=await import("node:fs/promises");
     const adapter=await readFile(new URL("../teavm-poc/scripts/AdaptEnginePlatform.java",import.meta.url),"utf8");
