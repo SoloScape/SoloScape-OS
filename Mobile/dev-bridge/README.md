@@ -11,6 +11,28 @@ and connects to **that session only** through local Chrome DevTools Protocol
 JavaScript, access files or network packets, navigate to arbitrary sites, or
 attach to a browser they do not own.
 
+## One-click Windows launcher
+
+Double-click **`Mobile/run.bat`** (or run it from a Windows terminal).
+The launcher uses its own folder as the working directory, checks Node/npm
+and the compiled gamepack, and opens separate terminal windows for:
+
+- `npm run dev:original-engine` (the original gamepack diagnostic on
+  `http://127.0.0.1:3097/`; skipped if the correct diagnostic is already
+  running on that port).
+- `node dev-bridge/stdio.mjs` (the Stage 1 MCP stdio process).
+
+`run.bat --check` validates prerequisites and prints the commands without
+starting anything. The Java SoloScape game server on port `43594` is **not**
+started by this launcher and must be running separately.
+
+**Important:** An MCP **stdio** process started in its own console cannot be
+attached to by another MCP client. The extra console is a standalone process
+for manual protocol testing. To actually use bridge tools from a connected
+agent, configure your MCP host to launch `dev-bridge/stdio.mjs` itself using
+the configuration below. Opening the console does not automatically connect
+ChatGPT to it.
+
 ## Prerequisites
 
 On the Windows development machine, from `Mobile/`:
