@@ -49,9 +49,11 @@ test("original cache loads files sequentially, and mounts only fixed cache filen
 test("iOS client page shows startup progress before large game and cache transfer",async()=>{
     const html=await readFile(new URL("../teavm-poc/site/engine-smoke.html",import.meta.url),"utf8");
     const script=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
+    const css=await readFile(new URL("../teavm-poc/site/original-engine.css",import.meta.url),"utf8");
     assert.match(html,/id="loading-status"/);
-    assert.match(html,/#original-engine-canvas/);
-    assert.match(html,/background:#000/);
+    assert.match(html,/href="\/original-engine\.css"/);
+    assert.match(css,/#original-engine-canvas/);
+    assert.match(css,/background:\s*#000/);
     assert.match(html,/viewport-fit=cover/);
     assert.match(script,/loadOriginalCache\(manifest/);
     assert.match(script,/state\.gameState==="LOGIN_SCREEN"/);

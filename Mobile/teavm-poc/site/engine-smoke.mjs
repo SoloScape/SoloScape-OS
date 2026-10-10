@@ -5,6 +5,10 @@ function loading(message){
     const indicator=$("loading-status");
     if(indicator&&!indicator.hidden)indicator.textContent=message;
 }
+function startupNotice(message){
+    const display=$("startup-error");
+    if(display){display.textContent=message;display.hidden=false;}
+}
 const state=window.engineSmokeState={phase:"not-started",step:"not-started",cycles:[],frameChanged:false,canvasSampleColors:0,
     clientThread:false,gameState:"UNAVAILABLE",originalFps:-1,presentedFrames:0,presentedFps:0,cycleRate:0,clockStats:null,loginRsaConfigured:false,callbackTrace:"",socketAttempts:[], resourceLookups:[],filePaths:[],error:"",callbackError:"",events:[]};
 let engine,clock=0,initialPixelSignature,framePoll;
@@ -42,6 +46,8 @@ function collect(){
             $("status").textContent="error (client thread)";
             state.callbackTrace=engine.callbackTrace?.()??"";
             event("Original client callback error: "+hooksError);
+            if(state.gameState!=="LOGGED_IN")startupNotice(
+                "The original game stopped during startup. Reload to retry; /health checks the LAN connection.");
             if(state.callbackTrace)event("Original client callback frames: "+state.callbackTrace);
         }
         const cycle=engine.gameCycle();
@@ -174,15 +180,19 @@ $("start").addEventListener("click",async()=>{
         $("status").textContent="Initializing";
         event("Original engine initializeAsync invoked");
         framePoll=setInterval(collect,500);
+        // A stalled client thread may never invoke initializeAsync's completion
+        // callback on mobile Safari. Report it without claiming a successful login.
+        const slowStartup=setTimeout(()=>{
+            if(state.gameState==="LOGIN_SCREEN"||state.gameState==="LOGGED_IN"||state.phase==="error")return;
+            startupNotice("Still waiting for the original game after 90 seconds. The LAN is connected, but the game may be slow or out of browser memory. Reload to retry; try desktop Chrome if it repeats.");
+        },90000);
         engine.initializeAsync(error=>{
+            clearTimeout(slowStartup);
             state.phase=error?"error":"initialized";
             state.error=error||"";
             $("status").textContent=state.phase;
             event(error?"Original engine initialization error: "+error:"Initialize returned (cycles not yet proven)");
-            if(error){
-                const display=$("startup-error");
-                if(display){display.textContent="Game initialization failed. Reload the page to retry.";display.hidden=false;}
-            }
+            if(error)startupNotice("Game initialization failed. Reload the page to retry.");
         });
     }catch(error){
         state.phase="error";state.error=String(error);

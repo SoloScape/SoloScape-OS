@@ -67,9 +67,11 @@ test("LAN HTTP page uses allowed Host, a phone-reachable WebSocket route and CSP
 test("full viewport canvas boots automatically without visible controls or login automation",async()=>{
     const html=await readFile(new URL("../teavm-poc/site/engine-smoke.html",import.meta.url),"utf8");
     const script=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
+    const css=await readFile(new URL("../teavm-poc/site/original-engine.css",import.meta.url),"utf8");
     assert.match(html,/id="original-engine-canvas"/);
-    assert.match(html,/overflow:hidden/);
-    assert.match(html,/100dvh/);
+    assert.match(html,/href="\/original-engine\.css"/);
+    assert.match(css,/overflow:\s*hidden/);
+    assert.match(css,/100dvh/);
     assert.match(html,/id="internal-diagnostics" hidden/);
     assert.match(html,/id="params"/);
     assert.match(script,/queueMicrotask\(\(\)=>\$\("start"\)\.click\(\)\)/);
