@@ -5,3 +5,4 @@
 # Leftover compiler/package outputs from the removed Maven build.
 /Client/**/target/
 /Server/**/target/
+/Mobile/node_modules

@@ -74,6 +74,30 @@ public final class AdaptEnginePlatform implements Opcodes {
                                 next.visitInsn(ARETURN); next.visitMaxs(1, 0); next.visitEnd(); return null;
                             }
                             return new MethodVisitor(ASM9, next) {
+                                @Override public void visitInsn(int opcode) {
+                                    // Browser-only rev-240 cache compatibility:
+                                    // some untyped opcode-7 location definitions
+                                    // return with their original om.ck model IDs
+                                    // unset, even though raw cache bytes have them.
+                                    // Restore only that missing array at the exit
+                                    // of the ORIGINAL constructor. Never modify
+                                    // typed models, scene insertion or renderer.
+                                    if (opcode == RETURN && owner.equals("om") &&
+                                        name.equals("<init>") &&
+                                        descriptor.equals("(Lxy;IZ)V")) {
+                                        super.visitVarInsn(ALOAD, 0);
+                                        super.visitVarInsn(ALOAD, 1);
+                                        super.visitFieldInsn(GETFIELD,"xy","aj","[B");
+                                        super.visitVarInsn(ALOAD, 0);
+                                        super.visitFieldInsn(GETFIELD,"om","ck","[I");
+                                        super.visitMethodInsn(INVOKESTATIC,
+                                            "BrowserOriginalLocationModels",
+                                            "restoreMissingUntypedModels",
+                                            "([B[I)[I",false);
+                                        super.visitFieldInsn(PUTFIELD,"om","ck","[I");
+                                    }
+                                    super.visitInsn(opcode);
+                                }
                                 @Override public void visitTypeInsn(int opcode, String type) {
                                     super.visitTypeInsn(opcode, opcode == NEW && type.equals("java/lang/Thread") ? PLATFORM + "BrowserThread" : type);
                                 }

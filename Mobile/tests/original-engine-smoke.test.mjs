@@ -134,9 +134,27 @@ test("missing scenery diagnostic counts original Java scene objects without subs
     assert.match(bridge,/getFaceCount\(\)/);
     assert.match(bridge,/castleAnchorGameRefs/);
     assert.match(bridge,/castleAnchorModelFaces/);
+    assert.match(bridge,/definition\.bk\(10\)/);
+    assert.match(bridge,/om\.ah\(castleFixtureIds\[i\]\)/);
+    assert.match(bridge,/ak\.cq\.bb\(6,castleFixtureIds\[i\]/);
+    assert.match(bridge,/new om\(new xy\(source\),castleFixtureIds\[i\],true\)/);
     assert.match(bridge,/baseX\+lx>=3203/);
     assert.doesNotMatch(bridge,/setGroundObject\(|setSceneTile|renderScene\(/);
     assert.match(page,/engineSmokeSceneCounts/);
+});
+
+test("browser-only rev240 untyped location models restore original cached model IDs",async()=>{
+    const {readFile}=await import("node:fs/promises");
+    const helper=await readFile(new URL("../teavm-poc/engine-src/BrowserOriginalLocationModels.java",import.meta.url),"utf8");
+    const adapter=await readFile(new URL("../teavm-poc/scripts/AdaptEnginePlatform.java",import.meta.url),"utf8");
+    assert.match(helper,/restoreMissingUntypedModels\(byte\[\] bytes, int\[\] decoded\)/);
+    assert.match(helper,/if \(op == 7\)/);
+    assert.match(helper,/if \(op == 0 \|\| op == 1 \|\| op == 5 \|\| op == 6\)/);
+    assert.match(adapter,/owner\.equals\("om"\)/);
+    assert.match(adapter,/descriptor\.equals\("\(Lxy;IZ\)V"\)/);
+    assert.match(adapter,/BrowserOriginalLocationModels/);
+    assert.match(adapter,/super\.visitFieldInsn\(PUTFIELD,"om","ck","\[I"\)/);
+    assert.doesNotMatch(helper,/WebGL|THREE|canvas|drawModel|new GameObject/);
 });
 
 test("original software-engine diagnostics measure frames separately from game cycles",async()=>{

@@ -226,6 +226,47 @@ public final class EngineBridge {
             planeCounts.append(objectsByPlane[i]);
         }
         planeCounts.append(']');
+        // Only original pinned object-definition and archive readiness APIs.
+        // Probe static castle fixture IDs; neither read player coordinates nor
+        // synthesize objects/models. 1=ready, 0=unavailable, -1=failed probe.
+        final int[] castleFixtureIds={114,16672,56230,56231,362,817,12961,1911};
+        int[] castleDefPresent=new int[castleFixtureIds.length];
+        int[] castleDefModelCount=new int[castleFixtureIds.length];
+        int[] castleDefTypedModelCount=new int[castleFixtureIds.length];
+        int[] castleRawDefinitionBytes=new int[castleFixtureIds.length];
+        int[] castleFreshModelCounts=new int[castleFixtureIds.length];
+        int[] castleModelReady=new int[castleFixtureIds.length];
+        for(int i=0;i<castleFixtureIds.length;i++) {
+            castleDefModelCount[i]=-1;
+            castleModelReady[i]=-1;
+            castleRawDefinitionBytes[i]=-1;
+            castleFreshModelCounts[i]=-1;
+            try {
+                // Exactly the original om/mu object definition archive read.
+                // An absent group/file must be distinguished from a decoded
+                // model-free definition. No archive bytes leave this client.
+                byte[] source=ak.cq==null?null:
+                    ak.cq.bb(6,castleFixtureIds[i],-1962631827);
+                castleRawDefinitionBytes[i]=source==null?0:source.length;
+                if(source!=null) {
+                    // Construct an independent, uncached original definition
+                    // using precisely the original gamepack constructor. This
+                    // distinguishes stale default entries from decode failures.
+                    om fresh=new om(new xy(source),castleFixtureIds[i],true);
+                    castleFreshModelCounts[i]=fresh.ck==null?0:fresh.ck.length;
+                }
+            } catch (Throwable ignored) {}
+            try {
+                om definition=om.ah(castleFixtureIds[i]);
+                if(definition==null)continue;
+                castleDefPresent[i]=1;
+                castleDefModelCount[i]=definition.ck==null?0:definition.ck.length;
+                castleDefTypedModelCount[i]=definition.co==null?0:definition.co.length;
+                castleModelReady[i]=definition.bk(10)?1:0;
+            } catch (Throwable ignored) {
+                // The diagnostic must never interrupt the original world loop.
+            }
+        }
         return "{\"tiles\":"+tiles+",\"walls\":"+walls+
             ",\"decorations\":"+decorations+",\"ground\":"+ground+
             ",\"gameObjectReferences\":"+objects+",\"regions\":"+regionCount+
@@ -245,7 +286,13 @@ public final class EngineBridge {
             ",\"castleModels\":"+countsJson(castleModels)+
             ",\"castleEmptyModels\":"+countsJson(castleEmptyModels)+
             ",\"castleAnchorGameRefs\":"+countsJson(anchorGameReferences)+
-            ",\"castleAnchorModelFaces\":"+countsJson(anchorModelFaces)+"}";
+            ",\"castleAnchorModelFaces\":"+countsJson(anchorModelFaces)+
+            ",\"castleDefinitionPresent\":"+countsJson(castleDefPresent)+
+            ",\"castleDefinitionModelCount\":"+countsJson(castleDefModelCount)+
+            ",\"castleDefinitionTypedModelCount\":"+countsJson(castleDefTypedModelCount)+
+            ",\"castleDefinitionModelReady\":"+countsJson(castleModelReady)+
+            ",\"castleRawDefinitionBytes\":"+countsJson(castleRawDefinitionBytes)+
+            ",\"castleFreshModelCounts\":"+countsJson(castleFreshModelCounts)+"}";
     }
 
     /** Read-only original Java game clock telemetry. */

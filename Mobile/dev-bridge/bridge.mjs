@@ -220,7 +220,20 @@ png.slice('data:image/png;base64,'.length):null;})()`);
                 throw new Error("Invalid original castle anchor counts");
             result[name]=arr;
         }
-        return {...result,note:"Original Java scene references, not unique world objects; model presence does not prove visible rendering"};
+        for(const name of ["castleDefinitionPresent","castleDefinitionModelCount",
+            "castleDefinitionTypedModelCount","castleDefinitionModelReady",
+            "castleRawDefinitionBytes","castleFreshModelCounts"]){
+            const arr=parsed?.[name];
+            if(!Array.isArray(arr)||arr.length!==8||
+                arr.some(n=>!Number.isSafeInteger(n)||n< -1||n>10000))
+                throw new Error("Invalid original fixture model readiness");
+            if(name==="castleDefinitionPresent"&&arr.some(n=>n!==0&&n!==1))
+                throw new Error("Invalid original fixture definition count");
+            if(name==="castleDefinitionModelReady"&&arr.some(n=>n!==-1&&n!==0&&n!==1))
+                throw new Error("Invalid original fixture model status");
+            result[name]=arr;
+        }
+        return {...result,note:"Original Java scene and fixed object-definition readiness; neither model availability nor placement guarantees rendering"};
     }
     async profilePerformance({durationMs=3000,cpu=false}={}){
         boundedInt(durationMs,500,15000,"durationMs");

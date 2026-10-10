@@ -180,6 +180,17 @@ derive from the user's position or reveal object IDs. Compare counts to
 the trusted map archive before deciding that a scenery model was never
 constructed. Never create browser-side proxy meshes as a workaround.
 
+The `scene` result also exposes eight **fixed source-fixture checks**
+(`castleDefinitionPresent`, `castleDefinitionModelCount`,
+`castleDefinitionTypedModelCount`, `castleDefinitionModelReady` and
+`castleRawDefinitionBytes`). They test the original gamepack's
+configuration archive and object definition loader, including a
+typed-wall comparison. A model-ready result of 1 alongside model-count 0
+does **not** prove that its model was loaded. An archive-byte count of
+0 means that lookup returned no bytes *at that moment*, not that the
+cache file is missing from disk. These are local diagnostic-only
+counters, never a replacement definition/model loader.
+
 `smoke-test` is a passive runtime stability check (no synthetic movement
 success). `profile` measures real original game cycles and software frames;
 the optional CPU samples contain function names, not variable contents.

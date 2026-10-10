@@ -33,7 +33,13 @@ class FakeChrome{
                 castleDecorations:[3,3,0,0],castleGround:[6,2,0,0],
                 castleGameReferences:[9,10,7,0],castleModels:[8,8,6,0],
                 castleEmptyModels:[1,1,0,0],castleAnchorGameRefs:[1,1,1,2,1],
-                castleAnchorModelFaces:[40,25,25,50,25]});
+                castleAnchorModelFaces:[40,25,25,50,25],
+                castleDefinitionPresent:[1,1,1,1,1,1,1,1],
+                castleDefinitionModelCount:[1,1,1,1,1,1,1,5],
+                castleDefinitionTypedModelCount:[0,0,0,0,0,0,0,5],
+                castleDefinitionModelReady:[1,0,0,1,1,1,1,1],
+                castleRawDefinitionBytes:[73,78,70,78,19,23,46,39],
+                castleFreshModelCounts:[1,1,1,1,1,1,1,5]});
         if(expression.includes("getBoundingClientRect"))
             return JSON.stringify({left:20,top:40,width:765,height:503,canvasWidth:765,canvasHeight:503});
         if(expression.includes("toDataURL('image/png')"))
@@ -87,6 +93,10 @@ test("scene counters are read-only, validated, and unavailable before original l
     assert.equal(counts.zeroFaceGameModels,2);
     assert.deepEqual(counts.castleGameReferences,[9,10,7,0]);
     assert.deepEqual(counts.castleAnchorGameRefs,[1,1,1,2,1]);
+    assert.deepEqual(counts.castleDefinitionModelReady,[1,0,0,1,1,1,1,1]);
+    assert.equal(counts.castleDefinitionTypedModelCount[7],5);
+    assert.equal(counts.castleRawDefinitionBytes[0],73);
+    assert.equal(counts.castleFreshModelCounts[0],1);
     assert.equal(counts.gameObjectRefsByPlane.reduce((a,b)=>a+b,0),counts.gameObjectReferences);
     assert.ok(!browser.calls.some(x=>x.type.startsWith("Input.")));
     const before=new Stage1Bridge(new FakeChrome({...loggedIn,gameState:"LOGIN_SCREEN"}));

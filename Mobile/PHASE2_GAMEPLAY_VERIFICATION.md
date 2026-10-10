@@ -21,7 +21,7 @@ secrets are recorded.
 | Inventory context menu | **Observed pass** | Right-clicked a grimy guam leaf: gamepack showed `Use`, `Drop`, `Examine`. Choosing `Examine` subsequently produced original chat text `It needs cleaning.` |
 | Interface switching | **Observed pass** | Skills tab displayed authentic skill icons/levels and total level 43; switching is handled by the original client |
 | NPC interaction | **Passed (user-confirmed)** | The player confirmed talking to NPCs and successfully interacting with them in the real original client. This supersedes the earlier automated attempts that could not reliably target moving actors |
-| Banking | **Not verified** | Need to reach a banker, open an original bank interface, and safely deposit/withdraw disposable items |
+| Banking | **Passed (user-confirmed)** | Player reports that banking works in the original Java client after testing it. Individual deposit/withdraw actions were not independently logged by Desktop Commander |
 | Dialogue | **Basic NPC talking passed (user-confirmed)** | Player confirms NPC conversations and interaction work. Extended dialogue-option branching, multi-step advance/close and quest-specific dialogues remain unverified |
 | Chat text input | **Observed pass after Enter fix** | First session: typed `phase2` but Java Enter did not submit. Browser-only NativeCanvas now maps DOM Enter 13 to Java AWT VK_ENTER 10; original gamepack and renderer unchanged. After rebuilding, sent `p2check`: original game showed the overhead chat bubble, a chat-log message and a cleared input (ignored screenshot `world-1791598354594-50921444.png`). Physical keyboard Enter has not been independently compared |
 | Region transition | **Not verified** | Character moves normally, but no new region/base-coordinate or cache-region transition has yet been proven |
@@ -42,9 +42,12 @@ secrets are recorded.
   guard skips absent optional sprites in this original overlay, keeping the
   original Java drawing paths for any sprite that exists. The gameplay
   retest is the evidence for marking this issue resolved.
-- **Static world scenery: FAIL (user-reported).** Stairs, tables, cabinets,
-  cooking ranges and other world objects are missing even while terrain,
-  walls, player models and NPCs render. This is a *separate* scene/region-loc
+- **Static world scenery: NOW SHOWING (user-confirmed; repeatability pending).**
+  Stairs, tables, cabinets, cooking ranges and other world objects were
+  previously missing even while terrain, walls, player models and NPCs
+  rendered. The player now confirms that objects are appearing in the
+  castle. Treat this as a successful current-session observation, not yet
+  proof that cold login, region transitions or all objects work every time. This is a *separate* scene/region-loc
   loading problem; the cause has not been verified. The existing cache has
   `main_file_cache.dat2` and numbered `idx` files, but file presence is
   not proof that the right map object archives decoded or spawned. Verify
@@ -89,11 +92,49 @@ secrets are recorded.
   client after rebuilding; the root cause is not yet fixed.**
 - **NPC actions: PASS (user-confirmed).** The player can talk to and interact
   with NPCs; this overrides the previous `Not verified` automation result.
-  Banking, longer dialogue chains and specific scene-object interactions
-  still require independent verification.
+  Banking has also been tested and confirmed working by the player.
+  Longer dialogue chains and specific scene-object interactions still
+  require independent verification.
 
 **Do not mark an unobserved gameplay feature as passing based on test names,
 server availability, a sent click, or the engine merely remaining logged in.**
+
+## Lumbridge Castle original-scene/model decoding — further evidence
+
+A manually authenticated original Java client reported 561 wall placements,
+247 wall decorations and 496 ground decorations in the fixed castle study
+rectangle, exactly matching their original source-map categories. However,
+the source map contains 310 large/game-object placements there while the
+Java scene held only 121 game-object **tile references** (which are not
+unique object placements). None of five fixed kitchen/furniture/staircase
+anchor tiles held a game-object reference or rendered model. This is evidence
+of an object creation problem, not a blanket inability to draw castle walls.
+
+The original `LIVE` cache's configuration index 2, group 6 contains 62,522
+location-definition files. Offline decoding of fixed source definitions
+confirmed **Cooking range** (model 5274), **Staircase** (model 1237),
+**upper Staircase** (model 1287), **Barrel** (model 1460) and **Suit of
+armour** (model 1214). The referenced index-7 model archives all exist.
+Crucially, the object definitions use the expected **rev-240 opcode 7**
+(32-bit untyped model lists) or other valid opcodes, so converting old
+16-bit opcodes is **not** an appropriate fix.
+
+The runtime's first read-only original-definition probe reported the same
+seven fixed definitions as present, but each had **zero** decoded model
+references and the original `om.bk(10)` readiness method returned true.
+That readiness result is vacuous if the decoded model list is empty.
+This differs from what is in the original cache on disk. It does not
+yet establish *why* the original Java loader has empty lists.
+
+A more focused browser-only diagnostic now reports the **raw byte count**
+returned by the original configuration archive lookup for eight fixed
+object definitions, together with decoded model counts, typed-model
+counts and readiness (the eighth is a typed-wall comparison). It
+does not output raw cache bytes, coordinates, usernames, object IDs
+or gameplay packets. **The raw-byte probe requires a new manually
+authenticated session**, and its result has not yet been collected.
+Until it has, do not blame the decoder, JS5 gateway, cache revision, or
+renderer definitively, and do not modify the native cache to compensate.
 
 ## Sustained original-world runtime and memory
 
