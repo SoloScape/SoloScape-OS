@@ -141,3 +141,16 @@ loop every 256 hashes. SHA-1/SHA-512 still require Web Crypto on secure
 origins rather than silently using an unsupported digest. No remote
 crypto services, credential logging, account automation, or alternative
 game engine are used. Rebuild the original TeaVM engine after changes.
+
+## Original iPhone camera zoom on login
+
+The pinned Java client still owns camera positioning, rendering and user
+zoom. On coarse-pointer/mobile devices, after the *original* client first
+reports `LOGGED_IN`, the browser waits 450 ms for the native camera to
+settle and sends eight zoom-in detents through the original canvas's
+existing Java AWT `MouseWheelEvent` input listener. This is **not**
+the parallel WebGL client's camera, a direct obfuscated field patch,
+or a replacement renderer. A pending adjustment is canceled on logout,
+connection loss or genuine wheel input; no recurring camera correction
+fights a player's preferences. Desktop controls remain unchanged.
+A phone retest is required to verify the visual distance.

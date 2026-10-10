@@ -16,6 +16,7 @@ const files=new Map([
     ["/original-cache-loader.mjs",["teavm-poc/site/original-cache-loader.mjs","text/javascript; charset=utf-8"]],
     ["/original-sha256.mjs",["teavm-poc/site/original-sha256.mjs","text/javascript; charset=utf-8"]],
     ["/original-mobile-lifecycle.mjs",["teavm-poc/site/original-mobile-lifecycle.mjs","text/javascript; charset=utf-8"]],
+    ["/original-login-camera.mjs",["teavm-poc/site/original-login-camera.mjs","text/javascript; charset=utf-8"]],
     ["/engine.js",["teavm-poc/target/engine/javascript/engine.js","text/javascript; charset=utf-8"]],
     ["/original-resource/client.serial",["teavm-poc/target/engine/resources/client.serial","application/octet-stream"]],
     ["/original-resource/compilercontrol.json",["teavm-poc/target/engine/resources/compilercontrol.json","application/json"]],

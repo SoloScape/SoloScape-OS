@@ -6,6 +6,7 @@ import {sha256 as originalSha256} from "/original-sha256.mjs";
 globalThis.soloscapeOriginalSha256=originalSha256;
 import {attachOriginalKeyboard,categorizeOriginalClientError} from "/original-mobile-keyboard.mjs";
 import {attachOriginalPageLifecycle} from "/original-mobile-lifecycle.mjs";
+import {attachOriginalLoginCamera} from "/original-login-camera.mjs";
 const $=id=>document.getElementById(id);
 function dismissStartupSplash(){
     const splash=$("startup-splash");
@@ -26,6 +27,8 @@ attachOriginalKeyboard({canvas:$("original-engine-canvas"),
 const pageLifecycle=attachOriginalPageLifecycle({
     canvas:$("original-engine-canvas"),getGameState:()=>state.gameState});
 state.pageRestartedAfterTitleTap=pageLifecycle.restartedAfterTitleTap;
+const loginCamera=attachOriginalLoginCamera({
+    canvas:$("original-engine-canvas"),getGameState:()=>state.gameState});
 // Fixed, read-only scene count snapshot for debugging missing original world locs.
 window.engineSmokeSceneCounts=()=>engine?.sceneLocCounts?.()??null;
 const fpsSamples=[];
@@ -72,6 +75,7 @@ function collect(){
         if(state.cycles.at(-1)!==cycle){state.cycles.push(cycle);if(state.cycles.length>50)state.cycles.shift();}
         state.clientThread=engine.hasClientThread();
         state.gameState=engine.gameState();
+        loginCamera.observe(state.gameState);
         state.socketAttempts=globalThis.soloscapeEngineSocketAttempts??[];
         state.resourceLookups=globalThis.soloscapeOriginalResourceLookups??[];
         state.filePaths=(globalThis.soloscapeOriginalFilePaths??[]).filter(path=>/cache|jagex|oldschool|random\.dat|\.idx/i.test(path)).slice(-40);
