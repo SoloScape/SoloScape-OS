@@ -57,6 +57,10 @@ test("iOS client loads original game without a startup text overlay",async()=>{
     assert.match(css,/background:#000/);
     assert.match(html,/viewport-fit=cover/);
     assert.match(script,/loadOriginalCache\(manifest/);
+    assert.match(script,/bootstrapStage="cache-load"/);
+    assert.match(script,/bootstrapStage="engine-import"/);
+    assert.match(script,/categorizeOriginalClientError\(state\.error\)/);
+    assert.doesNotMatch(script,/const memory=\/memory\|allocation\|out of bounds/);
     assert.match(script,/state\.gameState==="LOGIN_SCREEN"/);
     assert.doesNotMatch(script,/Loading original game data|Starting original game/);
     assert.match(script,/void initializeOriginalEngine\(\)/);
@@ -64,4 +68,34 @@ test("iOS client loads original game without a startup text overlay",async()=>{
     assert.match(script,/function showStartupError\(message\)\{\s*dismissStartupSplash\(\)/);
     assert.doesNotMatch(script,/Promise\.all\(manifest\.files/);
     assert.doesNotMatch(script,/\.submit\(\)|autoLogin|loginPassword/);
+});
+
+test("frame signature reads 20 scanlines without allocating a full image every poll",async()=>{
+    const {runInNewContext}=await import("node:vm");
+    const source=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
+    const body=/function signature\(\)\{[\s\S]*?\n\}/.exec(source)?.[0];
+    assert.ok(body,"Frame signature must be available for original-engine diagnostics");
+    const width=765,height=503,full=new Uint8Array(width*height*4);
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+        const i=(y*width+x)*4;
+        full[i]=x%256;full[i+1]=y%256;full[i+2]=(x*7+y*11)%256;full[i+3]=255;
+    }
+    let reads=0;
+    const canvas={width,height,getContext:()=>({getImageData(x,y,w,h){
+        assert.equal(x,0);assert.equal(w,width);assert.equal(h,1,
+            "Whole-frame ImageData allocations should not recur on mobile");
+        reads++;return {data:full.subarray(y*width*4,(y+1)*width*4)};
+    }})};
+    const signature=runInNewContext("("+body+")",{$:()=>canvas,Math,Set});
+    const result=signature();
+    let hash=2166136261,unique=new Set();
+    for(let y=0;y<20;y++)for(let x=0;x<30;x++){
+        const sy=Math.floor((y+.5)*height/20),sx=Math.floor((x+.5)*width/30);
+        const i=(sy*width+sx)*4;
+        const rgb=(full[i]<<16)|(full[i+1]<<8)|full[i+2];
+        unique.add(rgb);hash=Math.imul((hash^rgb)>>>0,16777619)>>>0;
+    }
+    assert.equal(reads,20);
+    assert.equal(result.hash,hash);
+    assert.equal(result.colors,unique.size);
 });

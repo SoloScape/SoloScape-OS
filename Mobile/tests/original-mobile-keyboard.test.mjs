@@ -114,6 +114,9 @@ test("original callback error descriptions use only fixed non-sensitive codes",(
         ["ReferenceError: password123 is not defined","JAVASCRIPT"],
         ["java.net.SocketException: private login","NETWORK"],
         ["java.lang.OutOfMemoryError: Java heap space","MEMORY"],
+        ["RangeError: Array buffer allocation failed","MEMORY"],
+        ["Out of memory","MEMORY"],
+        ["Array buffer out of bounds","BOUNDS"],
         ["account=johndoe&password=privateSECRET","UNKNOWN"]
     ];
     for(const [raw,expected] of examples){

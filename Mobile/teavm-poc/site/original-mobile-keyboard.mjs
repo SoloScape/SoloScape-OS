@@ -2,9 +2,9 @@
 // Never interpolate raw Java exception messages: they can contain account data.
 export function categorizeOriginalClientError(value){
     const error=typeof value==="string"?value:"";
-    if(/\b(?:OutOfMemoryError|allocation failed|Java heap space)\b/i.test(error))return "MEMORY";
+    if(/\b(?:OutOfMemoryError|out of memory|not enough memory|allocation failed|Java heap space|Cannot allocate memory)\b/i.test(error))return "MEMORY";
     if(/\b(?:NullPointerException|Cannot read properties of (?:null|undefined))\b/i.test(error))return "NULL_REFERENCE";
-    if(/\b(?:ArrayIndexOutOfBoundsException|IndexOutOfBoundsException|RangeError)\b/i.test(error))return "BOUNDS";
+    if(/\b(?:ArrayIndexOutOfBoundsException|IndexOutOfBoundsException|RangeError|out of bounds)\b/i.test(error))return "BOUNDS";
     if(/\b(?:IllegalStateException|IllegalArgumentException)\b/i.test(error))return "JAVA_STATE";
     if(/\b(?:TypeError|ReferenceError)\b/i.test(error))return "JAVASCRIPT";
     if(/\b(?:IOException|SocketException)\b/i.test(error))return "NETWORK";

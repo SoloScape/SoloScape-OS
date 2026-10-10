@@ -53,7 +53,11 @@ the original game cache.
   memory, and mobile Safari/Chrome (both WebKit on iOS) can terminate tabs
   under memory pressure. Streaming each native cache file into its final
   buffer and loading files sequentially reduces temporary allocations, but
-  **does not eliminate the full original cache memory requirement**.
+  **does not eliminate the full original cache memory requirement**. The
+  original-canvas diagnostic now reads small scanlines rather than a full
+  framebuffer snapshot every half-second. Startup errors show a fixed category
+  and stage (for example, BOUNDS during cache-load); memory allocation errors
+  remain possible, and the label alone does not measure the device's RAM.
 - If the game displays an error while loading or signing in, confirm the
   Java server (`43594`) and LAN gateway (`43595`) are running and reachable.
   No LAN proxy can substitute for a stopped Java game server.

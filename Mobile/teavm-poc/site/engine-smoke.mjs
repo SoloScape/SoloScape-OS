@@ -13,7 +13,7 @@ function showStartupError(message){
 }
 const state=window.engineSmokeState={phase:"not-started",step:"not-started",cycles:[],frameChanged:false,canvasSampleColors:0,
     clientThread:false,gameState:"UNAVAILABLE",originalFps:-1,presentedFrames:0,presentedFps:0,cycleRate:0,clockStats:null,loginRsaConfigured:false,callbackTrace:"",socketAttempts:[], resourceLookups:[],filePaths:[],error:"",callbackError:"",events:[]};
-let engine,clock=0,initialPixelSignature,framePoll;
+let engine,clock=0,initialPixelSignature,framePoll,bootstrapStage="public-config";
 // An invisible password-type input opens the mobile OS keyboard. The original
 // Java client still renders login fields and handles authentication itself.
 attachOriginalKeyboard({canvas:$("original-engine-canvas"),
@@ -29,13 +29,18 @@ function signature(){
     const canvas=$("original-engine-canvas");
     const ctx=canvas.getContext("2d",{willReadFrequently:true});
     if(!ctx||!canvas.width||!canvas.height)return null;
-    const data=ctx.getImageData(0,0,canvas.width,canvas.height).data;
     let hash=2166136261,unique=new Set();
-    for(let y=0;y<20;y++)for(let x=0;x<30;x++){
-        const i=(Math.floor((y+.5)*canvas.height/20)*canvas.width+
-            Math.floor((x+.5)*canvas.width/30))*4;
-        const rgb=(data[i]<<16)|(data[i+1]<<8)|data[i+2];
-        unique.add(rgb);hash=Math.imul((hash^rgb)>>>0,16777619)>>>0;
+    // Read just 20 scanlines, not the full 765x503 framebuffer every
+    // 500 ms. This preserves the original 600 sampled pixel locations
+    // while avoiding a repeated ~1.5 MiB ImageData allocation.
+    for(let y=0;y<20;y++){
+        const sampleY=Math.floor((y+.5)*canvas.height/20);
+        const row=ctx.getImageData(0,sampleY,canvas.width,1).data;
+        for(let x=0;x<30;x++){
+            const i=Math.floor((x+.5)*canvas.width/30)*4;
+            const rgb=(row[i]<<16)|(row[i+1]<<8)|row[i+2];
+            unique.add(rgb);hash=Math.imul((hash^rgb)>>>0,16777619)>>>0;
+        }
     }
     return {hash,colors:unique.size};
 }
@@ -139,6 +144,7 @@ async function initializeOriginalEngine(){
             }
         }
         state.phase="loading";
+        bootstrapStage="engine-import";
         engine=await import("/engine.js");
         for(const name of ["configureClient","configureClientParameter","initializeAsync","gameCycle","hasClientThread"])
             if(typeof engine[name]!=="function")throw new Error("Engine rebuild required: "+name+" missing");
@@ -146,6 +152,7 @@ async function initializeOriginalEngine(){
         // original gamepack, never placeholders or gameplay substitutions.
         // An explicit local development cache snapshot is mounted read-write
         // only inside Chrome's memory. The original server files remain read-only.
+        bootstrapStage="cache-load";
         const cacheManifest=await fetch("/original-cache/manifest");
         if(cacheManifest.ok){
             const manifest=await cacheManifest.json();
@@ -154,6 +161,7 @@ async function initializeOriginalEngine(){
             globalThis.soloscapeOriginalCacheFiles=files;
             event("Loaded "+files.size+" original cache files in browser memory (no server writes)");
         }
+        bootstrapStage="class-resources";
         for(const name of ["client.serial","compilercontrol.json","runelite/index"]){
             const response=await fetch("/original-resource/"+name);
             if(!response.ok)throw new Error("Original gamepack resource missing: "+name);
@@ -172,6 +180,7 @@ async function initializeOriginalEngine(){
                 typeof route.url!=="string")throw new Error("Invalid gateway route");
             engine.configureGateway(route.host,route.port,route.url);
         }
+        bootstrapStage="public-login-config";
         const publicKeyResponse=await fetch("/original-login-public-key");
         if(publicKeyResponse.ok){
             const rsa=await publicKeyResponse.json();
@@ -181,6 +190,7 @@ async function initializeOriginalEngine(){
         }else if(publicKeyResponse.status===404){
             event("Original title-only smoke: local login RSA not configured");
         }else throw new Error("SoloScape public login key unavailable");
+        bootstrapStage="engine-start";
         initialPixelSignature=signature();
         event("Original engine initializeAsync invoked");
         framePoll=setInterval(collect,500);
@@ -202,10 +212,14 @@ async function initializeOriginalEngine(){
     }catch(error){
         state.phase="error";state.error=String(error);
         event(state.error);
-        const memory=/memory|allocation|out of bounds/i.test(String(error));
-        showStartupError(memory?
-            "The original game exceeded available browser memory. Try desktop while mobile optimization continues.":
-            "Unable to start the game. Reload the page or visit /health to check the LAN server.");
+        const category=categorizeOriginalClientError(state.error);
+        // Only fixed stage/category labels are shown; not exception strings,
+        // filesystem paths, cache data, or login information.
+        if(category==="MEMORY")showStartupError(
+            "The original game may have run out of browser memory ("+
+            bootstrapStage+"). Try another browser or a desktop.");
+        else showStartupError("Unable to start the game ("+category+
+            ", "+bootstrapStage+"). Reload to retry.");
     }
 }
 window.addEventListener("pagehide",()=>{if(framePoll)clearInterval(framePoll);},{once:true});
