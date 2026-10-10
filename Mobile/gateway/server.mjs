@@ -15,7 +15,8 @@ function forbidden(socket, status, message) {
     socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: ${Buffer.byteLength(message)}\r\n\r\n${message}`);
 }
 
-export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivity = () => {} }) {
+export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivity = () => {},
+    isAllowedPeer=()=>true }) {
     if (!tcpHost || !Number.isInteger(tcpPort) || tcpPort < 1 || tcpPort > 65535) {
         throw new Error("A fixed TCP host and valid port are required");
     }
@@ -39,6 +40,10 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
         let path;
         try { path = new URL(req.url || "/", "http://localhost").pathname; } catch { path = null; }
         const origin = req.headers.origin;
+        if (!isAllowedPeer(socket.remoteAddress)) {
+            forbidden(socket, "403 Forbidden", "Trusted local network required");
+            return;
+        }
         if (path !== "/" || (req.url !== "/" && req.url !== "")) {
             forbidden(socket, "404 Not Found", "Unknown gateway endpoint");
             return;

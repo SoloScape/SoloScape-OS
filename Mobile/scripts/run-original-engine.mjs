@@ -1,11 +1,12 @@
-// Isolated local OpenOSRS title harness: original gamepack and local cache only.
-// Never expose the gamepack, cache or TCP proxy beyond 127.0.0.1.
+// Original revision-240 engine development page and game gateway.
+// Loopback by default; trusted private LAN access is opt-in.
 import {existsSync} from "node:fs";
 import {resolve,join,dirname} from "node:path";
 import {fileURLToPath} from "node:url";
 import {createGateway} from "../gateway/server.mjs";
 import {createEngineSmokeServer} from "./engine-smoke-server.mjs";
 import {loadPublicLoginConfig} from "./native-login-config.mjs";
+import {createLanPolicy,isLocalPeer} from "./original-lan.mjs";
 
 const mobile=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const nativeCacheRoot=resolve(process.env.SOLOSCAPE_ENGINE_LOCAL_CACHE_ROOT||
@@ -24,18 +25,27 @@ for(const value of [port,upstreamPort])
         throw new Error("Invalid local port");
 if(port===gatewayPort||upstreamPort===gatewayPort)
     throw new Error("Local diagnostic, native server and WebSocket gateway need separate ports");
+const lanEnabled=process.env.SOLOSCAPE_ENGINE_LAN==="1";
+const lan=lanEnabled?createLanPolicy({preferredIp:process.env.SOLOSCAPE_ENGINE_LAN_IP||null}):null;
+const bindHost=lanEnabled?"0.0.0.0":"127.0.0.1";
 const origin="http://127.0.0.1:"+port;
+const lanOrigin=lan?"http://"+lan.ip+":"+port:null;
+const isAllowedPeer=lan?lan.isAllowedPeer:isLocalPeer;
+const allowedHosts=new Set(["127.0.0.1:"+port,"localhost:"+port,...(lan?[
+    lan.ip+":"+port]:[])]);
 const {rsa:loginRsaPublic}=await loadPublicLoginConfig({
     keyPath:resolve(process.env.SOLOSCAPE_ENGINE_PUBLIC_RSA_KEY_FILE||join(mobile,"../Server/.data/client.key")),
     gatewayUrl:"ws://127.0.0.1:43595/"
 });
 const gateway=createGateway({tcpHost:"127.0.0.1",tcpPort:upstreamPort,
-    allowedOrigins:new Set([origin])});
-const server=createEngineSmokeServer({nativeCacheRoot,gatewayPort,loginRsaPublic});
+    allowedOrigins:new Set([origin,"http://localhost:"+port,...(lanOrigin?[lanOrigin]:[])]),
+    isAllowedPeer});
+const server=createEngineSmokeServer({nativeCacheRoot,gatewayPort,loginRsaPublic,
+    isAllowedPeer,allowedHosts});
 function listen(instance,port){
     return new Promise((resolve,reject)=>{
         instance.once("error",reject);
-        instance.listen(port,"127.0.0.1",()=>{instance.off("error",reject);resolve();});
+        instance.listen(port,bindHost,()=>{instance.off("error",reject);resolve();});
     });
 }
 try{
@@ -45,10 +55,15 @@ try{
     await gateway.close().catch(()=>{});
     throw error;
 }
-console.log("Original OpenOSRS title diagnostic (loopback only): "+origin+"/");
+console.log("Original OpenOSRS client: "+origin+"/");
+if(lanOrigin){
+    console.log("TRUSTED LAN ONLY: "+lanOrigin+"/ (adapter: "+lan.adapter+")");
+    console.log("Phone and PC must share the same Wi-Fi/LAN; Windows Firewall may need inbound TCP "+port+" and "+gatewayPort+".");
+    console.log("Do not forward ports or connect from untrusted public Wi-Fi; original gamepack and cache are served.");
+}
 console.log("Reads existing original cache into browser memory; never writes to server cache.");
 console.log("Requires native revision-240 JS5 server listening at 127.0.0.1:"+upstreamPort);
-console.log("Original Java engine initializes automatically on page load; log in manually.");
+console.log("The original engine starts when the page opens. Login stays manual.");
 let closing=false;
 async function shutdown(){
     if(closing)return;closing=true;
