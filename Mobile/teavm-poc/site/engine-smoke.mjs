@@ -1,5 +1,9 @@
 // The original Java gamepack still owns every game action and software frame.
 import {loadOriginalCache} from "/original-cache-loader.mjs";
+import {sha256 as originalSha256} from "/original-sha256.mjs";
+// SHA-256 is used by the original Java proof-of-work solver when an HTTP
+// trusted-LAN origin has no Web Crypto subtle API; no account data is exposed.
+globalThis.soloscapeOriginalSha256=originalSha256;
 import {attachOriginalKeyboard,categorizeOriginalClientError} from "/original-mobile-keyboard.mjs";
 import {attachOriginalPageLifecycle} from "/original-mobile-lifecycle.mjs";
 const $=id=>document.getElementById(id);

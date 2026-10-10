@@ -14,6 +14,7 @@ const files=new Map([
     ["/original-mobile-keyboard.mjs",["teavm-poc/site/original-mobile-keyboard.mjs","text/javascript; charset=utf-8"]],
     ["/engine-smoke.css",["teavm-poc/site/engine-smoke.css","text/css; charset=utf-8"]],
     ["/original-cache-loader.mjs",["teavm-poc/site/original-cache-loader.mjs","text/javascript; charset=utf-8"]],
+    ["/original-sha256.mjs",["teavm-poc/site/original-sha256.mjs","text/javascript; charset=utf-8"]],
     ["/original-mobile-lifecycle.mjs",["teavm-poc/site/original-mobile-lifecycle.mjs","text/javascript; charset=utf-8"]],
     ["/engine.js",["teavm-poc/target/engine/javascript/engine.js","text/javascript; charset=utf-8"]],
     ["/original-resource/client.serial",["teavm-poc/target/engine/resources/client.serial","application/octet-stream"]],

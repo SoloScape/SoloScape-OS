@@ -26,7 +26,7 @@ public final class BrowserDigest {
         });
     }
     @JSFunctor private interface Completion extends JSObject {void done(JSObject bytes,String error);}
-    @JSBody(params={"algorithm","bytes","done"},script="if(!globalThis.crypto?.subtle){done(null,'Web Crypto requires a secure context');return;}crypto.subtle.digest(algorithm,new Uint8Array(bytes)).then(data=>done(new Uint8Array(data),null),error=>done(null,String(error)));")
+    @JSBody(params={"algorithm","bytes","done"},script="const input=new Uint8Array(bytes);if(globalThis.crypto?.subtle){globalThis.crypto.subtle.digest(algorithm,input).then(data=>done(new Uint8Array(data),null),error=>done(null,'Web Crypto digest failed'));return;}if(algorithm!=='SHA-256'||typeof globalThis.soloscapeOriginalSha256!=='function'){queueMicrotask(()=>done(null,'Digest not available on HTTP LAN'));return;}try{const hash=globalThis.soloscapeOriginalSha256(input);const schedule=globalThis.soloscapeOriginalSha256Ticks=((globalThis.soloscapeOriginalSha256Ticks||0)+1);if(schedule%256===0)setTimeout(()=>done(hash,null),0);else queueMicrotask(()=>done(hash,null));}catch(_){queueMicrotask(()=>done(null,'SHA-256 computation failed'));}")
     private static native void digestNative(String algorithm,@JSByRef byte[] bytes,Completion done);
     @JSBody(params={"bytes"},script="return bytes.length;")private static native int length(JSObject bytes);
     @JSBody(params={"bytes","index"},script="return bytes[index];")private static native int at(JSObject bytes,int index);

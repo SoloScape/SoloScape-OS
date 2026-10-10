@@ -125,3 +125,19 @@ PAGE_RESTARTED means the previous tab-local marker survived. That does not
 by itself distinguish a manual reload from a browser crash. The original
 client now stops repeated canvas diagnostic readbacks after a changed frame
 is confirmed; the 228 MiB in-memory original cache is still present.
+
+## Proof-of-work on iOS HTTP LAN
+
+The original rev-240 Java login negotiates a server-issued SHA-256
+proof-of-work challenge (response code 69). Loopback HTTP on the PC is a
+secure-context exception, but `http://192.168.x.x` on Safari cannot rely
+on `crypto.subtle`. The original game's `java.security.MessageDigest`
+browser adapter now uses Web Crypto when present and a local, tested
+SHA-256 implementation when unavailable. This computes the actual
+server challenge and forwards the original Java client's response; it
+**does not disable proof-of-work, skip login, or expose credentials**.
+The fallback is bounded to 1 MiB per digest and yields to the event
+loop every 256 hashes. SHA-1/SHA-512 still require Web Crypto on secure
+origins rather than silently using an unsupported digest. No remote
+crypto services, credential logging, account automation, or alternative
+game engine are used. Rebuild the original TeaVM engine after changes.
