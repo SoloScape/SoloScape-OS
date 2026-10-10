@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
-import {attachOriginalKeyboard} from "../teavm-poc/site/original-mobile-keyboard.mjs";
+import {attachOriginalKeyboard,categorizeOriginalClientError} from "../teavm-poc/site/original-mobile-keyboard.mjs";
 
 function fixture({supportsPointerEvents=true}={}){
     const handlers=new Map();
@@ -103,4 +103,23 @@ test("mobile original page retains native keyboard without startup overlay",asyn
     assert.match(script,/engine\.initializeAsync\(/);
     assert.match(script,/attachOriginalKeyboard\(/);
     assert.doesNotMatch(script,/loginPassword|autoLogin|fetch\(.*password/);
+});
+
+test("original callback error descriptions use only fixed non-sensitive codes",()=>{
+    const examples=[
+        ["user@example.com password123 java.lang.NullPointerException","NULL_REFERENCE"],
+        ["TypeError: Cannot read properties of null (reading 'bsH')","NULL_REFERENCE"],
+        ["java.lang.ArrayIndexOutOfBoundsException: private location","BOUNDS"],
+        ["java.lang.IllegalStateException: abc@example.net","JAVA_STATE"],
+        ["ReferenceError: password123 is not defined","JAVASCRIPT"],
+        ["java.net.SocketException: private login","NETWORK"],
+        ["java.lang.OutOfMemoryError: Java heap space","MEMORY"],
+        ["account=johndoe&password=privateSECRET","UNKNOWN"]
+    ];
+    for(const [raw,expected] of examples){
+        const safe=categorizeOriginalClientError(raw);
+        assert.equal(safe,expected);
+        assert.match(safe,/^[A-Z_]{3,24}$/);
+        assert.doesNotMatch(safe,/@|password|private|SECRET|johndoe|bsH/i);
+    }
 });

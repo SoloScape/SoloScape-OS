@@ -1,6 +1,6 @@
 // The original Java gamepack still owns every game action and software frame.
 import {loadOriginalCache} from "/original-cache-loader.mjs";
-import {attachOriginalKeyboard} from "/original-mobile-keyboard.mjs";
+import {attachOriginalKeyboard,categorizeOriginalClientError} from "/original-mobile-keyboard.mjs";
 const $=id=>document.getElementById(id);
 function dismissStartupSplash(){
     const splash=$("startup-splash");
@@ -49,10 +49,11 @@ function collect(){
             state.error="original client thread: "+hooksError;
             state.callbackTrace=engine.callbackTrace?.()??"";
             event("Original client callback error: "+hooksError);
-            if(state.gameState!=="LOGGED_IN")showStartupError(
-                "The original game stopped during startup. Reload to retry; /health checks the LAN connection.");
             if(state.callbackTrace)event("Original client callback frames: "+state.callbackTrace);
-            showStartupError("Original game encountered an error. Reload the page to retry.");
+            // Report only a fixed failure category; never expose raw exceptions,
+            // stack text or original login information in the player UI.
+            showStartupError("Original game encountered an error ("+
+                categorizeOriginalClientError(hooksError)+"). Reload the page to retry.");
         }
         const cycle=engine.gameCycle();
         if(state.cycles.at(-1)!==cycle){state.cycles.push(cycle);if(state.cycles.length>50)state.cycles.shift();}

@@ -28,6 +28,11 @@ if initialization fails or stalls. The gamepack retains its native
 765x503 software framebuffer, fitted within the viewport without stretching or
 a replacement renderer. Black bars are expected on screens with other ratios.
 
+If the original Java client reports an error, the visible message now includes a
+fixed, non-sensitive category (for example, NULL_REFERENCE or BOUNDS).
+This helps investigate title-screen errors without displaying exception text,
+account details, or stack traces. It does not prove the underlying error is fixed.
+
 ## White screen or unreachable page
 
 Open the lightweight **connection-only** check on the phone:

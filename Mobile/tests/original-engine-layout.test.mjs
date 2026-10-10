@@ -66,4 +66,6 @@ test("prolonged mobile startup surfaces a safe visible diagnostic rather than ha
     assert.match(js,/clearTimeout\(slowStartup\)/);
     assert.match(js,/if\(state\.gameState==="LOGIN_SCREEN"\|\|state\.gameState==="LOGGED_IN"/);
     assert.match(js,/showStartupError\("Original game failed to initialize/);
+    assert.match(js,/categorizeOriginalClientError\(hooksError\)/);
+    assert.doesNotMatch(js,/showStartupError\(.*hooksError/);
 });

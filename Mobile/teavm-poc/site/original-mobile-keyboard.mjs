@@ -1,3 +1,16 @@
+// Safe, fixed labels for the game's fatal callback categories.
+// Never interpolate raw Java exception messages: they can contain account data.
+export function categorizeOriginalClientError(value){
+    const error=typeof value==="string"?value:"";
+    if(/\b(?:OutOfMemoryError|allocation failed|Java heap space)\b/i.test(error))return "MEMORY";
+    if(/\b(?:NullPointerException|Cannot read properties of (?:null|undefined))\b/i.test(error))return "NULL_REFERENCE";
+    if(/\b(?:ArrayIndexOutOfBoundsException|IndexOutOfBoundsException|RangeError)\b/i.test(error))return "BOUNDS";
+    if(/\b(?:IllegalStateException|IllegalArgumentException)\b/i.test(error))return "JAVA_STATE";
+    if(/\b(?:TypeError|ReferenceError)\b/i.test(error))return "JAVASCRIPT";
+    if(/\b(?:IOException|SocketException)\b/i.test(error))return "NETWORK";
+    return "UNKNOWN";
+}
+
 // Mobile OS keyboard access for the original Java game canvas.
 // The native password input is ONLY an ephemeral keyboard surface: characters
 // are immediately relayed as ordinary key events to the original AWT adapter.
