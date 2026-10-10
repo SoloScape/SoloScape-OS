@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import {attachOriginalKeyboard} from "../teavm-poc/site/original-mobile-keyboard.mjs";
 
-function fixture(){
+function fixture({supportsPointerEvents=true}={}){
     const handlers=new Map();
     const events=[];
     let state="LOGIN_SCREEN",focusedKeyboard=0,focusedCanvas=0;
@@ -15,26 +15,39 @@ function fixture(){
         focus(){focusedCanvas++;}
     };
     attachOriginalKeyboard({canvas,keyboard,getGameState:()=>state,
-        createKeyEvent:(type,key)=>({type,key})});
+        supportsPointerEvents,createKeyEvent:(type,key)=>({type,key})});
     const fire=(target,type,event={})=>{
         const fn=handlers.get(target+":"+type);
         assert.ok(fn,"Missing "+target+" "+type+" handler");
         fn(event);
     };
-    return {canvas,keyboard,events,fire,setState:value=>state=value,
+    return {canvas,keyboard,events,handlers,fire,setState:value=>state=value,
         counts:()=>({focusedKeyboard,focusedCanvas})};
 }
-test("tapping original Java login title opens OS keyboard without visible login form",()=>{
+test("existing-user title tap does not open the mobile keyboard or double-handle a touch",()=>{
     const f=fixture();
     f.fire("canvas","pointerup",{pointerType:"touch"});
-    assert.equal(f.counts().focusedKeyboard,1);
-    f.fire("canvas","touchend",{});
-    assert.equal(f.counts().focusedKeyboard,2);
+    assert.equal(f.counts().focusedKeyboard,0,
+        "first original Java title button tap must not bring up the OS keyboard");
+    assert.ok(!f.handlers.has("canvas:touchend"),
+        "pointer-enabled mobile browsers must not handle the same tap twice");
+    f.fire("canvas","pointerup",{pointerType:"touch"});
+    assert.equal(f.counts().focusedKeyboard,1,
+        "next tap on the username or password field opens the keyboard");
     f.setState("LOGGED_IN");
     f.fire("canvas","pointerup",{pointerType:"touch"});
-    assert.equal(f.counts().focusedKeyboard,2,"walking must not open the keyboard");
+    assert.equal(f.counts().focusedKeyboard,1,"walking must not open the keyboard");
     f.fire("canvas","pointerup",{pointerType:"mouse"});
-    assert.equal(f.counts().focusedCanvas,1,"mouse should focus the original canvas");
+    assert.equal(f.counts().focusedCanvas,1,"mouse still focuses the original canvas");
+});
+
+test("older mobile browsers without Pointer Events retain one touchend keyboard path",()=>{
+    const f=fixture({supportsPointerEvents:false});
+    assert.ok(f.handlers.has("canvas:touchend"));
+    f.fire("canvas","touchend",{});
+    assert.equal(f.counts().focusedKeyboard,0);
+    f.fire("canvas","touchend",{});
+    assert.equal(f.counts().focusedKeyboard,1);
 });
 test("native keyboard passes individual committed text to original AWT canvas and clears it",()=>{
     const f=fixture();

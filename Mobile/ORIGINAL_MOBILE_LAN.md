@@ -18,6 +18,9 @@ This is not the separate WebGL/TSPS homepage and is not intended for public host
 4. On the phone, open the **LAN URL printed by the server**, for example
    `http://192.168.0.129:3097/`. Engine initialization starts automatically.
    Log in **manually** using your disposable test account.
+   On the Java welcome title, tap **Existing User** first; then tap a login
+   field to open the mobile keyboard. The title-button tap itself should not
+   open the keyboard or resize the viewport.
 
 A small text-free loading animation appears as soon as the page is received,
 then disappears when the original game draws. An error message appears only

@@ -4,6 +4,7 @@
 // No credentials are persisted, logged, submitted by JavaScript, or exposed to
 // the development bridge. Original Java handles login and encryption.
 export function attachOriginalKeyboard({canvas,keyboard,getGameState,
+    supportsPointerEvents=typeof globalThis.PointerEvent==="function",
     createKeyEvent=(type,key)=>new KeyboardEvent(type,{key,bubbles:false,cancelable:true})}){
     if(!canvas||!keyboard||typeof getGameState!=="function")
         throw new Error("Original canvas keyboard needs its own input surface");
@@ -40,17 +41,33 @@ export function attachOriginalKeyboard({canvas,keyboard,getGameState,
         if(keyboard.value){relayText(keyboard.value);clear();}
     });
     keyboard.addEventListener("blur",clear);
+    // The welcome title and username/password entry both report LOGIN_SCREEN.
+    // Do not open the system keyboard on the first "Existing User" tap; the
+    // original Java title button must get its click before keyboard resizing.
+    // A subsequent tap can focus the ephemeral keyboard for manual entry.
+    let loginTitleTouched=false;
     const activate=()=>{
-        if(getGameState()==="LOGIN_SCREEN")
+        if(getGameState()!=="LOGIN_SCREEN"){
+            loginTitleTouched=false;
+            return;
+        }
+        if(!loginTitleTouched){
+            loginTitleTouched=true;
+            return;
+        }
+        if(globalThis.document?.activeElement!==keyboard)
             keyboard.focus({preventScroll:true});
     };
-    // Must focus synchronously inside a user gesture for iOS/Safari.
-    // The original canvas still receives its mouse/touch interaction.
+    // Modern iOS Safari and Android fire pointerup AND touchend for one tap.
+    // Use only one path, or the title touch gets counted twice and opens the
+    // keyboard prematurely. Legacy touch browsers without Pointer Events
+    // keep the touchend fallback.
     canvas.addEventListener("pointerup",e=>{
         if(e.pointerType==="touch")activate();
         else if(e.pointerType==="mouse")canvas.focus({preventScroll:true});
     },{passive:true});
-    canvas.addEventListener("touchend",activate,{passive:true});
+    if(!supportsPointerEvents)
+        canvas.addEventListener("touchend",activate,{passive:true});
     return {dispose(){
         clear();
         keyboard.blur();
