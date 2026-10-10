@@ -49,7 +49,8 @@ test("original engine autostarts into a canvas-only fullscreen viewport",async()
     const js=await readFile(new URL("engine-smoke.mjs",site),"utf8");
     assert.match(js,/void initializeOriginalEngine\(\);/);
     assert.match(js,/engine\.initializeAsync\(/);
-    assert.match(js,/engine\.configureClient\(window\.location\.origin\+"\/"\)/);
+    assert.match(js,/let codebase=window\.location\.origin\+"\/";/);
+    assert.match(js,/engine\.configureClient\(codebase\)/);
     assert.doesNotMatch(js,/addEventListener\("click"|getElementById\('start'\)/);
     assert.doesNotMatch(html,/<(?:button|input|textarea|h[1-6]|pre|aside|form)\b/i);
     assert.match(html,/<canvas id="original-engine-canvas"/);
