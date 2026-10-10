@@ -84,7 +84,12 @@ export function attachOriginalKeyboard({canvas,keyboard,getGameState,
         }
         // Retry even when this input was focused before but iOS never
         // displayed a software keyboard. The call must stay synchronous.
-        keyboard.focus({preventScroll:true});
+        // Moving DOM focus from the original canvas to the temporary iOS
+        // input must not become a Java AWT focus-loss event. This handoff
+        // happens synchronously within the trusted touch/click gesture.
+        globalThis.soloscapeOriginalKeyboardFocusing=true;
+        try{keyboard.focus({preventScroll:true});}
+        finally{globalThis.soloscapeOriginalKeyboardFocusing=false;}
     };
     // Record a genuine touch, but open the keyboard only after the original
     // Java canvas has received its mousedown/mouseup/click. The click bubbles

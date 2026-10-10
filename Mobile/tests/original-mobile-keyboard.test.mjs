@@ -100,6 +100,24 @@ test("mouse clicks and unrelated document clicks do not summon the mobile keyboa
     f.fire("document","click",{target:f.canvas});
     assert.equal(f.counts().focusedKeyboard,0);
 });
+test("keyboard focus marks a synchronous AWT-preserving handoff, then clears the mark",()=>{
+    const f=fixture();
+    let during=null;
+    f.keyboard.focus=()=>{during=globalThis.soloscapeOriginalKeyboardFocusing;};
+    f.fire("canvas","touchstart",{});
+    f.fire("document","click",{target:f.canvas,clientX:462,clientY:291});
+    f.fire("canvas","touchstart",{});
+    f.fire("document","click",{target:f.canvas,clientX:374,clientY:248});
+    assert.equal(during,true,"focus event must see the temporary keyboard handoff");
+    assert.equal(globalThis.soloscapeOriginalKeyboardFocusing,false,
+        "other window blur events must not be suppressed");
+    f.keyboard.focus=()=>{throw Error("Blocked focus");};
+    f.fire("canvas","touchstart",{});
+    assert.throws(()=>f.fire("document","click",{target:f.canvas,clientX:374,clientY:248}),
+        /Blocked focus/);
+    assert.equal(globalThis.soloscapeOriginalKeyboardFocusing,false,
+        "a Safari focus exception must never strand the handoff flag");
+});
 test("native keyboard passes individual committed text to original AWT canvas and clears it",()=>{
     const f=fixture();
     f.keyboard.value="ab";

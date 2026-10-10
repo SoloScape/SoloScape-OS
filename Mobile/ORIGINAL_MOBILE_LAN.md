@@ -23,7 +23,12 @@ This is not the separate WebGL/TSPS homepage and is not intended for public host
    iOS Safari focuses the ephemeral keyboard input. **Only those two input
    areas** can open the keyboard; tapping login buttons, other title controls
    or the game canvas does not summon it and dismisses it if already open.
-   Keyboard activation can be retried by tapping either field again.
+   Keyboard activation can be retried by tapping either field again. When iOS
+   temporarily transfers DOM focus from the original canvas to its ephemeral
+   keyboard input, the browser AWT adapter does not report a spurious Java
+   focus-loss event; genuine canvas/page focus losses are still reported.
+   This browser-only compatibility shim requires an original TeaVM rebuild
+   and must be verified with a manual iPhone login.
 
 A small text-free loading animation appears as soon as the page is received,
 then disappears when the original game draws. An error message appears only

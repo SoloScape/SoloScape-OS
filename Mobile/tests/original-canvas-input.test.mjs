@@ -18,7 +18,10 @@ function createCanvas(consume=()=>false,rect={left:0,top:0,width:765,height:503}
         addEventListener(type,fn,opts){handlers.set(type,{fn,opts});}
     };
     const handler=(...args)=>{sent.push(args);return consume(...args);};
-    runInNewContext(inputScript,{canvas,handler});
+    const keyboard={};
+    const browser={canvas,handler,document:{getElementById:id=>
+        id==="original-soft-keyboard"?keyboard:null}};
+    runInNewContext(inputScript,browser);
     function fire(type,props={}){
         const listener=handlers.get(type);
         assert.ok(listener,"Missing "+type+" canvas listener");
@@ -31,7 +34,7 @@ function createCanvas(consume=()=>false,rect={left:0,top:0,width:765,height:503}
         listener.fn(e);
         return e;
     }
-    return {canvas,handlers,sent,fire};
+    return {canvas,handlers,sent,fire,keyboard,browser};
 }
 
 test("wheel zoom reaches original Java AWT event 507 without scrolling the page",()=>{
@@ -91,4 +94,19 @@ test("letterboxed portrait and landscape canvas input maps to original 765x503 p
     landscape.fire("mousedown",{clientX:(932-width)/2+width/4,clientY:430*0.75});
     assert.equal(landscape.sent[0][3],191);
     assert.equal(landscape.sent[0][4],377);
+});
+
+test("temporary iOS keyboard focus does not report Java AWT focus lost",()=>{
+    const input=createCanvas();
+    input.browser.soloscapeOriginalKeyboardFocusing=true;
+    input.fire("blur",{});
+    assert.equal(input.sent.length,0);
+    input.browser.soloscapeOriginalKeyboardFocusing=false;
+    input.fire("blur",{relatedTarget:input.keyboard});
+    assert.equal(input.sent.length,0);
+    input.fire("blur",{relatedTarget:{}});
+    assert.deepEqual(input.sent.map(v=>v[0]),[1005],
+        "genuine canvas focus loss must still reach the original Java game");
+    input.fire("focus");
+    assert.deepEqual(input.sent.map(v=>v[0]),[1005,1004]);
 });
