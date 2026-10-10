@@ -1,5 +1,10 @@
-// Distinct diagnostic entry point. Never imported by the normal SoloScape homepage.
+// Original Java gameplay and framebuffer only. Browser status is an overlay.
+import {loadOriginalCache} from "/original-cache-loader.mjs";
 const $=id=>document.getElementById(id);
+function loading(message){
+    const indicator=$("loading-status");
+    if(indicator&&!indicator.hidden)indicator.textContent=message;
+}
 const state=window.engineSmokeState={phase:"not-started",step:"not-started",cycles:[],frameChanged:false,canvasSampleColors:0,
     clientThread:false,gameState:"UNAVAILABLE",originalFps:-1,presentedFrames:0,presentedFps:0,cycleRate:0,clockStats:null,loginRsaConfigured:false,callbackTrace:"",socketAttempts:[], resourceLookups:[],filePaths:[],error:"",callbackError:"",events:[]};
 let engine,clock=0,initialPixelSignature,framePoll;
@@ -43,6 +48,10 @@ function collect(){
         if(state.cycles.at(-1)!==cycle){state.cycles.push(cycle);if(state.cycles.length>50)state.cycles.shift();}
         state.clientThread=engine.hasClientThread();
         state.gameState=engine.gameState();
+        if(state.gameState==="LOGIN_SCREEN"||state.gameState==="LOGGED_IN"){
+            const indicator=$("loading-status");
+            if(indicator)indicator.hidden=true;
+        }
         state.socketAttempts=globalThis.soloscapeEngineSocketAttempts??[];
         state.resourceLookups=globalThis.soloscapeOriginalResourceLookups??[];
         state.filePaths=(globalThis.soloscapeOriginalFilePaths??[]).filter(path=>/cache|jagex|oldschool|random\.dat|\.idx/i.test(path)).slice(-40);
@@ -113,7 +122,7 @@ $("start").addEventListener("click",async()=>{
                 if(Array.isArray(defaults))routes.push(...defaults);
             }
         }
-        state.phase="loading";$("status").textContent="Importing engine";
+        state.phase="loading";$("status").textContent="Importing engine";loading("Loading original Java engine…");
         engine=await import("/engine.js");
         for(const name of ["configureClient","configureClientParameter","initializeAsync","gameCycle","hasClientThread"])
             if(typeof engine[name]!=="function")throw new Error("Engine rebuild required: "+name+" missing");
@@ -121,26 +130,15 @@ $("start").addEventListener("click",async()=>{
         // original gamepack, never placeholders or gameplay substitutions.
         // An explicit local development cache snapshot is mounted read-write
         // only inside Chrome's memory. The original server files remain read-only.
+        loading("Preparing original game cache…");
         const cacheManifest=await fetch("/original-cache/manifest");
         if(cacheManifest.ok){
             const manifest=await cacheManifest.json();
             if(!Array.isArray(manifest.files))throw new Error("Invalid local cache manifest");
-            const files=new Map();
-            const prefix="/home/soloscape/jagexcache/oldschool/LIVE/";
-            await Promise.all(manifest.files.map(async file=>{
-                if(!/^main_file_cache\.(?:dat2|idx(?:255|[0-9]|1[0-9]|2[0-4]))$/.test(file.name)||
-                    !Number.isSafeInteger(file.bytes)||file.bytes<0||file.bytes>512*1024*1024)
-                    throw new Error("Invalid native cache entry");
-                const response=await fetch("/original-cache/"+file.name);
-                if(!response.ok)throw new Error("Native cache source unavailable: "+file.name);
-                const bytes=new Uint8Array(await response.arrayBuffer());
-                if(bytes.length!==file.bytes)throw new Error("Incomplete local cache: "+file.name);
-                files.set(prefix+file.name,bytes);
-            }));
-            for(let i=0;i<=24;i++){
-                const name=prefix+"main_file_cache.idx"+i;
-                if(!files.has(name))files.set(name,new Uint8Array(0));
-            }
+            const files=await loadOriginalCache(manifest,{onProgress:({loaded,total})=>{
+                const pct=total?Math.min(100,Math.floor(100*loaded/total)):100;
+                loading("Loading original game data… "+pct+"%");
+            }});
             globalThis.soloscapeOriginalCacheFiles=files;
             event("Loaded "+files.size+" original cache files in browser memory (no server writes)");
         }
@@ -171,6 +169,7 @@ $("start").addEventListener("click",async()=>{
         }else if(publicKeyResponse.status===404){
             event("Original title-only smoke: local login RSA not configured");
         }else throw new Error("SoloScape public login key unavailable");
+        loading("Starting original game…");
         initialPixelSignature=signature();
         $("status").textContent="Initializing";
         event("Original engine initializeAsync invoked");
@@ -180,12 +179,23 @@ $("start").addEventListener("click",async()=>{
             state.error=error||"";
             $("status").textContent=state.phase;
             event(error?"Original engine initialization error: "+error:"Initialize returned (cycles not yet proven)");
+            if(error){
+                const display=$("startup-error");
+                if(display){display.textContent="Game initialization failed. Reload the page to retry.";display.hidden=false;}
+            }
         });
     }catch(error){
         state.phase="error";state.error=String(error);
         $("status").textContent="error";event(state.error);
         const display=$("startup-error");
-        if(display){display.textContent="Unable to start game. Reload the page or check the server.";display.hidden=false;}
+        if(display){
+            const memory=/memory|allocation|out of bounds/i.test(String(error));
+            display.textContent=memory?
+                "The original game exceeded available browser memory. Try a desktop browser while mobile optimization continues.":
+                "Unable to start game. Reload the page or visit /health to check the local server.";
+            display.hidden=false;
+        }
+        const indicator=$("loading-status");if(indicator)indicator.hidden=true;
     }
 },{once:true});
 queueMicrotask(()=>$("start").click());

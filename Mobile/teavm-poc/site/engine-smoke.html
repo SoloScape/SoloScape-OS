@@ -20,6 +20,12 @@ body{display:flex;align-items:center;justify-content:center;background:#000}
     touch-action:none;overscroll-behavior:none;
 }
 #internal-diagnostics{display:none!important}
+#loading-status{
+    position:fixed;inset:auto 0 max(24px,env(safe-area-inset-bottom));
+    text-align:center;padding:12px;color:#fff;
+    font:14px system-ui,sans-serif;
+    text-shadow:0 1px 3px #000;pointer-events:none;
+}
 #startup-error{
     position:fixed;inset:auto 0 0;padding:12px;
     color:#fff;background:#641e1e;text-align:center;
@@ -47,6 +53,7 @@ body{display:flex;align-items:center;justify-content:center;background:#000}
 <p id="result">Not started</p>
 <pre id="events"></pre>
 </div>
+<div id="loading-status" role="status" aria-live="polite">Starting SoloScape…</div>
 <div id="startup-error" role="alert" hidden></div>
 <script type="module" src="/engine-smoke.mjs"></script>
 </body>
