@@ -15,7 +15,12 @@ test("original game page uses an external trusted stylesheet rather than CSP-blo
     assert.match(css,/width:min\(100vw,152\.0875vh\)/);
     assert.match(css,/width:min\(100vw,152\.0875dvh\)/);
     assert.match(css,/display:flex;align-items:center;justify-content:center/);
-    assert.doesNotMatch(css,/width:100vw;height:100vh/);
+    const fixedCss=css.split("/* In either authentic resizable mode")[0];
+    assert.doesNotMatch(fixedCss,/width:100vw;height:100vh/,
+        "fixed game mode must keep its original aspect ratio");
+    assert.match(css,/body\.original-resizable #original-engine-canvas\{/);
+    assert.match(css,/width:100vw;height:100vh;max-height:none;aspect-ratio:auto/,
+        "both native resizable modes should cover the viewport");
     assert.match(css,/background:\s*#000/);
     assert.doesNotMatch(markup,/id="internal-diagnostics"|id="start"/);
     assert.doesNotMatch(markup,/id="loading-status"/);

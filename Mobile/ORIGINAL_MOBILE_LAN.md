@@ -154,3 +154,17 @@ or a replacement renderer. A pending adjustment is canceled on logout,
 connection loss or genuine wheel input; no recurring camera correction
 fights a player's preferences. Desktop controls remain unchanged.
 A phone retest is required to verify the visual distance.
+
+## Authentic resizable game window
+
+Both original **Resizable Classic** and **Resizable Modern** report
+`net.runelite.api.Client.isResized()`. When the original Java client is
+`LOGGED_IN`, the browser host passes the CSS-pixel viewport dimensions to
+the original Java AWT container, calls the game's native `resizeCanvas()`,
+and fills the webpage with the original software-rendered canvas. Fixed
+mode retains the original 765x503 letterboxed presentation; leaving the
+world restores those dimensions. The client retains OSRS's 765x503
+logical minimum, with bounded maximum dimensions to avoid multiplying
+Safari's framebuffer by Retina pixel density. This is not a second
+WebGL renderer. It requires a TeaVM rebuild and a manual iPhone test of
+both layout variants, including rotating the phone.

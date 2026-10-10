@@ -7,6 +7,7 @@ globalThis.soloscapeOriginalSha256=originalSha256;
 import {attachOriginalKeyboard,categorizeOriginalClientError} from "/original-mobile-keyboard.mjs";
 import {attachOriginalPageLifecycle} from "/original-mobile-lifecycle.mjs";
 import {attachOriginalLoginCamera} from "/original-login-camera.mjs";
+import {attachOriginalResizableLayout} from "/original-resizable-layout.mjs";
 const $=id=>document.getElementById(id);
 function dismissStartupSplash(){
     const splash=$("startup-splash");
@@ -19,7 +20,8 @@ function showStartupError(message){
 }
 const state=window.engineSmokeState={phase:"not-started",step:"not-started",cycles:[],frameChanged:false,canvasSampleColors:0,
     clientThread:false,gameState:"UNAVAILABLE",originalFps:-1,presentedFrames:0,presentedFps:0,cycleRate:0,clockStats:null,loginRsaConfigured:false,callbackTrace:"",socketAttempts:[], resourceLookups:[],filePaths:[],error:"",callbackError:"",events:[]};
-let engine,clock=0,initialPixelSignature,framePoll,bootstrapStage="public-config";
+let engine,clock=0,initialPixelSignature,framePoll,originalResize,
+    bootstrapStage="public-config";
 // An invisible password-type input opens the mobile OS keyboard. The original
 // Java client still renders login fields and handles authentication itself.
 attachOriginalKeyboard({canvas:$("original-engine-canvas"),
@@ -76,6 +78,7 @@ function collect(){
         state.clientThread=engine.hasClientThread();
         state.gameState=engine.gameState();
         loginCamera.observe(state.gameState);
+        originalResize?.update();
         state.socketAttempts=globalThis.soloscapeEngineSocketAttempts??[];
         state.resourceLookups=globalThis.soloscapeOriginalResourceLookups??[];
         state.filePaths=(globalThis.soloscapeOriginalFilePaths??[]).filter(path=>/cache|jagex|oldschool|random\.dat|\.idx/i.test(path)).slice(-40);
@@ -162,6 +165,9 @@ async function initializeOriginalEngine(){
         state.phase="loading";
         bootstrapStage="engine-import";
         engine=await import("/engine.js");
+        originalResize=attachOriginalResizableLayout({
+            canvas:$("original-engine-canvas"),body:document.body,engine,
+            getGameState:()=>state.gameState});
         for(const name of ["configureClient","configureClientParameter","initializeAsync","gameCycle","hasClientThread"])
             if(typeof engine[name]!=="function")throw new Error("Engine rebuild required: "+name+" missing");
         // Supply the exact small classpath resources packaged in the pinned

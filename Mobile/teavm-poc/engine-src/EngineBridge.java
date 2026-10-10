@@ -310,6 +310,29 @@ public final class EngineBridge {
         return state==null?"UNAVAILABLE":state.name();
     }
 
+
+    /** Both original Resizable Classic and Resizable Modern set isResized. */
+    @JSExport public static boolean isResizableMode() {
+        if (!(engine instanceof net.runelite.api.Client)) return false;
+        return ((net.runelite.api.Client)engine).isResized();
+    }
+
+    /** Resize only the original Java AWT host and its own GameEngine canvas. */
+    @JSExport public static boolean resizeOriginalViewport(int width,int height) {
+        if (!(engine instanceof net.runelite.api.Client)) return false;
+        net.runelite.api.Client original=(net.runelite.api.Client)engine;
+        if (original.getGameState()!=net.runelite.api.GameState.LOGGED_IN)
+            return false;
+        if (width<765||height<503||width>2048||height>1536)
+            return false;
+        org.soloscape.teavm.platform.awt.Canvas canvas=
+            original.getCanvas();
+        if(canvas==null||canvas.getParent()==null) return false;
+        canvas.getParent().setSize(width,height);
+        ((net.runelite.api.GameEngine)engine).resizeCanvas();
+        return true;
+    }
+
     @JSExport public static boolean hasClientThread() {
         return engine != null && ((net.runelite.api.GameEngine) engine).getClientThread() != null;
     }
