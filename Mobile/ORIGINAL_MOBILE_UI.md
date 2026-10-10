@@ -11,6 +11,11 @@ gameframe exists, the original Java drawing callback sends the fixed `mobileui`
 command through the original `DOCHEAT` implementation. It sends once per login
 and resets on logout or connection loss. No account input is automated.
 
+At the login screen, the browser also invokes the original `SETWINDOWMODE`
+setter with mode 2. The original login therefore reports resizable mode even
+when the saved desktop preference is fixed. This does not update that saved
+preference; the call is skipped once the original client is already resizable.
+
 The server registers the cache's mobile redirect mappings and handles that
 command using its existing gameframe move queue. It sets the original resizable
 mode and moves the existing overlays into mobile containers. A saved mobile
@@ -25,7 +30,10 @@ directory. Restart the server, reload the browser, and log in manually.
 The JVM transformation fixture checks that touch capability is added only to
 interface interpreters, leaving a login flag reader unchanged. It also checks
 pre-login/no-root gating, once-per-session requests, reconnect and disabled mode.
+It also checks login-screen window selection, idempotence and desktop isolation.
 The actual LIVE cache contains 135 mobile widgets and 103 mobile redirect pairs.
+The owned-Chrome smoke also requires `LOGIN_SCREEN` with the original client's
+resizable flag enabled, without taking screenshots or entering credentials.
 
 Authenticated mobile rendering and interaction still require screenshots and
 original-client responses: tab opening/closing, inventory actions, chat, banking,

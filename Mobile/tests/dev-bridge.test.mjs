@@ -68,13 +68,14 @@ test("engine error messages are whitelisted, never raw credentials or network pa
 });
 test("read-only sanitized original-game telemetry excludes login and cache secrets",async()=>{
     const browser=new FakeChrome({...loggedIn,
-        callbackError:"user@example.com password123 java.lang.RuntimeException",
+        resizable:true,callbackError:"user@example.com password123 java.lang.RuntimeException",
         callbackTrace:"ED:66:432 | username:password | J4:67:158",
         socketAttempts:[{payload:"SECRET"}],resourceLookups:["SECRET"],events:["SECRET"],
         filePaths:["C:\\private\\password.txt"]});
     const bridge=new Stage1Bridge(browser);
     const result=await bridge.getClientState();
     assert.equal(result.gameState,"LOGGED_IN");
+    assert.equal(result.resizable,true);
     assert.equal(result.gameCycle,150);
     assert.equal(result.originalFps,21);
     assert.equal(result.pageVisibility,"UNAVAILABLE");

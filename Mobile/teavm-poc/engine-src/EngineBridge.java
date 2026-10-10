@@ -34,12 +34,19 @@ public final class EngineBridge {
         OriginalMobileLayout.configure(enabled);
     }
 
-    /** Called on the original Java drawing thread, after the server opens a gameframe. */
+    /** Called on the original Java drawing thread to select browser window/gameframe modes. */
     public static void updateOriginalMobileLayout() {
         if (!(engine instanceof net.runelite.api.Client)) return;
         net.runelite.api.Client original = (net.runelite.api.Client)engine;
+        net.runelite.api.GameState state = original.getGameState();
+        if (OriginalMobileLayout.shouldUseResizable(
+            state==net.runelite.api.GameState.LOGIN_SCREEN, original.isResized())) {
+            // Original SETWINDOWMODE (5307) target and pinned revision-240 guard.
+            // Apply before login so the original login reports resizable dimensions.
+            uo.bh(2, -2061563598);
+        }
         if (!OriginalMobileLayout.shouldRequest(
-            original.getGameState()==net.runelite.api.GameState.LOGGED_IN,
+            state==net.runelite.api.GameState.LOGGED_IN,
             original.getTopLevelInterfaceId())) return;
         // The pinned DOCHEAT opcode 5020 invokes this original method with -41.
         // One fixed UI command per login; no new packet writer or login changes.

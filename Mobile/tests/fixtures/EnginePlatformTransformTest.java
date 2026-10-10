@@ -64,8 +64,12 @@ public final class EnginePlatformTransformTest implements Opcodes {
                 }
             }
             OriginalMobileLayout.configure(false);
+            check(!OriginalMobileLayout.shouldUseResizable(true,false),"desktop preserves fixed preference");
             check(!OriginalMobileLayout.isMobile(false)&&OriginalMobileLayout.isMobile(true),"disabled preserves original capability");
             OriginalMobileLayout.configure(true);
+            check(OriginalMobileLayout.shouldUseResizable(true,false),"mobile selects resizable before login");
+            check(!OriginalMobileLayout.shouldUseResizable(true,true),"resizable selection is idempotent");
+            check(!OriginalMobileLayout.shouldUseResizable(false,false),"window mode waits for login screen");
             check(OriginalMobileLayout.isMobile(false)&&OriginalMobileLayout.isMobile(true),"browser selects mobile scripts");
             check(!OriginalMobileLayout.shouldRequest(false,548),"no command before manual login");
             check(!OriginalMobileLayout.shouldRequest(true,-1),"wait for server gameframe");

@@ -26,9 +26,10 @@ try{
     assert.equal(title.reached,true,"Original revision-240 title must initialize");
     assert.equal(title.callbackError,"");
     assert.equal(title.clientThread,true);
+    assert.equal(title.resizable,true,"Mobile title must select original resizable mode before login");
     assert.ok(title.gameCycle>=0);
     console.log("PASS: owned local Chrome, original OpenOSRS title, sanitized state, blocked pre-login screenshots and input.");
-    console.log(JSON.stringify({gameState:title.gameState,gameCycle:title.gameCycle,originalFps:title.originalFps}));
+    console.log(JSON.stringify({gameState:title.gameState,resizable:title.resizable,gameCycle:title.gameCycle,originalFps:title.originalFps}));
     success=true;
 }catch(error){
     console.error("FAIL: Stage 1 live Chrome smoke:",error?.message||"unknown error");

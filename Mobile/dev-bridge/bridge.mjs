@@ -9,6 +9,7 @@ const allowedKeys=new Set(["Escape","Enter","Tab","Backspace","Space",
     ...Array.from({length:12},(_,i)=>"F"+(i+1))]);
 const stateExpr=`(()=>{const s=window.engineSmokeState;if(!s)return null;
 return JSON.stringify({phase:s.phase,step:s.step,gameState:s.gameState,
+resizable:s.resizable,
 gameCycle:s.cycles?.at(-1),originalFps:s.originalFps,
 presentedFrames:s.presentedFrames,presentedFps:s.presentedFps,
 cycleRate:s.cycleRate,clientThread:s.clientThread,frameChanged:s.frameChanged,
@@ -55,6 +56,7 @@ export function sanitizeState(raw){
         pageVisibility:["visible","hidden"].includes(raw.pageVisibility)?raw.pageVisibility:"UNAVAILABLE",
         pageFocused:raw.pageFocused===true,
         gameState:word(raw.gameState),gameCycle:finite(raw.gameCycle),
+        resizable:typeof raw.resizable==="boolean"?raw.resizable:null,
         originalFps:finite(raw.originalFps),presentedFps:finite(raw.presentedFps),
         presentedFrames:finite(raw.presentedFrames),cyclesPerSecond:finite(raw.cycleRate),
         clientThread:raw.clientThread===true,frameChanged:raw.frameChanged===true,

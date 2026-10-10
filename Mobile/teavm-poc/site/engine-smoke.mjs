@@ -81,6 +81,7 @@ function collect(){
         if(state.cycles.at(-1)!==cycle){state.cycles.push(cycle);if(state.cycles.length>50)state.cycles.shift();}
         state.clientThread=engine.hasClientThread();
         state.gameState=engine.gameState();
+        state.resizable=engine.isResizableMode();
         loginCamera.observe(state.gameState);
         touchCamera.update();
         originalResize?.update();
