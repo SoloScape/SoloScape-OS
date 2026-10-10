@@ -66,7 +66,7 @@ export function attachOriginalTouchCamera({
         // Preserve fractions so slow, small drags produce the same angle
         // as one long fast drag. Never scale by touch-event frequency/time.
         const yaw=-deltaX*CAMERA_YAW_UNITS_PER_PIXEL+finger.yawFraction;
-        const pitch=-deltaY*CAMERA_PITCH_UNITS_PER_PIXEL+finger.pitchFraction;
+        const pitch=deltaY*CAMERA_PITCH_UNITS_PER_PIXEL+finger.pitchFraction;
         const stepYaw=Math.trunc(yaw),stepPitch=Math.trunc(pitch);
         finger.yawFraction=yaw-stepYaw;
         finger.pitchFraction=pitch-stepPitch;

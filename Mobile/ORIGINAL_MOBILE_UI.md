@@ -16,7 +16,7 @@ setter with mode 2. The original login therefore reports resizable mode even
 when the saved desktop preference is fixed. This does not update that saved
 preference; the call is skipped once the original client is already resizable.
 
-Touch swipes use reversed yaw/pitch deltas at 4/1.75 camera units per CSS pixel
+Touch swipes use reversed yaw and direct pitch deltas at 4/1.75 camera units per CSS pixel
 (half the previous sensitivity). In the mobile gameframe, the original
 HP/prayer/run/special number widgets are vertically centred in their existing
 orb containers (34px orb / 13px label: Y 16 becomes Y 10). Orb circles, horizontal

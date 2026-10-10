@@ -80,6 +80,16 @@ test("100px right swipe reverses native yaw by 400 units and stops on lift",()=>
     assert.deepEqual(f.captures,[["start",1],["end",1]]);
 });
 
+test("vertical swipes use opposite signs for up and down without horizontal rotation",()=>{
+    const down=fixture(),up=fixture();
+    down.fire("canvas","pointerdown");
+    down.fire("canvas","pointermove",{clientY:190});
+    up.fire("canvas","pointerdown");
+    up.fire("canvas","pointermove",{clientY:110});
+    assert.deepEqual(down.turns,[[0,70]]);
+    assert.deepEqual(up.turns,[[0,-70]]);
+});
+
 test("distance—not event frequency, duration or swipe velocity—determines angle",()=>{
     const fast=fixture(),slow=fixture();
     fast.fire("canvas","pointerdown");
@@ -93,7 +103,7 @@ test("distance—not event frequency, duration or swipe velocity—determines an
     slow.fire("page","pointerup");
     assert.deepEqual(sum(fast.turns),sum(slow.turns));
     assert.deepEqual(sum(fast.turns),[-120*CAMERA_YAW_UNITS_PER_PIXEL,
-        Math.trunc(-65*CAMERA_PITCH_UNITS_PER_PIXEL)]);
+        Math.trunc(65*CAMERA_PITCH_UNITS_PER_PIXEL)]);
 });
 
 test("slow subpixel drags accumulate fractional pitch without losing movement",()=>{
@@ -104,7 +114,7 @@ test("slow subpixel drags accumulate fractional pitch without losing movement",(
     f.fire("page","pointerup");
     const [yaw,pitch]=sum(f.turns);
     assert.equal(yaw,-30*CAMERA_YAW_UNITS_PER_PIXEL);
-    assert.equal(pitch,Math.trunc(-10*CAMERA_PITCH_UNITS_PER_PIXEL));
+    assert.equal(pitch,Math.trunc(10*CAMERA_PITCH_UNITS_PER_PIXEL));
 });
 
 test("long press followed by drag still controls camera",()=>{
@@ -113,9 +123,9 @@ test("long press followed by drag still controls camera",()=>{
     f.tick(CAMERA_HOLD_MS);
     const drag=f.fire("canvas","pointermove",{clientX:170,clientY:170});
     assert.equal(drag.prevented,true);
-    assert.deepEqual(f.turns,[[-80,-35]]);
+    assert.deepEqual(f.turns,[[-80,35]]);
     f.fire("page","pointerup");
-    assert.deepEqual(f.turns,[[-80,-35]]);
+    assert.deepEqual(f.turns,[[-80,35]]);
 });
 
 test("opposite drags cancel, no inertia or post-lift synthetic key states",()=>{
