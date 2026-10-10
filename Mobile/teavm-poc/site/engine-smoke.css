@@ -15,5 +15,5 @@ body{position:fixed;inset:0;display:flex;align-items:center;justify-content:cent
 @keyframes startup-spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){#startup-splash::after{animation:none}}
 #startup-error{position:fixed;inset:auto 0 0;padding:12px;text-align:center;color:#fff;background:#641e1e;font:14px system-ui,sans-serif;pointer-events:none}
-#original-soft-keyboard{position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px;border:0;padding:0;pointer-events:none}
+#original-soft-keyboard{position:fixed;top:0;left:0;width:24px;height:24px;opacity:.01;font-size:16px;color:transparent;background:transparent;border:0;outline:0;padding:0;pointer-events:none}
 [hidden]{display:none!important}

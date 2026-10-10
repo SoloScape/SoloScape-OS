@@ -72,7 +72,7 @@ test("original engine autostarts into a canvas-only fullscreen viewport",async()
     assert.doesNotMatch(js,/addEventListener\("click"|getElementById\('start'\)/);
     assert.doesNotMatch(html,/<(?:button|textarea|h[1-6]|pre|aside|form)\b/i);
     assert.match(html,/<input id="original-soft-keyboard" type="password"/);
-    assert.match(css,/#original-soft-keyboard\{[^}]*opacity:0/);
+    assert.match(css,/#original-soft-keyboard\{[^}]*opacity:\.01/);
     assert.match(html,/<canvas id="original-engine-canvas"/);
     assert.match(css,/#original-engine-canvas\{/);
     assert.match(css,/aspect-ratio:765\/503/);
