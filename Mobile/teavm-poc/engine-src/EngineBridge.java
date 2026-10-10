@@ -123,6 +123,12 @@ public final class EngineBridge {
      * counted in more than one tile; compare like-for-like locations only.
      * No item IDs, player coordinates or cache bytes leave the game.
      */
+    private static String countsJson(int[] counts) {
+        StringBuilder s=new StringBuilder("[");
+        for(int i=0;i<counts.length;i++){if(i>0)s.append(',');s.append(counts[i]);}
+        return s.append(']').toString();
+    }
+
     @JSExport public static String sceneLocCounts() {
         if (!(engine instanceof net.runelite.api.Client)) return null;
         net.runelite.api.Client original=(net.runelite.api.Client)engine;
@@ -135,27 +141,50 @@ public final class EngineBridge {
         int nullWallRenderables=0,nullDecorRenderables=0;
         int nullGroundRenderables=0,nullGameRenderables=0,modelGameRenderables=0;
         int[] objectsByPlane=new int[planes.length];
+        // Fixed Lumbridge Castle study area: not the player's live position.
+        // These aggregate counts never expose object IDs, coordinates or map bytes.
+        final int baseX=original.getBaseX(), baseY=original.getBaseY();
+        int[] castleTiles=new int[planes.length],castleWalls=new int[planes.length];
+        int[] castleDecorations=new int[planes.length],castleGround=new int[planes.length];
+        int[] castleGameReferences=new int[planes.length],castleEmptyModels=new int[planes.length];
+        int[] castleModels=new int[planes.length];
+        // Fixed source-map test points: kitchen, two tables and both staircases.
+        // Values are aggregate model-presence checks, not object IDs.
+        final int[][] anchorLocations={{3212,3215},{3212,3218},{3212,3225},
+            {3204,3207},{3204,3229}};
+        int[] anchorGameReferences=new int[anchorLocations.length];
+        int[] anchorModelFaces=new int[anchorLocations.length];
+        int zeroFaceGameModels=0;
+        long totalGameModelFaces=0;
         for (int level=0;level<planes.length;level++) {
             net.runelite.api.Tile[][] plane=planes[level];
             if (plane==null) continue;
-            for (net.runelite.api.Tile[] row:plane) {
+            for (int lx=0;lx<plane.length;lx++) {
+                net.runelite.api.Tile[] row=plane[lx];
                 if (row==null) continue;
-                for (net.runelite.api.Tile tile:row) {
+                for (int lz=0;lz<row.length;lz++) {
+                    net.runelite.api.Tile tile=row[lz];
                     if (tile==null) continue;
+                    boolean castle=baseX+lx>=3203 && baseX+lx<=3234 &&
+                        baseY+lz>=3204 && baseY+lz<=3233;
                     tiles++;
+                    if(castle)castleTiles[level]++;
                     net.runelite.api.WallObject wall=tile.getWallObject();
                     if (wall!=null) {
                         walls++;
+                        if(castle)castleWalls[level]++;
                         if (wall.getRenderable1()==null) nullWallRenderables++;
                     }
                     net.runelite.api.DecorativeObject decor=tile.getDecorativeObject();
                     if (decor!=null) {
                         decorations++;
+                        if(castle)castleDecorations[level]++;
                         if (decor.getRenderable()==null) nullDecorRenderables++;
                     }
                     net.runelite.api.GroundObject groundObject=tile.getGroundObject();
                     if (groundObject!=null) {
                         ground++;
+                        if(castle)castleGround[level]++;
                         if (groundObject.getRenderable()==null) nullGroundRenderables++;
                     }
                     net.runelite.api.GameObject[] gameObjects=tile.getGameObjects();
@@ -163,9 +192,28 @@ public final class EngineBridge {
                         for (net.runelite.api.GameObject gameObject:gameObjects)
                             if (gameObject!=null) {
                                 objects++;objectsByPlane[level]++;
+                                if(castle)castleGameReferences[level]++;
+                                if(level==0)for(int anchor=0;anchor<anchorLocations.length;anchor++)
+                                    if(baseX+lx==anchorLocations[anchor][0] &&
+                                       baseY+lz==anchorLocations[anchor][1])
+                                        anchorGameReferences[anchor]++;
                                 net.runelite.api.Renderable renderable=gameObject.getRenderable();
                                 if (renderable==null) nullGameRenderables++;
-                                else if (renderable instanceof net.runelite.api.Model) modelGameRenderables++;
+                                else if (renderable instanceof net.runelite.api.Model) {
+                                    modelGameRenderables++;
+                                    if(castle)castleModels[level]++;
+                                    int faceCount=((net.runelite.api.Model)renderable).getFaceCount();
+                                    if(faceCount<=0) {
+                                        zeroFaceGameModels++;
+                                        if(castle)castleEmptyModels[level]++;
+                                    } else {
+                                        totalGameModelFaces+=faceCount;
+                                        if(level==0)for(int anchor=0;anchor<anchorLocations.length;anchor++)
+                                            if(baseX+lx==anchorLocations[anchor][0] &&
+                                               baseY+lz==anchorLocations[anchor][1])
+                                                anchorModelFaces[anchor]+=faceCount;
+                                    }
+                                }
                             }
                 }
             }
@@ -186,7 +234,18 @@ public final class EngineBridge {
             ",\"nullGroundRenderables\":"+nullGroundRenderables+
             ",\"nullGameRenderables\":"+nullGameRenderables+
             ",\"modelGameRenderables\":"+modelGameRenderables+
-            ",\"gameObjectRefsByPlane\":"+planeCounts+"}";
+            ",\"gameObjectRefsByPlane\":"+planeCounts+
+            ",\"zeroFaceGameModels\":"+zeroFaceGameModels+
+            ",\"totalGameModelFaces\":"+totalGameModelFaces+
+            ",\"castleTiles\":"+countsJson(castleTiles)+
+            ",\"castleWalls\":"+countsJson(castleWalls)+
+            ",\"castleDecorations\":"+countsJson(castleDecorations)+
+            ",\"castleGround\":"+countsJson(castleGround)+
+            ",\"castleGameReferences\":"+countsJson(castleGameReferences)+
+            ",\"castleModels\":"+countsJson(castleModels)+
+            ",\"castleEmptyModels\":"+countsJson(castleEmptyModels)+
+            ",\"castleAnchorGameRefs\":"+countsJson(anchorGameReferences)+
+            ",\"castleAnchorModelFaces\":"+countsJson(anchorModelFaces)+"}";
     }
 
     /** Read-only original Java game clock telemetry. */

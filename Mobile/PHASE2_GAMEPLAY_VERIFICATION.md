@@ -68,6 +68,25 @@ secrets are recorded.
   no object definitions or gameplay state were mutated. Use the safe
   scene-model counters until location/model drawing can be verified by
   targeted world actions.
+
+  **Lumbridge Castle location-specific evidence (10 Oct 2026):** The user
+  confirmed that the missing furniture and stairs are in the castle shown
+  in the controller screenshot. A read-only local decoder of the original
+  client `LIVE` map group 12850 found **1,614 location placements** in a
+  fixed castle study area (x=3203..3234, z=3204..3233), including 135
+  ground-floor game-object placements, 99 on floor 1, 74 on floor 2 and 2
+  on floor 3. The unmodified archive explicitly includes ground-floor
+  staircase placements at (3204,3207) and (3204,3229), kitchen-area
+  placement at (3212,3215), and large object placements at (3212,3218)
+  and (3212,3225). **The source map contains these records**, so the
+  next question is whether the original client created the corresponding
+  scene objects with usable face geometry. A browser-development-only,
+  read-only `scene` command now provides castle-per-plane counts,
+  empty-model counts and game-object/model-face counts at five fixed
+  placement anchors. This never supplies replacement JavaScript scenery,
+  never mutates the game cache, and never exports player coordinates or
+  object IDs. **Those new measurements require a manually authenticated
+  client after rebuilding; the root cause is not yet fixed.**
 - **NPC actions: PASS (user-confirmed).** The player can talk to and interact
   with NPCs; this overrides the previous `Not verified` automation result.
   Banking, longer dialogue chains and specific scene-object interactions

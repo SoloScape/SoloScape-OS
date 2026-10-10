@@ -179,7 +179,7 @@ png.slice('data:image/png;base64,'.length):null;})()`);
         // expose player positions, account details, cache contents or loc IDs.
         const raw=await this.browser.evaluate(
             "(()=>{const fn=window.engineSmokeSceneCounts;return typeof fn==='function'?fn():null})()");
-        if(typeof raw!=="string"||raw.length>512)
+        if(typeof raw!=="string"||raw.length>1400)
             throw new Error("Original scene counters unavailable");
         let parsed;
         try{parsed=JSON.parse(raw);}catch{throw new Error("Invalid original scene counts");}
@@ -191,7 +191,8 @@ png.slice('data:image/png;base64,'.length):null;})()`);
             result[name]=count;
         }
         for(const name of ["nullWallRenderables","nullDecorRenderables",
-            "nullGroundRenderables","nullGameRenderables","modelGameRenderables"]){
+            "nullGroundRenderables","nullGameRenderables","modelGameRenderables",
+            "zeroFaceGameModels","totalGameModelFaces"]){
             const count=parsed?.[name];
             if(!Number.isSafeInteger(count)||count<0||count>1000000)
                 throw new Error("Invalid original scene counts");
@@ -202,6 +203,21 @@ png.slice('data:image/png;base64,'.length):null;})()`);
             parsed.gameObjectRefsByPlane.some(v=>!Number.isSafeInteger(v)||v<0||v>1000000))
             throw new Error("Invalid original scene plane counts");
         result.gameObjectRefsByPlane=parsed.gameObjectRefsByPlane;
+        for(const name of ["castleTiles","castleWalls","castleDecorations","castleGround",
+            "castleGameReferences","castleModels","castleEmptyModels"]){
+            const arr=parsed?.[name];
+            if(!Array.isArray(arr)||arr.length!==result.gameObjectRefsByPlane.length||
+                arr.some(n=>!Number.isSafeInteger(n)||n<0||n>1000000))
+                throw new Error("Invalid original castle scene counts");
+            result[name]=arr;
+        }
+        for(const name of ["castleAnchorGameRefs","castleAnchorModelFaces"]){
+            const arr=parsed?.[name];
+            if(!Array.isArray(arr)||arr.length!==5||
+                arr.some(n=>!Number.isSafeInteger(n)||n<0||n>1000000))
+                throw new Error("Invalid original castle anchor counts");
+            result[name]=arr;
+        }
         return {...result,note:"Original Java scene references, not unique world objects; model presence does not prove visible rendering"};
     }
     async profilePerformance({durationMs=3000,cpu=false}={}){

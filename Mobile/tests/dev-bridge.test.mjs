@@ -27,7 +27,13 @@ class FakeChrome{
             return JSON.stringify({tiles:41230,walls:180,decorations:14,ground:8,
                 gameObjectReferences:202,regions:12,
                 nullWallRenderables:0,nullDecorRenderables:1,nullGroundRenderables:0,
-                nullGameRenderables:12,modelGameRenderables:160,gameObjectRefsByPlane:[50,50,50,52]});
+                nullGameRenderables:12,modelGameRenderables:160,zeroFaceGameModels:2,
+                totalGameModelFaces:4800,gameObjectRefsByPlane:[50,50,50,52],
+                castleTiles:[300,100,60,5],castleWalls:[10,5,3,0],
+                castleDecorations:[3,3,0,0],castleGround:[6,2,0,0],
+                castleGameReferences:[9,10,7,0],castleModels:[8,8,6,0],
+                castleEmptyModels:[1,1,0,0],castleAnchorGameRefs:[1,1,1,2,1],
+                castleAnchorModelFaces:[40,25,25,50,25]});
         if(expression.includes("getBoundingClientRect"))
             return JSON.stringify({left:20,top:40,width:765,height:503,canvasWidth:765,canvasHeight:503});
         if(expression.includes("toDataURL('image/png')"))
@@ -78,6 +84,9 @@ test("scene counters are read-only, validated, and unavailable before original l
     assert.deepEqual([counts.tiles,counts.walls,counts.gameObjectReferences,counts.regions],
         [41230,180,202,12]);
     assert.equal(counts.nullGameRenderables,12);
+    assert.equal(counts.zeroFaceGameModels,2);
+    assert.deepEqual(counts.castleGameReferences,[9,10,7,0]);
+    assert.deepEqual(counts.castleAnchorGameRefs,[1,1,1,2,1]);
     assert.equal(counts.gameObjectRefsByPlane.reduce((a,b)=>a+b,0),counts.gameObjectReferences);
     assert.ok(!browser.calls.some(x=>x.type.startsWith("Input.")));
     const before=new Stage1Bridge(new FakeChrome({...loggedIn,gameState:"LOGIN_SCREEN"}));

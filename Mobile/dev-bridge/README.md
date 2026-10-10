@@ -170,6 +170,16 @@ counts may distinguish failed object-model construction, but a non-null
 renderable still may fail to draw. Neither counts nor model availability prove
 the expected object placements or visual parity.
 
+The castle-specific extension also checks a **fixed** Lumbridge study area
+(ground through third floor) against a known local map-location archive.
+`castleGameReferences`, `castleModels` and `castleEmptyModels` are
+per-plane arrays. `castleAnchorGameRefs` and `castleAnchorModelFaces`
+are five anonymous fixed-position tests of the original scene (kitchen,
+two furniture placements and both staircases); the reference does not
+derive from the user's position or reveal object IDs. Compare counts to
+the trusted map archive before deciding that a scenery model was never
+constructed. Never create browser-side proxy meshes as a workaround.
+
 `smoke-test` is a passive runtime stability check (no synthetic movement
 success). `profile` measures real original game cycles and software frames;
 the optional CPU samples contain function names, not variable contents.

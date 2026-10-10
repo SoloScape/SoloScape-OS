@@ -131,6 +131,11 @@ test("missing scenery diagnostic counts original Java scene objects without subs
     assert.match(bridge,/original\.getScene\(\)/);
     assert.match(bridge,/scene\.getTiles\(\)/);
     assert.match(bridge,/tile\.getGameObjects\(\)/);
+    assert.match(bridge,/getFaceCount\(\)/);
+    assert.match(bridge,/castleAnchorGameRefs/);
+    assert.match(bridge,/castleAnchorModelFaces/);
+    assert.match(bridge,/baseX\+lx>=3203/);
+    assert.doesNotMatch(bridge,/setGroundObject\(|setSceneTile|renderScene\(/);
     assert.match(page,/engineSmokeSceneCounts/);
 });
 
