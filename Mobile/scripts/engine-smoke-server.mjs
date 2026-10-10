@@ -15,7 +15,7 @@ const files=new Map([
     ["/original-resource/compilercontrol.json",["teavm-poc/target/engine/resources/compilercontrol.json","application/json"]],
     ["/original-resource/runelite/index",["teavm-poc/target/engine/resources/runelite/index","application/octet-stream"]],
 ]);
-export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.env.SOLOSCAPE_ENGINE_LOCAL_CACHE_ROOT,gatewayPort=null}={}) {
+export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.env.SOLOSCAPE_ENGINE_LOCAL_CACHE_ROOT,gatewayPort=null,loginRsaPublic=null}={}) {
     return createServer(async(req,res)=>{
         const peer=req.socket.remoteAddress;
         if(!["127.0.0.1","::1","::ffff:127.0.0.1"].includes(peer)){
@@ -27,6 +27,11 @@ export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.e
             res.end(JSON.stringify({routes:[43594,443].map(port=>({
                 host:"127.0.0.1",port,url:"ws://127.0.0.1:"+gatewayPort+"/"
             }))}));return;
+        }
+        if(loginRsaPublic&&req.method==="GET"&&req.url==="/original-login-public-key"){
+            res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store",
+                "X-Content-Type-Options":"nosniff"});
+            res.end(JSON.stringify({exponent:loginRsaPublic.exponent,modulus:loginRsaPublic.modulus}));return;
         }
         // Explicit, opt-in local *read-only* snapshot of original cache files.
         // Stream the 237 MB data file; never read it into the Node heap.

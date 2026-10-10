@@ -42,7 +42,43 @@ Have the local SoloScape **native revision-240 JS5 server** listening
 on `127.0.0.1:43594` (the existing server). Open `http://127.0.0.1:3097/`.
 Click **Initialize original engine**. The diagnostic fills in the safe public
 startup parameters and, when launched with `npm run dev:original-engine`,
-the loopback-only gateway routes automatically. It loads an in-browser
+the loopback-only gateway routes automatically. The local development host
+reads **only** `Server/.data/client.key` (the generated public RSA key), serves
+its exponent/modulus on a loopback-only endpoint, and configures the pinned
+original gamepack's login RSA before the original Java engine initializes.
+The server's private `game.key` is never read or served by this harness.
+`SOLOSCAPE_ENGINE_PUBLIC_RSA_KEY_FILE` can override the public-key path.
+The event log reports only whether public RSA was configured, not key bytes.
+The title diagnostic also supplies public `jav_config.ws` parameter **9**. The
+original revision-240 gamepack writes this value into its login packet; leaving
+it out caused a null-string crash (`bsU`/`bsX`/`bsY` across TeaVM builds).
+This is public client bootstrap data, **not a password or session token**.
+Original startup parameter **4** is the one-byte native login **client type**, not
+its TCP port. For rsprot revision 240, `DESKTOP` is **1**. Setting parameter 4
+to `43594` made the login header send `43594 % 256 = 74`, causing the server
+to reject it as an unknown client type. TCP port `43594` belongs only in the
+separately configured loopback gateway routes.
+The original gamepack subsequently reached **`LOGGED_IN`** on the local SoloScape
+server and rendered native terrain, buildings, the local player, minimap, chat
+and game interfaces (manual Chrome evidence, October 2026). This is a genuine
+original-engine login/world milestone, **not yet a stable gameplay pass**.
+Original browser input events are delivered directly by `NativeCanvas`; there is no
+desktop AWT event-dispatch thread. The browser `EventQueue` must therefore not
+accumulate the original game's dummy post-draw `ActionEvent`. Before this
+adaptation, `tq.afd` would wait up to 50 times per frame on an undrainable
+queue; each one-millisecond browser sleep could be delayed to 12–16 ms,
+drastically reducing actual frame presentation while game cycles caught up.
+The fixed browser shim discards these desktop-only events and keeps the
+original Java renderer and game tick loop unchanged. Title and gameplay FPS
+must be remeasured in a visible Chrome window.
+
+A following JavaScript null-string crash was traced to the pinned `af.fk` NPC
+menu path, where a missing optional cache action was compared without a null
+check. The TeaVM bytecode adapter now replaces only those two comparisons with
+`NullSafeStrings.equalsIgnoreCase`; sustained authenticated gameplay still needs
+manual verification. Do not use a main account password or expose this plaintext
+loopback diagnostic over LAN or the internet.
+The standalone title-only test host may omit RSA; never enter credentials there. It loads an in-browser
 snapshot of `Server/.data/cache/LIVE`, then displays the actual gamepack's
 RuneScape title screen with the original logo, background, welcome panel,
 and **New User / Existing User** buttons. Do not enter account credentials

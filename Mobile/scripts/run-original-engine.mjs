@@ -5,6 +5,7 @@ import {resolve,join,dirname} from "node:path";
 import {fileURLToPath} from "node:url";
 import {createGateway} from "../gateway/server.mjs";
 import {createEngineSmokeServer} from "./engine-smoke-server.mjs";
+import {loadPublicLoginConfig} from "./native-login-config.mjs";
 
 const mobile=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const nativeCacheRoot=resolve(process.env.SOLOSCAPE_ENGINE_LOCAL_CACHE_ROOT||
@@ -24,9 +25,13 @@ for(const value of [port,upstreamPort])
 if(port===gatewayPort||upstreamPort===gatewayPort)
     throw new Error("Local diagnostic, native server and WebSocket gateway need separate ports");
 const origin="http://127.0.0.1:"+port;
+const {rsa:loginRsaPublic}=await loadPublicLoginConfig({
+    keyPath:resolve(process.env.SOLOSCAPE_ENGINE_PUBLIC_RSA_KEY_FILE||join(mobile,"../Server/.data/client.key")),
+    gatewayUrl:"ws://127.0.0.1:43595/"
+});
 const gateway=createGateway({tcpHost:"127.0.0.1",tcpPort:upstreamPort,
     allowedOrigins:new Set([origin])});
-const server=createEngineSmokeServer({nativeCacheRoot,gatewayPort});
+const server=createEngineSmokeServer({nativeCacheRoot,gatewayPort,loginRsaPublic});
 function listen(instance,port){
     return new Promise((resolve,reject)=>{
         instance.once("error",reject);

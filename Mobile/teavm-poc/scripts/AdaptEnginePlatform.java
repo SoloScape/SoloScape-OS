@@ -48,6 +48,14 @@ public final class AdaptEnginePlatform implements Opcodes {
                             owner = name;
                             super.visit(version, access, name, signature, "java/lang/Thread".equals(parent) ? PLATFORM + "BrowserThread" : parent, interfaces);
                         }
+                        @Override public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+                            // Only the pinned client's public RSA constants are overridable.
+                            // This is needed for the local SoloScape modulus; do not change
+                            // the encrypted login algorithm or any other gamepack fields.
+                            if (owner.equals("bq") && descriptor.equals("Ljava/math/BigInteger;") &&
+                                (name.equals("az") || name.equals("af"))) access &= ~ACC_FINAL;
+                            return super.visitField(access, name, descriptor, signature, value);
+                        }
                         @Override public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
                             if(owner.equals("client")&&name.equals("initRLICN")&&(access&ACC_NATIVE)!=0){
                                 MethodVisitor body=super.visitMethod(access&~ACC_NATIVE,name,descriptor,signature,exceptions);
@@ -70,7 +78,28 @@ public final class AdaptEnginePlatform implements Opcodes {
                                     super.visitTypeInsn(opcode, opcode == NEW && type.equals("java/lang/Thread") ? PLATFORM + "BrowserThread" : type);
                                 }
                                 @Override public void visitMethodInsn(int opcode, String type, String method, String desc, boolean itf) {
-                                    if (type.equals("java/lang/System") && Arrays.asList("getenv","load","exit").contains(method)) {
+                                    // The pinned original engine's NPC menu reads optional
+                                    // action slots from the game cache. The first slot may
+                                    // be null; on TeaVM, String.equalsIgnoreCase then throws
+                                    // a raw JS null-property error and stops the game loop.
+                                    // Rewrite only these comparisons in af.fk, not the
+                                    // renderer, packets, or general Java string semantics.
+                                    if (owner.equals("af") && name.equals("fk") &&
+                                        descriptor.equals("(ILpl;IZLdn;Ljava/lang/String;IIIIB)V") &&
+                                        opcode == INVOKEVIRTUAL && type.equals("java/lang/String") &&
+                                        method.equals("equalsIgnoreCase") &&
+                                        desc.equals("(Ljava/lang/String;)Z")) {
+                                        super.visitMethodInsn(INVOKESTATIC, PLATFORM+"NullSafeStrings",
+                                            "equalsIgnoreCase",
+                                            "(Ljava/lang/String;Ljava/lang/String;)Z", false);
+                                    } else if (owner.equals("tq") && name.equals("run") &&
+                                        opcode == INVOKEVIRTUAL && type.equals("mh") &&
+                                        method.equals("ip") && desc.equals("(II)I")) {
+                                        // Observe the original cycle clock result and timing,
+                                        // without altering how often it runs or its decisions.
+                                        super.visitMethodInsn(INVOKESTATIC,"EngineClockProbe",
+                                            "sample","(Lmh;II)I",false);
+                                    } else if (type.equals("java/lang/System") && Arrays.asList("getenv","load","exit").contains(method)) {
                                         super.visitMethodInsn(INVOKESTATIC,PLATFORM+"BrowserDiagnostics",method,desc,false);
                                     } else if (type.equals("java/lang/Runtime") && method.equals("maxMemory")) {
                                         super.visitMethodInsn(INVOKESTATIC,PLATFORM+"BrowserDiagnostics",method,"(Ljava/lang/Object;)J",false);

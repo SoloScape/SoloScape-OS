@@ -50,6 +50,95 @@ test("browser executor supports the original zero-core, one-maximum Java constru
     assert.match(source,/workers\.get\(cursor\)/,"zero-core requests must still be dispatched");
 });
 
+test("original browser bootstrap installs a real executor before original login actions",async()=>{
+    const fs=await import("node:fs/promises");
+    const source=await fs.readFile(new URL("../teavm-poc/engine-src/EngineBridge.java",import.meta.url),"utf8");
+    const constructed=source.indexOf("engine = new client();");
+    const scheduler=source.indexOf("engine.jl = org.soloscape.teavm.platform.BrowserExecutors.newScheduledThreadPool(1);");
+    const initialized=source.indexOf("engine.initialize();");
+    assert.ok(constructed>=0 && scheduler>constructed && initialized>scheduler,
+        "the original injected-client scheduler must exist before the first login callback");
+    assert.doesNotMatch(source,/engine\.jl\s*=\s*null\s*;/);
+    assert.match(source,/bq\.az\s*=\s*exponent/);
+    assert.match(source,/bq\.af\s*=\s*modulus/);
+    assert.match(source,/configureLoginRsaPublic\(/);
+});
+
+test("pinned original client's login packet has its public jav_config parameter 9",async()=>{
+    const fs=await import("node:fs/promises");
+    const html=await fs.readFile(new URL("../teavm-poc/site/engine-smoke.html",import.meta.url),"utf8");
+    const match=/<textarea id="params"[^>]*>([^<]*)<\/textarea>/.exec(html);
+    assert.ok(match,"original-engine bootstrap parameters must be present");
+    const params=JSON.parse(match[1]);
+    assert.equal(params["4"],"1",
+        "original gamepack startup parameter 4 is rsprot desktop client type 1, not TCP port 43594");
+    assert.equal(params["9"],"ElZAIrq5NpKN6D3mDdihco3oPeYN2KFy2DCquj7JMmECPmLrDP3Bnw",
+        "original rev240 login packet writes this public parameter, never a null string");
+    const script=await fs.readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
+    assert.match(script,/typeof params\["9"\]/);
+    assert.match(script,/Missing original gamepack public startup parameter 9/);
+});
+
+test("browser AWT dummy draw events do not accumulate without a desktop event-dispatch thread",async()=>{
+    const {readFile}=await import("node:fs/promises");
+    const shim=await readFile(new URL("../teavm-poc/engine-src/org/soloscape/teavm/platform/awt/EventQueue.java",import.meta.url),"utf8");
+    const canvas=await readFile(new URL("../teavm-poc/engine-src/org/soloscape/teavm/platform/awt/NativeCanvas.java",import.meta.url),"utf8");
+    assert.match(shim,/public AWTEvent peekEvent\(\) \{ return null; \}/);
+    assert.match(shim,/public void postEvent\(AWTEvent event\)/);
+    assert.doesNotMatch(shim,/queue\.add|new ArrayDeque/);
+    assert.match(canvas,/canvas\.addEventListener/);
+});
+
+test("pinned original game clock reports its catch-up cycle count without replacing clock decisions",async()=>{
+    const {readFile}=await import("node:fs/promises");
+    const adapter=await readFile(new URL("../teavm-poc/scripts/AdaptEnginePlatform.java",import.meta.url),"utf8");
+    const probe=await readFile(new URL("../teavm-poc/engine-src/EngineClockProbe.java",import.meta.url),"utf8");
+    assert.match(adapter,/owner\.equals\("tq"\) && name\.equals\("run"\)/);
+    assert.match(adapter,/method\.equals\("ip"\) && desc\.equals\("\(II\)I"\)/);
+    assert.match(probe,/int result = clock\.ip\(cycleMillis, minWaitMillis\)/);
+    assert.match(probe,/return result;/);
+});
+
+test("original software-engine diagnostics measure frames separately from game cycles",async()=>{
+    const {readFile}=await import("node:fs/promises");
+    const callbacks=await readFile(new URL("../teavm-poc/engine-src/BrowserEngineCallbacks.java",import.meta.url),"utf8");
+    const bridge=await readFile(new URL("../teavm-poc/engine-src/EngineBridge.java",import.meta.url),"utf8");
+    const page=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
+    const html=await readFile(new URL("../teavm-poc/site/engine-smoke.html",import.meta.url),"utf8");
+    assert.match(callbacks,/graphics\.drawImage\(buffer\.getImage\(\), x, y, null\);\s*framesPresented\+\+;/);
+    assert.match(bridge,/\(\(net\.runelite\.api\.Client\) engine\)\.getFPS\(\)/);
+    assert.match(bridge,/callbacks\.framesPresented\(\)/);
+    assert.match(page,/state\.presentedFrames=engine\.presentedFrames\(\)/);
+    assert.match(page,/state\.originalFps=engine\.originalFps\(\)/);
+    for(const id of ["original-fps","presented-fps","cycle-rate"])assert.match(html,new RegExp('id="'+id+'"'));
+});
+
+test("original rev240 NPC action comparisons tolerate absent cache actions without altering the renderer",async()=>{
+    const {readFile}=await import("node:fs/promises");
+    const adapter=await readFile(new URL("../teavm-poc/scripts/AdaptEnginePlatform.java",import.meta.url),"utf8");
+    const helper=await readFile(new URL("../teavm-poc/engine-src/org/soloscape/teavm/platform/NullSafeStrings.java",import.meta.url),"utf8");
+    assert.match(adapter,/owner\.equals\("af"\) && name\.equals\("fk"\)/);
+    assert.match(adapter,/descriptor\.equals\("\(ILpl;IZLdn;Ljava\/lang\/String;IIIIB\)V"\)/);
+    assert.match(adapter,/method\.equals\("equalsIgnoreCase"\)/);
+    assert.match(adapter,/PLATFORM\+"NullSafeStrings"/);
+    assert.match(helper,/value != null && value\.equalsIgnoreCase\(expected\)/);
+});
+
+test("original engine host exposes only the explicitly provided public RSA key on loopback",async()=>{
+    const rsa={exponent:"10001",modulus:"a".repeat(256)};
+    const server=createEngineSmokeServer({loginRsaPublic:rsa});
+    server.listen(0,"127.0.0.1");await once(server,"listening");
+    try {
+        const origin="http://127.0.0.1:"+server.address().port;
+        const response=await fetch(origin+"/original-login-public-key");
+        assert.equal(response.status,200);
+        assert.deepEqual(await response.json(),rsa);
+        assert.equal(response.headers.get("cache-control"),"no-store");
+        assert.equal((await fetch(origin+"/original-login-private-key")).status,404);
+        assert.equal((await fetch(origin+"/original-login-public-key",{method:"POST"})).status,404);
+    }finally{server.close();await once(server,"close");}
+});
+
 test("opt-in native cache is loopback-only, allowlisted, and source files remain read-only",async()=>{
     const {mkdtemp,writeFile,readFile,rm}=await import("node:fs/promises");
     const {tmpdir}=await import("node:os");

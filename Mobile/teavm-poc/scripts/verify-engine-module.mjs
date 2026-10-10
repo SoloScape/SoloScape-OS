@@ -9,10 +9,17 @@ try {
     const engine=await import(new URL("../target/engine/javascript/engine.js",import.meta.url));
     for(const name of ["initialize","initializeAsync","configureCanvas","configureGateway",
         "configureClient","configureClientParameter","clientError","callbackError","startupStep","gameCycle",
-        "hasClientThread","gameState","registerResource","unlockAudio","syncFilesystem"])
+        "hasClientThread","gameState","registerResource","unlockAudio","syncFilesystem",
+        "configureLoginRsaPublic","loginRsaConfigured","callbackTrace","originalFps","presentedFrames","clockCalls","clockTicks","clockLastTicks","clockMaxTicks","clockGapMs","clockWaitMs"])
         assert.equal(typeof engine[name],"function",name+" missing");
     assert.equal(engine.startupState(),"not-started");
     assert.equal(engine.gameCycle(),-1);
+    assert.equal(engine.originalFps(),-1);
+    assert.equal(engine.presentedFrames(),0);
+    assert.equal(engine.loginRsaConfigured(),false);
+    assert.throws(()=>engine.configureLoginRsaPublic("2","1".repeat(256)),/Invalid SoloScape public RSA/);
+    engine.configureLoginRsaPublic("10001","a".repeat(255)+"b");
+    assert.equal(engine.loginRsaConfigured(),true);
     assert.equal(engine.hasClientThread(),false);
     assert.equal(globalThis.indexedDB,undefined,"Run this host-contract smoke in Node");
     assert.throws(()=>engine.initializeAsync(null),/ClientConfiguration codebase is required/);

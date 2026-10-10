@@ -26,13 +26,16 @@ small{color:#94a3b8}
 <label for="codebase">Client codebase URL</label>
 <input id="codebase" autocomplete="off" spellcheck="false">
 <label for="params">Original client parameters (JSON object, no passwords or session tokens)</label>
-<textarea id="params" spellcheck="false">{"1":"1","3":"false","4":"43594","5":"0","6":"0","7":"0","8":"true","10":"5","12":"301","14":"0","15":"0","16":"false","18":""}</textarea>
+<textarea id="params" spellcheck="false">{"1":"1","3":"false","4":"1","5":"0","6":"0","7":"0","8":"true","9":"ElZAIrq5NpKN6D3mDdihco3oPeYN2KFy2DCquj7JMmECPmLrDP3Bnw","10":"5","12":"301","14":"0","15":"0","16":"false","18":""}</textarea>
 <label for="routes">Explicit TCP-to-WebSocket gateway routes (JSON array of {"host":"...", "port":43594, "url":"ws://..."})</label>
 <textarea id="routes" spellcheck="false">[]</textarea>
 <p><button id="start" type="button">Initialize original engine</button> <small>Configure before startup; reload this page to retry.</small></p>
 <div class="grid">
 <div>Startup: <strong id="status">Not started</strong></div>
 <div>Game cycle: <strong id="cycle">unavailable</strong></div>
+<div>Original client reported FPS: <strong id="original-fps">unavailable</strong></div>
+<div>Software frames presented/s: <strong id="presented-fps">unavailable</strong></div>
+<div>Game cycles/s: <strong id="cycle-rate">unavailable</strong></div>
 <div>Original game state: <strong id="game-state">unavailable</strong></div>
 <div>Client thread: <strong id="thread">unavailable</strong></div>
 <div>Canvas changed: <strong id="frame">No</strong></div>

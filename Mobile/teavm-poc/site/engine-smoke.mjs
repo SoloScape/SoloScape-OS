@@ -1,8 +1,9 @@
 // Distinct diagnostic entry point. Never imported by the normal SoloScape homepage.
 const $=id=>document.getElementById(id);
 const state=window.engineSmokeState={phase:"not-started",step:"not-started",cycles:[],frameChanged:false,canvasSampleColors:0,
-    clientThread:false,gameState:"UNAVAILABLE",socketAttempts:[],resourceLookups:[],filePaths:[],error:"",callbackError:"",events:[]};
+    clientThread:false,gameState:"UNAVAILABLE",originalFps:-1,presentedFrames:0,presentedFps:0,cycleRate:0,clockStats:null,loginRsaConfigured:false,callbackTrace:"",socketAttempts:[], resourceLookups:[],filePaths:[],error:"",callbackError:"",events:[]};
 let engine,clock=0,initialPixelSignature,framePoll;
+const fpsSamples=[];
 function event(message){
     const safe=String(message).slice(0,1000);
     state.events.push(safe);if(state.events.length>25)state.events.shift();
@@ -32,7 +33,9 @@ function collect(){
             state.phase="error";
             state.error="original client thread: "+hooksError;
             $("status").textContent="error (client thread)";
+            state.callbackTrace=engine.callbackTrace?.()??"";
             event("Original client callback error: "+hooksError);
+            if(state.callbackTrace)event("Original client callback frames: "+state.callbackTrace);
         }
         const cycle=engine.gameCycle();
         if(state.cycles.at(-1)!==cycle){state.cycles.push(cycle);if(state.cycles.length>50)state.cycles.shift();}
@@ -44,6 +47,28 @@ function collect(){
         const gameState=document.getElementById("game-state");
         if(gameState)gameState.textContent=state.gameState;
         $("cycle").textContent=String(cycle);
+        state.originalFps=engine.originalFps();
+        state.presentedFrames=engine.presentedFrames();
+        state.clockStats={
+            calls:engine.clockCalls(),ticks:engine.clockTicks(),
+            lastTicks:engine.clockLastTicks(),maxTicks:engine.clockMaxTicks(),
+            gapMs:engine.clockGapMs(),waitMs:engine.clockWaitMs()
+        };
+        const now=performance.now();
+        if(cycle>=0){
+            fpsSamples.push({time:now,cycle,frames:state.presentedFrames});
+            while(fpsSamples.length>2&&now-fpsSamples[0].time>3500)fpsSamples.shift();
+            if(fpsSamples.length>1){
+                const earliest=fpsSamples[0],seconds=(now-earliest.time)/1000;
+                if(seconds>=1){
+                    state.presentedFps=Math.round(10*(state.presentedFrames-earliest.frames)/seconds)/10;
+                    state.cycleRate=Math.round(10*(cycle-earliest.cycle)/seconds)/10;
+                }
+            }
+        }
+        $("original-fps").textContent=state.originalFps<0?"unavailable":String(state.originalFps);
+        $("presented-fps").textContent=state.presentedFps.toFixed(1);
+        $("cycle-rate").textContent=state.cycleRate.toFixed(1);
         $("thread").textContent=state.clientThread?"Present":"Missing";
         const current=signature();
         state.canvasSampleColors=current?.colors??0;
@@ -68,6 +93,16 @@ $("start").addEventListener("click",async()=>{
     $("start").disabled=true;
     try{
         const params=parseJson("params","object"),routes=parseJson("routes","array");
+        // The pinned original gamepack writes jav_config parameter 9 into its
+        // login packet. Omitting it leaves a null Java String and crashes the
+        // original packet writer (JavaScript string property dereference).
+        if(typeof params["9"]!=="string"||!params["9"].length)
+            throw new Error("Missing original gamepack public startup parameter 9");
+        // In revision 240, parameter 4 is the original login client-type ID,
+        // NOT the TCP port. rsprot requires desktop=1; the gateway routes
+        // the separate native TCP connection to port 43594.
+        if(params["4"]!=="1")
+            throw new Error("Original revision-240 login client type must be desktop (parameter 4 = 1)");
         if(routes.length===0){
             const configured=await fetch("/original-gateway");
             if(configured.ok){
@@ -124,6 +159,15 @@ $("start").addEventListener("click",async()=>{
                 typeof route.url!=="string")throw new Error("Invalid gateway route");
             engine.configureGateway(route.host,route.port,route.url);
         }
+        const publicKeyResponse=await fetch("/original-login-public-key");
+        if(publicKeyResponse.ok){
+            const rsa=await publicKeyResponse.json();
+            engine.configureLoginRsaPublic(rsa.exponent,rsa.modulus);
+            state.loginRsaConfigured=engine.loginRsaConfigured();
+            event("SoloScape public RSA key configured (private keys and key bytes never logged)");
+        }else if(publicKeyResponse.status===404){
+            event("Original title-only smoke: local login RSA not configured");
+        }else throw new Error("SoloScape public login key unavailable");
         initialPixelSignature=signature();
         $("status").textContent="Initializing";
         event("Original engine initializeAsync invoked");
