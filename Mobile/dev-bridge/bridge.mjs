@@ -92,8 +92,10 @@ export class Stage1Bridge {
     }
     async initializeEngine(){
         const state=await this.getClientState();
+        // Auto-started full-screen page: retain this legacy bridge command
+        // as an idempotent check for existing Desktop Commander workflows.
         if(state.phase!=="not-started")
-            throw new Error("Initialize is only allowed once per fresh diagnostic page");
+            return {started:true,automatic:true,note:"Original engine starts automatically on page load"};
         const started=await this.browser.evaluate(`(()=>{const b=document.getElementById('start');
 if(!b||b.disabled)return false;b.click();return true;})()`);
         if(started!==true)throw new Error("Original engine Initialize button unavailable");

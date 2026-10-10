@@ -91,6 +91,7 @@ function parseJson(id,kind){
     return value;
 }
 $("codebase").value=window.location.origin+"/";
+// Original Java engine starts once when this page opens. Login remains manual.
 $("start").addEventListener("click",async()=>{
     $("start").disabled=true;
     try{
@@ -183,6 +184,9 @@ $("start").addEventListener("click",async()=>{
     }catch(error){
         state.phase="error";state.error=String(error);
         $("status").textContent="error";event(state.error);
+        const display=$("startup-error");
+        if(display){display.textContent="Unable to start game. Reload the page or check the server.";display.hidden=false;}
     }
 },{once:true});
+queueMicrotask(()=>$("start").click());
 window.addEventListener("pagehide",()=>{if(framePoll)clearInterval(framePoll);},{once:true});

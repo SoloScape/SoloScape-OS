@@ -1,10 +1,11 @@
-// Explicit, loopback-only diagnostic host for the locally generated OpenOSRS engine.
-// Never integrate this route into the public client or expose engine.js on a LAN.
+// Original OpenOSRS engine development host. Loopback by default, trusted LAN opt-in only.
+// Never forward these ports to the Internet: they serve original gamepack/cache files.
 import {createServer} from "node:http";
 import {createReadStream} from "node:fs";
 import {readFile,stat} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {dirname,join} from "node:path";
+import {isLocalPeer} from "./original-lan.mjs";
 
 const root=join(dirname(fileURLToPath(import.meta.url)),"..");
 const files=new Map([
@@ -15,17 +16,19 @@ const files=new Map([
     ["/original-resource/compilercontrol.json",["teavm-poc/target/engine/resources/compilercontrol.json","application/json"]],
     ["/original-resource/runelite/index",["teavm-poc/target/engine/resources/runelite/index","application/octet-stream"]],
 ]);
-export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.env.SOLOSCAPE_ENGINE_LOCAL_CACHE_ROOT,gatewayPort=null,loginRsaPublic=null}={}) {
+export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.env.SOLOSCAPE_ENGINE_LOCAL_CACHE_ROOT,
+    gatewayPort=null,loginRsaPublic=null,isAllowedPeer=isLocalPeer,allowedHosts=null}={}) {
     return createServer(async(req,res)=>{
         const peer=req.socket.remoteAddress;
-        if(!["127.0.0.1","::1","::ffff:127.0.0.1"].includes(peer)){
-            res.writeHead(403);res.end("Loopback required");return;
+        if(!isAllowedPeer(peer)||(allowedHosts&&!allowedHosts.has(req.headers.host))){
+            res.writeHead(403);res.end("Trusted local network required");return;
         }
+        const gatewayHost=allowedHosts?req.headers.host.split(":")[0]:"127.0.0.1";
         if(gatewayPort&&req.method==="GET"&&req.url==="/original-gateway"){
             res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store",
                 "X-Content-Type-Options":"nosniff"});
             res.end(JSON.stringify({routes:[43594,443].map(port=>({
-                host:"127.0.0.1",port,url:"ws://127.0.0.1:"+gatewayPort+"/"
+                host:"127.0.0.1",port,url:"ws://"+gatewayHost+":"+gatewayPort+"/"
             }))}));return;
         }
         if(loginRsaPublic&&req.method==="GET"&&req.url==="/original-login-public-key"){
@@ -67,7 +70,7 @@ export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.e
             const bytes=await read(join(root,entry[0]));
             res.writeHead(200,{"Content-Type":entry[1],"Cache-Control":"no-store",
                 "X-Content-Type-Options":"nosniff",
-                "Content-Security-Policy":"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' ws://127.0.0.1:43595; img-src 'self'; base-uri 'none'; form-action 'none'",
+                "Content-Security-Policy":"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' ws://"+gatewayHost+":43595; img-src 'self'; base-uri 'none'; form-action 'none'",
             });
             res.end(bytes);
         }catch(error){

@@ -2,46 +2,52 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SoloScape original engine diagnostic (local only)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>SoloScape | Original OpenOSRS engine</title>
 <style>
-:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#111827;color:#e5e7eb}
-body{max-width:1000px;margin:auto;padding:24px}
-h1{font-size:1.4rem}p{line-height:1.5;color:#cbd5e1}
-label{display:block;margin:12px 0 5px}
-textarea,input{box-sizing:border-box;width:100%;background:#1f2937;color:inherit;border:1px solid #64748b;border-radius:5px;padding:8px;font:inherit}
-textarea{height:100px;font-family:ui-monospace,monospace}
-button{background:#334155;color:#fff;border:1px solid #94a3b8;border-radius:5px;padding:10px 16px;cursor:pointer}
-button:disabled{opacity:.5;cursor:not-allowed}
-canvas{display:block;width:min(100%,765px);height:auto;aspect-ratio:765/503;background:#000;border:1px solid #475569;image-rendering:auto}
-pre{white-space:pre-wrap;word-break:break-word;background:#0f172a;padding:12px;border:1px solid #334155}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
-.grid>div{background:#1e293b;padding:12px}
-small{color:#94a3b8}
+:root{color-scheme:dark;background:#000}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:none}
+body{display:flex;align-items:center;justify-content:center;background:#000}
+#original-engine-canvas{
+    display:block;flex:none;
+    width:min(100vw,152.0875dvh);
+    height:min(100dvh,65.7516vw);
+    max-width:100vw;max-height:100dvh;
+    aspect-ratio:765/503;
+    background:#000;border:0;outline:none;
+    touch-action:none;overscroll-behavior:none;
+}
+#internal-diagnostics{display:none!important}
+#startup-error{
+    position:fixed;inset:auto 0 0;padding:12px;
+    color:#fff;background:#641e1e;text-align:center;
+    font:14px system-ui,sans-serif;pointer-events:none;
+}
+[hidden]{display:none!important}
 </style>
 </head>
 <body>
-<h1>Original OpenOSRS engine — isolated startup diagnostic</h1>
-<p>This page loads the actual locally compiled revision-240 gamepack through TeaVM, <strong>not</strong> SoloScape's normal mobile renderer. It is loopback-only and does not log in or transmit credentials automatically. Compiled code may still be subject to gamepack licensing restrictions.</p>
-<label for="codebase">Client codebase URL</label>
-<input id="codebase" autocomplete="off" spellcheck="false">
-<label for="params">Original client parameters (JSON object, no passwords or session tokens)</label>
-<textarea id="params" spellcheck="false">{"1":"1","3":"false","4":"1","5":"0","6":"0","7":"0","8":"true","9":"ElZAIrq5NpKN6D3mDdihco3oPeYN2KFy2DCquj7JMmECPmLrDP3Bnw","10":"5","12":"301","14":"0","15":"0","16":"false","18":""}</textarea>
-<label for="routes">Explicit TCP-to-WebSocket gateway routes (JSON array of {"host":"...", "port":43594, "url":"ws://..."})</label>
-<textarea id="routes" spellcheck="false">[]</textarea>
-<p><button id="start" type="button">Initialize original engine</button> <small>Configure before startup; reload this page to retry.</small></p>
-<div class="grid">
-<div>Startup: <strong id="status">Not started</strong></div>
-<div>Game cycle: <strong id="cycle">unavailable</strong></div>
-<div>Original client reported FPS: <strong id="original-fps">unavailable</strong></div>
-<div>Software frames presented/s: <strong id="presented-fps">unavailable</strong></div>
-<div>Game cycles/s: <strong id="cycle-rate">unavailable</strong></div>
-<div>Original game state: <strong id="game-state">unavailable</strong></div>
-<div>Client thread: <strong id="thread">unavailable</strong></div>
-<div>Canvas changed: <strong id="frame">No</strong></div>
+<canvas id="original-engine-canvas" width="765" height="503" tabindex="0"
+    aria-label="SoloScape original RuneScape game"></canvas>
+<div id="internal-diagnostics" hidden aria-hidden="true">
+<input id="codebase" autocomplete="off">
+<textarea id="params">{"1":"1","3":"false","4":"1","5":"0","6":"0","7":"0","8":"true","9":"ElZAIrq5NpKN6D3mDdihco3oPeYN2KFy2DCquj7JMmECPmLrDP3Bnw","10":"5","12":"301","14":"0","15":"0","16":"false","18":""}</textarea>
+<textarea id="routes">[]</textarea>
+<button id="start" type="button" tabindex="-1">Initialize original engine</button>
+<strong id="status">Not started</strong>
+<strong id="cycle">unavailable</strong>
+<strong id="original-fps">unavailable</strong>
+<strong id="presented-fps">unavailable</strong>
+<strong id="cycle-rate">unavailable</strong>
+<strong id="game-state">unavailable</strong>
+<strong id="thread">unavailable</strong>
+<strong id="frame">No</strong>
+<p id="result">Not started</p>
+<pre id="events"></pre>
 </div>
-<p id="result">No original-engine startup attempted.</p>
-<canvas id="original-engine-canvas" width="765" height="503" tabindex="0" aria-label="Original engine framebuffer"></canvas>
-<h2>Diagnostic events</h2><pre id="events">No events.</pre>
+<div id="startup-error" role="alert" hidden></div>
 <script type="module" src="/engine-smoke.mjs"></script>
-</body></html>
+</body>
+</html>
