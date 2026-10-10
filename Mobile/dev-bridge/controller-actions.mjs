@@ -13,7 +13,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
 export function actionArguments(action,args={}){
     if(!args||typeof args!=="object"||Array.isArray(args))throw new Error("Invalid arguments");
     const rules={
-        status:[],start:[],initialize:[],diagnostics:[],screenshot:[],heap:[],
+        status:[],start:[],initialize:[],diagnostics:[],screenshot:[],heap:[],scene:[],
         "smoke-test":["durationMs"],profile:["durationMs","cpu"],
         wait:["gameState","timeoutMs"],click:["x","y","button"],
         key:["key"],"rebuild-and-test":[],shutdown:[]
@@ -80,6 +80,7 @@ export class DesktopController {
                 case "initialize":return await this.bridge.initializeEngine();
                 case "wait":return await this.bridge.waitForState(args);
                 case "diagnostics":return await this.bridge.getDiagnostics();
+                case "scene":return await this.bridge.getSceneCounts();
                 case "heap":{
                     // Read-only Chrome heap telemetry for the bridge-owned tab.
                     await this.bridge.requireWorld();

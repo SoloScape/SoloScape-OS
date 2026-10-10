@@ -20,6 +20,7 @@ class FakeBridge {
     async initializeEngine(){return {started:true};}
     async waitForState(args){return {reached:true,...args};}
     async getDiagnostics(){return {gameState:"LOGGED_IN",callbackError:""};}
+    async getSceneCounts(){return {tiles:20,walls:5,decorations:0,ground:1,gameObjectReferences:2,regions:1};}
     async captureScreen(){if(!this.open)throw new Error("Gameplay actions require LOGGED_IN");
         return {mimeType:"image/png",data:validPng};}
     async clickCanvas(args){return {sent:true,...args};}
@@ -33,6 +34,7 @@ test("Stage 2 allows only fixed safe commands and bounded input arguments",()=>{
     assert.deepEqual(parseCommand(["click","400","250","right"]),{
         action:"click",args:{x:400,y:250,button:"right"}});
     assert.deepEqual(parseCommand(["rebuild-and-test"]),{action:"rebuild-and-test",args:{}});
+    assert.deepEqual(parseCommand(["scene"]),{action:"scene",args:{}});
     assert.throws(()=>parseCommand(["eval","alert(1)"]),/Unknown command/);
     assert.throws(()=>actionArguments("status",{password:"secret"}),/Unexpected/);
     assert.throws(()=>actionArguments("click",{x:-1,y:2}),/Invalid/);

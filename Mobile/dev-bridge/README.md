@@ -150,6 +150,7 @@ node dev-bridge/controller-cli.mjs click 400 250 left
 node dev-bridge/controller-cli.mjs key Escape
 node dev-bridge/controller-cli.mjs smoke-test 3000
 node dev-bridge/controller-cli.mjs diagnostics
+node dev-bridge/controller-cli.mjs scene # original Java tile/loc category counts
 node dev-bridge/controller-cli.mjs profile 5000 --cpu
 node dev-bridge/controller-cli.mjs rebuild-and-test
 node dev-bridge/controller-cli.mjs shutdown
@@ -159,6 +160,13 @@ node dev-bridge/controller-cli.mjs shutdown
 PNG to the ignored `teavm-poc/target/engine/controller-captures/` directory;
 the command prints its full path so Desktop Commander can inspect it. The
 controller does not read or write game passwords, tokens or login packets.
+`scene` reads counts directly from the original Java game's loaded scene
+(tiles, walls, decorative objects, ground objects, game-object **tile
+references**, and map-region count). Counts are deliberately anonymous;
+compare before/after moving to an area missing scenery. They distinguish
+absent scene data from rendering issues only when combined with a known
+expected location. They are not unique object counts or proof of parity.
+
 `smoke-test` is a passive runtime stability check (no synthetic movement
 success). `profile` measures real original game cycles and software frames;
 the optional CPU samples contain function names, not variable contents.

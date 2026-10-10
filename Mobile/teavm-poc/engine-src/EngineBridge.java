@@ -117,6 +117,45 @@ public final class EngineBridge {
         return callbacks == null ? 0 : callbacks.framesPresented();
     }
 
+    /**
+     * Read-only original Java scene inventory (not a new scene renderer).
+     * Counts decoded client tile references. Multi-tile game objects may be
+     * counted in more than one tile; compare like-for-like locations only.
+     * No item IDs, player coordinates or cache bytes leave the game.
+     */
+    @JSExport public static String sceneLocCounts() {
+        if (!(engine instanceof net.runelite.api.Client)) return null;
+        net.runelite.api.Client original=(net.runelite.api.Client)engine;
+        if (original.getGameState()!=net.runelite.api.GameState.LOGGED_IN) return null;
+        net.runelite.api.Scene scene=original.getScene();
+        if (scene==null) return null;
+        net.runelite.api.Tile[][][] planes=scene.getTiles();
+        if (planes==null) return null;
+        int tiles=0,walls=0,decorations=0,ground=0,objects=0;
+        for (net.runelite.api.Tile[][] plane:planes) {
+            if (plane==null) continue;
+            for (net.runelite.api.Tile[] row:plane) {
+                if (row==null) continue;
+                for (net.runelite.api.Tile tile:row) {
+                    if (tile==null) continue;
+                    tiles++;
+                    if (tile.getWallObject()!=null) walls++;
+                    if (tile.getDecorativeObject()!=null) decorations++;
+                    if (tile.getGroundObject()!=null) ground++;
+                    net.runelite.api.GameObject[] gameObjects=tile.getGameObjects();
+                    if (gameObjects!=null)
+                        for (net.runelite.api.GameObject gameObject:gameObjects)
+                            if (gameObject!=null) objects++;
+                }
+            }
+        }
+        int[] regions=original.getMapRegions();
+        int regionCount=regions==null?0:regions.length;
+        return "{\"tiles\":"+tiles+",\"walls\":"+walls+
+            ",\"decorations\":"+decorations+",\"ground\":"+ground+
+            ",\"gameObjectReferences\":"+objects+",\"regions\":"+regionCount+"}";
+    }
+
     /** Read-only original Java game clock telemetry. */
     @JSExport public static int clockCalls() { return EngineClockProbe.calls(); }
     @JSExport public static int clockTicks() { return EngineClockProbe.ticks(); }

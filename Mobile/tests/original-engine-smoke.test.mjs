@@ -106,6 +106,34 @@ test("pinned original game clock reports its catch-up cycle count without replac
     assert.match(probe,/return result;/);
 });
 
+test("original rat-combat hitsplats skip missing optional sprites without replacing Java software drawing",async()=>{
+    const {readFile}=await import("node:fs/promises");
+    const asm=await readFile(new URL("../teavm-poc/scripts/AdaptEnginePlatform.java",import.meta.url),"utf8");
+    const helper=await readFile(new URL("../teavm-poc/engine-src/NullSafeHitsplatSprites.java",import.meta.url),"utf8");
+    assert.match(asm,/owner\.equals\("au"\) && name\.equals\("as"\)/);
+    assert.match(asm,/descriptor\.equals\("\(Ldz;Ldh;IIIIIIB\)V"\)/);
+    assert.match(asm,/type\.equals\("ym"\)/);
+    assert.match(asm,/field\.equals\("aa"\)/);
+    assert.match(asm,/opcode == GETFIELD/);
+    assert.match(asm,/opcode == INVOKEVIRTUAL/);
+    for(const method of ["offsetX","width","height","draw","drawAlpha"])
+        assert.ok(helper.includes(method+"(ym sprite"),"missing hit-splat helper "+method);
+    assert.match(helper,/if \(sprite != null\) sprite\.av\(x, y\)/);
+    assert.match(helper,/if \(sprite != null\) sprite\.am\(x, y, alpha\)/);
+    assert.doesNotMatch(asm,/owner\.equals\("client"\) && name\.equals\("renderScene"\)/);
+});
+
+test("missing scenery diagnostic counts original Java scene objects without substitute renderer",async()=>{
+    const {readFile}=await import("node:fs/promises");
+    const bridge=await readFile(new URL("../teavm-poc/engine-src/EngineBridge.java",import.meta.url),"utf8");
+    const page=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
+    assert.match(bridge,/sceneLocCounts\(\)/);
+    assert.match(bridge,/original\.getScene\(\)/);
+    assert.match(bridge,/scene\.getTiles\(\)/);
+    assert.match(bridge,/tile\.getGameObjects\(\)/);
+    assert.match(page,/engineSmokeSceneCounts/);
+});
+
 test("original software-engine diagnostics measure frames separately from game cycles",async()=>{
     const {readFile}=await import("node:fs/promises");
     const callbacks=await readFile(new URL("../teavm-poc/engine-src/BrowserEngineCallbacks.java",import.meta.url),"utf8");

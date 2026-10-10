@@ -23,6 +23,9 @@ class FakeChrome{
         if(expression.includes("window.engineSmokeState"))
             return JSON.stringify({...this.state,gameCycle:this.state.cycles.at(-1),
                 hasError:!!this.state.error});
+        if(expression.includes("window.engineSmokeSceneCounts"))
+            return JSON.stringify({tiles:41230,walls:180,decorations:14,ground:8,
+                gameObjectReferences:202,regions:12});
         if(expression.includes("getBoundingClientRect"))
             return JSON.stringify({left:20,top:40,width:765,height:503,canvasWidth:765,canvasHeight:503});
         if(expression.includes("toDataURL('image/png')"))
@@ -67,6 +70,16 @@ test("read-only sanitized original-game telemetry excludes login and cache secre
     assert.equal(result.callbackFrames,"ED:66:432 | J4:67:158");
     assert.doesNotMatch(JSON.stringify(result),/SECRET|password123|example\.com|private/);
 });
+test("scene counters are read-only, validated, and unavailable before original login",async()=>{
+    const browser=new FakeChrome(),bridge=new Stage1Bridge(browser);
+    const counts=await bridge.getSceneCounts();
+    assert.deepEqual([counts.tiles,counts.walls,counts.gameObjectReferences,counts.regions],
+        [41230,180,202,12]);
+    assert.ok(!browser.calls.some(x=>x.type.startsWith("Input.")));
+    const before=new Stage1Bridge(new FakeChrome({...loggedIn,gameState:"LOGIN_SCREEN"}));
+    await assert.rejects(()=>before.getSceneCounts(),/LOGGED_IN/);
+});
+
 test("screenshots, clicks and keyboard input are blocked until healthy LOGGED_IN",async()=>{
     const browser=new FakeChrome({...loggedIn,gameState:"LOGIN_SCREEN"});
     const bridge=new Stage1Bridge(browser);

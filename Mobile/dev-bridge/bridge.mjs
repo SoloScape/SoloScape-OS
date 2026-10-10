@@ -173,6 +173,25 @@ png.slice('data:image/png;base64,'.length):null;})()`);
             callbackError:state.callbackError,callbackFrames:state.callbackFrames,
             hasError:state.hasError,clock:state.clock};
     }
+    async getSceneCounts(){
+        await this.requireWorld();
+        // Fixed diagnostic function only: never evaluate supplied scripts or
+        // expose player positions, account details, cache contents or loc IDs.
+        const raw=await this.browser.evaluate(
+            "(()=>{const fn=window.engineSmokeSceneCounts;return typeof fn==='function'?fn():null})()");
+        if(typeof raw!=="string"||raw.length>256)
+            throw new Error("Original scene counters unavailable");
+        let parsed;
+        try{parsed=JSON.parse(raw);}catch{throw new Error("Invalid original scene counts");}
+        const result={};
+        for(const name of ["tiles","walls","decorations","ground","gameObjectReferences","regions"]){
+            const count=parsed?.[name];
+            if(!Number.isSafeInteger(count)||count<0||count>1000000)
+                throw new Error("Invalid original scene counts");
+            result[name]=count;
+        }
+        return {...result,note:"Original Java scene tile references, not unique world objects; missing loc causes not inferred"};
+    }
     async profilePerformance({durationMs=3000,cpu=false}={}){
         boundedInt(durationMs,500,15000,"durationMs");
         if(typeof cpu!=="boolean")throw new Error("cpu must be a boolean");

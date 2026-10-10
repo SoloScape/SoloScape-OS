@@ -77,7 +77,34 @@ public final class AdaptEnginePlatform implements Opcodes {
                                 @Override public void visitTypeInsn(int opcode, String type) {
                                     super.visitTypeInsn(opcode, opcode == NEW && type.equals("java/lang/Thread") ? PLATFORM + "BrowserThread" : type);
                                 }
+                                @Override public void visitFieldInsn(int opcode, String type, String field, String desc) {
+                                    // Only the rev-240 actor hitsplat overlay (au.as) may treat
+                                    // missing *optional* sprite segments as zero-sized. Sprite
+                                    // pixels and actual drawing stay in the original ym class.
+                                    if (owner.equals("au") && name.equals("as") &&
+                                        descriptor.equals("(Ldz;Ldh;IIIIIIB)V") &&
+                                        opcode == GETFIELD && type.equals("ym") &&
+                                        desc.equals("I") &&
+                                        (field.equals("aa") || field.equals("ax") || field.equals("ac"))) {
+                                        String accessor = field.equals("aa") ? "offsetX" :
+                                            field.equals("ax") ? "width" : "height";
+                                        super.visitMethodInsn(INVOKESTATIC, "NullSafeHitsplatSprites",
+                                            accessor, "(Lym;)I", false);
+                                    } else super.visitFieldInsn(opcode, type, field, desc);
+                                }
                                 @Override public void visitMethodInsn(int opcode, String type, String method, String desc, boolean itf) {
+                                    // Combat-only original software sprite draws: an absent
+                                    // optional hitsplat graphic must not kill the Java game loop.
+                                    // Present sprites invoke the unchanged ym drawing routine.
+                                    if (owner.equals("au") && name.equals("as") &&
+                                        descriptor.equals("(Ldz;Ldh;IIIIIIB)V") &&
+                                        opcode == INVOKEVIRTUAL && type.equals("ym") &&
+                                        (method.equals("av") && desc.equals("(II)V") ||
+                                         method.equals("am") && desc.equals("(III)V"))) {
+                                        String target = method.equals("av") ? "draw" : "drawAlpha";
+                                        super.visitMethodInsn(INVOKESTATIC, "NullSafeHitsplatSprites",
+                                            target, "(Lym;" + desc.substring(1), false);
+                                    } else
                                     // The pinned original engine's NPC menu reads optional
                                     // action slots from the game cache. The first slot may
                                     // be null; on TeaVM, String.equalsIgnoreCase then throws

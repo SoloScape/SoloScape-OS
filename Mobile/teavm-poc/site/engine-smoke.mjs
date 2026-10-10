@@ -3,6 +3,8 @@ const $=id=>document.getElementById(id);
 const state=window.engineSmokeState={phase:"not-started",step:"not-started",cycles:[],frameChanged:false,canvasSampleColors:0,
     clientThread:false,gameState:"UNAVAILABLE",originalFps:-1,presentedFrames:0,presentedFps:0,cycleRate:0,clockStats:null,loginRsaConfigured:false,callbackTrace:"",socketAttempts:[], resourceLookups:[],filePaths:[],error:"",callbackError:"",events:[]};
 let engine,clock=0,initialPixelSignature,framePoll;
+// Fixed, read-only scene count snapshot for debugging missing original world locs.
+window.engineSmokeSceneCounts=()=>engine?.sceneLocCounts?.()??null;
 const fpsSamples=[];
 function event(message){
     const safe=String(message).slice(0,1000);

@@ -20,13 +20,39 @@ secrets are recorded.
 | Click-to-move | **Observed pass** | Safe ground click shifted the world/camera around the player; independently previously confirmed by the user |
 | Inventory context menu | **Observed pass** | Right-clicked a grimy guam leaf: gamepack showed `Use`, `Drop`, `Examine`. Choosing `Examine` subsequently produced original chat text `It needs cleaning.` |
 | Interface switching | **Observed pass** | Skills tab displayed authentic skill icons/levels and total level 43; switching is handled by the original client |
-| NPC interaction | **Not verified** | Repeated right-click attempts on moving actors opened `Walk here`, not a reliably selected NPC menu. Need successful named NPC action and server response/dialogue evidence |
+| NPC interaction | **Passed (user-confirmed)** | The player confirmed talking to NPCs and successfully interacting with them in the real original client. This supersedes the earlier automated attempts that could not reliably target moving actors |
 | Banking | **Not verified** | Need to reach a banker, open an original bank interface, and safely deposit/withdraw disposable items |
-| Dialogue | **Not verified** | Need an NPC conversation with original dialogue options and successful advance/close |
+| Dialogue | **Basic NPC talking passed (user-confirmed)** | Player confirms NPC conversations and interaction work. Extended dialogue-option branching, multi-step advance/close and quest-specific dialogues remain unverified |
 | Chat text input | **Observed pass after Enter fix** | First session: typed `phase2` but Java Enter did not submit. Browser-only NativeCanvas now maps DOM Enter 13 to Java AWT VK_ENTER 10; original gamepack and renderer unchanged. After rebuilding, sent `p2check`: original game showed the overhead chat bubble, a chat-log message and a cleared input (ignored screenshot `world-1791598354594-50921444.png`). Physical keyboard Enter has not been independently compared |
 | Region transition | **Not verified** | Character moves normally, but no new region/base-coordinate or cache-region transition has yet been proven |
 | Disconnect/reconnect | **Not verified** | Test after the sustained session, with a safe browser-only connection interruption and manual reauthentication where necessary; do not bounce the shared local game server |
 | Native mouse / keyboard | **Observed pass for tested CDP actions** | World clicks, inventory context menu, skills tab, letter entry and rebuilt-client Enter chat submission all verified. Physical-keyboard differences and touch input remain out of scope |
+
+## New gameplay defects reported after endurance test
+
+- **Combat: FAIL, rat attack crashes original game loop.** User reproduced an
+  attack against a rat. The controller observed `phase:error`, with
+  `LOGGED_IN` frozen at game cycle 20,525, zero presented FPS, and a
+  `java.lang.RuntimeException; TypeError; null property: bxQ`. Sanitized
+  frames begin `BQ1:21440:419 | CkQ:19055:476 | C2y:16675:225`.
+  Bytecode inspection of the pinned source confirmed that `BQ1` is the
+  original `au.as(Ldz;Ldh;IIIIIIB)V` hitsplat/actor overlay method and that
+  `ym.aa` is its sprite-offset field. A narrowly scoped TeaVM-only build
+  guard skips absent optional sprites in this original overlay, keeping the
+  original Java drawing paths for any sprite that exists. **Do not mark this
+  fixed until the rebuilt client has survived an actual rat attack.**
+- **Static world scenery: FAIL (user-reported).** Stairs, tables, cabinets,
+  cooking ranges and other world objects are missing even while terrain,
+  walls, player models and NPCs render. This is a *separate* scene/region-loc
+  loading problem; the cause has not been verified. The existing cache has
+  `main_file_cache.dat2` and numbered `idx` files, but file presence is
+  not proof that the right map object archives decoded or spawned. Verify
+  original scene object counts, cache archive decoding, region XTEA keys and
+  server/client map-square expectations before modifying rendering.
+- **NPC actions: PASS (user-confirmed).** The player can talk to and interact
+  with NPCs; this overrides the previous `Not verified` automation result.
+  Banking, longer dialogue chains and specific scene-object interactions
+  still require independent verification.
 
 **Do not mark an unobserved gameplay feature as passing based on test names,
 server availability, a sent click, or the engine merely remaining logged in.**
