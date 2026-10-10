@@ -1,10 +1,15 @@
-// Original Java gameplay and framebuffer only. Browser status is an overlay.
+// The original Java gamepack still owns every game action and software frame.
 import {loadOriginalCache} from "/original-cache-loader.mjs";
 import {attachOriginalKeyboard} from "/original-mobile-keyboard.mjs";
 const $=id=>document.getElementById(id);
-function startupNotice(message){
-    const display=$("startup-error");
-    if(display){display.textContent=message;display.hidden=false;}
+function loading(message){
+    const indicator=$("loading-status");
+    if(indicator&&!indicator.hidden)indicator.textContent=message;
+}
+function showStartupError(message){
+    const indicator=$("loading-status");if(indicator)indicator.hidden=true;
+    const box=$("startup-error");
+    if(box){box.textContent=message;box.hidden=false;}
 }
 const state=window.engineSmokeState={phase:"not-started",step:"not-started",cycles:[],frameChanged:false,canvasSampleColors:0,
     clientThread:false,gameState:"UNAVAILABLE",originalFps:-1,presentedFrames:0,presentedFps:0,cycleRate:0,clockStats:null,loginRsaConfigured:false,callbackTrace:"",socketAttempts:[], resourceLookups:[],filePaths:[],error:"",callbackError:"",events:[]};
@@ -19,7 +24,6 @@ const fpsSamples=[];
 function event(message){
     const safe=String(message).slice(0,1000);
     state.events.push(safe);if(state.events.length>25)state.events.shift();
-    $("events").textContent=state.events.join("\n");
 }
 function signature(){
     const canvas=$("original-engine-canvas");
@@ -38,29 +42,29 @@ function signature(){
 function collect(){
     try{
         state.step=engine.startupStep();
-        $("status").textContent=state.phase+" ("+state.step+")";
         const hooksError=engine.callbackError();
         if(hooksError && hooksError!==state.callbackError){
             state.callbackError=hooksError;
             state.phase="error";
             state.error="original client thread: "+hooksError;
-            $("status").textContent="error (client thread)";
             state.callbackTrace=engine.callbackTrace?.()??"";
             event("Original client callback error: "+hooksError);
-            if(state.gameState!=="LOGGED_IN")startupNotice(
+            if(state.gameState!=="LOGGED_IN")showStartupError(
                 "The original game stopped during startup. Reload to retry; /health checks the LAN connection.");
             if(state.callbackTrace)event("Original client callback frames: "+state.callbackTrace);
+            showStartupError("Original game encountered an error. Reload the page to retry.");
         }
         const cycle=engine.gameCycle();
         if(state.cycles.at(-1)!==cycle){state.cycles.push(cycle);if(state.cycles.length>50)state.cycles.shift();}
         state.clientThread=engine.hasClientThread();
         state.gameState=engine.gameState();
+        if(state.gameState==="LOGIN_SCREEN"||state.gameState==="LOGGED_IN"){
+            const indicator=$("loading-status");
+            if(indicator)indicator.hidden=true;
+        }
         state.socketAttempts=globalThis.soloscapeEngineSocketAttempts??[];
         state.resourceLookups=globalThis.soloscapeOriginalResourceLookups??[];
         state.filePaths=(globalThis.soloscapeOriginalFilePaths??[]).filter(path=>/cache|jagex|oldschool|random\.dat|\.idx/i.test(path)).slice(-40);
-        const gameState=document.getElementById("game-state");
-        if(gameState)gameState.textContent=state.gameState;
-        $("cycle").textContent=String(cycle);
         state.originalFps=engine.originalFps();
         state.presentedFrames=engine.presentedFrames();
         state.clockStats={
@@ -80,41 +84,37 @@ function collect(){
                 }
             }
         }
-        $("original-fps").textContent=state.originalFps<0?"unavailable":String(state.originalFps);
-        $("presented-fps").textContent=state.presentedFps.toFixed(1);
-        $("cycle-rate").textContent=state.cycleRate.toFixed(1);
-        $("thread").textContent=state.clientThread?"Present":"Missing";
         const current=signature();
         state.canvasSampleColors=current?.colors??0;
         if(current&&initialPixelSignature&&current.hash!==initialPixelSignature.hash)
             state.frameChanged=true;
-        $("frame").textContent=state.frameChanged?"Yes":"No";
-        const progressed=state.cycles.filter(c=>c>=0);
-        const running=progressed.length>=2&&progressed.at(-1)>progressed[0];
-        $("result").textContent=running&&state.frameChanged
-            ?"Original game cycles are advancing and the canvas changed."
-            : "Initialization alone is not gameplay proof. Checking original cycles and canvas pixels.";
     }catch(error){state.error=String(error);event("Telemetry error: "+state.error);}
 }
-function parseJson(id,kind){
-    const value=JSON.parse($(id).value);
-    if(kind==="object"&&(!value||Array.isArray(value)||typeof value!=="object"))throw new Error(id+" must be a JSON object");
-    if(kind==="array"&&!Array.isArray(value))throw new Error(id+" must be a JSON array");
-    return value;
-}
-// The pinned original GameEngine accepts localhost as its applet codebase,
-// but rejects some private LAN subnets (including 192.168.0.x) as invalidhost.
-// This URL is Java's original applet identity, not the browser's fetch target:
-// browser assets still load from this page's LAN origin and the TCP gateway is
-// configured separately using /original-gateway.
-const javaCodebase=new URL("/",window.location.origin);
-javaCodebase.hostname="127.0.0.1";
-$("codebase").value=javaCodebase.href;
-// Original Java engine starts once when this page opens. Login remains manual.
-$("start").addEventListener("click",async()=>{
-    $("start").disabled=true;
+// The page owns startup; opening it is the only initialization action.
+// Keep the original public configuration, original cache, RSA and gateway.
+async function initializeOriginalEngine(){
     try{
-        const params=parseJson("params","object"),routes=parseJson("routes","array");
+        let params=JSON.parse($("params").textContent);
+        let codebase=window.location.origin+"/";
+        const routes=[];
+        // This optional endpoint exists only for isolated, loopback-only
+        // browser tests; player pages do not expose editable bootstrap UI.
+        const overridesResponse=await fetch("/original-public-config");
+        if(overridesResponse.ok){
+            const overrides=await overridesResponse.json();
+            if(overrides?.parameters!==undefined)params=overrides.parameters;
+            if(overrides?.routes!==undefined){
+                if(!Array.isArray(overrides.routes))throw new Error("Invalid public gateway overrides");
+                routes.push(...overrides.routes);
+            }
+            if(overrides?.codebase!==undefined){
+                if(typeof overrides.codebase!=="string")throw new Error("Invalid public codebase override");
+                codebase=overrides.codebase;
+            }
+        }else if(overridesResponse.status!==404)
+            throw new Error("Local public bootstrap unavailable");
+        if(!params||Array.isArray(params)||typeof params!=="object")
+            throw new Error("Original public startup parameters are invalid");
         // The pinned original gamepack writes jav_config parameter 9 into its
         // login packet. Omitting it leaves a null Java String and crashes the
         // original packet writer (JavaScript string property dereference).
@@ -132,7 +132,7 @@ $("start").addEventListener("click",async()=>{
                 if(Array.isArray(defaults))routes.push(...defaults);
             }
         }
-        state.phase="loading";$("status").textContent="Importing engine";
+        state.phase="loading";loading("Loading original Java engine…");
         engine=await import("/engine.js");
         for(const name of ["configureClient","configureClientParameter","initializeAsync","gameCycle","hasClientThread"])
             if(typeof engine[name]!=="function")throw new Error("Engine rebuild required: "+name+" missing");
@@ -140,11 +140,15 @@ $("start").addEventListener("click",async()=>{
         // original gamepack, never placeholders or gameplay substitutions.
         // An explicit local development cache snapshot is mounted read-write
         // only inside Chrome's memory. The original server files remain read-only.
+        loading("Preparing original game cache…");
         const cacheManifest=await fetch("/original-cache/manifest");
         if(cacheManifest.ok){
             const manifest=await cacheManifest.json();
             if(!Array.isArray(manifest.files))throw new Error("Invalid local cache manifest");
-            const files=await loadOriginalCache(manifest);
+            const files=await loadOriginalCache(manifest,{onProgress:({loaded,total})=>{
+                const percent=total?Math.min(100,Math.floor(loaded*100/total)):100;
+                loading("Loading original game data… "+percent+"%");
+            }});
             globalThis.soloscapeOriginalCacheFiles=files;
             event("Loaded "+files.size+" original cache files in browser memory (no server writes)");
         }
@@ -156,7 +160,7 @@ $("start").addEventListener("click",async()=>{
             engine.registerResource(name,Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join(""));
         }
         engine.configureCanvas("original-engine-canvas");
-        engine.configureClient($("codebase").value);
+        engine.configureClient(codebase);
         for(const [name,value] of Object.entries(params)){
             if(typeof value!=="string")throw new Error("Parameter "+name+" must be a string");
             engine.configureClientParameter(name,value);
@@ -175,8 +179,8 @@ $("start").addEventListener("click",async()=>{
         }else if(publicKeyResponse.status===404){
             event("Original title-only smoke: local login RSA not configured");
         }else throw new Error("SoloScape public login key unavailable");
+        loading("Starting original game…");
         initialPixelSignature=signature();
-        $("status").textContent="Initializing";
         event("Original engine initializeAsync invoked");
         framePoll=setInterval(collect,500);
         // A stalled client thread may never invoke initializeAsync's completion
@@ -185,30 +189,24 @@ $("start").addEventListener("click",async()=>{
             if(state.gameState==="LOGIN_SCREEN"||state.gameState==="LOGGED_IN"||state.phase==="error")return;
             const step=engine?.startupStep?.()??"initializing";
             const safeStep=/^[a-z-]{1,40}$/.test(step)?step:"initializing";
-            startupNotice("Game startup is taking too long ("+safeStep+"). Reload to retry. If it repeats on iPhone, the browser may be running out of memory.");
+            showStartupError("Game startup is taking too long ("+safeStep+"). Reload to retry. If it repeats on iPhone, the browser may be running out of memory.");
         },90000);
         engine.initializeAsync(error=>{
             clearTimeout(slowStartup);
             state.phase=error?"error":"initialized";
             state.error=error||"";
-            $("status").textContent=state.phase;
             event(error?"Original engine initialization error: "+error:"Initialize returned (cycles not yet proven)");
-            if(error){
-                startupNotice("Game initialization failed. Reload the page to retry.");
-            }
+            if(error)showStartupError("Original game failed to initialize. Reload the page to retry.");
         });
     }catch(error){
         state.phase="error";state.error=String(error);
-        $("status").textContent="error";event(state.error);
-        const display=$("startup-error");
-        if(display){
-            const memory=/memory|allocation|out of bounds/i.test(String(error));
-            display.textContent=memory?
-                "The original game exceeded available browser memory. Try a desktop browser while mobile optimization continues.":
-                "Unable to start game. Reload the page or visit /health to check the local server.";
-            display.hidden=false;
-        }
+        event(state.error);
+        const memory=/memory|allocation|out of bounds/i.test(String(error));
+        showStartupError(memory?
+            "The original game exceeded available browser memory. Try desktop while mobile optimization continues.":
+            "Unable to start the game. Reload the page or visit /health to check the LAN server.");
     }
-},{once:true});
-queueMicrotask(()=>$("start").click());
+}
 window.addEventListener("pagehide",()=>{if(framePoll)clearInterval(framePoll);},{once:true});
+// Automatic, exactly once on page load; login itself remains manual.
+void initializeOriginalEngine();

@@ -47,10 +47,10 @@ test("LAN HTTP page uses allowed Host, a phone-reachable WebSocket route and CSP
         const page=await get("/","192.168.0.129:3097");
         assert.equal(page.status,200);
         assert.match(page.headers["content-security-policy"],/ws:\/\/192\.168\.0\.129:43595/);
-        const check=await get("/health","192.168.0.129:3097");
-        assert.equal(check.status,200);
-        assert.match(check.body,/SoloScape connection OK/);
-        assert.doesNotMatch(check.body,/engine-smoke.mjs|engine.js|original-cache/);
+        const health=await get("/health","192.168.0.129:3097");
+        assert.equal(health.status,200);
+        assert.match(health.body,/SoloScape connection OK/);
+        assert.doesNotMatch(health.body,/engine-smoke.mjs|engine.js|original-cache/);
         const loader=await get("/original-cache-loader.mjs","192.168.0.129:3097");
         assert.equal(loader.status,200);
         assert.match(loader.headers["content-type"],/javascript/);
@@ -67,14 +67,14 @@ test("LAN HTTP page uses allowed Host, a phone-reachable WebSocket route and CSP
 test("full viewport canvas boots automatically without visible controls or login automation",async()=>{
     const html=await readFile(new URL("../teavm-poc/site/engine-smoke.html",import.meta.url),"utf8");
     const script=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
-    const css=await readFile(new URL("../teavm-poc/site/original-engine.css",import.meta.url),"utf8");
     assert.match(html,/id="original-engine-canvas"/);
-    assert.match(html,/href="\/original-engine\.css"/);
-    assert.match(css,/overflow:\s*hidden/);
+    assert.match(html,/engine-smoke.css/);
+    const css=await readFile(new URL("../teavm-poc/site/engine-smoke.css",import.meta.url),"utf8");
     assert.match(css,/100dvh/);
-    assert.match(html,/id="internal-diagnostics" hidden/);
+    assert.match(css,/overflow:hidden/);
+    assert.doesNotMatch(html,/id="start"|id="internal-diagnostics"/);
     assert.match(html,/id="params"/);
-    assert.match(script,/queueMicrotask\(\(\)=>\$\("start"\)\.click\(\)\)/);
+    assert.match(script,/void initializeOriginalEngine\(\)/);
     assert.match(script,/engine\.initializeAsync\(/);
     assert.doesNotMatch(script,/\.submit\(\)|loginPassword|autoLogin/);
 });

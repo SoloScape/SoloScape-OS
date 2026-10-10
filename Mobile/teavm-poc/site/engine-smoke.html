@@ -4,31 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#000000">
-<title>SoloScape | Original OpenOSRS engine</title>
-<link rel="stylesheet" href="/original-engine.css">
+<title>SoloScape</title>
+<link rel="stylesheet" href="/engine-smoke.css">
 </head>
 <body>
-<canvas id="original-engine-canvas" width="765" height="503" tabindex="0"
-    aria-label="SoloScape original RuneScape game"></canvas>
+<canvas id="original-engine-canvas" width="765" height="503" tabindex="0" aria-label="Original RuneScape game"></canvas>
 <input id="original-soft-keyboard" type="password" aria-label="Original game keyboard"
-    autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
-    enterkeyhint="done">
-<div id="internal-diagnostics" hidden aria-hidden="true">
-<input id="codebase" autocomplete="off">
-<textarea id="params">{"1":"1","3":"false","4":"1","5":"0","6":"0","7":"0","8":"true","9":"ElZAIrq5NpKN6D3mDdihco3oPeYN2KFy2DCquj7JMmECPmLrDP3Bnw","10":"5","12":"301","14":"0","15":"0","16":"false","18":""}</textarea>
-<textarea id="routes">[]</textarea>
-<button id="start" type="button" tabindex="-1">Initialize original engine</button>
-<strong id="status">Not started</strong>
-<strong id="cycle">unavailable</strong>
-<strong id="original-fps">unavailable</strong>
-<strong id="presented-fps">unavailable</strong>
-<strong id="cycle-rate">unavailable</strong>
-<strong id="game-state">unavailable</strong>
-<strong id="thread">unavailable</strong>
-<strong id="frame">No</strong>
-<p id="result">Not started</p>
-<pre id="events"></pre>
-</div>
+    autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done">
+<!-- Public rev-240 startup parameters only; no account data or editable controls. -->
+<script type="application/json" id="params">{"1":"1","3":"false","4":"1","5":"0","6":"0","7":"0","8":"true","9":"ElZAIrq5NpKN6D3mDdihco3oPeYN2KFy2DCquj7JMmECPmLrDP3Bnw","10":"5","12":"301","14":"0","15":"0","16":"false","18":""}</script>
+<div id="loading-status" role="status" aria-live="polite">Starting SoloScape…</div>
 <div id="startup-error" role="alert" hidden></div>
 <script type="module" src="/engine-smoke.mjs"></script>
 </body>

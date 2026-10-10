@@ -91,15 +91,14 @@ export class Stage1Bridge {
         return sanitizeState(raw==null?null:JSON.parse(raw));
     }
     async initializeEngine(){
+        // Backward-compatible Stage 1 command. The browser page now starts
+        // the original Java engine automatically when loaded. Never click a
+        // removed UI button, inject JavaScript or initialize the game twice.
         const state=await this.getClientState();
-        // Auto-started full-screen page: retain this legacy bridge command
-        // as an idempotent check for existing Desktop Commander workflows.
-        if(state.phase!=="not-started")
-            return {started:true,automatic:true,note:"Original engine starts automatically on page load"};
-        const started=await this.browser.evaluate(`(()=>{const b=document.getElementById('start');
-if(!b||b.disabled)return false;b.click();return true;})()`);
-        if(started!==true)throw new Error("Original engine Initialize button unavailable");
-        return {started:true,note:"Original engine initialization requested; check get_client_state for progress"};
+        if(state.hasError||state.phase==="error")
+            throw new Error("Original engine automatic initialization failed");
+        return {started:state.phase!=="not-started",automatic:true,
+            note:"Initialization is automatic on page load; use wait_for_state to await the original title"};
     }
     async waitForState({gameState="LOGGED_IN",timeoutMs=30000}={}){
         if(!["LOGGED_IN","LOGIN_SCREEN","STARTING","LOADING","CONNECTION_LOST","UNAVAILABLE"].includes(gameState))

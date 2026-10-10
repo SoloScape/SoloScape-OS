@@ -40,9 +40,12 @@ npm run dev:original-engine
 
 Have the local SoloScape **native revision-240 JS5 server** listening
 on `127.0.0.1:43594` (the existing server). Open `http://127.0.0.1:3097/`.
-Click **Initialize original engine**. The diagnostic fills in the safe public
-startup parameters and, when launched with `npm run dev:original-engine`,
-the loopback-only gateway routes automatically. The local development host
+The original engine **initializes automatically on page load**; there is
+no Initialize button or visible diagnostic panel. The original 765 × 503 Java
+software framebuffer is scaled to fill the browser viewport (without
+reimplementing the renderer). The game login remains manual. Startup uses
+the pinned public parameters and, when launched with `npm run
+dev:original-engine`, the loopback-only gateway routes automatically. The local development host
 reads **only** `Server/.data/client.key` (the generated public RSA key), serves
 its exponent/modulus on a loopback-only endpoint, and configures the pinned
 original gamepack's login RSA before the original Java engine initializes.

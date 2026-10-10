@@ -70,27 +70,27 @@ test("existing secure localhost IndexedDB filesystem still loads and persists no
     assert.equal(writes.length,0);
 });
 
-test("fullscreen LAN client auto-starts silently but exposes a safe error on real startup stalls",async()=>{
+test("fullscreen LAN client auto-starts with progress and reports safe startup errors",async()=>{
     const script=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
     const html=await readFile(new URL("../teavm-poc/site/engine-smoke.html",import.meta.url),"utf8");
-    assert.match(script,/queueMicrotask\(\(\)=>\$\("start"\)\.click\(\)\)/);
+    assert.match(script,/void initializeOriginalEngine\(\)/);
     assert.match(script,/engine\.initializeAsync\(/);
     assert.match(script,/engine\?\.startupStep\?\.\(\)/);
     assert.match(script,/safeStep/);
-    assert.doesNotMatch(script,/bootStarted|loading-status/);
-    assert.doesNotMatch(html,/id="loading-status"/);
+    assert.match(script,/loading\("Loading original Java engine/);
+    assert.match(html,/id="loading-status"/);
     assert.match(html,/id="original-engine-canvas"/);
     assert.doesNotMatch(script,/login.*password\(|automateLogin\(/i);
 });
 
 test("private LAN Java applet identity uses native localhost host check without moving fetches off the LAN",async()=>{
     const script=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
-    assert.match(script,/javaCodebase\.hostname="127\.0\.0\.1"/);
-    assert.match(script,/engine\.configureClient\(\$\("codebase"\)\.value\)/);
+    assert.match(script,/let codebase=window\.location\.origin\+"\/"/);
+    assert.match(script,/engine\.configureClient\(codebase\)/);
     assert.match(script,/const configured=await fetch\("\/original-gateway"\)/);
     assert.match(script,/await fetch\("\/original-cache\/manifest"\)/);
     assert.match(script,/await import\("\/engine\.js"\)/);
-    assert.match(script,/queueMicrotask\(\(\)=>\$\("start"\)\.click\(\)\)/);
+    assert.match(script,/void initializeOriginalEngine\(\)/);
 });
 
 test("blocked IndexedDB upgrade falls back once; late events cannot double-complete startup",()=>{

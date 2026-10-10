@@ -2,8 +2,9 @@
 
 This serves the **actual original revision-240 Java gamepack**, compiled with
 TeaVM, and its original Java software renderer. The page now starts the engine
-**automatically** and displays only the original game canvas, scaled to fit
-the browser viewport without stretching or changing Java mouse coordinates.
+**automatically** and displays only the original game canvas. The fullscreen CSS scales its
+765×503 framebuffer across the viewport; the original Java renderer remains
+unchanged.
 
 ## Connect
 
@@ -53,8 +54,9 @@ gamepack and cache to **devices on your subnet**, without HTTPS or app-level
 authentication, so use **only a private network and disposable test account**.
 Check gamepack/cache distribution rights before sharing beyond personal testing.
 
-The 765×503 original framebuffer is scaled **without changing its Java
-renderer**. Landscape orientation is recommended. Native phone touch
+The 765×503 original framebuffer fills the browser viewport using CSS
+without replacing the **original Java renderer**; portrait view may stretch
+the display. Landscape orientation is recommended. Native phone touch
 gestures, long-press context menus and on-screen keyboard support may still
 need further work; opening the page and displaying the title do not by
 themselves prove all gameplay input works on a phone.
@@ -62,3 +64,27 @@ themselves prove all gameplay input works on a phone.
 Development telemetry and the original gamepack source are not exposed as
 extra HTML panels. The internal telemetry remains for the local bridge.
 `Mobile/run.bat` remains the standard loopback-only development launcher.
+
+## White screen troubleshooting on iPhone
+
+Open `http://192.168.0.129:3097/health` (use the IP from the
+`TRUSTED LAN ONLY:` server message if it changes). This deliberately
+**does not load** the Java gamepack or original cache.
+
+- If it displays **SoloScape connection OK**, the phone can reach the
+  authorized LAN webpage. Try the normal `/` page again; it now displays
+  game-cache download progress and catches ordinary startup errors.
+- If the health page does **not** load, check private Wi-Fi, router guest
+  isolation, LAN IP, Windows Firewall port 3097 and the LAN launcher.
+- If the health page works but the game tab goes completely blank or is
+  reloaded, mobile browser memory exhaustion is a possibility. The pinned
+  compiled original gamepack is about 12 MB of JavaScript and the current
+  original native cache is about 239 MB. The cache files are now loaded
+  **sequentially, using streaming into one final buffer each** to reduce
+  temporary memory spikes, but the full cache must still reside in browser
+  memory. iOS browser support remains experimental; this does not guarantee
+  the original Java engine fits within WebKit memory limits.
+- Leave the original game server on port 43594 running; `/health` alone
+  does not prove the server or game protocol is available.
+
+Do not expose development ports to the public Internet. Login stays manual.

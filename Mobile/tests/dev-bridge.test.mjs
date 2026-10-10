@@ -103,6 +103,19 @@ test("scene counters are read-only, validated, and unavailable before original l
     await assert.rejects(()=>before.getSceneCounts(),/LOGGED_IN/);
 });
 
+test("automatic browser initialization leaves the game untouched when called through old MCP command",async()=>{
+    const browser=new FakeChrome({...loggedIn,phase:"loading"});
+    const bridge=new Stage1Bridge(browser);
+    const info=await bridge.initializeEngine();
+    assert.equal(info.automatic,true);
+    assert.equal(info.started,true);
+    assert.ok(!browser.calls.some(call=>call.expression?.includes("b.click()")));
+    const pending=new Stage1Bridge(new FakeChrome({...loggedIn,phase:"not-started"}));
+    const result=await pending.initializeEngine();
+    assert.equal(result.automatic,true);
+    assert.equal(result.started,false);
+});
+
 test("screenshots, clicks and keyboard input are blocked until healthy LOGGED_IN",async()=>{
     const browser=new FakeChrome({...loggedIn,gameState:"LOGIN_SCREEN"});
     const bridge=new Stage1Bridge(browser);

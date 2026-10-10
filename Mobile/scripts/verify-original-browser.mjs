@@ -12,7 +12,19 @@ import {createGateway} from "../gateway/server.mjs";
 const chrome=process.env.CHROME_BIN;
 if(!chrome){console.error("Set CHROME_BIN to an installed Chrome executable");process.exit(2);}
 const profile=await mkdtemp(join(tmpdir(),"soloscape-original-chrome-"));
-const server=createEngineSmokeServer();
+// Public diagnostic overrides are supplied by this isolated localhost host
+// before the webpage loads; there are no visible form fields or start button.
+const envPublicConfig={};
+if(process.env.SOLOSCAPE_ENGINE_SMOKE_PARAMETERS)
+    envPublicConfig.parameters=JSON.parse(process.env.SOLOSCAPE_ENGINE_SMOKE_PARAMETERS);
+if(process.env.SOLOSCAPE_ENGINE_SMOKE_GATEWAYS)
+    envPublicConfig.routes=JSON.parse(process.env.SOLOSCAPE_ENGINE_SMOKE_GATEWAYS);
+if(process.env.SOLOSCAPE_ENGINE_SMOKE_CODEBASE)
+    envPublicConfig.codebase=process.env.SOLOSCAPE_ENGINE_SMOKE_CODEBASE;
+const server=createEngineSmokeServer({
+    gatewayPort:process.env.SOLOSCAPE_ENGINE_JS5_UPSTREAM_PORT?43595:null,
+    publicClientConfig:Object.keys(envPublicConfig).length?envPublicConfig:null
+});
 const timeout=Number(process.env.SOLOSCAPE_ENGINE_SMOKE_TIMEOUT_MS??30000);
 const stabilityMs=Number(process.env.SOLOSCAPE_ENGINE_STABILITY_MS??5000);
 let child,socket,debuggerPort,passed=false,js5Gateway;
@@ -97,16 +109,11 @@ try{
         socket.send(JSON.stringify({id:++seq,method:"Debugger.enable"}));
         socket.send(JSON.stringify({id:++seq,method:"Debugger.setPauseOnExceptions",params:{state:"all"}}));
     }
-    while(!(await evalJs("document.readyState !== 'loading' && !!document.getElementById('start')"))){
+    while(!(await evalJs("document.readyState !== 'loading' && !!window.engineSmokeState && !!document.getElementById('original-engine-canvas')"))){
         assertTime();await pause(150);
     }
-    const parameters=process.env.SOLOSCAPE_ENGINE_SMOKE_PARAMETERS;
-    const gateways=process.env.SOLOSCAPE_ENGINE_SMOKE_GATEWAYS;
-    const codebase=process.env.SOLOSCAPE_ENGINE_SMOKE_CODEBASE;
-    if(parameters)await evalJs("document.getElementById('params').value = "+JSON.stringify(parameters));
-    if(gateways)await evalJs("document.getElementById('routes').value = "+JSON.stringify(gateways));
-    if(codebase)await evalJs("document.getElementById('codebase').value = "+JSON.stringify(codebase));
-    await evalJs("document.getElementById('start').click()");
+    // The page starts the original engine automatically. No UI click or
+    // hidden-browser credential entry is needed for this title-only test.
     let result={},steadyStart=0,steadyStartCycle=-1,lastProgress=0,lastCycle=-1;
     const requireTitle=process.env.SOLOSCAPE_ENGINE_REQUIRE_TITLE==="1";
     while(Date.now()<deadline){

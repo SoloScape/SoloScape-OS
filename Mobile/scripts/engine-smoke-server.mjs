@@ -12,7 +12,7 @@ const files=new Map([
     ["/",["teavm-poc/site/engine-smoke.html","text/html; charset=utf-8"]],
     ["/engine-smoke.mjs",["teavm-poc/site/engine-smoke.mjs","text/javascript; charset=utf-8"]],
     ["/original-mobile-keyboard.mjs",["teavm-poc/site/original-mobile-keyboard.mjs","text/javascript; charset=utf-8"]],
-    ["/original-engine.css",["teavm-poc/site/original-engine.css","text/css; charset=utf-8"]],
+    ["/engine-smoke.css",["teavm-poc/site/engine-smoke.css","text/css; charset=utf-8"]],
     ["/original-cache-loader.mjs",["teavm-poc/site/original-cache-loader.mjs","text/javascript; charset=utf-8"]],
     ["/engine.js",["teavm-poc/target/engine/javascript/engine.js","text/javascript; charset=utf-8"]],
     ["/original-resource/client.serial",["teavm-poc/target/engine/resources/client.serial","application/octet-stream"]],
@@ -20,20 +20,21 @@ const files=new Map([
     ["/original-resource/runelite/index",["teavm-poc/target/engine/resources/runelite/index","application/octet-stream"]],
 ]);
 export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.env.SOLOSCAPE_ENGINE_LOCAL_CACHE_ROOT,
-    gatewayPort=null,loginRsaPublic=null,isAllowedPeer=isLocalPeer,allowedHosts=null}={}) {
+    gatewayPort=null,loginRsaPublic=null,publicClientConfig=null,
+    isAllowedPeer=isLocalPeer,allowedHosts=null}={}) {
     return createServer(async(req,res)=>{
         const peer=req.socket.remoteAddress;
         if(!isAllowedPeer(peer)||(allowedHosts&&!allowedHosts.has(req.headers.host))){
             res.writeHead(403);res.end("Trusted local network required");return;
         }
         const gatewayHost=allowedHosts?req.headers.host.split(":")[0]:"127.0.0.1";
-        // Minimal test page for mobile: checks LAN HTTP/HTML/CSP without ever
-        // importing the 12MB Java engine or allocating the 239MB native cache.
+        // Small LAN connectivity test: never imports or allocates the Java
+        // gamepack or original 239 MB native cache in the phone browser.
         if(req.method==="GET"&&req.url==="/health"){
             res.writeHead(200,{"Content-Type":"text/html; charset=utf-8",
                 "Cache-Control":"no-store","X-Content-Type-Options":"nosniff",
                 "Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'"});
-            res.end('<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#000"><title>SoloScape LAN check</title><body style="background:#080808;color:#fff;font:18px system-ui;padding:2rem"><h1>SoloScape connection OK</h1><p>The phone can reach the local game page. This check does not load the Java engine or game cache.</p></body></html>');
+            res.end('<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#000"><title>SoloScape LAN check</title><body style="background:#080808;color:#fff;font:18px system-ui;padding:2rem"><h1>SoloScape connection OK</h1><p>Your phone can reach the local page. This check does not load the original Java gamepack or its cache.</p></body></html>');
             return;
         }
         if(gatewayPort&&req.method==="GET"&&req.url==="/original-gateway"){
@@ -47,6 +48,14 @@ export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.e
             res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store",
                 "X-Content-Type-Options":"nosniff"});
             res.end(JSON.stringify({exponent:loginRsaPublic.exponent,modulus:loginRsaPublic.modulus}));return;
+        }
+        // Only isolated browser tests use this endpoint to override *public*
+        // gamepack parameters without a visible diagnostic form. Never serve
+        // private keys, credentials, account data or arbitrary scripts here.
+        if(publicClientConfig&&req.method==="GET"&&req.url==="/original-public-config"){
+            res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store",
+                "X-Content-Type-Options":"nosniff"});
+            res.end(JSON.stringify(publicClientConfig));return;
         }
         // Explicit, opt-in local *read-only* snapshot of original cache files.
         // Stream the 237 MB data file; never read it into the Node heap.

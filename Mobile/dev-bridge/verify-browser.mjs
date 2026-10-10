@@ -16,10 +16,12 @@ try{
         catch{await new Promise(resolve=>setTimeout(resolve,200));}
     }
     assert.ok(first,"Original engine telemetry must become available");
-    assert.notEqual(first.phase,"error","Automatic original-engine startup must not fail");
+    assert.ok(["not-started","loading","initialized"].includes(first.phase),
+        "Original page must be automatically starting the real gamepack");
     await assert.rejects(()=>bridge.captureScreen(),/LOGGED_IN/);
     await assert.rejects(()=>bridge.clickCanvas({x:100,y:200}),/LOGGED_IN/);
-    await bridge.initializeEngine(); // idempotent when the page already auto-started
+    const init=await bridge.initializeEngine();
+    assert.equal(init.automatic,true);
     const title=await bridge.waitForState({gameState:"LOGIN_SCREEN",timeoutMs:60000});
     assert.equal(title.reached,true,"Original revision-240 title must initialize");
     assert.equal(title.callbackError,"");
