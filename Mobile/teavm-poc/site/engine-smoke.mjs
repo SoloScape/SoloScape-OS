@@ -8,6 +8,7 @@ import {attachOriginalKeyboard,categorizeOriginalClientError} from "/original-mo
 import {attachOriginalPageLifecycle} from "/original-mobile-lifecycle.mjs";
 import {attachOriginalLoginCamera} from "/original-login-camera.mjs";
 import {attachOriginalResizableLayout} from "/original-resizable-layout.mjs";
+import {attachOriginalTouchCamera} from "/original-touch-camera.mjs";
 const $=id=>document.getElementById(id);
 function dismissStartupSplash(){
     const splash=$("startup-splash");
@@ -30,6 +31,8 @@ const pageLifecycle=attachOriginalPageLifecycle({
     canvas:$("original-engine-canvas"),getGameState:()=>state.gameState});
 state.pageRestartedAfterTitleTap=pageLifecycle.restartedAfterTitleTap;
 const loginCamera=attachOriginalLoginCamera({
+    canvas:$("original-engine-canvas"),getGameState:()=>state.gameState});
+const touchCamera=attachOriginalTouchCamera({
     canvas:$("original-engine-canvas"),getGameState:()=>state.gameState});
 // Fixed, read-only scene count snapshot for debugging missing original world locs.
 window.engineSmokeSceneCounts=()=>engine?.sceneLocCounts?.()??null;
@@ -78,6 +81,7 @@ function collect(){
         state.clientThread=engine.hasClientThread();
         state.gameState=engine.gameState();
         loginCamera.observe(state.gameState);
+        touchCamera.update();
         originalResize?.update();
         state.socketAttempts=globalThis.soloscapeEngineSocketAttempts??[];
         state.resourceLookups=globalThis.soloscapeOriginalResourceLookups??[];

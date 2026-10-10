@@ -168,3 +168,18 @@ logical minimum, with bounded maximum dimensions to avoid multiplying
 Safari's framebuffer by Retina pixel density. This is not a second
 WebGL renderer. It requires a TeaVM rebuild and a manual iPhone test of
 both layout variants, including rotating the phone.
+
+## iPhone long-press camera rotation
+
+Within the original 3D game viewport, a held finger (320 ms) followed by
+a drag rotates the original Java camera through standard AWT arrow-key
+keydown/up events. This is an input-only browser shim, not custom camera
+rendering or a reimplementation. Releasing the finger, pausing the drag,
+leaving the game, losing the page, or canceling a pointer releases any held
+key. A quick tap still reaches the original Java click handler (walking,
+NPCs and interfaces), and holds on inventory/chat areas are not converted
+into camera drags. Safari's text selection, callout bubble and tap
+highlight are suppressed on the original canvas. The original AWT
+keyboard adapter maps synthetic Arrow key names to Java virtual-key
+codes 37-40 on iOS even when WebKit reports keyCode=0.
+Rebuild the original TeaVM engine after changing this adapter.
