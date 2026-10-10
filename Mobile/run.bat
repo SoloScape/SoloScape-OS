@@ -38,8 +38,25 @@ if errorlevel 1 (
     exit /b 1
 )
 
+rem Desktop Commander Stage 2: one persistent authenticated local controller.
+rem Reuse the existing process so a manually logged-in browser is preserved.
+node dev-bridge\controller-cli.mjs status >nul 2>&1
+if errorlevel 1 (
+    echo [START] Desktop Commander Stage 2 controller
+    rem Clear the nonzero status from the not-running probe before START.
+    cmd.exe /D /C exit /B 0
+    start "SoloScape Desktop Controller" /D "%CD%" "%ComSpec%" /D /K "node dev-bridge\controller-cli.mjs serve"
+    if errorlevel 1 (
+        echo [ERROR] Unable to launch the Desktop Commander controller.
+        exit /b 1
+    )
+) else (
+    echo [READY] Desktop Commander controller is already running.
+)
+
 echo.
 echo [OK] Original engine: http://127.0.0.1:3097/
+echo [INFO] Desktop Commander can call: node dev-bridge\controller-cli.mjs status
 echo [INFO] The MCP console is a standalone stdio process.
 echo [INFO] To use MCP tools, configure your MCP host to launch
 echo        Mobile\dev-bridge\stdio.mjs directly, as described in dev-bridge\README.md.
@@ -51,6 +68,7 @@ call :prerequisites
 if errorlevel 1 exit /b 1
 echo [CHECK] Would start npm run dev:original-engine unless already running.
 echo [CHECK] Would start node dev-bridge\stdio.mjs in a separate terminal.
+echo [CHECK] Would start or reuse node dev-bridge\controller-cli.mjs serve.
 echo [CHECK] No processes started.
 exit /b 0
 
@@ -69,6 +87,10 @@ if not exist "dev-bridge\stdio.mjs" (
     echo [ERROR] Stage 1 MCP bridge is missing from Mobile\dev-bridge.
     exit /b 1
 )
+if not exist "dev-bridge\controller-cli.mjs" (
+    echo [ERROR] Desktop Commander controller is missing.
+    exit /b 1
+)
 if not exist "teavm-poc\target\engine\javascript\engine.js" (
     echo [ERROR] The compiled original engine is missing.
     echo         First run: npm run build:openosrs-engine
@@ -78,9 +100,10 @@ exit /b 0
 
 :help
 echo Usage: run.bat [--check ^| --dry-run ^| --help]
-echo Starts the original OpenOSRS dev diagnostic and a Stage 1 MCP stdio terminal.
+echo Starts the original OpenOSRS diagnostic, Stage 1 MCP, and Desktop Commander controller.
 echo --check validates prerequisites without starting processes.
 echo MCP hosts must launch the stdio server themselves to connect to its tools.
+echo Desktop Commander uses: node dev-bridge\controller-cli.mjs status
 exit /b 0
 
 :usage_error

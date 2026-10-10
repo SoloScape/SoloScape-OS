@@ -15,6 +15,8 @@
     "test:openosrs-engine": "node teavm-poc/scripts/verify-engine-module.mjs",
     "dev:original-engine": "node scripts/run-original-engine.mjs",
     "mcp:original-engine": "node dev-bridge/stdio.mjs",
+    "dev:desktop-controller": "node dev-bridge/controller-cli.mjs serve",
+    "test:desktop-controller": "node --test tests/desktop-controller.test.mjs",
     "test:mcp:original-engine": "node --test tests/dev-bridge.test.mjs",
     "test:mcp:original-browser": "node dev-bridge/verify-browser.mjs",
     "test:original-browser": "node scripts/verify-original-browser.mjs",

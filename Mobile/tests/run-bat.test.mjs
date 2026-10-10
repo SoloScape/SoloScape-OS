@@ -15,6 +15,10 @@ test("Windows launcher uses only original OpenOSRS dev and Stage 1 stdio MCP",as
     assert.match(bat,/node dev-bridge\\stdio\.mjs/);
     assert.match(bat,/start "SoloScape Original Engine Dev"/);
     assert.match(bat,/start "SoloScape Stage 1 MCP Bridge"/);
+    assert.match(bat,/start "SoloScape Desktop Controller"/);
+    assert.match(bat,/node dev-bridge\\controller-cli\.mjs serve/);
+    assert.match(bat,/cmd\.exe \/D \/C exit \/B 0/);
+    assert.match(bat,/node dev-bridge\\controller-cli\.mjs status >nul/);
     assert.match(bat,/--check/);
     assert.match(bat,/teavm-poc\\target\\engine\\javascript\\engine\.js/);
     assert.match(bat,/127\.0\.0\.1:3097/);

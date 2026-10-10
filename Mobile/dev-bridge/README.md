@@ -122,6 +122,60 @@ or connecting an integration always requires the user's action.
   on localhost and only use disposable credentials.
 - The MCP bridge is never imported into production browser bundles.
 
+## Desktop Commander Stage 2 (persistent controller)
+
+The **recommended local development workflow** uses Desktop Commander to run
+ordinary commands against a persistent process. No ChatGPT plugin, OpenAI
+tunnel, API key, public port, or separately installed MCP adapter is needed.
+The Stage 1 MCP protocol remains available unchanged for external MCP hosts.
+
+From `Mobile/`, double-click `run.bat`. In addition to the original-engine
+diagnostic and Stage 1 MCP console, this starts **SoloScape Desktop Controller**.
+The controller has a private per-user session descriptor in Windows
+`%LOCALAPPDATA%/SoloScape-OS/dev-controller/session.json`, a randomized
+local-only named pipe, and a per-session authorization token. None of those
+values is stored inside this repository or printed in command output.
+
+Desktop Commander can invoke each of these in a separate terminal call:
+
+```powershell
+node dev-bridge/controller-cli.mjs status
+node dev-bridge/controller-cli.mjs start
+node dev-bridge/controller-cli.mjs initialize
+node dev-bridge/controller-cli.mjs wait LOGIN_SCREEN 60000
+# Log in MANUALLY with a disposable test account in the owned Chrome window
+node dev-bridge/controller-cli.mjs wait LOGGED_IN 60000
+node dev-bridge/controller-cli.mjs screenshot
+node dev-bridge/controller-cli.mjs click 400 250 left
+node dev-bridge/controller-cli.mjs key Escape
+node dev-bridge/controller-cli.mjs smoke-test 3000
+node dev-bridge/controller-cli.mjs diagnostics
+node dev-bridge/controller-cli.mjs profile 5000 --cpu
+node dev-bridge/controller-cli.mjs rebuild-and-test
+node dev-bridge/controller-cli.mjs shutdown
+```
+
+`screenshot` is allowed **only after LOGGED_IN** and saves the original canvas
+PNG to the ignored `teavm-poc/target/engine/controller-captures/` directory;
+the command prints its full path so Desktop Commander can inspect it. The
+controller does not read or write game passwords, tokens or login packets.
+`smoke-test` is a passive runtime stability check (no synthetic movement
+success). `profile` measures real original game cycles and software frames;
+the optional CPU samples contain function names, not variable contents.
+
+`rebuild-and-test` is opt-in and stops only its own Chrome session first,
+then runs three **fixed, reviewable** local tasks: the original engine build,
+original engine verification, and MCP bridge tests. It never runs arbitrary
+commands supplied by an agent. After rebuilding, launch a fresh owned Chrome
+session and log in manually to confirm gameplay. The Java server and other
+browser windows are not stopped. `shutdown` ends the controller and only the
+Chrome session it owns.
+
+For direct standalone use (without `run.bat`):
+`npm run dev:desktop-controller` starts the persistent controller. It does
+not start the Java game server or original-engine diagnostic; those must
+already be running. Commands report an error if no controller is available.
+
 ## Verification
 
 ```powershell
