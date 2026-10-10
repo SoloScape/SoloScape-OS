@@ -92,7 +92,7 @@ test("browser AWT dummy draw events do not accumulate without a desktop event-di
 test("browser keyboard sends DOM Enter as Java AWT VK_ENTER 10 without changing game input",async()=>{
     const {readFile}=await import("node:fs/promises");
     const code=await readFile(new URL("../teavm-poc/engine-src/org/soloscape/teavm/platform/awt/NativeCanvas.java",import.meta.url),"utf8");
-    assert.match(code,/e\.key==='Enter'\?10:e\.keyCode\|\|0/);
+    assert.match(code,/e\.key==='Enter'\?10:e\.key==='Backspace'\?8/);
     assert.match(code,/canvas\.addEventListener\('mousemove'/);
 });
 

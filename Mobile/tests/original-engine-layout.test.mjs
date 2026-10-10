@@ -37,6 +37,10 @@ test("strict LAN Content Security Policy permits the real full-screen CSS asset"
         assert.match(sheet.headers.get("content-type"),/^text\/css/);
         assert.match(await sheet.text(),/#original-engine-canvas/);
         assert.ok(visited.some(p=>p.endsWith("original-engine.css")));
+        const keyboard=await fetch(origin+"/original-mobile-keyboard.mjs");
+        assert.equal(keyboard.status,200);
+        assert.match(keyboard.headers.get("content-type"),/javascript/);
+        assert.match(await keyboard.text(),/attachOriginalKeyboard/);
     }finally{
         server.close();
         await once(server,"close");

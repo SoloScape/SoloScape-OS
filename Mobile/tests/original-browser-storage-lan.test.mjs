@@ -70,15 +70,15 @@ test("existing secure localhost IndexedDB filesystem still loads and persists no
     assert.equal(writes.length,0);
 });
 
-test("fullscreen LAN client auto-starts but exposes safe progress when the original Java client stalls",async()=>{
+test("fullscreen LAN client auto-starts silently but exposes a safe error on real startup stalls",async()=>{
     const script=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
     const html=await readFile(new URL("../teavm-poc/site/engine-smoke.html",import.meta.url),"utf8");
     assert.match(script,/queueMicrotask\(\(\)=>\$\("start"\)\.click\(\)\)/);
     assert.match(script,/engine\.initializeAsync\(/);
     assert.match(script,/engine\?\.startupStep\?\.\(\)/);
     assert.match(script,/safeStep/);
-    assert.match(script,/bootStarted/);
-    assert.match(html,/id="loading-status"/);
+    assert.doesNotMatch(script,/bootStarted|loading-status/);
+    assert.doesNotMatch(html,/id="loading-status"/);
     assert.match(html,/id="original-engine-canvas"/);
     assert.doesNotMatch(script,/login.*password\(|automateLogin\(/i);
 });

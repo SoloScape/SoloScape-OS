@@ -29,14 +29,16 @@ body {
     overscroll-behavior: none;
 }
 #internal-diagnostics { display: none !important; }
-#loading-status {
+#original-soft-keyboard {
     position: fixed;
-    inset: auto 0 max(24px, env(safe-area-inset-bottom));
-    text-align: center;
-    padding: 12px;
-    color: #fff;
-    font: 14px system-ui, sans-serif;
-    text-shadow: 0 1px 3px #000;
+    top: 0;
+    left: 0;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    font-size: 16px;
+    border: 0;
+    padding: 0;
     pointer-events: none;
 }
 #startup-error {

@@ -1,17 +1,18 @@
 // Original Java gameplay and framebuffer only. Browser status is an overlay.
 import {loadOriginalCache} from "/original-cache-loader.mjs";
+import {attachOriginalKeyboard} from "/original-mobile-keyboard.mjs";
 const $=id=>document.getElementById(id);
-function loading(message){
-    const indicator=$("loading-status");
-    if(indicator&&!indicator.hidden)indicator.textContent=message;
-}
 function startupNotice(message){
     const display=$("startup-error");
     if(display){display.textContent=message;display.hidden=false;}
 }
 const state=window.engineSmokeState={phase:"not-started",step:"not-started",cycles:[],frameChanged:false,canvasSampleColors:0,
     clientThread:false,gameState:"UNAVAILABLE",originalFps:-1,presentedFrames:0,presentedFps:0,cycleRate:0,clockStats:null,loginRsaConfigured:false,callbackTrace:"",socketAttempts:[], resourceLookups:[],filePaths:[],error:"",callbackError:"",events:[]};
-let engine,clock=0,initialPixelSignature,framePoll,bootStarted=0;
+let engine,clock=0,initialPixelSignature,framePoll;
+// An invisible password-type input opens the mobile OS keyboard. The original
+// Java client still renders login fields and handles authentication itself.
+attachOriginalKeyboard({canvas:$("original-engine-canvas"),
+    keyboard:$("original-soft-keyboard"),getGameState:()=>state.gameState});
 // Fixed, read-only scene count snapshot for debugging missing original world locs.
 window.engineSmokeSceneCounts=()=>engine?.sceneLocCounts?.()??null;
 const fpsSamples=[];
@@ -54,15 +55,6 @@ function collect(){
         if(state.cycles.at(-1)!==cycle){state.cycles.push(cycle);if(state.cycles.length>50)state.cycles.shift();}
         state.clientThread=engine.hasClientThread();
         state.gameState=engine.gameState();
-        if(state.gameState==="LOGIN_SCREEN"||state.gameState==="LOGGED_IN"){
-            const indicator=$("loading-status");
-            if(indicator)indicator.hidden=true;
-        }else if(state.phase!=="error"&&bootStarted&&performance.now()-bootStarted>12000){
-            // Native fixed startup stages only. Never show Java exception text,
-            // resource paths, credentials, or account details on the game page.
-            const step=/^[a-z-]{1,40}$/.test(state.step)?state.step:"initializing";
-            loading("Starting original game… ("+step.replaceAll("-"," ")+")");
-        }
         state.socketAttempts=globalThis.soloscapeEngineSocketAttempts??[];
         state.resourceLookups=globalThis.soloscapeOriginalResourceLookups??[];
         state.filePaths=(globalThis.soloscapeOriginalFilePaths??[]).filter(path=>/cache|jagex|oldschool|random\.dat|\.idx/i.test(path)).slice(-40);
@@ -140,7 +132,7 @@ $("start").addEventListener("click",async()=>{
                 if(Array.isArray(defaults))routes.push(...defaults);
             }
         }
-        state.phase="loading";$("status").textContent="Importing engine";loading("Loading original Java engine…");
+        state.phase="loading";$("status").textContent="Importing engine";
         engine=await import("/engine.js");
         for(const name of ["configureClient","configureClientParameter","initializeAsync","gameCycle","hasClientThread"])
             if(typeof engine[name]!=="function")throw new Error("Engine rebuild required: "+name+" missing");
@@ -148,15 +140,11 @@ $("start").addEventListener("click",async()=>{
         // original gamepack, never placeholders or gameplay substitutions.
         // An explicit local development cache snapshot is mounted read-write
         // only inside Chrome's memory. The original server files remain read-only.
-        loading("Preparing original game cache…");
         const cacheManifest=await fetch("/original-cache/manifest");
         if(cacheManifest.ok){
             const manifest=await cacheManifest.json();
             if(!Array.isArray(manifest.files))throw new Error("Invalid local cache manifest");
-            const files=await loadOriginalCache(manifest,{onProgress:({loaded,total})=>{
-                const pct=total?Math.min(100,Math.floor(100*loaded/total)):100;
-                loading("Loading original game data… "+pct+"%");
-            }});
+            const files=await loadOriginalCache(manifest);
             globalThis.soloscapeOriginalCacheFiles=files;
             event("Loaded "+files.size+" original cache files in browser memory (no server writes)");
         }
@@ -187,8 +175,6 @@ $("start").addEventListener("click",async()=>{
         }else if(publicKeyResponse.status===404){
             event("Original title-only smoke: local login RSA not configured");
         }else throw new Error("SoloScape public login key unavailable");
-        loading("Starting original game…");
-        bootStarted=performance.now();
         initialPixelSignature=signature();
         $("status").textContent="Initializing";
         event("Original engine initializeAsync invoked");
@@ -208,7 +194,6 @@ $("start").addEventListener("click",async()=>{
             $("status").textContent=state.phase;
             event(error?"Original engine initialization error: "+error:"Initialize returned (cycles not yet proven)");
             if(error){
-                const indicator=$("loading-status");if(indicator)indicator.hidden=true;
                 startupNotice("Game initialization failed. Reload the page to retry.");
             }
         });
@@ -223,7 +208,6 @@ $("start").addEventListener("click",async()=>{
                 "Unable to start game. Reload the page or visit /health to check the local server.";
             display.hidden=false;
         }
-        const indicator=$("loading-status");if(indicator)indicator.hidden=true;
     }
 },{once:true});
 queueMicrotask(()=>$("start").click());

@@ -72,4 +72,7 @@ test("preventDefault is limited to game canvas and respects consumption for ordi
     const enter=input.fire("keydown",{key:"Enter",keyCode:13});
     assert.equal(enter.defaultPrevented,false);
     assert.equal(input.sent.at(-1)[6],10,"original Java AWT Enter mapping stays intact");
+    const backspace=input.fire("keydown",{key:"Backspace",keyCode:0});
+    assert.equal(backspace.defaultPrevented,false);
+    assert.equal(input.sent.at(-1)[6],8,"synthetic mobile Backspace must use original Java keycode");
 });
