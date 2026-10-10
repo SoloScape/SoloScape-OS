@@ -13,7 +13,7 @@ function showStartupError(message){
 }
 const state=window.engineSmokeState={phase:"not-started",step:"not-started",cycles:[],frameChanged:false,canvasSampleColors:0,
     clientThread:false,gameState:"UNAVAILABLE",originalFps:-1,presentedFrames:0,presentedFps:0,cycleRate:0,clockStats:null,loginRsaConfigured:false,callbackTrace:"",socketAttempts:[], resourceLookups:[],filePaths:[],error:"",callbackError:"",events:[]};
-let engine,clock=0,initialPixelSignature,framePoll;
+let engine,clock=0,initialPixelSignature,framePoll,bootStarted=0;
 // An invisible password-type input opens the mobile OS keyboard. The original
 // Java client still renders login fields and handles authentication itself.
 attachOriginalKeyboard({canvas:$("original-engine-canvas"),
@@ -61,6 +61,11 @@ function collect(){
         if(state.gameState==="LOGIN_SCREEN"||state.gameState==="LOGGED_IN"){
             const indicator=$("loading-status");
             if(indicator)indicator.hidden=true;
+        }else if(state.phase!=="error"&&bootStarted&&performance.now()-bootStarted>12000){
+            // Only a fixed engine stage token is displayed; no account or
+            // packet details, exception text, filesystem paths or cache bytes.
+            const safeStep=/^[a-z-]{1,40}$/.test(state.step)?state.step:"initializing";
+            loading("Starting original game… ("+safeStep.replaceAll("-"," ")+")");
         }
         state.socketAttempts=globalThis.soloscapeEngineSocketAttempts??[];
         state.resourceLookups=globalThis.soloscapeOriginalResourceLookups??[];
@@ -95,7 +100,12 @@ function collect(){
 async function initializeOriginalEngine(){
     try{
         let params=JSON.parse($("params").textContent);
-        let codebase=window.location.origin+"/";
+        // The pinned Java applet host check rejects some trusted LAN
+        // addresses (notably 192.168.0.x). This is only Java's applet
+        // identity; browser fetches and gateway URLs stay on the LAN origin.
+        const javaCodebase=new URL("/",window.location.origin);
+        javaCodebase.hostname="127.0.0.1";
+        let codebase=javaCodebase.href;
         const routes=[];
         // This optional endpoint exists only for isolated, loopback-only
         // browser tests; player pages do not expose editable bootstrap UI.
@@ -180,6 +190,7 @@ async function initializeOriginalEngine(){
             event("Original title-only smoke: local login RSA not configured");
         }else throw new Error("SoloScape public login key unavailable");
         loading("Starting original game…");
+        bootStarted=performance.now();
         initialPixelSignature=signature();
         event("Original engine initializeAsync invoked");
         framePoll=setInterval(collect,500);

@@ -78,6 +78,8 @@ test("fullscreen LAN client auto-starts with progress and reports safe startup e
     assert.match(script,/engine\?\.startupStep\?\.\(\)/);
     assert.match(script,/safeStep/);
     assert.match(script,/loading\("Loading original Java engine/);
+    assert.match(script,/bootStarted=performance\.now\(\)/);
+    assert.match(script,/safeStep\.replaceAll\("-",/);
     assert.match(html,/id="loading-status"/);
     assert.match(html,/id="original-engine-canvas"/);
     assert.doesNotMatch(script,/login.*password\(|automateLogin\(/i);
@@ -85,7 +87,8 @@ test("fullscreen LAN client auto-starts with progress and reports safe startup e
 
 test("private LAN Java applet identity uses native localhost host check without moving fetches off the LAN",async()=>{
     const script=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
-    assert.match(script,/let codebase=window\.location\.origin\+"\/"/);
+    assert.match(script,/javaCodebase\.hostname="127\.0\.0\.1"/);
+    assert.match(script,/let codebase=javaCodebase\.href/);
     assert.match(script,/engine\.configureClient\(codebase\)/);
     assert.match(script,/const configured=await fetch\("\/original-gateway"\)/);
     assert.match(script,/await fetch\("\/original-cache\/manifest"\)/);
