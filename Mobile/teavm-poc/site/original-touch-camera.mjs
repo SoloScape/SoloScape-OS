@@ -1,7 +1,9 @@
-// Touch-only adapter: a held finger dragging the ORIGINAL Java game canvas
-// drives the original AWT arrow-key camera controls. Normal taps are untouched.
+// Touch-only adapter: a quick swipe or held drag on the ORIGINAL Java game canvas
+// drives the original AWT arrow-key camera controls. Quick taps remain clicks.
 // The adapter neither paints, reads credentials nor changes game camera fields.
 export const CAMERA_HOLD_MS=320;
+export const CAMERA_DRAG_START_PX=12;
+export const CAMERA_RELEASE_GRACE_MS=90;
 export function attachOriginalTouchCamera({
     canvas,getGameState,
     page=globalThis,
@@ -28,9 +30,14 @@ export function attachOriginalTouchCamera({
         canvas.dispatchEvent(createKeyEvent("keydown",key));
         pressed.add(key);
     };
-    const clearFinger=()=>{
+    const clearFinger=({allowFinalTick=false}={})=>{
         if(hold!==null){cancel(hold);hold=null;}
-        releaseKeys();
+        if(allowFinalTick&&pressed.size){
+            // A rapid swipe may begin and end between two native 20 ms game
+            // ticks. Keep the original key state briefly for the next tick.
+            if(idle!==null)cancel(idle);
+            idle=schedule(releaseKeys,CAMERA_RELEASE_GRACE_MS);
+        }else releaseKeys();
         finger=null;active=false;
     };
     const validScenePoint=(e)=>{
@@ -47,7 +54,11 @@ export function attachOriginalTouchCamera({
     const down=e=>{
         if(e.pointerType!=="touch"||e.isPrimary===false||
             getGameState()!=="LOGGED_IN"||finger||!validScenePoint(e))return;
-        finger={id:e.pointerId,x:e.clientX,y:e.clientY};
+        releaseKeys(); // End any brief previous-swipe hold before a new touch.
+        swallowUntil=0; // A new quick tap is never swallowed by an old swipe.
+        finger={id:e.pointerId,startX:e.clientX,startY:e.clientY,x:e.clientX,y:e.clientY};
+        // Capture moves that stray outside the visible 3D scene on Safari.
+        try{canvas.setPointerCapture?.(finger.id);}catch{}
         hold=schedule(()=>{
             hold=null;
             if(!finger||getGameState()!=="LOGGED_IN")return;
@@ -61,8 +72,12 @@ export function attachOriginalTouchCamera({
         if(!finger||e.pointerId!==finger.id)return;
         const dx=e.clientX-finger.x,dy=e.clientY-finger.y;
         if(!active){
-            if(Math.abs(dx)>11||Math.abs(dy)>11)clearFinger();
-            return;
+            // An intentional swipe begins camera rotation immediately.
+            // Still allow tiny finger drift to end as a native walk tap.
+            const totalX=e.clientX-finger.startX,totalY=e.clientY-finger.startY;
+            if(Math.hypot(totalX,totalY)<CAMERA_DRAG_START_PX)return;
+            active=true;
+            if(hold!==null){cancel(hold);hold=null;}
         }
         if(e.cancelable)e.preventDefault();
         finger.x=e.clientX;finger.y=e.clientY;
@@ -89,7 +104,7 @@ export function attachOriginalTouchCamera({
             if(e.cancelable)e.preventDefault();
             try{canvas.releasePointerCapture?.(finger.id);}catch{}
         }
-        clearFinger();
+        clearFinger({allowFinalTick:active&&e.type==="pointerup"});
     };
     const suppressCompatibility=e=>{
         if(active||now()<swallowUntil){

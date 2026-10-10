@@ -28,7 +28,7 @@ function fixture({state="LOGGED_IN",resized=false}={}){
     });
     const fire=(where,type,values={})=>{
         const event={
-            pointerType:"touch",isPrimary:true,pointerId:1,
+            type,pointerType:"touch",isPrimary:true,pointerId:1,
             clientX:180,clientY:150,cancelable:true,
             prevented:false,stopped:false,
             preventDefault(){this.prevented=true;},
@@ -76,11 +76,23 @@ test("hold and drag rotates with native Java AWT arrow-key events and releases w
     f.advance(701);
     assert.equal(f.fire("canvas","click").stopped,false);
 });
-test("moving before long press does not activate camera or eat the walk click",()=>{
-    const f=fixture();f.fire("canvas","pointerdown");
-    f.fire("canvas","pointermove",{clientX:201});
-    f.tick(500);
-    assert.equal(f.dispatched.length,0);
+test("a normal swipe immediately starts camera rotation without waiting 320 ms",()=>{
+    const f=fixture();
+    f.fire("canvas","pointerdown");
+    f.fire("canvas","pointermove",{clientX:188});
+    assert.equal(f.dispatched.length,0,"small drift remains a normal tap");
+    const swipe=f.fire("canvas","pointermove",{clientX:205,clientY:150});
+    assert.equal(swipe.prevented,true);
+    assert.deepEqual(f.dispatched.map(e=>[e.type,e.key]),[["keydown","ArrowRight"]]);
+    f.fire("page","pointerup");
+    assert.equal(f.dispatched.at(-1).type,"keydown",
+        "brief swipes must hold direction until the next Java game tick");
+    f.tick(90);
+    assert.deepEqual(f.dispatched.at(-1),{type:"keyup",key:"ArrowRight"});
+    assert.equal(f.fire("canvas","click").stopped,true,"don't walk after a camera swipe");
+    // A new tap immediately after swiping must still click a world destination.
+    f.fire("canvas","pointerdown");
+    f.fire("page","pointerup");
     assert.equal(f.fire("canvas","click").stopped,false);
 });
 test("cancel, blur, logout and multitouch release pressed keys",()=>{
@@ -162,5 +174,21 @@ test("continuous drag holds camera direction across pointer events until finger 
         ["keydown","ArrowRight"],["keyup","ArrowRight"],["keydown","ArrowLeft"]
     ]);
     f.fire("page","pointerup");
+    f.tick(90);
+    assert.deepEqual(f.dispatched.at(-1),{type:"keyup",key:"ArrowLeft"});
+});
+
+
+test("starting another swipe releases any post-lift camera direction first",()=>{
+    const f=fixture();
+    f.fire("canvas","pointerdown");
+    f.fire("canvas","pointermove",{clientX:200});
+    f.fire("page","pointerup");
+    assert.deepEqual(f.dispatched.at(-1),{type:"keydown",key:"ArrowRight"});
+    f.fire("canvas","pointerdown",{clientX:180});
+    assert.deepEqual(f.dispatched.at(-1),{type:"keyup",key:"ArrowRight"});
+    f.fire("canvas","pointermove",{clientX:140});
+    assert.deepEqual(f.dispatched.at(-1),{type:"keydown",key:"ArrowLeft"});
+    f.fire("page","pointercancel");
     assert.deepEqual(f.dispatched.at(-1),{type:"keyup",key:"ArrowLeft"});
 });

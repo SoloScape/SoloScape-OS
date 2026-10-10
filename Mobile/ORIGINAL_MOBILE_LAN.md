@@ -171,8 +171,9 @@ both layout variants, including rotating the phone.
 
 ## iPhone long-press camera rotation
 
-Within the original 3D game viewport, a held finger (320 ms) followed by
-a drag rotates the original Java camera through standard AWT arrow-key
+Within the original 3D game viewport, an ordinary finger swipe (12 px
+to distinguish movement from a tap), or a 320 ms hold followed by a
+drag, rotates the original Java camera through standard AWT arrow-key
 keydown/up events. This is an input-only browser shim, not custom camera
 rendering or a reimplementation. Releasing the finger, pausing the drag,
 leaving the game, losing the page, or canceling a pointer releases any held
