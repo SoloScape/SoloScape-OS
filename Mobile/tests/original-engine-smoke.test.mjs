@@ -13,7 +13,7 @@ test("original engine diagnostic serves only explicit localhost resources", asyn
     await once(server,"listening");
     try{
         const origin="http://127.0.0.1:"+server.address().port;
-        for(const [path,expected] of [["/",200],["/engine-smoke.mjs",200],
+        for(const [path,expected] of [["/",200],["/engine-smoke.mjs",200],["/engine-smoke.css",200],
             ["/engine.js",200],["/../private",404],["/teavm/bridge.js",404],
             ["/engine.js?x=1",404],["/login-config.json",404],["/original-gateway",404]]){
             const response=await fetch(origin+path);
@@ -23,7 +23,7 @@ test("original engine diagnostic serves only explicit localhost resources", asyn
         }
         const post=await fetch(origin+"/engine.js",{method:"POST"});
         assert.equal(post.status,404);
-        assert.equal(visited.length,3);
+        assert.equal(visited.length,4);
         assert.ok(visited.some(path=>path.endsWith("/teavm-poc/target/engine/javascript/engine.js")));
         assert.ok(!visited.some(path=>path.includes("injected-client.oprs")));
     }finally{server.close();await once(server,"close");}
@@ -39,6 +39,23 @@ test("original engine browser harness measures game cycles and canvas, not a syn
     assert.match(source,/engine\.configureClient\(/);
     assert.match(source,/engine\.initializeAsync\(/);
     assert.doesNotMatch(source,/NativeGameplay|TeaVmWorldBridge|fakeGameCycle/);
+});
+
+test("original engine autostarts into a canvas-only fullscreen viewport",async()=>{
+    const {readFile}=await import("node:fs/promises");
+    const site=new URL("../teavm-poc/site/",import.meta.url);
+    const html=await readFile(new URL("engine-smoke.html",site),"utf8");
+    const css=await readFile(new URL("engine-smoke.css",site),"utf8");
+    const js=await readFile(new URL("engine-smoke.mjs",site),"utf8");
+    assert.match(js,/void initializeOriginalEngine\(\);/);
+    assert.match(js,/engine\.initializeAsync\(/);
+    assert.match(js,/engine\.configureClient\(window\.location\.origin\+"\/"\)/);
+    assert.doesNotMatch(js,/addEventListener\("click"|getElementById\('start'\)/);
+    assert.doesNotMatch(html,/<(?:button|input|textarea|h[1-6]|pre|aside|form)\b/i);
+    assert.match(html,/<canvas id="original-engine-canvas"/);
+    assert.match(css,/#original-engine-canvas\{/);
+    assert.match(css,/height:100dvh/);
+    assert.match(css,/overflow:hidden/);
 });
 
 test("browser executor supports the original zero-core, one-maximum Java constructor",async()=>{
@@ -67,7 +84,7 @@ test("original browser bootstrap installs a real executor before original login 
 test("pinned original client's login packet has its public jav_config parameter 9",async()=>{
     const fs=await import("node:fs/promises");
     const html=await fs.readFile(new URL("../teavm-poc/site/engine-smoke.html",import.meta.url),"utf8");
-    const match=/<textarea id="params"[^>]*>([^<]*)<\/textarea>/.exec(html);
+    const match=/<script type="application\/json" id="params">([^<]*)<\/script>/.exec(html);
     assert.ok(match,"original-engine bootstrap parameters must be present");
     const params=JSON.parse(match[1]);
     assert.equal(params["4"],"1",
@@ -150,7 +167,12 @@ test("original software-engine diagnostics measure frames separately from game c
     assert.match(bridge,/callbacks\.framesPresented\(\)/);
     assert.match(page,/state\.presentedFrames=engine\.presentedFrames\(\)/);
     assert.match(page,/state\.originalFps=engine\.originalFps\(\)/);
-    for(const id of ["original-fps","presented-fps","cycle-rate"])assert.match(html,new RegExp('id="'+id+'"'));
+    // Runtime diagnostics remain in window.engineSmokeState, never in the
+    // player-facing fullscreen page.
+    assert.match(page,/window\.engineSmokeState/);
+    assert.doesNotMatch(html,/id="(?:original-fps|presented-fps|cycle-rate|events|start|status)"/);
+    assert.match(html,/<canvas id="original-engine-canvas"/);
+    assert.match(html,/<link rel="stylesheet" href="\/engine-smoke\.css">/);
 });
 
 test("original rev240 NPC action comparisons tolerate absent cache actions without altering the renderer",async()=>{
