@@ -11,6 +11,65 @@ and connects to **that session only** through local Chrome DevTools Protocol
 JavaScript, access files or network packets, navigate to arbitrary sites, or
 attach to a browser they do not own.
 
+## Direct ChatGPT connection using Secure MCP Tunnel
+
+ChatGPT does not attach directly to a private Windows stdio process.
+Use OpenAI's **Secure MCP Tunnel** to connect the bridge without opening
+inbound firewall ports, publishing SoloScape, or exposing Chrome DevTools.
+It forwards MCP messages over an outbound, authenticated HTTPS connection.
+
+1. On your Windows machine, download the official Windows `tunnel-client`
+   from [OpenAI Platform tunnels](https://platform.openai.com/settings/organization/tunnels)
+   or the [official release page](https://github.com/openai/tunnel-client/releases/latest).
+   Install it locally. Either add `tunnel-client.exe` to `PATH` or set
+   `TUNNEL_CLIENT_BIN` to its absolute path.
+2. In OpenAI Platform **Tunnel settings**, create a tunnel ID and associate it
+   with the ChatGPT workspace/account in which you will use the plugin.
+   Create a **runtime API key** whose principal has Tunnels Read + Use.
+   Do not use your admin API key for the tunnel process.
+3. In a fresh **PowerShell terminal on your machine**, set these environment
+   variables **only for the current terminal session**, with values obtained
+   in your OpenAI account:
+
+   ```powershell
+   $env:TUNNEL_CLIENT_BIN = 'C:\path\to\tunnel-client.exe'
+   $env:CONTROL_PLANE_TUNNEL_ID = '<your tunnel ID>'
+   $env:CONTROL_PLANE_API_KEY = '<your runtime API key>'
+   cd C:\path\to\SoloScape-OS\Mobile
+   .\dev-bridge\connect-chatgpt.ps1 -Mode check
+   .\dev-bridge\connect-chatgpt.ps1 -Mode configure
+   .\dev-bridge\connect-chatgpt.ps1 -Mode doctor
+   ```
+
+   **Do not paste the real key into chats, screenshots, source code or Git.**
+   Run the PowerShell commands locally. The repository never creates, reads
+   from disk, or commits a key file. The tunnel profile uses the fixed
+   `node dev-bridge/stdio.mjs` command and is initialized with the working
+   directory set to `Mobile/`.
+4. After `doctor` succeeds, **from that same PowerShell session**, run
+   `cmd /c .\run.bat`. It detects the configured tunnel variables,
+   starts the original-engine diagnostic if necessary, and opens a separate
+   `tunnel-client run --profile soloscape-original` terminal. Do not start
+   another tunnel-client for the same tunnel ID.
+5. On [ChatGPT web Plugins](https://chatgpt.com/), choose **+ → Add custom
+   MCP server → Connection: Tunnel**, select the tunnel ID, review the
+   permissions/warning, and create/install the plugin. This step requires
+   the ChatGPT workspace or account to permit custom MCP servers. Choose
+   the SoloScape plugin from the tools menu or mention it in a new chat.
+   Connecting a plugin is always an explicit user action.
+
+To check or repair the tunnel later, run
+`.\dev-bridge\connect-chatgpt.ps1 -Mode doctor` while the runtime key is
+available in that terminal. The tunnel remains unavailable whenever its
+Windows daemon or the original dev server is stopped.
+
+**Important limits:** `run.bat` alone cannot install a ChatGPT plugin,
+create a Platform tunnel, or grant authorization. Direct ChatGPT access
+cannot be claimed until the tunnel reports healthy and the ChatGPT plugin
+has been installed and successfully called. The Java game server still
+runs separately. This development tunnel grants access only to Stage 1's
+existing post-login input and sanitized telemetry tools.
+
 ## One-click Windows launcher
 
 Double-click **`Mobile/run.bat`** (or run it from a Windows terminal).

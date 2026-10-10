@@ -31,18 +31,38 @@ if errorlevel 1 (
     echo [READY] Original-engine diagnostic is already running on 127.0.0.1:3097.
 )
 
+rem A configured OpenAI Secure MCP Tunnel makes the bridge usable from ChatGPT.
+rem Never put a runtime API key in this batch file, its arguments or source control.
+if defined CONTROL_PLANE_TUNNEL_ID if defined CONTROL_PLANE_API_KEY goto :launch_tunnel
+
 echo [START] Stage 1 MCP bridge: node dev-bridge\stdio.mjs
 start "SoloScape Stage 1 MCP Bridge" /D "%CD%" "%ComSpec%" /D /K "node dev-bridge\stdio.mjs"
 if errorlevel 1 (
     echo [ERROR] Unable to launch the MCP terminal.
     exit /b 1
 )
+echo [INFO] This standalone stdio console is not connected to ChatGPT.
+echo [INFO] For direct access, follow dev-bridge\README.md to configure a Secure MCP Tunnel.
+goto :started
 
+:launch_tunnel
+powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "dev-bridge\connect-chatgpt.ps1" -Mode check
+if errorlevel 1 (
+    echo [ERROR] Tunnel prerequisites failed. See dev-bridge\README.md.
+    exit /b 1
+)
+echo [START] ChatGPT Secure MCP Tunnel for SoloScape
+start "SoloScape ChatGPT Secure MCP Tunnel" /D "%CD%" "%ComSpec%" /D /K "powershell.exe -NoProfile -ExecutionPolicy Bypass -File dev-bridge\connect-chatgpt.ps1 -Mode run"
+if errorlevel 1 (
+    echo [ERROR] Unable to launch the Secure MCP Tunnel terminal.
+    exit /b 1
+)
+echo [INFO] Tunnel connection requires your ChatGPT plugin registration.
+goto :started
+
+:started
 echo.
 echo [OK] Original engine: http://127.0.0.1:3097/
-echo [INFO] The MCP console is a standalone stdio process.
-echo [INFO] To use MCP tools, configure your MCP host to launch
-echo        Mobile\dev-bridge\stdio.mjs directly, as described in dev-bridge\README.md.
 echo [INFO] Game server on 127.0.0.1:43594 must be started separately.
 exit /b 0
 
@@ -50,7 +70,14 @@ exit /b 0
 call :prerequisites
 if errorlevel 1 exit /b 1
 echo [CHECK] Would start npm run dev:original-engine unless already running.
-echo [CHECK] Would start node dev-bridge\stdio.mjs in a separate terminal.
+if defined CONTROL_PLANE_TUNNEL_ID (
+    if defined CONTROL_PLANE_API_KEY (
+        echo [CHECK] Would run ChatGPT Secure MCP Tunnel from dev-bridge\connect-chatgpt.ps1.
+        goto :check_done
+    )
+)
+echo [CHECK] Would start node dev-bridge\stdio.mjs in a standalone terminal.
+:check_done
 echo [CHECK] No processes started.
 exit /b 0
 
