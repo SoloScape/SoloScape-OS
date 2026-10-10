@@ -73,7 +73,7 @@ Open `http://192.168.0.129:3097/health` (use the IP from the
 
 - If it displays **SoloScape connection OK**, the phone can reach the
   authorized LAN webpage. Try the normal `/` page again; it now displays
-  game-cache download progress and catches ordinary startup errors.
+  only the original game canvas while starting. Startup errors are still shown if initialization fails or stalls.
 - If the health page does **not** load, check private Wi-Fi, router guest
   isolation, LAN IP, Windows Firewall port 3097 and the LAN launcher.
 - If the health page works but the game tab goes completely blank or is

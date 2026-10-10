@@ -46,17 +46,18 @@ test("original cache loads files sequentially, and mounts only fixed cache filen
         {name:"main_file_cache.dat2",bytes:3},{name:"main_file_cache.dat2",bytes:3}
     ]}),/Invalid native cache/);
 });
-test("iOS client page shows startup progress before large game and cache transfer",async()=>{
+test("iOS client loads original game without a startup text overlay",async()=>{
     const html=await readFile(new URL("../teavm-poc/site/engine-smoke.html",import.meta.url),"utf8");
     const script=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
-    assert.match(html,/id="loading-status"/);
+    assert.doesNotMatch(html,/id="loading-status"/);
     assert.match(html,/id="original-engine-canvas"/);
     const css=await readFile(new URL("../teavm-poc/site/engine-smoke.css",import.meta.url),"utf8");
     assert.match(css,/background:#000/);
     assert.match(html,/viewport-fit=cover/);
     assert.match(script,/loadOriginalCache\(manifest/);
     assert.match(script,/state\.gameState==="LOGIN_SCREEN"/);
-    assert.match(script,/loading\("Loading original game data… "/);
+    assert.doesNotMatch(script,/Loading original game data|Starting original game/);
+    assert.match(script,/void initializeOriginalEngine\(\)/);
     assert.doesNotMatch(script,/Promise\.all\(manifest\.files/);
     assert.doesNotMatch(script,/\.submit\(\)|autoLogin|loginPassword/);
 });

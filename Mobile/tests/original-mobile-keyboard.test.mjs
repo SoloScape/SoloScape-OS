@@ -72,7 +72,7 @@ test("composition text is forwarded only after commitment, not during intermedia
     f.fire("keyboard","input",{inputType:"insertText",isComposing:false});
     assert.equal(f.events.length,2,"composition must not be duplicated");
 });
-test("mobile original page retains native keyboard while showing startup progress",async()=>{
+test("mobile original page retains native keyboard without startup overlay",async()=>{
     const [html,script,style]=await Promise.all([
         readFile(new URL("../teavm-poc/site/engine-smoke.html",import.meta.url),"utf8"),
         readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8"),
@@ -83,10 +83,10 @@ test("mobile original page retains native keyboard while showing startup progres
     assert.match(html,/autocomplete="off"/);
     assert.match(style,/#original-soft-keyboard/);
     assert.match(style,/opacity:\s*0/);
-    assert.match(html,/id="loading-status"/);
+    assert.doesNotMatch(html,/id="loading-status"/);
     assert.doesNotMatch(html,/<form\b/i);
-    assert.match(script,/loading\("Loading original game data/);
-    assert.match(script,/loadOriginalCache\(manifest,\{onProgress/);
+    assert.doesNotMatch(script,/loading-status|Loading original game data/);
+    assert.match(script,/loadOriginalCache\(manifest\)/);
     assert.match(script,/engine\.initializeAsync\(/);
     assert.match(script,/attachOriginalKeyboard\(/);
     assert.doesNotMatch(script,/loginPassword|autoLogin|fetch\(.*password/);

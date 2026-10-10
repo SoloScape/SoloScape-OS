@@ -70,17 +70,16 @@ test("existing secure localhost IndexedDB filesystem still loads and persists no
     assert.equal(writes.length,0);
 });
 
-test("fullscreen LAN client auto-starts with progress and reports safe startup errors",async()=>{
+test("fullscreen LAN client auto-starts without visible progress and reports safe startup errors",async()=>{
     const script=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
     const html=await readFile(new URL("../teavm-poc/site/engine-smoke.html",import.meta.url),"utf8");
     assert.match(script,/void initializeOriginalEngine\(\)/);
     assert.match(script,/engine\.initializeAsync\(/);
     assert.match(script,/engine\?\.startupStep\?\.\(\)/);
     assert.match(script,/safeStep/);
-    assert.match(script,/loading\("Loading original Java engine/);
-    assert.match(script,/bootStarted=performance\.now\(\)/);
-    assert.match(script,/safeStep\.replaceAll\("-",/);
-    assert.match(html,/id="loading-status"/);
+    assert.doesNotMatch(script,/loading-status|bootStarted|loading\("Starting original game/);
+    assert.doesNotMatch(html,/id="loading-status"/);
+    assert.match(html,/id="startup-error" role="alert" hidden/);
     assert.match(html,/id="original-engine-canvas"/);
     assert.doesNotMatch(script,/login.*password\(|automateLogin\(/i);
 });

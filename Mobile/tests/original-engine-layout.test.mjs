@@ -14,7 +14,8 @@ test("original game page uses an external trusted stylesheet rather than CSP-blo
     assert.match(css,/height:100dvh/);
     assert.match(css,/background:\s*#000/);
     assert.doesNotMatch(markup,/id="internal-diagnostics"|id="start"/);
-    assert.match(markup,/id="loading-status"/);
+    assert.doesNotMatch(markup,/id="loading-status"/);
+    assert.match(markup,/id="startup-error" role="alert" hidden/);
 });
 
 test("strict LAN Content Security Policy permits the real full-screen CSS asset",async()=>{
