@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
 import {once} from "node:events";
-import {createEngineSmokeServer} from "../scripts/engine-smoke-server.mjs";
+import {createEngineSmokeServer,isLoopbackPeer} from "../scripts/engine-smoke-server.mjs";
 
 test("original engine diagnostic serves only explicit localhost resources", async()=>{
     const visited=[];
@@ -273,6 +273,13 @@ test("opt-in native cache is loopback-only, allowlisted, and source files remain
     }
 });
 
+test("gateway lifecycle endpoint never accepts LAN peer addresses",()=>{
+    for(const peer of ["127.0.0.1","::1","::ffff:127.0.0.1"])
+        assert.equal(isLoopbackPeer(peer),true);
+    for(const peer of ["192.168.0.81","::ffff:192.168.0.81","10.1.0.22",
+        "172.18.0.4",null,"localhost","192.168.0.129"])
+        assert.equal(isLoopbackPeer(peer),false,"LAN peers must be rejected");
+});
 test("original gateway lifecycle diagnostics are read-only, bounded and localhost-only",async()=>{
     const server=createEngineSmokeServer({sessionDiagnostics:()=>({
         sessions:[{id:1,clientFrames:1,serverFrames:0,closedBy:"Upstream closed",closeCode:1000}]

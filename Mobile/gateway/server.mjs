@@ -100,6 +100,12 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
                     return;
                 }
                 firstPacketAccepted = true;
+                // Classify only the fixed, public handshake family. Never
+                // report packet bytes, headers beyond this type or credentials.
+                const family=bytes[0]===15?"JS5_CACHE":
+                    bytes[0]===14?"GAME_INIT":
+                    bytes[0]===16?"GAME_LOGIN":"GAME_RECONNECT";
+                onActivity("handshake",family,session);
                 tcp = createConnection({ host: tcpHost, port: tcpPort });
                 tcp.setNoDelay(true);
                 tcp.setTimeout(TCP_CONNECT_TIMEOUT_MS, () => {

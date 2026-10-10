@@ -84,8 +84,10 @@ the page server, not a successful game login.
 The gateway now keeps the last 30 **credential-free** connection summaries,
 available only from the development PC at
 `http://127.0.0.1:3097/original-session-diagnostics`. Each summary shows
-only an anonymous sequential connection number, open time, counts of
-client-to-server and server-to-client frames, and a fixed close reason/code.
+only an anonymous sequential connection number, open time, a fixed
+handshake type (JS5_CACHE, GAME_INIT, GAME_LOGIN or GAME_RECONNECT),
+counts of client-to-server and server-to-client frames, and a fixed
+close reason/code.
 It does not store or reveal IPs, names, passwords, packet bytes, session
 tokens, or the original Java game's input fields. A close reason such as
 `Upstream closed` identifies the direction of closure; it does not prove

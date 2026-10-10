@@ -44,11 +44,12 @@ function gatewayActivity(type,code,session){
     let current=recentSessions.find(item=>item.id===session);
     if(type==="connected"){
         current={id:session,openedAt:new Date().toISOString(),clientFrames:0,
-            serverFrames:0,closedBy:null,closeCode:null};
+            serverFrames:0,connectionType:"UNCLASSIFIED",closedBy:null,closeCode:null};
         recentSessions.push(current);
         if(recentSessions.length>30)recentSessions.shift();
     }else if(current){
-        if(type==="upstreamBytes")current.clientFrames++;
+        if(type==="handshake")current.connectionType=code;
+        else if(type==="upstreamBytes")current.clientFrames++;
         else if(type==="downstreamBytes")current.serverFrames++;
         else if(type.startsWith("closed:")){
             current.closedBy=type.slice(7);

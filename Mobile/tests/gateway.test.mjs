@@ -115,6 +115,8 @@ test("gateway reports only fixed upstream close lifecycle without packet content
         await once(ws,"close");
         assert.ok(observed.some(e=>e.kind==="connected"));
         assert.ok(observed.some(e=>e.kind==="upstreamBytes"));
+        assert.deepEqual(observed.filter(e=>e.kind==="handshake").map(e=>e.value),
+            ["GAME_INIT"],"Only a fixed handshake category is reported");
         const terminal=observed.filter(e=>e.kind.startsWith("closed:"));
         assert.equal(terminal.length,1,"each socket has exactly one terminal event");
         assert.equal(terminal[0].kind,"closed:Upstream closed");

@@ -19,6 +19,10 @@ const files=new Map([
     ["/original-resource/compilercontrol.json",["teavm-poc/target/engine/resources/compilercontrol.json","application/json"]],
     ["/original-resource/runelite/index",["teavm-poc/target/engine/resources/runelite/index","application/octet-stream"]],
 ]);
+// The phone can access normal LAN game resources, not PC-local debug output.
+export function isLoopbackPeer(peer){
+    return peer==="127.0.0.1"||peer==="::1"||peer==="::ffff:127.0.0.1";
+}
 export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.env.SOLOSCAPE_ENGINE_LOCAL_CACHE_ROOT,
     gatewayPort=null,loginRsaPublic=null,publicClientConfig=null,sessionDiagnostics=null,
     isAllowedPeer=isLocalPeer,allowedHosts=null}={}) {
@@ -39,7 +43,7 @@ export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.e
         }
         // Read-only, loopback-only gateway lifecycle diagnostics. No packet
         // contents, client addresses, usernames or authentication data.
-        if(sessionDiagnostics&&isLocalPeer(peer)&&
+        if(sessionDiagnostics&&isLoopbackPeer(peer)&&
             req.method==="GET"&&req.url==="/original-session-diagnostics"){
             res.writeHead(200,{"Content-Type":"application/json; charset=utf-8",
                 "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});
