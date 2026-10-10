@@ -11,6 +11,20 @@ export function categorizeOriginalClientError(value){
     return "UNKNOWN";
 }
 
+// Only the original revision-240 login text fields may request the mobile
+// keyboard. These rectangles follow the source title's 765x503 coordinates;
+// map browser clicks through the same displayed-canvas bounds as NativeCanvas.
+// The username baseline is y=253; the password baseline is y=268.
+export function isOriginalLoginFieldTap(canvas,clientX,clientY){
+    if(!Number.isFinite(clientX)||!Number.isFinite(clientY))return false;
+    const rect=canvas.getBoundingClientRect();
+    if(!(rect.width>0&&rect.height>0))return false;
+    const x=(clientX-rect.left)*canvas.width/rect.width;
+    const y=(clientY-rect.top)*canvas.height/rect.height;
+    return (x>=305&&x<=507&&y>=239&&y<255)||
+        (x>=327&&x<=507&&y>=255&&y<=273);
+}
+
 // Mobile OS keyboard access for the original Java game canvas.
 // The native password input is ONLY an ephemeral keyboard surface: characters
 // are immediately relayed as ordinary key events to the original AWT adapter.
@@ -89,6 +103,16 @@ export function attachOriginalKeyboard({canvas,keyboard,getGameState,
     clickTarget?.addEventListener("click",e=>{
         if(e.target!==canvas||!touchPending)return;
         touchPending=false;
+        if(!isOriginalLoginFieldTap(canvas,e.clientX,e.clientY)){
+            // A click on a menu, Existing User, Login, Cancel, or empty
+            // canvas is NOT a request to show the system keyboard.
+            // The initial title click still arms manual field entry.
+            if(getGameState()==="LOGIN_SCREEN")loginTitleTouched=true;
+            // A non-field title or game tap dismisses the iOS keyboard
+            // without affecting the original Java button click.
+            if(clickTarget?.activeElement===keyboard)keyboard.blur();
+            return;
+        }
         activate();
     });
     return {dispose(){

@@ -20,9 +20,10 @@ This is not the separate WebGL/TSPS homepage and is not intended for public host
    Log in **manually** using your disposable test account.
    On the Java welcome title, tap **Existing User** first; then tap the
    username or password field. The original canvas processes the click before
-   iOS Safari focuses the ephemeral keyboard input. The welcome-title tap
-   should not open the keyboard or resize the viewport; later field taps may
-   retry keyboard activation if iOS left the input focused without showing it.
+   iOS Safari focuses the ephemeral keyboard input. **Only those two input
+   areas** can open the keyboard; tapping login buttons, other title controls
+   or the game canvas does not summon it and dismisses it if already open.
+   Keyboard activation can be retried by tapping either field again.
 
 A small text-free loading animation appears as soon as the page is received,
 then disappears when the original game draws. An error message appears only

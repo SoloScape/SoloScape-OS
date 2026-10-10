@@ -1,20 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
-import {attachOriginalKeyboard,categorizeOriginalClientError} from "../teavm-poc/site/original-mobile-keyboard.mjs";
+import {attachOriginalKeyboard,categorizeOriginalClientError,isOriginalLoginFieldTap} from "../teavm-poc/site/original-mobile-keyboard.mjs";
 
 function fixture(){
     const handlers=new Map();
     const events=[];
     let state="LOGIN_SCREEN",focusedKeyboard=0,focusedCanvas=0;
-    const keyboard={value:"",focus(){focusedKeyboard++;},
-        blur(){this.value="";},addEventListener(type,fn){handlers.set("keyboard:"+type,fn);}};
+    const fakeDocument={activeElement:null};
+    const keyboard={value:"",focus(){focusedKeyboard++;fakeDocument.activeElement=this;},
+        blur(){this.value="";fakeDocument.activeElement=null;},
+        addEventListener(type,fn){handlers.set("keyboard:"+type,fn);}};
     const canvas={
+        width:765,height:503,
+        getBoundingClientRect(){return {left:0,top:0,width:765,height:503};},
         addEventListener(type,fn){handlers.set("canvas:"+type,fn);},
         dispatchEvent(event){events.push({type:event.type,key:event.key});return true;},
         focus(){focusedCanvas++;}
     };
-    const clickTarget={addEventListener(type,fn){handlers.set("document:"+type,fn);}};
+    const clickTarget={get activeElement(){return fakeDocument.activeElement;},
+        addEventListener(type,fn){handlers.set("document:"+type,fn);}};
     attachOriginalKeyboard({canvas,keyboard,getGameState:()=>state,
         clickTarget,createKeyEvent:(type,key)=>({type,key})});
     const fire=(target,type,event={})=>{
@@ -22,41 +27,50 @@ function fixture(){
         assert.ok(fn,"Missing "+target+" "+type+" handler");
         fn(event);
     };
-    return {canvas,keyboard,events,handlers,fire,setState:value=>state=value,
+    return {canvas,keyboard,events,handlers,fire,
+        activeElement:()=>fakeDocument.activeElement,setState:value=>state=value,
         counts:()=>({focusedKeyboard,focusedCanvas})};
 }
 test("iPhone Existing User tap waits for Java click and opens keyboard on next tap",()=>{
     const f=fixture();
     const order=[];
     const gameClick=()=>{order.push("game-click");};
-    const documentClick=()=>{f.fire("document","click",{target:f.canvas});order.push("document-click");};
+    const documentClick=(x=462,y=291)=>{f.fire("document","click",{target:f.canvas,clientX:x,clientY:y});order.push("document-click");};
     f.handlers.set("canvas:click",gameClick);
-    const tap=()=>{
+    const tap=(x,y)=>{
         f.fire("canvas","touchstart",{});
         f.fire("canvas","pointerdown",{pointerType:"touch"});
         f.fire("canvas","pointerup",{pointerType:"touch"});
         const before=f.counts().focusedKeyboard;
-        f.fire("canvas","click",{target:f.canvas});
+        f.fire("canvas","click",{target:f.canvas,clientX:x,clientY:y});
         assert.equal(f.counts().focusedKeyboard,before,"Java canvas click executes first");
-        documentClick();
+        documentClick(x,y);
     };
-    tap();
+    tap(462,291); // Existing User button on the original RuneScape welcome title.
     assert.equal(f.counts().focusedKeyboard,0,
         "the title's Existing User click must not open the keyboard");
-    tap();
+    tap(374,248); // Username field.
     assert.equal(f.counts().focusedKeyboard,1,
-        "the next field tap must focus the native input after the Java click");
+        "only the username field tap should focus the native input after the Java click");
+    tap(374,263); // Password field.
+    assert.equal(f.counts().focusedKeyboard,2,
+        "the password field may also request the keyboard");
+    assert.equal(f.activeElement(),f.keyboard,"password field should own the keyboard");
+    // Non-input login buttons and the rest of the canvas never open the keyboard.
+    for(const [x,y] of [[302,321],[462,321],[382,357],[400,200],[700,400]])tap(x,y);
+    assert.equal(f.counts().focusedKeyboard,2,"menus and gameplay surfaces must not summon the keyboard");
+    assert.equal(f.activeElement(),null,"non-field tap should dismiss an open keyboard");
     // Do not count a second synthetic click for the same physical tap.
-    documentClick();
-    assert.equal(f.counts().focusedKeyboard,1);
-    // The user can retry even if Safari kept focus but never displayed the OS keyboard.
-    tap();
+    documentClick(374,263);
     assert.equal(f.counts().focusedKeyboard,2);
+    // The user can retry even if Safari kept focus but never displayed the OS keyboard.
+    tap(374,263);
+    assert.equal(f.counts().focusedKeyboard,3);
     assert.deepEqual(order.slice(0,4),
         ["game-click","document-click","game-click","document-click"]);
     f.setState("LOGGED_IN");
-    tap();
-    assert.equal(f.counts().focusedKeyboard,2,"gameplay taps must not pop up the keyboard");
+    tap(374,263);
+    assert.equal(f.counts().focusedKeyboard,3,"gameplay taps must not pop up the keyboard");
     f.fire("canvas","pointerup",{pointerType:"mouse"});
     assert.equal(f.counts().focusedCanvas,1,"mouse still focuses the original canvas");
 });
@@ -65,12 +79,12 @@ test("touch-only Safari uses touchstart and the same final native click",()=>{
     const f=fixture();
     assert.ok(f.handlers.has("canvas:touchstart"));
     f.fire("canvas","touchstart",{});
-    f.fire("document","click",{target:f.canvas});
+    f.fire("document","click",{target:f.canvas,clientX:462,clientY:291});
     assert.equal(f.counts().focusedKeyboard,0);
     f.fire("canvas","touchstart",{});
-    f.fire("document","click",{target:f.canvas});
+    f.fire("document","click",{target:f.canvas,clientX:374,clientY:248});
     assert.equal(f.counts().focusedKeyboard,1);
-    f.fire("document","click",{target:f.canvas});
+    f.fire("document","click",{target:f.canvas,clientX:374,clientY:248});
     assert.equal(f.counts().focusedKeyboard,1,"only one focus per physical tap");
 });
 
@@ -163,4 +177,25 @@ test("original callback error descriptions use only fixed non-sensitive codes",(
         assert.match(safe,/^[A-Z_]{3,24}$/);
         assert.doesNotMatch(safe,/@|password|private|SECRET|johndoe|bsH/i);
     }
+});
+
+test("only actual original login field rectangles are keyboard focus targets",()=>{
+    const canvas={width:765,height:503,
+        getBoundingClientRect:()=>({left:0,top:0,width:765,height:503})};
+    for(const [x,y] of [[374,248],[497,250],[374,263],[495,268]])
+        assert.equal(isOriginalLoginFieldTap(canvas,x,y),true,"original login text field");
+    for(const [x,y] of [[462,291],[302,291],[302,321],[462,321],
+        [382,214],[382,357],[267,283],[408,283],[10,10],[750,492],[NaN,248]])
+        assert.equal(isOriginalLoginFieldTap(canvas,x,y),false,"non-text title area");
+    assert.equal(isOriginalLoginFieldTap({...canvas,getBoundingClientRect:()=>({
+        left:0,top:300,width:390,height:390*503/765
+    })},374*390/765,300+248*390/765),true,
+        "portrait letterboxing should not shift the field hitbox");
+    assert.equal(isOriginalLoginFieldTap({...canvas,getBoundingClientRect:()=>({
+        left:122,top:0,width:700,height:700*503/765
+    })},122+374*700/765,248*700/765),true,
+        "landscape letterboxing should not shift the field hitbox");
+    assert.equal(isOriginalLoginFieldTap({...canvas,getBoundingClientRect:()=>({
+        left:0,top:0,width:0,height:0
+    })},374,248),false,"invalid layout must never request keyboard focus");
 });
