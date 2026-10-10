@@ -46,7 +46,8 @@ test("strict LAN Content Security Policy permits the real full-screen CSS asset"
 test("prolonged mobile startup surfaces a safe visible diagnostic rather than hanging silently",async()=>{
     const js=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
     assert.match(js,/const slowStartup=setTimeout\(/);
-    assert.match(js,/startupNotice\("Still waiting for the original game after 90 seconds/);
+    assert.match(js,/startupNotice\("Game startup is taking too long \("/);
+    assert.match(js,/safeStep/);
     assert.match(js,/clearTimeout\(slowStartup\)/);
     assert.match(js,/if\(state\.gameState==="LOGIN_SCREEN"\|\|state\.gameState==="LOGGED_IN"/);
     assert.match(js,/startupNotice\("Game initialization failed/);

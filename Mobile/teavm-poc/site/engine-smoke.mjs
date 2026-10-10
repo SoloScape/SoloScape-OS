@@ -11,7 +11,7 @@ function startupNotice(message){
 }
 const state=window.engineSmokeState={phase:"not-started",step:"not-started",cycles:[],frameChanged:false,canvasSampleColors:0,
     clientThread:false,gameState:"UNAVAILABLE",originalFps:-1,presentedFrames:0,presentedFps:0,cycleRate:0,clockStats:null,loginRsaConfigured:false,callbackTrace:"",socketAttempts:[], resourceLookups:[],filePaths:[],error:"",callbackError:"",events:[]};
-let engine,clock=0,initialPixelSignature,framePoll;
+let engine,clock=0,initialPixelSignature,framePoll,bootStarted=0;
 // Fixed, read-only scene count snapshot for debugging missing original world locs.
 window.engineSmokeSceneCounts=()=>engine?.sceneLocCounts?.()??null;
 const fpsSamples=[];
@@ -57,6 +57,11 @@ function collect(){
         if(state.gameState==="LOGIN_SCREEN"||state.gameState==="LOGGED_IN"){
             const indicator=$("loading-status");
             if(indicator)indicator.hidden=true;
+        }else if(state.phase!=="error"&&bootStarted&&performance.now()-bootStarted>12000){
+            // Native fixed startup stages only. Never show Java exception text,
+            // resource paths, credentials, or account details on the game page.
+            const step=/^[a-z-]{1,40}$/.test(state.step)?state.step:"initializing";
+            loading("Starting original game… ("+step.replaceAll("-"," ")+")");
         }
         state.socketAttempts=globalThis.soloscapeEngineSocketAttempts??[];
         state.resourceLookups=globalThis.soloscapeOriginalResourceLookups??[];
@@ -105,7 +110,14 @@ function parseJson(id,kind){
     if(kind==="array"&&!Array.isArray(value))throw new Error(id+" must be a JSON array");
     return value;
 }
-$("codebase").value=window.location.origin+"/";
+// The pinned original GameEngine accepts localhost as its applet codebase,
+// but rejects some private LAN subnets (including 192.168.0.x) as invalidhost.
+// This URL is Java's original applet identity, not the browser's fetch target:
+// browser assets still load from this page's LAN origin and the TCP gateway is
+// configured separately using /original-gateway.
+const javaCodebase=new URL("/",window.location.origin);
+javaCodebase.hostname="127.0.0.1";
+$("codebase").value=javaCodebase.href;
 // Original Java engine starts once when this page opens. Login remains manual.
 $("start").addEventListener("click",async()=>{
     $("start").disabled=true;
@@ -176,6 +188,7 @@ $("start").addEventListener("click",async()=>{
             event("Original title-only smoke: local login RSA not configured");
         }else throw new Error("SoloScape public login key unavailable");
         loading("Starting original game…");
+        bootStarted=performance.now();
         initialPixelSignature=signature();
         $("status").textContent="Initializing";
         event("Original engine initializeAsync invoked");
@@ -184,7 +197,9 @@ $("start").addEventListener("click",async()=>{
         // callback on mobile Safari. Report it without claiming a successful login.
         const slowStartup=setTimeout(()=>{
             if(state.gameState==="LOGIN_SCREEN"||state.gameState==="LOGGED_IN"||state.phase==="error")return;
-            startupNotice("Still waiting for the original game after 90 seconds. The LAN is connected, but the game may be slow or out of browser memory. Reload to retry; try desktop Chrome if it repeats.");
+            const step=engine?.startupStep?.()??"initializing";
+            const safeStep=/^[a-z-]{1,40}$/.test(step)?step:"initializing";
+            startupNotice("Game startup is taking too long ("+safeStep+"). Reload to retry. If it repeats on iPhone, the browser may be running out of memory.");
         },90000);
         engine.initializeAsync(error=>{
             clearTimeout(slowStartup);
@@ -192,7 +207,10 @@ $("start").addEventListener("click",async()=>{
             state.error=error||"";
             $("status").textContent=state.phase;
             event(error?"Original engine initialization error: "+error:"Initialize returned (cycles not yet proven)");
-            if(error)startupNotice("Game initialization failed. Reload the page to retry.");
+            if(error){
+                const indicator=$("loading-status");if(indicator)indicator.hidden=true;
+                startupNotice("Game initialization failed. Reload the page to retry.");
+            }
         });
     }catch(error){
         state.phase="error";state.error=String(error);

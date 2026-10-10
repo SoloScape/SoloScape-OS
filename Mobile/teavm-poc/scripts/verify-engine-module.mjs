@@ -32,8 +32,9 @@ try {
         engine.initializeAsync(error=>{clearTimeout(timer);resolve(error);});
     });
     const error=await result;
-    assert.match(error,/IndexedDB unavailable/);
+    assert.match(error,/initialize-game-engine:/,"Node has no browser DOM and must not claim a successful original client startup");
+    assert.doesNotMatch(error,/IndexedDB unavailable/,"missing browser persistence now has a safe ephemeral fallback");
     assert.equal(engine.startupState(),"error");
-    assert.match(engine.startupError(),/IndexedDB unavailable/);
-    console.log("PASS: original engine module exposes ClientConfiguration, startup/cycle telemetry, and predictable missing-browser-storage failure. Gameplay not yet established.");
+    assert.match(engine.startupError(),/initialize-game-engine:/);
+    console.log("PASS: original engine module exposes ClientConfiguration, startup/cycle telemetry, ephemeral browser-storage fallback, and rejects Node-only game initialization. Gameplay not yet established.");
 }catch(error){console.error(error.name+": "+error.message);process.exitCode=1;}
