@@ -40,6 +40,11 @@ const {rsa:loginRsaPublic}=await loadPublicLoginConfig({
 // A fixed, credential-free record of gateway socket lifecycles; only the
 // developer on the host PC can fetch it. No packet content or peer identity.
 const recentSessions=[];
+const recentPageEvents=[];
+function pageActivity(type){
+    recentPageEvents.push({type,at:new Date().toISOString()});
+    if(recentPageEvents.length>40)recentPageEvents.shift();
+}
 function gatewayActivity(type,code,session){
     let current=recentSessions.find(item=>item.id===session);
     if(type==="connected"){
@@ -61,7 +66,8 @@ const gateway=createGateway({tcpHost:"127.0.0.1",tcpPort:upstreamPort,
     allowedOrigins:new Set([origin,"http://localhost:"+port,...(lanOrigin?[lanOrigin]:[])]),
     isAllowedPeer,onActivity:gatewayActivity});
 const server=createEngineSmokeServer({nativeCacheRoot,gatewayPort,loginRsaPublic,
-    isAllowedPeer,allowedHosts,sessionDiagnostics:()=>({sessions:recentSessions})});
+    isAllowedPeer,allowedHosts,onLifecycleEvent:pageActivity,
+    sessionDiagnostics:()=>({sessions:recentSessions,pageEvents:recentPageEvents})});
 function listen(instance,port){
     return new Promise((resolve,reject)=>{
         instance.once("error",reject);

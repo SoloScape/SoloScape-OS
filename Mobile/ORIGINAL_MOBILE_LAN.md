@@ -95,3 +95,20 @@ whether the server rejected a login packet or a successfully established game
 session ended. Reproduce with manual login, then inspect the newest
 summary on the PC. **Restart only the development LAN gateway to enable
 new Node gateway code**; do not restart or modify the Java game server.
+
+## iPhone welcome-screen restarts (developer-only)
+
+The original title still uses the original Java gamepack. To distinguish a
+WebKit page reload from Java redrawing the welcome screen, the LAN development
+page sends only four fixed events: PAGE_STARTED, TITLE_RIGHT_TAP, PAGEHIDE
+and PAGE_RESTARTED. A title-area tap saves a fixed marker and time in
+sessionStorage for up to two minutes; the marker contains no credentials,
+input text or game packets. If storage is unavailable, the game still starts.
+
+Read the anonymous recent events under `pageEvents` alongside socket summaries
+at `http://127.0.0.1:3097/original-session-diagnostics` on the PC.
+A second PAGE_STARTED after a title tap confirms the document was recreated;
+PAGE_RESTARTED means the previous tab-local marker survived. That does not
+by itself distinguish a manual reload from a browser crash. The original
+client now stops repeated canvas diagnostic readbacks after a changed frame
+is confirmed; the 228 MiB in-memory original cache is still present.

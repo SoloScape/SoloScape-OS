@@ -1,6 +1,7 @@
 // The original Java gamepack still owns every game action and software frame.
 import {loadOriginalCache} from "/original-cache-loader.mjs";
 import {attachOriginalKeyboard,categorizeOriginalClientError} from "/original-mobile-keyboard.mjs";
+import {attachOriginalPageLifecycle} from "/original-mobile-lifecycle.mjs";
 const $=id=>document.getElementById(id);
 function dismissStartupSplash(){
     const splash=$("startup-splash");
@@ -18,6 +19,9 @@ let engine,clock=0,initialPixelSignature,framePoll,bootstrapStage="public-config
 // Java client still renders login fields and handles authentication itself.
 attachOriginalKeyboard({canvas:$("original-engine-canvas"),
     keyboard:$("original-soft-keyboard"),getGameState:()=>state.gameState});
+const pageLifecycle=attachOriginalPageLifecycle({
+    canvas:$("original-engine-canvas"),getGameState:()=>state.gameState});
+state.pageRestartedAfterTitleTap=pageLifecycle.restartedAfterTitleTap;
 // Fixed, read-only scene count snapshot for debugging missing original world locs.
 window.engineSmokeSceneCounts=()=>engine?.sceneLocCounts?.()??null;
 const fpsSamples=[];
@@ -86,10 +90,14 @@ function collect(){
                 }
             }
         }
-        const current=signature();
-        state.canvasSampleColors=current?.colors??0;
-        if(current&&initialPixelSignature&&current.hash!==initialPixelSignature.hash)
-            state.frameChanged=true;
+        // A real original frame is a one-time condition. Once confirmed,
+        // stop repeated canvas readbacks on memory-constrained iOS WebKit.
+        if(!state.frameChanged){
+            const current=signature();
+            state.canvasSampleColors=current?.colors??0;
+            if(current&&initialPixelSignature&&current.hash!==initialPixelSignature.hash)
+                state.frameChanged=true;
+        }
         // Never hide the first-paint placeholder just because JS loaded.
         // Wait for pixels or an original software frame to be presented.
         if(state.frameChanged||state.presentedFrames>0)

@@ -297,3 +297,23 @@ test("original gateway lifecycle diagnostics are read-only, bounded and localhos
         assert.equal((await fetch(origin+"/original-session-diagnostics",{method:"POST"})).status,404);
     }finally{server.close();await once(server,"close");}
 });
+
+test("lifecycle endpoint accepts only four anonymous browser events",async()=>{
+    const seen=[];
+    const server=createEngineSmokeServer({onLifecycleEvent:label=>seen.push(label)});
+    server.listen(0,"127.0.0.1");await once(server,"listening");
+    try{
+        const origin="http://127.0.0.1:"+server.address().port;
+        const post=(body,headers={})=>fetch(origin+"/original-lifecycle",{method:"POST",
+            headers:{"content-type":"text/plain;charset=UTF-8",...headers},body});
+        for(const label of ["PAGE_STARTED","TITLE_RIGHT_TAP","PAGEHIDE","PAGE_RESTARTED"])
+            assert.equal((await post(label)).status,204);
+        assert.deepEqual(seen,["PAGE_STARTED","TITLE_RIGHT_TAP","PAGEHIDE","PAGE_RESTARTED"]);
+        assert.equal((await post("password=private")).status,400);
+        assert.equal((await post("X".repeat(41))).status,403);
+        assert.equal((await post("PAGE_STARTED",{origin:"https://untrusted.example"})).status,403);
+        assert.equal(seen.length,4);
+        assert.equal((await fetch(origin+"/original-lifecycle")).status,404);
+        assert.equal((await fetch(origin+"/original-mobile-lifecycle.mjs")).status,200);
+    }finally{server.close();await once(server,"close");}
+});

@@ -14,6 +14,7 @@ const files=new Map([
     ["/original-mobile-keyboard.mjs",["teavm-poc/site/original-mobile-keyboard.mjs","text/javascript; charset=utf-8"]],
     ["/engine-smoke.css",["teavm-poc/site/engine-smoke.css","text/css; charset=utf-8"]],
     ["/original-cache-loader.mjs",["teavm-poc/site/original-cache-loader.mjs","text/javascript; charset=utf-8"]],
+    ["/original-mobile-lifecycle.mjs",["teavm-poc/site/original-mobile-lifecycle.mjs","text/javascript; charset=utf-8"]],
     ["/engine.js",["teavm-poc/target/engine/javascript/engine.js","text/javascript; charset=utf-8"]],
     ["/original-resource/client.serial",["teavm-poc/target/engine/resources/client.serial","application/octet-stream"]],
     ["/original-resource/compilercontrol.json",["teavm-poc/target/engine/resources/compilercontrol.json","application/json"]],
@@ -25,6 +26,7 @@ export function isLoopbackPeer(peer){
 }
 export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.env.SOLOSCAPE_ENGINE_LOCAL_CACHE_ROOT,
     gatewayPort=null,loginRsaPublic=null,publicClientConfig=null,sessionDiagnostics=null,
+    onLifecycleEvent=null,
     isAllowedPeer=isLocalPeer,allowedHosts=null}={}) {
     return createServer(async(req,res)=>{
         const peer=req.socket.remoteAddress;
@@ -48,6 +50,29 @@ export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.e
             res.writeHead(200,{"Content-Type":"application/json; charset=utf-8",
                 "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});
             res.end(JSON.stringify(sessionDiagnostics()));return;
+        }
+        // Fixed, content-free browser lifecycle events on the trusted LAN.
+        // Never receive usernames, login packets, game state or arbitrary text.
+        if(onLifecycleEvent&&req.method==="POST"&&req.url==="/original-lifecycle"){
+            if((req.headers.origin&&req.headers.origin!=="http://"+req.headers.host)||
+                !req.headers["content-type"]?.startsWith("text/plain")||
+                Number(req.headers["content-length"]??0)>40){
+                res.writeHead(403);res.end();return;
+            }
+            let count=0,parts=[];
+            try{
+                for await(const chunk of req){
+                    count+=chunk.length;
+                    if(count>40){res.writeHead(413);res.end();return;}
+                    parts.push(chunk);
+                }
+            }catch{if(!res.headersSent){res.writeHead(400);res.end();}return;}
+            const name=Buffer.concat(parts).toString("utf8");
+            if(!["PAGE_STARTED","PAGE_RESTARTED","TITLE_RIGHT_TAP","PAGEHIDE"].includes(name)){
+                res.writeHead(400);res.end();return;
+            }
+            onLifecycleEvent(name);
+            res.writeHead(204,{"Cache-Control":"no-store"});res.end();return;
         }
         if(gatewayPort&&req.method==="GET"&&req.url==="/original-gateway"){
             res.writeHead(200,{"Content-Type":"application/json","Cache-Control":"no-store",
