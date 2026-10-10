@@ -67,6 +67,13 @@ Adjust the local path if you move the checkout. Use
 hosts should launch `node dev-bridge/stdio.mjs` directly so that standard
 output contains JSON-RPC messages only.
 
+The local player-facing page now shows **only the original game canvas**,
+scaled to the full browser viewport. The Java gamepack starts automatically
+when the page loads. State/FPS telemetry and screenshot capture remain
+available exclusively through the developer bridge, not visible controls.
+The legacy `initialize_original_engine` tool is an idempotent status check
+for older MCP workflows; it never clicks or reinitializes the client.
+
 The bridge does **not** register itself as a ChatGPT plugin. To work with it
 through ChatGPT, use a local MCP-capable host that supports this configuration
 or the existing authorized local-machine tooling to drive the CLI. Installing
@@ -78,7 +85,7 @@ or connecting an integration always requires the user's action.
 | --- | --- |
 | `browser_start` | Launch bridge-owned Chrome on the localhost original-engine diagnostic |
 | `browser_status` / `browser_close` | Inspect or close only the bridge-owned browser |
-| `initialize_original_engine` | Press the diagnostic's original-engine Initialize button |
+| `initialize_original_engine` | Backward-compatible status check; original Java engine starts automatically on page load |
 | `get_client_state` | Read sanitized game state, game cycles, FPS, presented frames, clock |
 | `wait_for_state` | Wait for a whitelisted native game state, with max 60 s timeout |
 | `capture_screen` | Capture the original canvas after a healthy `LOGGED_IN` |
@@ -91,7 +98,7 @@ or connecting an integration always requires the user's action.
 ### Example test workflow
 
 1. Call `browser_start`; a dedicated Chrome window opens.
-2. Call `initialize_original_engine` and `wait_for_state` with
+2. The original gamepack starts automatically. Call `wait_for_state` with
    `{"gameState":"LOGIN_SCREEN"}`.
 3. **Manually** click Existing User → Login and enter a **disposable test
    account** in the Chrome window. There is deliberately no MCP password,
@@ -141,8 +148,7 @@ Desktop Commander can invoke each of these in a separate terminal call:
 ```powershell
 node dev-bridge/controller-cli.mjs status
 node dev-bridge/controller-cli.mjs start
-node dev-bridge/controller-cli.mjs initialize
-node dev-bridge/controller-cli.mjs wait LOGIN_SCREEN 60000
+node dev-bridge/controller-cli.mjs wait LOGIN_SCREEN 60000 # initialization is automatic
 # Log in MANUALLY with a disposable test account in the owned Chrome window
 node dev-bridge/controller-cli.mjs wait LOGGED_IN 60000
 node dev-bridge/controller-cli.mjs screenshot
