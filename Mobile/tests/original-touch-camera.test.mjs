@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
+import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+import {spawnSync} from "node:child_process";
+import {findTeaVmJdk} from "../scripts/build-teavm.mjs";
 import {
  attachOriginalTouchCamera,CAMERA_HOLD_MS,CAMERA_DRAG_START_PX,
  CAMERA_YAW_UNITS_PER_PIXEL,CAMERA_PITCH_UNITS_PER_PIXEL
@@ -184,9 +189,62 @@ test("authentic Java interface implements target wrapping, pitch clamp, and in-g
     assert.match(java,/setCameraYawTarget\(target\)/);
     assert.match(java,/getCameraPitchTarget\(\)/);
     assert.match(java,/setCameraPitchTarget\(target\)/);
-    assert.match(java,/Math\.max\(128,Math\.min\(383,target\)\)/);
-    assert.match(java,/&2047/);
     const page=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
     assert.match(page,/rotateCamera:\(yaw,pitch\)=>engine\?\.rotateOriginalCamera\?\.\(yaw,pitch\)/);
     assert.doesNotMatch(page,/cameraYaw\s*=|cameraPitch\s*=/);
+});
+
+test("Java touch camera retains revision-240 angles through repeated swipes and native pitch limits",async t=>{
+    let jdk;
+    try{jdk=findTeaVmJdk();}catch(error){t.skip(error.message);return;}
+    const source=await readFile(new URL("../teavm-poc/engine-src/EngineBridge.java",import.meta.url),"utf8");
+    const method=source.match(/@JSExport (public static boolean rotateOriginalCamera\(int yawDelta,int pitchDelta\) \{[\s\S]*?\n    \})/)?.[1];
+    assert.ok(method,"execute the production bridge method");
+    const target=mkdtempSync(join(tmpdir(),"soloscape-touch-camera-"));
+    t.after(()=>rmSync(target,{recursive:true,force:true}));
+    const api=join(target,"net/runelite/api");mkdirSync(api,{recursive:true});
+    writeFileSync(join(api,"GameState.java"),"package net.runelite.api; public enum GameState {LOGGED_IN, LOGIN_SCREEN}");
+    writeFileSync(join(api,"Client.java"),`package net.runelite.api;
+public interface Client {
+ GameState getGameState(); int getCameraYawTarget(); int getCameraPitchTarget();
+ void setCameraYawTarget(int value); void setCameraPitchTarget(int value);
+}`);
+    writeFileSync(join(target,"CameraRegression.java"),`public class CameraRegression {
+ static Object engine;
+ ${method}
+ static class Camera implements net.runelite.api.Client {
+  int yaw=8000,pitch=2000;
+  net.runelite.api.GameState state=net.runelite.api.GameState.LOGGED_IN;
+  public net.runelite.api.GameState getGameState(){return state;}
+  public int getCameraYawTarget(){return yaw;}
+  public int getCameraPitchTarget(){return pitch;}
+  public void setCameraYawTarget(int value){yaw=value;}
+  public void setCameraPitchTarget(int value){pitch=value;}
+ }
+ static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
+ public static void main(String[] args){
+  Camera camera=new Camera();engine=camera;
+  check(rotateOriginalCamera(800,0),"first swipe accepted");
+  check(camera.yaw==14400,"100px swipe must retain starting yaw and add 6400 native units");
+  // A later gesture starts from the camera left by the previous swipe.
+  check(rotateOriginalCamera(800,0),"second swipe accepted");
+  check(camera.yaw==4416,"wrap only at a full native turn");
+  rotateOriginalCamera(-800,0);
+  check(camera.yaw==14400,"reverse swipe crosses zero correctly");
+  rotateOriginalCamera(0,35);
+  check(camera.pitch==2280,"pitch uses the same native scale");
+  rotateOriginalCamera(0,8192);check(camera.pitch==3064,"upper pitch limit");
+  rotateOriginalCamera(0,-8192);check(camera.pitch==1024,"lower pitch limit");
+  camera.yaw=8000;camera.pitch=2000;
+  rotateOriginalCamera(0,0);check(camera.yaw==8000&&camera.pitch==2000,"zero delta preserves camera");
+  check(!rotateOriginalCamera(8193,0)&&camera.yaw==8000,"oversized delta rejected");
+  camera.state=net.runelite.api.GameState.LOGIN_SCREEN;
+  check(!rotateOriginalCamera(800,35)&&camera.yaw==8000&&camera.pitch==2000,"login camera unchanged");
+ }
+}`);
+    const javac=jdk.home?join(jdk.home,"bin",process.platform==="win32"?"javac.exe":"javac"):"javac";
+    const compiled=spawnSync(javac,["-d",target,join(api,"GameState.java"),join(api,"Client.java"),join(target,"CameraRegression.java")],{encoding:"utf8"});
+    assert.equal(compiled.status,0,compiled.stderr||compiled.error?.message);
+    const result=spawnSync(jdk.binary,["-cp",target,"CameraRegression"],{encoding:"utf8"});
+    assert.equal(result.status,0,result.stderr||result.error?.message);
 });

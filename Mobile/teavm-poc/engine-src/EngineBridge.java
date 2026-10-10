@@ -337,6 +337,8 @@ public final class EngineBridge {
     /**
      * Touch displacement adjusts the authentic revision-240 camera targets.
      * Their game tick still owns camera interpolation, clipping and rendering.
+     * Touch deltas use the classic 2048-unit turn; rev-240 Client targets use
+     * 16384 units (up.bd shifts by 3; the injected setters accept raw angles).
      * No obfuscated fields, synthetic scenes or alternative renderer.
      */
     @JSExport public static boolean rotateOriginalCamera(int yawDelta,int pitchDelta) {
@@ -348,12 +350,12 @@ public final class EngineBridge {
             pitchDelta < -8192 || pitchDelta > 8192)
             return false;
         if (yawDelta != 0) {
-            int target=(original.getCameraYawTarget()+yawDelta)&2047;
+            int target=(original.getCameraYawTarget()+yawDelta*8)&16383;
             original.setCameraYawTarget(target);
         }
         if (pitchDelta != 0) {
-            int target=original.getCameraPitchTarget()+pitchDelta;
-            target=Math.max(128,Math.min(383,target));
+            int target=original.getCameraPitchTarget()+pitchDelta*8;
+            target=Math.max(128*8,Math.min(383*8,target));
             original.setCameraPitchTarget(target);
         }
         return true;
