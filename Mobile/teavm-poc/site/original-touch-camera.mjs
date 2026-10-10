@@ -3,8 +3,8 @@
 // No canvas frame, game object, protocol packet or credential is replaced.
 export const CAMERA_HOLD_MS=320;
 export const CAMERA_DRAG_START_PX=12;
-export const CAMERA_YAW_UNITS_PER_PIXEL=4;
-export const CAMERA_PITCH_UNITS_PER_PIXEL=1.75;
+export const CAMERA_YAW_UNITS_PER_PIXEL=8;
+export const CAMERA_PITCH_UNITS_PER_PIXEL=3.5;
 export function attachOriginalTouchCamera({
     canvas,getGameState,rotateCamera,
     page=globalThis,

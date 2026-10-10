@@ -176,8 +176,8 @@ The original revision-240 RuneLite-injected `Client` already exposes
 `getCameraPitchTarget`/`setCameraPitchTarget`. The TeaVM Java bridge
 uses exactly these native client APIs after `LOGGED_IN`; the game itself
 still interpolates, constrains and renders the camera. Mobile pointer
-movement is translated into relative target deltas: **4 yaw units per
-CSS pixel** and **1.75 pitch units per CSS pixel**, with fractional
+movement is translated into relative target deltas: **8 yaw units per
+CSS pixel** and **3.5 pitch units per CSS pixel**, with fractional
 movement preserved, yaw wrapped to the 2048-unit compass and pitch
 limited to 128–383. Distance, not touch event frequency or swipe time,
 determines rotation. The user-visible choice between Fixed, Classic

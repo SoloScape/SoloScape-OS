@@ -61,14 +61,14 @@ test("quick tap and tiny drift preserve original Java walking and menus",()=>{
     assert.equal(f.timers.size,0);
 });
 
-test("fast 100px swipe turns native yaw by 400 units and stops on lift",()=>{
+test("fast 100px swipe turns native yaw by 800 units and stops on lift",()=>{
     const f=fixture();
     f.fire("canvas","pointerdown");
     const drag=f.fire("canvas","pointermove",{clientX:250});
     assert.equal(drag.prevented,true);
     assert.deepEqual(f.turns,[[100*CAMERA_YAW_UNITS_PER_PIXEL,0]]);
     f.fire("page","pointerup");
-    assert.deepEqual(f.turns,[[400,0]]);
+    assert.deepEqual(f.turns,[[800,0]]);
     assert.equal(f.fire("canvas","click").stopped,true);
     f.advance(601);
     assert.equal(f.fire("canvas","click").stopped,false);
@@ -108,9 +108,9 @@ test("long press followed by drag still controls camera",()=>{
     f.tick(CAMERA_HOLD_MS);
     const drag=f.fire("canvas","pointermove",{clientX:170,clientY:170});
     assert.equal(drag.prevented,true);
-    assert.deepEqual(f.turns,[[80,35]]);
+    assert.deepEqual(f.turns,[[160,70]]);
     f.fire("page","pointerup");
-    assert.deepEqual(f.turns,[[80,35]]);
+    assert.deepEqual(f.turns,[[160,70]]);
 });
 
 test("opposite drags cancel, no inertia or post-lift synthetic key states",()=>{
