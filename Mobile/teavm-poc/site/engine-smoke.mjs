@@ -72,10 +72,27 @@ function collect(){
 // Keep the original public configuration, original cache, RSA and gateway.
 async function initializeOriginalEngine(){
     try{
-        const params=JSON.parse($("params").textContent);
+        let params=JSON.parse($("params").textContent);
+        let codebase=window.location.origin+"/";
+        const routes=[];
+        // This optional endpoint exists only for isolated, loopback-only
+        // browser tests; player pages do not expose editable bootstrap UI.
+        const overridesResponse=await fetch("/original-public-config");
+        if(overridesResponse.ok){
+            const overrides=await overridesResponse.json();
+            if(overrides?.parameters!==undefined)params=overrides.parameters;
+            if(overrides?.routes!==undefined){
+                if(!Array.isArray(overrides.routes))throw new Error("Invalid public gateway overrides");
+                routes.push(...overrides.routes);
+            }
+            if(overrides?.codebase!==undefined){
+                if(typeof overrides.codebase!=="string")throw new Error("Invalid public codebase override");
+                codebase=overrides.codebase;
+            }
+        }else if(overridesResponse.status!==404)
+            throw new Error("Local public bootstrap unavailable");
         if(!params||Array.isArray(params)||typeof params!=="object")
             throw new Error("Original public startup parameters are invalid");
-        const routes=[];
         // The pinned original gamepack writes jav_config parameter 9 into its
         // login packet. Omitting it leaves a null Java String and crashes the
         // original packet writer (JavaScript string property dereference).
@@ -132,7 +149,7 @@ async function initializeOriginalEngine(){
             engine.registerResource(name,Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join(""));
         }
         engine.configureCanvas("original-engine-canvas");
-        engine.configureClient(window.location.origin+"/");
+        engine.configureClient(codebase);
         for(const [name,value] of Object.entries(params)){
             if(typeof value!=="string")throw new Error("Parameter "+name+" must be a string");
             engine.configureClientParameter(name,value);
