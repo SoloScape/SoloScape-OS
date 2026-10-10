@@ -132,28 +132,61 @@ public final class EngineBridge {
         net.runelite.api.Tile[][][] planes=scene.getTiles();
         if (planes==null) return null;
         int tiles=0,walls=0,decorations=0,ground=0,objects=0;
-        for (net.runelite.api.Tile[][] plane:planes) {
+        int nullWallRenderables=0,nullDecorRenderables=0;
+        int nullGroundRenderables=0,nullGameRenderables=0,modelGameRenderables=0;
+        int[] objectsByPlane=new int[planes.length];
+        for (int level=0;level<planes.length;level++) {
+            net.runelite.api.Tile[][] plane=planes[level];
             if (plane==null) continue;
             for (net.runelite.api.Tile[] row:plane) {
                 if (row==null) continue;
                 for (net.runelite.api.Tile tile:row) {
                     if (tile==null) continue;
                     tiles++;
-                    if (tile.getWallObject()!=null) walls++;
-                    if (tile.getDecorativeObject()!=null) decorations++;
-                    if (tile.getGroundObject()!=null) ground++;
+                    net.runelite.api.WallObject wall=tile.getWallObject();
+                    if (wall!=null) {
+                        walls++;
+                        if (wall.getRenderable1()==null) nullWallRenderables++;
+                    }
+                    net.runelite.api.DecorativeObject decor=tile.getDecorativeObject();
+                    if (decor!=null) {
+                        decorations++;
+                        if (decor.getRenderable()==null) nullDecorRenderables++;
+                    }
+                    net.runelite.api.GroundObject groundObject=tile.getGroundObject();
+                    if (groundObject!=null) {
+                        ground++;
+                        if (groundObject.getRenderable()==null) nullGroundRenderables++;
+                    }
                     net.runelite.api.GameObject[] gameObjects=tile.getGameObjects();
                     if (gameObjects!=null)
                         for (net.runelite.api.GameObject gameObject:gameObjects)
-                            if (gameObject!=null) objects++;
+                            if (gameObject!=null) {
+                                objects++;objectsByPlane[level]++;
+                                net.runelite.api.Renderable renderable=gameObject.getRenderable();
+                                if (renderable==null) nullGameRenderables++;
+                                else if (renderable instanceof net.runelite.api.Model) modelGameRenderables++;
+                            }
                 }
             }
         }
         int[] regions=original.getMapRegions();
         int regionCount=regions==null?0:regions.length;
+        StringBuilder planeCounts=new StringBuilder("[");
+        for (int i=0;i<objectsByPlane.length;i++) {
+            if (i>0) planeCounts.append(',');
+            planeCounts.append(objectsByPlane[i]);
+        }
+        planeCounts.append(']');
         return "{\"tiles\":"+tiles+",\"walls\":"+walls+
             ",\"decorations\":"+decorations+",\"ground\":"+ground+
-            ",\"gameObjectReferences\":"+objects+",\"regions\":"+regionCount+"}";
+            ",\"gameObjectReferences\":"+objects+",\"regions\":"+regionCount+
+            ",\"nullWallRenderables\":"+nullWallRenderables+
+            ",\"nullDecorRenderables\":"+nullDecorRenderables+
+            ",\"nullGroundRenderables\":"+nullGroundRenderables+
+            ",\"nullGameRenderables\":"+nullGameRenderables+
+            ",\"modelGameRenderables\":"+modelGameRenderables+
+            ",\"gameObjectRefsByPlane\":"+planeCounts+"}";
     }
 
     /** Read-only original Java game clock telemetry. */

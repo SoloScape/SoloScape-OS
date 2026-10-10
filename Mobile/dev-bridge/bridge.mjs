@@ -179,7 +179,7 @@ png.slice('data:image/png;base64,'.length):null;})()`);
         // expose player positions, account details, cache contents or loc IDs.
         const raw=await this.browser.evaluate(
             "(()=>{const fn=window.engineSmokeSceneCounts;return typeof fn==='function'?fn():null})()");
-        if(typeof raw!=="string"||raw.length>256)
+        if(typeof raw!=="string"||raw.length>512)
             throw new Error("Original scene counters unavailable");
         let parsed;
         try{parsed=JSON.parse(raw);}catch{throw new Error("Invalid original scene counts");}
@@ -190,7 +190,19 @@ png.slice('data:image/png;base64,'.length):null;})()`);
                 throw new Error("Invalid original scene counts");
             result[name]=count;
         }
-        return {...result,note:"Original Java scene tile references, not unique world objects; missing loc causes not inferred"};
+        for(const name of ["nullWallRenderables","nullDecorRenderables",
+            "nullGroundRenderables","nullGameRenderables","modelGameRenderables"]){
+            const count=parsed?.[name];
+            if(!Number.isSafeInteger(count)||count<0||count>1000000)
+                throw new Error("Invalid original scene counts");
+            result[name]=count;
+        }
+        if(!Array.isArray(parsed?.gameObjectRefsByPlane)||
+            parsed.gameObjectRefsByPlane.length>8||
+            parsed.gameObjectRefsByPlane.some(v=>!Number.isSafeInteger(v)||v<0||v>1000000))
+            throw new Error("Invalid original scene plane counts");
+        result.gameObjectRefsByPlane=parsed.gameObjectRefsByPlane;
+        return {...result,note:"Original Java scene references, not unique world objects; model presence does not prove visible rendering"};
     }
     async profilePerformance({durationMs=3000,cpu=false}={}){
         boundedInt(durationMs,500,15000,"durationMs");

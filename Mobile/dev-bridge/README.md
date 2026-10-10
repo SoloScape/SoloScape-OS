@@ -162,10 +162,13 @@ the command prints its full path so Desktop Commander can inspect it. The
 controller does not read or write game passwords, tokens or login packets.
 `scene` reads counts directly from the original Java game's loaded scene
 (tiles, walls, decorative objects, ground objects, game-object **tile
-references**, and map-region count). Counts are deliberately anonymous;
-compare before/after moving to an area missing scenery. They distinguish
-absent scene data from rendering issues only when combined with a known
-expected location. They are not unique object counts or proof of parity.
+references**, map-region count, per-plane game-object references, and
+counts of null and direct-model renderables). Counts are deliberately anonymous:
+no object IDs, names, cache bytes or player coordinates are exported.
+Compare before/after moving to an area missing scenery. Null-renderable
+counts may distinguish failed object-model construction, but a non-null
+renderable still may fail to draw. Neither counts nor model availability prove
+the expected object placements or visual parity.
 
 `smoke-test` is a passive runtime stability check (no synthetic movement
 success). `profile` measures real original game cycles and software frames;

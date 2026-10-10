@@ -25,7 +25,9 @@ class FakeChrome{
                 hasError:!!this.state.error});
         if(expression.includes("window.engineSmokeSceneCounts"))
             return JSON.stringify({tiles:41230,walls:180,decorations:14,ground:8,
-                gameObjectReferences:202,regions:12});
+                gameObjectReferences:202,regions:12,
+                nullWallRenderables:0,nullDecorRenderables:1,nullGroundRenderables:0,
+                nullGameRenderables:12,modelGameRenderables:160,gameObjectRefsByPlane:[50,50,50,52]});
         if(expression.includes("getBoundingClientRect"))
             return JSON.stringify({left:20,top:40,width:765,height:503,canvasWidth:765,canvasHeight:503});
         if(expression.includes("toDataURL('image/png')"))
@@ -75,6 +77,8 @@ test("scene counters are read-only, validated, and unavailable before original l
     const counts=await bridge.getSceneCounts();
     assert.deepEqual([counts.tiles,counts.walls,counts.gameObjectReferences,counts.regions],
         [41230,180,202,12]);
+    assert.equal(counts.nullGameRenderables,12);
+    assert.equal(counts.gameObjectRefsByPlane.reduce((a,b)=>a+b,0),counts.gameObjectReferences);
     assert.ok(!browser.calls.some(x=>x.type.startsWith("Input.")));
     const before=new Stage1Bridge(new FakeChrome({...loggedIn,gameState:"LOGIN_SCREEN"}));
     await assert.rejects(()=>before.getSceneCounts(),/LOGGED_IN/);

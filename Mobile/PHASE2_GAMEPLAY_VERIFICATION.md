@@ -30,8 +30,9 @@ secrets are recorded.
 
 ## New gameplay defects reported after endurance test
 
-- **Combat: FAIL, rat attack crashes original game loop.** User reproduced an
-  attack against a rat. The controller observed `phase:error`, with
+- **Combat: PASS (user-confirmed after fix).** The user retested attacking
+  a rat with the rebuilt original Java client and confirmed it **no longer
+  crashes**. Before the fix, the controller observed `phase:error`, with
   `LOGGED_IN` frozen at game cycle 20,525, zero presented FPS, and a
   `java.lang.RuntimeException; TypeError; null property: bxQ`. Sanitized
   frames begin `BQ1:21440:419 | CkQ:19055:476 | C2y:16675:225`.
@@ -39,16 +40,34 @@ secrets are recorded.
   original `au.as(Ldz;Ldh;IIIIIIB)V` hitsplat/actor overlay method and that
   `ym.aa` is its sprite-offset field. A narrowly scoped TeaVM-only build
   guard skips absent optional sprites in this original overlay, keeping the
-  original Java drawing paths for any sprite that exists. **Do not mark this
-  fixed until the rebuilt client has survived an actual rat attack.**
+  original Java drawing paths for any sprite that exists. The gameplay
+  retest is the evidence for marking this issue resolved.
 - **Static world scenery: FAIL (user-reported).** Stairs, tables, cabinets,
   cooking ranges and other world objects are missing even while terrain,
   walls, player models and NPCs render. This is a *separate* scene/region-loc
   loading problem; the cause has not been verified. The existing cache has
   `main_file_cache.dat2` and numbered `idx` files, but file presence is
   not proof that the right map object archives decoded or spawned. Verify
-  original scene object counts, cache archive decoding, region XTEA keys and
+  original scene object counts, cache archive decoding and
   server/client map-square expectations before modifying rendering.
+  **Further diagnostic evidence:** In the user's loaded castle-area scene,
+  the original Java gamepack reports 12,714 tiles, 1,570 walls, 460
+  decorations, 4,151 ground objects and 974 game-object tile references
+  across four map regions. None of the game objects has a null renderable,
+  and 777 references have a direct `Model` renderable. References by plane
+  are 286, 433, 210 and 45; these are not unique object totals. The four
+  candidate castle-area map archive groups 12850, 12851, 13106 and 13107
+  were read directly from the original `LIVE` cache and the server's
+  `SERVER` cache. Their decoded terrain (file 0) and location placements
+  (file 1) have matching SHA-256 values; the differences in whole compressed
+  archives come from additional server-side files. This rules out
+  mismatched location-file bytes in those four groups, **not** errors in
+  scene placement or software model drawing. The root cause remains open.
+  Attempts to query `Client.getObjectDefinition` for bulk object names in
+  the browser were not supported by the diagnostic and were withdrawn;
+  no object definitions or gameplay state were mutated. Use the safe
+  scene-model counters until location/model drawing can be verified by
+  targeted world actions.
 - **NPC actions: PASS (user-confirmed).** The player can talk to and interact
   with NPCs; this overrides the previous `Not verified` automation result.
   Banking, longer dialogue chains and specific scene-object interactions
