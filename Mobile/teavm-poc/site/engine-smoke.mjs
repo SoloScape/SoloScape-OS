@@ -173,8 +173,11 @@ async function initializeOriginalEngine(){
         originalResize=attachOriginalResizableLayout({
             canvas:$("original-engine-canvas"),body:document.body,engine,
             getGameState:()=>state.gameState});
-        for(const name of ["configureClient","configureClientParameter","initializeAsync","gameCycle","hasClientThread"])
+        for(const name of ["configureClient","configureClientParameter","configureMobileLayout","initializeAsync","gameCycle","hasClientThread"])
             if(typeof engine[name]!=="function")throw new Error("Engine rebuild required: "+name+" missing");
+        // Use the cached mobile UI and request its root through the original
+        // post-login command path. Native authentication keeps parameter 4 = 1.
+        engine.configureMobileLayout(true);
         // Supply the exact small classpath resources packaged in the pinned
         // original gamepack, never placeholders or gameplay substitutions.
         // An explicit local development cache snapshot is mounted read-write

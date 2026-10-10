@@ -8,11 +8,13 @@ try {
     assert.equal(report.status,"compiled-unverified");assert.equal(report.javascriptSyntaxVerified,true);
     const engine=await import(new URL("../target/engine/javascript/engine.js",import.meta.url));
     for(const name of ["initialize","initializeAsync","configureCanvas","configureGateway",
-        "configureClient","configureClientParameter","clientError","callbackError","startupStep","gameCycle",
+        "configureClient","configureClientParameter","configureMobileLayout","clientError","callbackError","startupStep","gameCycle",
         "hasClientThread","gameState","registerResource","unlockAudio","syncFilesystem",
         "configureLoginRsaPublic","loginRsaConfigured","callbackTrace","originalFps","presentedFrames","clockCalls","clockTicks","clockLastTicks","clockMaxTicks","clockGapMs","clockWaitMs"])
         assert.equal(typeof engine[name],"function",name+" missing");
     assert.equal(engine.startupState(),"not-started");
+    engine.configureMobileLayout(true);
+    engine.configureMobileLayout(false);
     assert.equal(engine.gameCycle(),-1);
     assert.equal(engine.originalFps(),-1);
     assert.equal(engine.presentedFrames(),0);

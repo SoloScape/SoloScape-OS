@@ -26,6 +26,7 @@ export function compileEngineTools({root,target,jdk,env=process.env,run=spawnSyn
     const sources=[join(root,"teavm-poc/scripts/NormalizeEngine.java"),join(root,"teavm-poc/scripts/ParseEngine.java"),
         join(root,"teavm-poc/scripts/AdaptEnginePlatform.java")];
     if(fixture)sources.push(join(root,"tests/fixtures/EngineConstantsTest.java"),join(root,"tests/fixtures/EngineFieldCollisionTest.java"),join(root,"tests/fixtures/EnginePlatformTransformTest.java"),
+        join(root,"teavm-poc/engine-src/OriginalMobileLayout.java"),
         join(root,"tests/fixtures/EngineServicesJvmTest.java"),
         join(root,"teavm-poc/engine-src/org/soloscape/teavm/platform/BrowserObjectInputStream.java"),
         join(root,"teavm-poc/engine-src/org/soloscape/teavm/platform/HeapMemory.java"),

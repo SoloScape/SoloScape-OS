@@ -39,6 +39,7 @@ public final class BrowserEngineCallbacks implements Callbacks {
     @Override public void drawScene() { }
     @Override public void drawAboveOverheads() { }
     @Override public void draw(MainBufferProvider buffer, Graphics graphics, int x, int y) {
+        EngineBridge.updateOriginalMobileLayout();
         // In desktop RuneLite Hooks.draw() composites the original software
         // buffer after the game renders. Leaving this callback empty shows
         // only the initial AWT loading bar even after LOGIN_SCREEN begins.

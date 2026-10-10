@@ -114,7 +114,17 @@ public final class AdaptEnginePlatform implements Opcodes {
                                             field.equals("ax") ? "width" : "height";
                                         super.visitMethodInsn(INVOKESTATIC, "NullSafeHitsplatSprites",
                                             accessor, "(Lym;)I", false);
-                                    } else super.visitFieldInsn(opcode, type, field, desc);
+                                    } else {
+                                        super.visitFieldInsn(opcode, type, field, desc);
+                                        // bb/su are the pinned CS2 interpreters. Advertise the
+                                        // browser touch UI only to interface scripts; never
+                                        // change client.gj, login packets or native game input.
+                                        if ((owner.equals("bb") || owner.equals("su")) &&
+                                            opcode == GETSTATIC && type.equals("client") &&
+                                            field.equals("gj") && desc.equals("Z"))
+                                            super.visitMethodInsn(INVOKESTATIC,"OriginalMobileLayout",
+                                                "isMobile","(Z)Z",false);
+                                    }
                                 }
                                 @Override public void visitMethodInsn(int opcode, String type, String method, String desc, boolean itf) {
                                     // Combat-only original software sprite draws: an absent

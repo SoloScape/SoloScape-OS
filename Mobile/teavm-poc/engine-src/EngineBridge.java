@@ -29,6 +29,23 @@ public final class EngineBridge {
         configuration.setParameter(key, value);
     }
 
+    @JSExport public static void configureMobileLayout(boolean enabled) {
+        beforeStartup();
+        OriginalMobileLayout.configure(enabled);
+    }
+
+    /** Called on the original Java drawing thread, after the server opens a gameframe. */
+    public static void updateOriginalMobileLayout() {
+        if (!(engine instanceof net.runelite.api.Client)) return;
+        net.runelite.api.Client original = (net.runelite.api.Client)engine;
+        if (!OriginalMobileLayout.shouldRequest(
+            original.getGameState()==net.runelite.api.GameState.LOGGED_IN,
+            original.getTopLevelInterfaceId())) return;
+        // The pinned DOCHEAT opcode 5020 invokes this original method with -41.
+        // One fixed UI command per login; no new packet writer or login changes.
+        pt.bj("mobileui", (byte)-41);
+    }
+
     @JSExport public static String clientError() { return configuration.lastError(); }
     @JSExport public static String callbackError() { return callbacks == null ? "" : callbacks.lastError(); }
     @JSExport public static String callbackTrace() { return callbacks == null ? "" : callbacks.lastTrace(); }
