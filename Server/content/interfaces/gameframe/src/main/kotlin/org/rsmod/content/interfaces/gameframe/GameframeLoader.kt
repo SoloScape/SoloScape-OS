@@ -7,6 +7,7 @@ import dev.openrune.rscm.RSCMType
 import dev.openrune.types.aconverted.enum
 import dev.openrune.types.dbcol.DbColumnCodec.ComponentTypeCodec
 import dev.openrune.types.dbcol.DbColumnCodec.IntCodec
+import org.rsmod.api.player.ui.selectOrbsInterface
 import org.rsmod.api.table.GameframeRow
 import org.rsmod.game.ui.Component
 
@@ -44,7 +45,11 @@ internal class GameframeLoader {
                 .associate { Component(it.key) to Component(it.value) }
             mapped[mobileId] = Gameframe(
                 topLevel = mobileTop,
-                overlays = overlays,
+                overlays = overlays.map {
+                    if (it.interf == "interface.orbs") {
+                        it.copy(interf = selectOrbsInterface(mobile = true, minimized = false))
+                    } else it
+                },
                 mappings = mobileMappings,
                 clientMode = 2,
                 resizable = true,

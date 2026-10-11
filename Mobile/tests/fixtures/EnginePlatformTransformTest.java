@@ -64,15 +64,9 @@ public final class EnginePlatformTransformTest implements Opcodes {
                 }
             }
             OriginalMobileLayout.configure(false);
-            check(!OriginalMobileLayout.shouldAlignOrbNumbers(true,601),"desktop orb labels remain unchanged");
             check(!OriginalMobileLayout.shouldUseResizable(true,false),"desktop preserves fixed preference");
             check(!OriginalMobileLayout.isMobile(false)&&OriginalMobileLayout.isMobile(true),"disabled preserves original capability");
             OriginalMobileLayout.configure(true);
-            check(OriginalMobileLayout.shouldAlignOrbNumbers(true,601),"align numbers in mobile gameframe");
-            check(!OriginalMobileLayout.shouldAlignOrbNumbers(false,601),"no orb changes before login");
-            check(!OriginalMobileLayout.shouldAlignOrbNumbers(true,161),"no orb changes in desktop gameframe");
-            check(OriginalMobileLayout.orbNumberY(34,13)==10,"centre original numbers beside 34px orb circles");
-            check(OriginalMobileLayout.orbNumberY(68,26)==21,"scaled orb labels keep their vertical centre");
             check(OriginalMobileLayout.shouldUseResizable(true,false),"mobile selects resizable before login");
             check(!OriginalMobileLayout.shouldUseResizable(true,true),"resizable selection is idempotent");
             check(!OriginalMobileLayout.shouldUseResizable(false,false),"window mode waits for login screen");

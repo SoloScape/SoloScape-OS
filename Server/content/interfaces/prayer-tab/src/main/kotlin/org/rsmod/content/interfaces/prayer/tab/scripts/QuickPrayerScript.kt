@@ -47,6 +47,8 @@ constructor(
     override fun ScriptContext.startup() {
         onPlayerLogin { player.disableQuickPrayers() }
         onIfOverlayButton("component.orbs:prayerbutton") { player.selectQuickPrayerOrb(it.op) }
+        onIfOverlayButton("component.orbs_osm:prayerbutton") { player.selectQuickPrayerOrb(it.op) }
+        onIfOverlayButton("component.orbs_osm_nomap:prayerbutton") { player.selectQuickPrayerOrb(it.op) }
         onPlayerQueue("queue.quick_prayer_toggle") { toggleQuickPrayers() }
         onIfOpen("interface.quickprayer") { player.onOpenQuickPrayerSetUp() }
         onIfClose("interface.quickprayer") { player.onCloseQuickPrayerSetUp() }

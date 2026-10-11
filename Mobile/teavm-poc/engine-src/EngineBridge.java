@@ -8,7 +8,6 @@ public final class EngineBridge {
     private static boolean initializing;
     private static String initializationState = "not-started", initializationError = "";
     private static String startupStep = "not-started";
-    private static final int[] mobileOrbNumberChildren = {10, 21, 29, 37};
     @org.teavm.jso.JSFunctor public interface Completion extends org.teavm.jso.JSObject {
         void completed(String error);
     }
@@ -40,10 +39,6 @@ public final class EngineBridge {
         if (!(engine instanceof net.runelite.api.Client)) return;
         net.runelite.api.Client original = (net.runelite.api.Client)engine;
         net.runelite.api.GameState state = original.getGameState();
-        if (OriginalMobileLayout.shouldAlignOrbNumbers(
-            state==net.runelite.api.GameState.LOGGED_IN, original.getTopLevelInterfaceId())) {
-            alignOriginalMobileOrbNumbers(original);
-        }
         if (OriginalMobileLayout.shouldUseResizable(
             state==net.runelite.api.GameState.LOGIN_SCREEN, original.isResized())) {
             // Original SETWINDOWMODE (5307) target and pinned revision-240 guard.
@@ -56,21 +51,6 @@ public final class EngineBridge {
         // The pinned DOCHEAT opcode 5020 invokes this original method with -41.
         // One fixed UI command per login; no new packet writer or login changes.
         pt.bj("mobileui", (byte)-41);
-    }
-
-    /** Centre only the original HP/prayer/run/special labels beside their orb circles. */
-    private static void alignOriginalMobileOrbNumbers(net.runelite.api.Client original) {
-        for (int child : mobileOrbNumberChildren) {
-            net.runelite.api.widgets.Widget number = original.getWidget(160, child);
-            if (number == null || number.getType() != 4) continue;
-            net.runelite.api.widgets.Widget orb = number.getParent();
-            if (orb == null || orb.getHeight() <= 0 || number.getHeight() <= 0) continue;
-            int y = OriginalMobileLayout.orbNumberY(orb.getHeight(), number.getHeight());
-            if (number.getOriginalY() != y) {
-                number.setOriginalY(y);
-                number.revalidate();
-            }
-        }
     }
 
     @JSExport public static String clientError() { return configuration.lastError(); }

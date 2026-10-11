@@ -13,6 +13,8 @@ import org.rsmod.api.player.ui.ifOpenOverlay
 import org.rsmod.api.player.ui.ifMoveTop
 import org.rsmod.api.player.ui.ifOpenTop
 import org.rsmod.api.player.ui.ifSetEvents
+import org.rsmod.api.player.ui.orbsInterface
+import org.rsmod.api.player.ui.selectOrbsInterface
 import org.rsmod.api.player.vars.boolVarBit
 import org.rsmod.api.player.vars.intVarBit
 import org.rsmod.api.player.vars.resyncVar
@@ -109,7 +111,11 @@ class GameframeScript @Inject internal constructor(private val eventBus: EventBu
     }
 
     private fun Player.moveXpDrops() {
-        ifOpenOverlay("interface.orbs", "component.toplevel_osrs_stretch:orbs", eventBus)
+        ifOpenOverlay(
+            orbsInterface(orbsMinimized && ui.frameResizable),
+            "component.toplevel_osrs_stretch:orbs",
+            eventBus,
+        )
     }
 
     private fun Player.moveEhcListener() {
@@ -171,7 +177,11 @@ class GameframeScript @Inject internal constructor(private val eventBus: EventBu
             //  more information before adding this.
         }
 
-        this.ifOpenOverlay(if (orbsMinimized && dest.resizable) "interface.orbs_nomap" else "interface.orbs", "component.toplevel_osrs_stretch:orbs", eventBus)
+        ifOpenOverlay(
+            selectOrbsInterface(dest.isMobile, orbsMinimized && dest.resizable),
+            "component.toplevel_osrs_stretch:orbs",
+            eventBus,
+        )
         Cinematic.syncMinimapState(this)
     }
 

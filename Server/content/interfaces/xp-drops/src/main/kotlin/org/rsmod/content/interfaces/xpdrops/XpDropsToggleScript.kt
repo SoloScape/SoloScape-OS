@@ -14,6 +14,8 @@ import org.rsmod.plugin.scripts.ScriptContext
 class XpDropsToggleScript @Inject constructor(private val protectedAccess: ProtectedAccessLauncher) : PluginScript() {
     override fun ScriptContext.startup() {
         onIfOverlayButton("component.orbs:xp_drops") { toggleXpDrops() }
+        onIfOverlayButton("component.orbs_osm:xp_drops") { toggleXpDrops() }
+        onIfOverlayButton("component.orbs_osm_nomap:xp_drops") { toggleXpDrops() }
         onPlayerLogin { updateXpState(player) }
     }
 
