@@ -51,6 +51,9 @@ public final class BrowserOriginalLocationModels {
                      op == 65 || op == 66 || op == 67 ||
                      op == 70 || op == 71 || op == 72)
                 skip = 2;
+            // Rev-240 ambient sound: unsigned short ID, range, retain byte.
+            // Lumbridge's fountain has this before its opcode-7 model list.
+            else if (op == 78) skip = 4;
             else if (op == 17 || op == 18 || op == 23 || op == 25 ||
                      op == 27 || op == 73 || op == 74 || op == 88 ||
                      op == 89 || op == 90 || op == 94 || op == 97 ||

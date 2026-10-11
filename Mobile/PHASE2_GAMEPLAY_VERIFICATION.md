@@ -136,6 +136,24 @@ authenticated session**, and its result has not yet been collected.
 Until it has, do not blame the decoder, JS5 gateway, cache revision, or
 renderer definitively, and do not modify the native cache to compensate.
 
+## Lumbridge fountains follow-up — 11 October 2026
+
+The player reported missing Lumbridge fountains. Read-only inspection of the
+original LIVE cache located two definition-879 placements in map group 12850,
+at (3221,3210) and (3221,3226), both ground-floor shape 10. Their definition
+contains untyped model 1497, and that model archive exists in index 7.
+The definition has opcode 78 (four bytes of rev-240 ambient sound metadata)
+before opcode 7. `BrowserOriginalLocationModels` previously stopped at opcode
+78, so its existing missing-model restoration did not reach the fountain's
+model list. The browser-only helper now skips those four metadata bytes.
+Original placement, sound, model and renderer logic are unchanged.
+
+A fixed fountain-definition JVM regression fails against the previous helper
+and passes after the change, including checks for preserved decoded lists,
+typed definitions, truncated input and unknown prefixes. This proves the
+restoration gap, not actual fountain visibility. **Authenticated screenshot
+verification remains pending**, and other missing scenery remains open.
+
 ## Sustained original-world runtime and memory
 
 A dedicated **20-minute** authenticated sampler started at
