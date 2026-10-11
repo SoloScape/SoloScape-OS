@@ -2,6 +2,7 @@ package org.rsmod.content.skills.woodcutting.scripts
 
 import dev.openrune.ServerCacheManager
 import dev.openrune.rscm.RSCM
+import dev.openrune.rscm.RSCM.asRSCM
 import dev.openrune.rscm.RSCMType
 import dev.openrune.types.ItemServerType
 import dev.openrune.types.ObjectServerType
@@ -13,13 +14,9 @@ import org.rsmod.api.config.locXpParam
 import org.rsmod.api.config.objParam
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.controller.vars.intVarCon
-import org.rsmod.api.player.events.skilling.SkillingProduct
-import org.rsmod.api.player.events.skilling.SkillingProductSource
 import org.rsmod.api.player.output.ClientScripts
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.righthand
-import org.rsmod.api.player.skilling.SkillingAwardResult
-import org.rsmod.api.player.skilling.awardSkillingProduct
 import org.rsmod.api.player.stat.firemakingLvl
 import org.rsmod.api.player.stat.woodcuttingLvl
 import org.rsmod.api.random.GameRandom
@@ -30,8 +27,11 @@ import org.rsmod.api.script.onAiConTimer
 import org.rsmod.api.script.onOpContentLoc1
 import org.rsmod.api.script.onOpContentLoc3
 import org.rsmod.api.script.onOpContentU
+import org.rsmod.api.script.onOpContentMixedLocU
+import org.rsmod.api.script.onOpLoc1
+import org.rsmod.api.script.onOpLoc3
+import org.rsmod.api.script.onOpLocU
 import org.rsmod.api.stats.levelmod.InvisibleLevels
-import org.rsmod.api.stats.xpmod.XpModifiers
 import org.rsmod.content.quest.manager.QuestRequirements
 import org.rsmod.content.skills.woodcutting.configs.WoodcuttingParams
 import org.rsmod.game.MapClock
@@ -44,16 +44,13 @@ import org.rsmod.map.zone.ZoneKey
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
-// TODO:
-// - bird nests
-// - axe effects/charges
 class Woodcutting
 @Inject
 constructor(
     private val locRepo: LocRepository,
     private val conRepo: ControllerRepository,
     private val playerRepo: PlayerRepository,
-    private val xpMods: XpModifiers,
+    private val harvest: WoodcuttingHarvest,
     private val invisibleLvls: InvisibleLevels,
     private val mapClock: MapClock,
 ) : PluginScript() {
@@ -61,6 +58,18 @@ constructor(
         onOpContentLoc1("content.tree") { attempt(it.loc, it.type) }
         onOpContentLoc3("content.tree") { cut(it.loc, it.type) }
         onOpContentU("content.tree", "content.woodcutting_axe") { cut(it.loc, it.type) }
+        for (axe in WoodcuttingAxes.fellingConversions.values + "obj.infernal_axe_empty" + "obj.crystal_axe_inactive") {
+            onOpContentMixedLocU("content.tree", axe) { cut(it.loc, it.type) }
+        }
+        for (tree in SpecialTreeDefinitions.naturalNames) {
+            onOpLoc1(tree) { attempt(it.loc, it.type) }
+            onOpLoc3(tree) { cut(it.loc, it.type) }
+            onOpLocU(tree) {
+                if (WoodcuttingAxes.effectiveType(InvObj(it.objType)).isContentType("content.woodcutting_axe")) {
+                    cut(it.loc, it.type)
+                }
+            }
+        }
         onAiConTimer("controller.woodcutting_tree_duration") { controller.treeDespawnTick() }
     }
 
@@ -130,29 +139,19 @@ constructor(
         if (type.hasDespawnTimer) {
             treeSwingDespawnTick(tree, type)
             despawn = cutLogs && isTreeDespawnRequired(tree)
+        } else if (type.specialTree?.depletionDenominator?.let { it > 0 } == true) {
+            despawn = cutLogs && random.of(type.specialTree!!.depletionDenominator) == 0
         } else {
             despawn = cutLogs && random.of(1, 255) > type.treeDepleteChance
         }
 
         if (cutLogs) {
-            val logs = type.treeLogs
-            val xp = type.treeXp * xpMods.get(player, "stat.woodcutting")
-            val product =
-                SkillingProduct(
-                    player = player,
-                    skill = "stat.woodcutting",
-                    item = RSCM.getReverseMapping(RSCMType.OBJ, logs.id),
-                    count = 1,
-                    experience = xp,
-                    grantsExperience = true,
-                    source = SkillingProductSource.Woodcutting(tree, logs),
-                )
-            if (awardSkillingProduct(product) == SkillingAwardResult.Success) {
-                spam("You get some ${logs.name.lowercase()}.")
+            cutLogs = with(harvest) {
+                harvest(tree, type.treeLogs, type.treeXp, axe)
             }
         }
 
-        if (despawn) {
+        if (despawn && cutLogs) {
             val respawnTime = type.resolveRespawnTime(random)
             locRepo.change(tree, type.treeStump, respawnTime)
             resetAnim()
@@ -237,7 +236,8 @@ constructor(
     }
 
     private fun ProtectedAccess.axeAnim(axe: InvObj): String =
-        RSCM.getReverseMapping(RSCMType.SEQ, getInvObj(axe).axeWoodcuttingAnim.id)
+        WoodcuttingAxes.animation(getInvObj(axe).internalName)
+            ?: RSCM.getReverseMapping(RSCMType.SEQ, WoodcuttingAxes.effectiveType(axe).axeWoodcuttingAnim.id)
 
     private fun ProtectedAccess.mesAxeMissing() {
         mes("You need an axe to chop down this tree.")
@@ -261,18 +261,36 @@ constructor(
         val ItemServerType.axeWoodcuttingReq: Int by objParam(params.levelrequire)
         val ItemServerType.axeWoodcuttingAnim: SequenceServerType by objParam(params.skill_anim)
 
-        val ObjectServerType.treeLevelReq: Int by locParam(params.levelrequire)
-        val ObjectServerType.treeLogs: ItemServerType by locParam(params.skill_productitem)
-        val ObjectServerType.treeXp: Double by locXpParam(params.skill_xp)
-        val ObjectServerType.treeStump: ObjectServerType by locParam(params.next_loc_stage)
-        val ObjectServerType.treeDespawnTime: Int by locParam(params.despawn_time)
+        private val ObjectServerType.specialTree: SpecialTreeDefinition?
+            get() = SpecialTreeDefinitions.get(internalName)
+
+        private val ObjectServerType.configuredTreeLevelReq: Int by locParam(params.levelrequire)
+        private val ObjectServerType.configuredTreeLogs: ItemServerType by locParam(params.skill_productitem)
+        private val ObjectServerType.configuredTreeXp: Double by locXpParam(params.skill_xp)
+        private val ObjectServerType.configuredTreeStump: ObjectServerType by locParam(params.next_loc_stage)
+        private val ObjectServerType.configuredTreeDespawnTime: Int by locParam(params.despawn_time)
+        private val ObjectServerType.configuredTreeRespawnTime: Int by locParam(params.respawn_time)
+
+        val ObjectServerType.treeLevelReq: Int
+            get() = specialTree?.level ?: configuredTreeLevelReq
+        val ObjectServerType.treeLogs: ItemServerType
+            get() = specialTree?.let { ServerCacheManager.getItem(it.product.asRSCM(RSCMType.OBJ))!! }
+                ?: configuredTreeLogs
+        val ObjectServerType.treeXp: Double
+            get() = specialTree?.xp ?: configuredTreeXp
+        val ObjectServerType.treeStump: ObjectServerType
+            get() = specialTree?.let { ServerCacheManager.getObject(it.stump.asRSCM(RSCMType.LOC))!! }
+                ?: configuredTreeStump
+        val ObjectServerType.treeDespawnTime: Int
+            get() = specialTree?.despawnTicks ?: configuredTreeDespawnTime
         val ObjectServerType.treeDepleteChance: Int by locParam(params.deplete_chance)
-        val ObjectServerType.treeRespawnTime: Int by locParam(params.respawn_time)
+        val ObjectServerType.treeRespawnTime: Int
+            get() = specialTree?.respawnTicks ?: configuredTreeRespawnTime
         val ObjectServerType.treeRespawnTimeLow: Int by locParam(params.respawn_time_low)
         val ObjectServerType.treeRespawnTimeHigh: Int by locParam(params.respawn_time_high)
 
         private val ObjectServerType.hasDespawnTimer: Boolean
-            get() = hasParam(params.despawn_time)
+            get() = specialTree?.let { it.despawnTicks > 0 } ?: hasParam(params.despawn_time)
 
         fun findAxe(player: Player, tree: ObjectServerType): InvObj? {
             val worn = player.wornAxe()
@@ -284,7 +302,9 @@ constructor(
                     }
                     addAll(carried)
                 }
-            return candidates.maxWithOrNull(axeComparator(tree))
+            return candidates.maxWithOrNull(axeComparator(tree).thenBy {
+                ForestryRations.available(player) && WoodcuttingAxes.isFelling(getInvObj(it).internalName)
+            })
         }
 
         private fun axeComparator(tree: ObjectServerType): Comparator<InvObj> =
@@ -299,20 +319,26 @@ constructor(
 
         private fun Player.wornAxe(): InvObj? {
             val righthand = righthand ?: return null
-            return righthand.takeIf { getInvObj(it).isUsableAxe(this) }
+            return righthand.takeIf { it.isUsableAxe(this) }
         }
 
         private fun Player.carriedAxes(): List<InvObj> =
-            inv.filterNotNull { getInvObj(it).isUsableAxe(this) }
+            inv.filterNotNull { it.isUsableAxe(this) }
 
-        private fun ItemServerType.isUsableAxe(player: Player): Boolean {
-            if (!isContentType("content.woodcutting_axe") || player.woodcuttingLvl < axeWoodcuttingReq) {
+        private fun InvObj.isUsableAxe(player: Player): Boolean {
+            val actual = getInvObj(this)
+            val effective = WoodcuttingAxes.effectiveType(this)
+            if (!effective.isContentType("content.woodcutting_axe") ||
+                player.woodcuttingLvl < effective.axeWoodcuttingReq
+            ) {
                 return false
             }
-            return when (internalName) {
+            return when (actual.internalName) {
                 "obj.infernal_axe" -> player.firemakingLvl >= INFERNAL_FIREMAKING_REQ
                 "obj.crystal_axe",
-                "obj.crystal_axe_inactive", ->
+                "obj.crystal_axe_inactive",
+                "obj.crystal_axe_2h",
+                "obj.crystal_axe_2h_inactive", ->
                     QuestRequirements.hasCompleted(player, SONG_OF_THE_ELVES)
                 else -> true
             }
@@ -322,7 +348,8 @@ constructor(
             ownsAxe("obj.infernal_axe") && firemakingLvl < INFERNAL_FIREMAKING_REQ
 
         private fun Player.hasBlockedCrystalAxe(): Boolean =
-            (ownsAxe("obj.crystal_axe") || ownsAxe("obj.crystal_axe_inactive")) &&
+            (ownsAxe("obj.crystal_axe") || ownsAxe("obj.crystal_axe_inactive") ||
+                ownsAxe("obj.crystal_axe_2h") || ownsAxe("obj.crystal_axe_2h_inactive")) &&
                 !QuestRequirements.hasCompleted(this, SONG_OF_THE_ELVES)
 
         private fun Player.ownsAxe(name: String): Boolean =
@@ -338,8 +365,11 @@ constructor(
         }
 
         fun cutSuccessRates(treeType: ObjectServerType, axe: InvObj): Pair<Int, Int> {
+            val effective = WoodcuttingAxes.effectiveType(axe)
+            SpecialTreeDefinitions.rates(treeType.internalName, effective.internalName)?.let { return it }
             val axes = treeType.param(WoodcuttingParams.success_rates)
-            val rates = axes.find { it.key.id == axe.id }?.value ?: error("Unable to get axe rates")
+            val rates = axes.find { it.key.id == effective.id }?.value
+                ?: error("Unable to get axe rates for ${effective.internalName}")
             val low = rates shr 16
             val high = rates and 0xFFFF
             return low to high

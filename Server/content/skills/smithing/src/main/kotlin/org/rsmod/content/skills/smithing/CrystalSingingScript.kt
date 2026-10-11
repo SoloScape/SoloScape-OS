@@ -171,7 +171,8 @@ class CrystalSingingScript : PluginScript() {
             return
         }
 
-        invAdd(inv, item.output.internalName, 1)
+        invAdd(inv, item.output.internalName, 1,
+            vars = crystalSingingOutputVars(item.output.internalName))
 
         statAdvance("stat.smithing", item.xp.toDouble())
         statAdvance("stat.crafting", item.xp.toDouble())
