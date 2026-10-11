@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import {attachOriginalKeyboard,categorizeOriginalClientError,isOriginalLoginFieldTap} from "../teavm-poc/site/original-mobile-keyboard.mjs";
 
-function fixture(){
+function fixture({getChatKeyboardAction=()=>0}={}){
     const handlers=new Map();
     const events=[];
     let state="LOGIN_SCREEN",focusedKeyboard=0,focusedCanvas=0;
@@ -21,7 +21,7 @@ function fixture(){
     const clickTarget={get activeElement(){return fakeDocument.activeElement;},
         addEventListener(type,fn){handlers.set("document:"+type,fn);}};
     attachOriginalKeyboard({canvas,keyboard,getGameState:()=>state,
-        clickTarget,createKeyEvent:(type,key)=>({type,key})});
+        clickTarget,getChatKeyboardAction,createKeyEvent:(type,key)=>({type,key})});
     const fire=(target,type,event={})=>{
         const fn=handlers.get(target+":"+type);
         assert.ok(fn,"Missing "+target+" "+type+" handler");
@@ -31,6 +31,39 @@ function fixture(){
         activeElement:()=>fakeDocument.activeElement,setState:value=>state=value,
         counts:()=>({focusedKeyboard,focusedCanvas})};
 }
+
+test("native mobile chat keyboard button synchronously opens, relays text and closes",()=>{
+    let action=1;
+    const points=[];
+    const f=fixture({getChatKeyboardAction:(x,y)=>{points.push([x,y]);return action;}});
+    f.setState("LOGGED_IN");
+    f.canvas.width=1093;f.canvas.height=503;
+    f.canvas.getBoundingClientRect=()=>({left:44,top:0,width:756,height:348});
+    const tap=()=>{
+        f.fire("canvas","pointerdown",{pointerType:"touch"});
+        f.fire("document","click",{target:f.canvas,clientX:64,clientY:100});
+    };
+    tap();
+    assert.equal(f.counts().focusedKeyboard,1,"focus occurs inside the same click gesture");
+    assert.deepEqual(points,[[28,144]],"map safe-area CSS pixels to native widget coordinates");
+    f.keyboard.value="hi";f.fire("keyboard","input",{inputType:"insertText"});
+    assert.deepEqual(f.events.map(e=>e.key),["h","h","i","i"]);
+    assert.equal(f.keyboard.value,"");
+    action=2;tap();
+    assert.equal(f.activeElement(),null,"native toggle closes the system keyboard");
+    assert.equal(f.counts().focusedKeyboard,1);
+    action=0;tap();
+    assert.equal(f.counts().focusedKeyboard,1,"other game widgets do not request focus");
+});
+
+test("chat focus uses the button state before Java processes the native click",()=>{
+    let action=1;
+    const f=fixture({getChatKeyboardAction:()=>action});f.setState("LOGGED_IN");
+    f.fire("canvas","pointerdown",{pointerType:"touch",clientX:20,clientY:100});
+    action=2;
+    f.fire("document","click",{target:f.canvas,clientX:20,clientY:100});
+    assert.equal(f.counts().focusedKeyboard,1,"a native toggle before click bubbling must still open keyboard");
+});
 test("iPhone Existing User tap waits for Java click and opens keyboard on next tap",()=>{
     const f=fixture();
     const order=[];

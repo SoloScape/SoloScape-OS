@@ -31,6 +31,7 @@ export function isOriginalLoginFieldTap(canvas,clientX,clientY){
 // No credentials are persisted, logged, submitted by JavaScript, or exposed to
 // the development bridge. Original Java handles login and encryption.
 export function attachOriginalKeyboard({canvas,keyboard,getGameState,
+    getChatKeyboardAction=()=>0,
     clickTarget=globalThis.document,
     createKeyEvent=(type,key)=>new KeyboardEvent(type,{key,bubbles:false,cancelable:true})}){
     if(!canvas||!keyboard||typeof getGameState!=="function")
@@ -74,14 +75,16 @@ export function attachOriginalKeyboard({canvas,keyboard,getGameState,
     // A subsequent tap can focus the ephemeral keyboard for manual entry.
     let loginTitleTouched=false;
     const activate=()=>{
-        if(getGameState()!=="LOGIN_SCREEN"){
+        const state=getGameState();
+        if(state!=="LOGIN_SCREEN"&&state!=="LOGGED_IN"){
             loginTitleTouched=false;
             return;
         }
-        if(!loginTitleTouched){
+        if(state==="LOGIN_SCREEN"&&!loginTitleTouched){
             loginTitleTouched=true;
             return;
         }
+        if(state==="LOGGED_IN")loginTitleTouched=false;
         // Retry even when this input was focused before but iOS never
         // displayed a software keyboard. The call must stay synchronous.
         // Moving DOM focus from the original canvas to the temporary iOS
@@ -96,11 +99,23 @@ export function attachOriginalKeyboard({canvas,keyboard,getGameState,
     // to document after the game's own target listeners, leaving focus on
     // the ephemeral keyboard rather than stealing it back for the canvas.
     // Safari requires focus in a trusted gesture, never a timer or promise.
-    let touchPending=false;
-    canvas.addEventListener("touchstart",()=>{touchPending=true;},{passive:true});
+    let touchPending=false,touchChatAction=null;
+    const chatActionAt=e=>{
+        const rect=canvas.getBoundingClientRect();
+        const x=Math.floor((e.clientX-rect.left)*canvas.width/rect.width);
+        const y=Math.floor((e.clientY-rect.top)*canvas.height/rect.height);
+        return rect.width>0&&rect.height>0&&Number.isFinite(x)&&Number.isFinite(y)?
+            getChatKeyboardAction(x,y):null;
+    };
+    const recordTouch=e=>{
+        touchPending=true;
+        // Capture the native toggle before Java processes this button click.
+        touchChatAction=getGameState()==="LOGGED_IN"?chatActionAt(e):null;
+    };
+    canvas.addEventListener("touchstart",e=>recordTouch(e.touches?.[0]??e),{passive:true});
     canvas.addEventListener("pointerdown",e=>{
-        if(e.pointerType==="touch")touchPending=true;
-        else if(e.pointerType==="mouse")touchPending=false;
+        if(e.pointerType==="touch")recordTouch(e);
+        else if(e.pointerType==="mouse"){touchPending=false;touchChatAction=null;}
     },{passive:true});
     canvas.addEventListener("pointerup",e=>{
         if(e.pointerType==="mouse")canvas.focus({preventScroll:true});
@@ -108,7 +123,15 @@ export function attachOriginalKeyboard({canvas,keyboard,getGameState,
     clickTarget?.addEventListener("click",e=>{
         if(e.target!==canvas||!touchPending)return;
         touchPending=false;
-        if(!isOriginalLoginFieldTap(canvas,e.clientX,e.clientY)){
+        const state=getGameState();
+        if(state==="LOGGED_IN"){
+            const action=touchChatAction??chatActionAt(e);
+            touchChatAction=null;
+            if(action===1){activate();return;}
+            if(clickTarget?.activeElement===keyboard)keyboard.blur();
+            return;
+        }
+        if(state!=="LOGIN_SCREEN"||!isOriginalLoginFieldTap(canvas,e.clientX,e.clientY)){
             // A click on a menu, Existing User, Login, Cancel, or empty
             // canvas is NOT a request to show the system keyboard.
             // The initial title click still arms manual field entry.

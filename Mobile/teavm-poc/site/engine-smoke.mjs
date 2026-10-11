@@ -26,7 +26,8 @@ let engine,clock=0,initialPixelSignature,framePoll,originalResize,
 // An invisible password-type input opens the mobile OS keyboard. The original
 // Java client still renders login fields and handles authentication itself.
 attachOriginalKeyboard({canvas:$("original-engine-canvas"),
-    keyboard:$("original-soft-keyboard"),getGameState:()=>state.gameState});
+    keyboard:$("original-soft-keyboard"),getGameState:()=>state.gameState,
+    getChatKeyboardAction:(x,y)=>engine?.originalChatKeyboardActionAt?.(x,y)??0});
 const pageLifecycle=attachOriginalPageLifecycle({
     canvas:$("original-engine-canvas"),getGameState:()=>state.gameState});
 state.pageRestartedAfterTitleTap=pageLifecycle.restartedAfterTitleTap;

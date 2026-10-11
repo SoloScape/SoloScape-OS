@@ -31,6 +31,14 @@ pauses rotation, cancels the delayed login zoom and suppresses compatibility tap
 until both fingers lift. A new one-finger gesture resumes normal camera swipes.
 Inventory, minimap and chat touches retain their original UI handling.
 
+The mobile `toplevel_osm:chatting_button` (601:48) opens the ephemeral browser
+keyboard inside the same trusted touch click. The Java drawing callback samples
+its live bounds, inherited visibility and original chat keyboard toggle (varc
+1226); the browser receives only an open/close action for that button. Typed
+characters, deletion and Enter use the existing AWT key input path, and the
+temporary input is cleared after committed text. Other game taps dismiss the
+keyboard. Login-field handling remains separate.
+
 The server registers the cache's mobile redirect mappings and handles that
 command using its existing gameframe move queue. It sets the original resizable
 mode and moves the existing overlays into mobile containers. A saved mobile

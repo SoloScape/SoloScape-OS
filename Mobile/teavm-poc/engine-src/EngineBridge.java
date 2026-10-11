@@ -8,6 +8,8 @@ public final class EngineBridge {
     private static boolean initializing;
     private static String initializationState = "not-started", initializationError = "";
     private static String startupStep = "not-started";
+    private static int chatKeyboardX,chatKeyboardY,chatKeyboardWidth,chatKeyboardHeight;
+    private static boolean chatKeyboardOpen;
     @org.teavm.jso.JSFunctor public interface Completion extends org.teavm.jso.JSObject {
         void completed(String error);
     }
@@ -39,6 +41,7 @@ public final class EngineBridge {
         if (!(engine instanceof net.runelite.api.Client)) return;
         net.runelite.api.Client original = (net.runelite.api.Client)engine;
         net.runelite.api.GameState state = original.getGameState();
+        updateOriginalChatKeyboard(original);
         if (OriginalMobileLayout.shouldUseResizable(
             state==net.runelite.api.GameState.LOGIN_SCREEN, original.isResized())) {
             // Original SETWINDOWMODE (5307) target and pinned revision-240 guard.
@@ -51,6 +54,32 @@ public final class EngineBridge {
         // The pinned DOCHEAT opcode 5020 invokes this original method with -41.
         // One fixed UI command per login; no new packet writer or login changes.
         pt.bj("mobileui", (byte)-41);
+    }
+
+    private static void updateOriginalChatKeyboard(net.runelite.api.Client original) {
+        chatKeyboardWidth=0;chatKeyboardHeight=0;
+        if(original.getGameState()!=net.runelite.api.GameState.LOGGED_IN ||
+            original.getTopLevelInterfaceId()!=601) return;
+        // Revision-240 toplevel_osm:chatting_button; sample on the Java drawing thread.
+        net.runelite.api.widgets.Widget button=original.getWidget(601,48);
+        if(button==null||button.isHidden()) return;
+        org.soloscape.teavm.platform.awt.Rectangle bounds=button.getBounds();
+        if(bounds==null||bounds.width<=0||bounds.height<=0) return;
+        chatKeyboardX=bounds.x;chatKeyboardY=bounds.y;
+        chatKeyboardWidth=bounds.width;chatKeyboardHeight=bounds.height;
+        // Original chatbox_open_input (2251) toggles varc 1226 before keyboard_show_string.
+        chatKeyboardOpen=original.getVarcIntValue(1226)==1;
+    }
+
+    /** Safe UI action only: 0 elsewhere, 1 opens and 2 closes the chat keyboard. */
+    @JSExport public static int originalChatKeyboardActionAt(int x,int y) {
+        if(!(engine instanceof net.runelite.api.Client)) return 0;
+        net.runelite.api.Client original=(net.runelite.api.Client)engine;
+        if(original.getGameState()!=net.runelite.api.GameState.LOGGED_IN ||
+            original.getTopLevelInterfaceId()!=601) return 0;
+        if(x<chatKeyboardX||y<chatKeyboardY||x>=(long)chatKeyboardX+chatKeyboardWidth||
+            y>=(long)chatKeyboardY+chatKeyboardHeight) return 0;
+        return chatKeyboardOpen?2:1;
     }
 
     @JSExport public static String clientError() { return configuration.lastError(); }
