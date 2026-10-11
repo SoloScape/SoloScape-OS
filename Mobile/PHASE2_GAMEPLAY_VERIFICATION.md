@@ -154,6 +154,13 @@ typed definitions, truncated input and unknown prefixes. This proves the
 restoration gap, not actual fountain visibility. **Authenticated screenshot
 verification remains pending**, and other missing scenery remains open.
 
+The subsequent [complete scenery decoding audit](SCENERY_AUDIT.md) compared
+all 62,522 original definitions with an isolated TeaVM build. It confirmed
+26,136 remaining empty untyped model lists after the current helper, affecting
+514 source placements in the four Lumbridge-area regions. This is offline
+decoding evidence; authenticated scene construction and visual verification
+remain outstanding.
+
 ## Sustained original-world runtime and memory
 
 A dedicated **20-minute** authenticated sampler started at
