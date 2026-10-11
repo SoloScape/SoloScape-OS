@@ -10,6 +10,7 @@ import {attachOriginalLoginCamera} from "/original-login-camera.mjs";
 import {attachOriginalResizableLayout} from "/original-resizable-layout.mjs";
 import {attachOriginalTouchCamera} from "/original-touch-camera.mjs";
 const $=id=>document.getElementById(id);
+const diagnostics=document.body.dataset.publicGame!=="true";
 function dismissStartupSplash(){
     const splash=$("startup-splash");
     if(splash)splash.hidden=true;
@@ -19,8 +20,9 @@ function showStartupError(message){
     const box=$("startup-error");
     if(box){box.textContent=message;box.hidden=false;}
 }
-const state=window.engineSmokeState={phase:"not-started",step:"not-started",cycles:[],frameChanged:false,canvasSampleColors:0,
+const state={phase:"not-started",step:"not-started",cycles:[],frameChanged:false,canvasSampleColors:0,
     clientThread:false,gameState:"UNAVAILABLE",originalFps:-1,presentedFrames:0,presentedFps:0,cycleRate:0,clockStats:null,loginRsaConfigured:false,callbackTrace:"",socketAttempts:[], resourceLookups:[],filePaths:[],error:"",callbackError:"",events:[]};
+if(diagnostics)window.engineSmokeState=state;
 let engine,clock=0,initialPixelSignature,framePoll,originalResize,
     bootstrapStage="public-config";
 // An invisible password-type input opens the mobile OS keyboard. The original
@@ -29,7 +31,8 @@ attachOriginalKeyboard({canvas:$("original-engine-canvas"),
     keyboard:$("original-soft-keyboard"),getGameState:()=>state.gameState,
     getChatKeyboardAction:(x,y)=>engine?.originalChatKeyboardActionAt?.(x,y)??0});
 const pageLifecycle=attachOriginalPageLifecycle({
-    canvas:$("original-engine-canvas"),getGameState:()=>state.gameState});
+    canvas:$("original-engine-canvas"),getGameState:()=>state.gameState,
+    report:diagnostics?undefined:()=>{}});
 state.pageRestartedAfterTitleTap=pageLifecycle.restartedAfterTitleTap;
 const loginCamera=attachOriginalLoginCamera({
     canvas:$("original-engine-canvas"),getGameState:()=>state.gameState});
@@ -38,9 +41,10 @@ const touchCamera=attachOriginalTouchCamera({
     rotateCamera:(yaw,pitch)=>engine?.rotateOriginalCamera?.(yaw,pitch)??false,
     onZoomGesture:()=>loginCamera.cancelPendingZoom()});
 // Fixed, read-only scene count snapshot for debugging missing original world locs.
-window.engineSmokeSceneCounts=()=>engine?.sceneLocCounts?.()??null;
+if(diagnostics)window.engineSmokeSceneCounts=()=>engine?.sceneLocCounts?.()??null;
 const fpsSamples=[];
 function event(message){
+    if(!diagnostics)return;
     const safe=String(message).slice(0,1000);
     state.events.push(safe);if(state.events.length>25)state.events.shift();
 }

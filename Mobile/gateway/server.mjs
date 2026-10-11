@@ -17,7 +17,8 @@ function forbidden(socket, status, message) {
 }
 
 export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivity = () => {},
-    isAllowedPeer=()=>true }) {
+    isAllowedPeer=()=>true, requestHandler=null, allowedHost=null,
+    maxConnections=Infinity, handshakeTimeoutMs=0 }) {
     if (!tcpHost || !Number.isInteger(tcpPort) || tcpPort < 1 || tcpPort > 65535) {
         throw new Error("A fixed TCP host and valid port are required");
     }
@@ -25,10 +26,10 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
         throw new Error("An explicit origin allowlist is required");
     }
 
-    const handler = (_request, response) => {
+    const handler = requestHandler ?? ((_request, response) => {
         response.writeHead(426, { "Content-Type": "text/plain", "Cache-Control": "no-store" });
         response.end("This endpoint accepts authorised WebSocket game streams only.\n");
-    };
+    });
     const httpServer = tls ? createHttpsServer(tls, handler) : createHttpServer(handler);
     const wss = new WebSocketServer({
         noServer: true,
@@ -41,7 +42,7 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
         let path;
         try { path = new URL(req.url || "/", "http://localhost").pathname; } catch { path = null; }
         const origin = req.headers.origin;
-        if (!isAllowedPeer(socket.remoteAddress)) {
+        if (!isAllowedPeer(socket.remoteAddress) || (allowedHost && req.headers.host !== allowedHost)) {
             forbidden(socket, "403 Forbidden", "Trusted local network required");
             return;
         }
@@ -52,6 +53,9 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
         if (typeof origin !== "string" || !allowedOrigins.has(origin)) {
             forbidden(socket, "403 Forbidden", "Origin not allowed");
             return;
+        }
+        if(wss.clients.size>=maxConnections){
+            forbidden(socket,"503 Service Unavailable","Game gateway full");return;
         }
         wss.handleUpgrade(req, socket, head, (client) => {
             wss.emit("connection", client, req);
@@ -71,6 +75,7 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
         const stop = (code = 1000, reason = "upstream closed") => {
             if (ended) return;
             ended = true;
+            clearTimeout(handshakeTimer);
             // Only a fixed lifecycle reason and WebSocket status are reported.
             // Never inspect or record usernames, packet bytes or credentials.
             onActivity("closed:"+reason,code,session);
@@ -80,6 +85,8 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
             if (ws.readyState === WebSocket.OPEN) ws.close(code, reason);
             else ws.terminate();
         };
+        const handshakeTimer=handshakeTimeoutMs>0?
+            setTimeout(()=>stop(1008,"Handshake timeout"),handshakeTimeoutMs):null;
 
         // Establish TCP only after we see a native OSRS handshake.
         // In particular, TSPS's high-level HELLO (opcode 200) must never reach
@@ -105,6 +112,7 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
                     return;
                 }
                 firstPacketAccepted = true;
+                clearTimeout(handshakeTimer);
                 // Classify only the fixed, public handshake family. Never
                 // report packet bytes, headers beyond this type or credentials.
                 const family=bytes[0]===15?"JS5_CACHE":

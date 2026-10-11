@@ -14,6 +14,7 @@
     "test:engine-services": "node teavm-poc/scripts/verify-platform.mjs --services",
     "test:openosrs-engine": "node teavm-poc/scripts/verify-engine-module.mjs",
     "dev:original-engine": "node scripts/run-original-engine.mjs",
+    "start:public": "node scripts/run-public-original.mjs",
     "dev:original-engine:lan": "node scripts/run-original-lan.mjs",
     "mcp:original-engine": "node dev-bridge/stdio.mjs",
     "dev:desktop-controller": "node dev-bridge/controller-cli.mjs serve",
