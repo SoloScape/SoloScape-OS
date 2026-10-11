@@ -5,8 +5,11 @@ export const CAMERA_HOLD_MS=320;
 export const CAMERA_DRAG_START_PX=12;
 export const CAMERA_YAW_UNITS_PER_PIXEL=4;
 export const CAMERA_PITCH_UNITS_PER_PIXEL=1.75;
+export const CAMERA_PINCH_SCALE_PER_STEP=1.08;
 export function attachOriginalTouchCamera({
     canvas,getGameState,rotateCamera,
+    createWheel=options=>new WheelEvent("wheel",options),
+    onZoomGesture=()=>{},
     page=globalThis,
     schedule=(callback,ms)=>setTimeout(callback,ms),
     cancel=handle=>clearTimeout(handle),
@@ -14,18 +17,22 @@ export function attachOriginalTouchCamera({
 }={}){
     if(!canvas||typeof getGameState!=="function"||typeof rotateCamera!=="function")
         throw new Error("Original camera drag requires the Java client and canvas");
-    let finger=null,hold=null,active=false,swallowUntil=0;
+    let finger=null,pinch=null,remainingId=null,hold=null,active=false,swallowUntil=0;
     const registered=[];
     const listen=(node,type,fn,options)=>{
         node?.addEventListener?.(type,fn,options);
         registered.push([node,type,fn,options]);
     };
     const clearFinger=()=>{
+        if(active||pinch||remainingId!==null)swallowUntil=now()+600;
         if(hold!==null){cancel(hold);hold=null;}
         if(finger){
             try{canvas.releasePointerCapture?.(finger.id);}catch{}
         }
-        finger=null;active=false;
+        if(pinch){
+            try{canvas.releasePointerCapture?.(pinch.id);}catch{}
+        }
+        finger=null;pinch=null;remainingId=null;active=false;
     };
     const validScenePoint=e=>{
         const r=canvas.getBoundingClientRect();
@@ -38,8 +45,20 @@ export function attachOriginalTouchCamera({
         return x<canvas.width-220&&y<canvas.height-160;
     };
     const down=e=>{
-        if(e.pointerType!=="touch"||e.isPrimary===false||
-            getGameState()!=="LOGGED_IN"||finger||!validScenePoint(e))return;
+        if(e.pointerType!=="touch"||getGameState()!=="LOGGED_IN"||
+            remainingId!==null||!validScenePoint(e))return;
+        if(finger){
+            if(pinch||e.pointerId===finger.id)return;
+            if(hold!==null){cancel(hold);hold=null;}
+            active=false;
+            pinch={id:e.pointerId,x:e.clientX,y:e.clientY,
+                distance:Math.hypot(e.clientX-finger.x,e.clientY-finger.y),fraction:0};
+            try{canvas.setPointerCapture?.(pinch.id);}catch{}
+            onZoomGesture();
+            if(e.cancelable)e.preventDefault();
+            return;
+        }
+        if(e.isPrimary===false)return;
         swallowUntil=0;
         finger={id:e.pointerId,startX:e.clientX,startY:e.clientY,
             x:e.clientX,y:e.clientY,yawFraction:0,pitchFraction:0};
@@ -51,8 +70,25 @@ export function attachOriginalTouchCamera({
         // Quick taps must still reach the original native mouse handler.
     };
     const move=e=>{
-        if(!finger||e.pointerId!==finger.id)return;
+        if(!finger||(e.pointerId!==finger.id&&e.pointerId!==pinch?.id))return;
         if(getGameState()!=="LOGGED_IN"){clearFinger();return;}
+        if(pinch){
+            if(e.cancelable)e.preventDefault();
+            const point=e.pointerId===finger.id?finger:pinch;
+            point.x=e.clientX;point.y=e.clientY;
+            const distance=Math.hypot(pinch.x-finger.x,pinch.y-finger.y);
+            if(distance>=8&&pinch.distance>=8){
+                const delta=Math.log(pinch.distance/distance)/Math.log(CAMERA_PINCH_SCALE_PER_STEP)+pinch.fraction;
+                const steps=Math.max(-32,Math.min(32,Math.trunc(delta)));
+                pinch.fraction=delta-Math.trunc(delta);
+                for(let i=0;i<Math.abs(steps);i++)canvas.dispatchEvent(createWheel({
+                    bubbles:true,cancelable:true,deltaY:Math.sign(steps)*120,deltaMode:0,
+                    clientX:finger.startX,clientY:finger.startY
+                }));
+            }
+            pinch.distance=distance;
+            return;
+        }
         if(!active){
             const totalX=e.clientX-finger.startX;
             const totalY=e.clientY-finger.startY;
@@ -73,6 +109,17 @@ export function attachOriginalTouchCamera({
         if(stepYaw||stepPitch)rotateCamera(stepYaw,stepPitch);
     };
     const end=e=>{
+        if(e.pointerId===remainingId){
+            remainingId=null;swallowUntil=now()+600;
+            if(e.cancelable)e.preventDefault();
+            return;
+        }
+        if(pinch&&(e.pointerId===pinch.id||e.pointerId===finger.id)){
+            const other=e.pointerId===pinch.id?finger.id:pinch.id;
+            clearFinger();remainingId=other;swallowUntil=now()+600;
+            if(e.cancelable)e.preventDefault();
+            return;
+        }
         if(!finger||e.pointerId!==finger.id)return;
         if(active){
             swallowUntil=now()+600;
@@ -81,7 +128,7 @@ export function attachOriginalTouchCamera({
         clearFinger();
     };
     const suppressCompatibility=e=>{
-        if(active||now()<swallowUntil){
+        if(active||pinch||remainingId!==null||now()<swallowUntil){
             if(e.cancelable)e.preventDefault();
             e.stopImmediatePropagation?.();
         }
@@ -92,7 +139,7 @@ export function attachOriginalTouchCamera({
         if(active)e.stopImmediatePropagation?.();
     };
     const selection=e=>{if(e.cancelable)e.preventDefault();};
-    listen(canvas,"pointerdown",down,{capture:true,passive:true});
+    listen(canvas,"pointerdown",down,{capture:true,passive:false});
     listen(canvas,"pointermove",move,{capture:true,passive:false});
     listen(page,"pointerup",end,{capture:true,passive:false});
     listen(page,"pointercancel",end,{capture:true,passive:false});
@@ -102,6 +149,7 @@ export function attachOriginalTouchCamera({
     listen(canvas,"selectstart",selection,{capture:true,passive:false});
     listen(page,"blur",clearFinger);
     listen(page,"pagehide",clearFinger);
+    listen(page,"resize",clearFinger);
     return {
         update:()=>{if(getGameState()!=="LOGGED_IN")clearFinger();},
         dispose:()=>{

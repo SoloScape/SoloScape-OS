@@ -12,13 +12,11 @@ export function attachOriginalLoginCamera({
     if(!canvas||typeof getGameState!=="function")
         throw new Error("Original login camera requires the original canvas and state");
     let previous="UNAVAILABLE",pending=null,manualZoom=false,applied=0;
-    const onWheel=event=>{
-        if(event.isTrusted&&pending!==null){
-            manualZoom=true;
-            cancel(pending);
-            pending=null;
-        }
+    const cancelPendingZoom=()=>{
+        manualZoom=true;
+        if(pending!==null){cancel(pending);pending=null;}
     };
+    const onWheel=event=>{if(event.isTrusted)cancelPendingZoom();};
     canvas.addEventListener("wheel",onWheel,{passive:true});
     function observe(state){
         if(state===previous)return;
@@ -52,5 +50,5 @@ export function attachOriginalLoginCamera({
         if(pending!==null){cancel(pending);pending=null;}
         canvas.removeEventListener("wheel",onWheel);
     }
-    return {observe,dispose,get applied(){return applied;}};
+    return {observe,dispose,cancelPendingZoom,get applied(){return applied;}};
 }

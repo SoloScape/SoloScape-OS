@@ -8,11 +8,12 @@ import {spawnSync} from "node:child_process";
 import {findTeaVmJdk} from "../scripts/build-teavm.mjs";
 import {
  attachOriginalTouchCamera,CAMERA_HOLD_MS,CAMERA_DRAG_START_PX,
- CAMERA_YAW_UNITS_PER_PIXEL,CAMERA_PITCH_UNITS_PER_PIXEL
+ CAMERA_YAW_UNITS_PER_PIXEL,CAMERA_PITCH_UNITS_PER_PIXEL,CAMERA_PINCH_SCALE_PER_STEP
 } from "../teavm-poc/site/original-touch-camera.mjs";
 
 function fixture({state="LOGGED_IN",resized=false,allowRotation=true}={}){
-    const handlers=new Map(),timers=new Map(),turns=[],captures=[];
+    const handlers=new Map(),timers=new Map(),turns=[],captures=[],wheels=[];
+    let zoomGestures=0;
     let stamp=10000,serial=0,mode=state;
     const r={left:0,top:0,width:resized?920:765,height:resized?720:503};
     const canvas={
@@ -21,7 +22,12 @@ function fixture({state="LOGGED_IN",resized=false,allowRotation=true}={}){
         addEventListener(type,fn){const a=handlers.get("canvas:"+type)??[];a.push(fn);handlers.set("canvas:"+type,a);},
         removeEventListener(type,fn){handlers.set("canvas:"+type,(handlers.get("canvas:"+type)??[]).filter(f=>f!==fn));},
         setPointerCapture:id=>captures.push(["start",id]),
-        releasePointerCapture:id=>captures.push(["end",id])
+        releasePointerCapture:id=>captures.push(["end",id]),
+        dispatchEvent:event=>{
+            wheels.push(event);
+            for(const fn of handlers.get("canvas:"+event.type)??[])fn(event);
+            return true;
+        }
     };
     const page={
         addEventListener(type,fn){const a=handlers.get("page:"+type)??[];a.push(fn);handlers.set("page:"+type,a);},
@@ -29,6 +35,8 @@ function fixture({state="LOGGED_IN",resized=false,allowRotation=true}={}){
     };
     const camera=attachOriginalTouchCamera({
         canvas,page,getGameState:()=>mode,rotateCamera:(yaw,pitch)=>{turns.push([yaw,pitch]);return allowRotation;},
+        createWheel:options=>({type:"wheel",button:0,key:"",keyCode:0,preventDefault(){},...options}),
+        onZoomGesture:()=>zoomGestures++,
         schedule:(fn,ms)=>{const id=++serial;timers.set(id,{fn,ms});return id;},
         cancel:id=>timers.delete(id),now:()=>stamp
     });
@@ -50,10 +58,97 @@ function fixture({state="LOGGED_IN",resized=false,allowRotation=true}={}){
             timers.delete(id);fn();
         }
     };
-    return {camera,turns,captures,handlers,timers,fire,tick,
+    return {camera,canvas,turns,captures,handlers,timers,fire,tick,wheels,get zoomGestures(){return zoomGestures;},
         setState:s=>mode=s,advance:ms=>stamp+=ms};
 }
 const sum=turns=>turns.reduce((tot,[x,y])=>[tot[0]+x,tot[1]+y],[0,0]);
+
+function startPinch(f){
+    f.fire("canvas","pointerdown",{clientX:150,clientY:150});
+    f.fire("canvas","pointerdown",{pointerId:2,isPrimary:false,clientX:250,clientY:150});
+}
+
+test("spreading fingers zooms in and closing them zooms out through original wheel input",()=>{
+    const f=fixture();startPinch(f);
+    assert.equal(f.timers.size,0,"pinch cancels pending rotation hold");
+    assert.equal(f.zoomGestures,1);
+    const spread=f.fire("canvas","pointermove",{pointerId:2,clientX:350,clientY:150});
+    assert.equal(spread.prevented,true);
+    assert.equal(f.wheels.length,9);
+    assert.ok(f.wheels.every(e=>e.type==="wheel"&&e.deltaY===-120&&e.bubbles&&e.clientX===150&&e.clientY===150));
+    f.wheels.length=0;
+    f.fire("canvas","pointermove",{pointerId:2,clientX:250,clientY:150});
+    assert.equal(f.wheels.length,9);
+    assert.ok(f.wheels.every(e=>e.deltaY===120));
+    assert.deepEqual(f.turns,[],"pinch does not rotate the camera");
+});
+
+test("pinch scale is independent of event frequency and preserves sub-step movement",()=>{
+    const fast=fixture(),slow=fixture();startPinch(fast);startPinch(slow);
+    const factor=CAMERA_PINCH_SCALE_PER_STEP**9.5;
+    fast.fire("canvas","pointermove",{pointerId:2,clientX:150+100*factor});
+    for(let i=1;i<=50;i++)slow.fire("canvas","pointermove",{
+        pointerId:2,clientX:150+100*factor**(i/50)
+    });
+    assert.equal(fast.wheels.length,9);
+    assert.equal(slow.wheels.length,fast.wheels.length);
+});
+
+test("lifting either pinch finger blocks rotation and ghost clicks until both fingers lift",()=>{
+    for(const lifted of [1,2]){
+        const f=fixture();startPinch(f);
+        f.fire("page","pointerup",{pointerId:lifted});
+        f.advance(1000);
+        const other=lifted===1?2:1;
+        f.fire("canvas","pointermove",{pointerId:other,clientX:400});
+        assert.deepEqual(f.turns,[]);
+        assert.equal(f.fire("canvas","click").stopped,true);
+        f.fire("page","pointerup",{pointerId:other});
+        assert.equal(f.fire("canvas","click").stopped,true);
+        f.advance(601);
+        assert.equal(f.fire("canvas","click").stopped,false);
+        f.fire("canvas","pointerdown");
+        f.fire("canvas","pointermove",{clientX:200});
+        assert.deepEqual(f.turns,[[-200,0]],"next swipe works normally");
+    }
+});
+
+test("pinch respects scene boundaries, logout and cancellation",()=>{
+    const ui=fixture();ui.fire("canvas","pointerdown");
+    ui.fire("canvas","pointerdown",{pointerId:2,isPrimary:false,clientX:700});
+    ui.fire("canvas","pointermove",{pointerId:2,clientX:300});
+    assert.equal(ui.wheels.length,0);
+    for(const action of [f=>{f.setState("LOGIN_SCREEN");f.camera.update();},
+        f=>f.fire("page","blur"),f=>f.fire("page","resize"),
+        f=>f.fire("page","pointercancel",{pointerId:2}),f=>f.camera.dispose()]){
+        const f=fixture();startPinch(f);action(f);
+        f.fire("canvas","pointermove",{pointerId:2,clientX:400});
+        assert.equal(f.wheels.length,0);
+        assert.deepEqual(f.turns,[]);
+    }
+});
+
+test("pinch reaches the production Java AWT wheel boundary with native zoom direction",async()=>{
+    const {runInNewContext}=await import("node:vm");
+    const src=await readFile(new URL("../teavm-poc/engine-src/org/soloscape/teavm/platform/awt/NativeCanvas.java",import.meta.url),"utf8");
+    const script=/@JSBody\(params=\{"canvas","handler"\},script="([^"]*)"\)/.exec(src)?.[1];
+    assert.ok(script);
+    const f=fixture(),sent=[];
+    const browser={canvas:f.canvas,handler:(...args)=>{sent.push(args);return false;},
+        document:{getElementById:()=>null}};
+    browser.globalThis=browser;
+    runInNewContext(script,browser);
+    startPinch(f);
+    f.fire("canvas","pointermove",{pointerId:2,clientX:350});
+    assert.equal(sent.length,9);
+    assert.ok(sent.every(packet=>packet[0]===507&&packet[8]===-1));
+    sent.length=0;
+    f.fire("canvas","pointermove",{pointerId:2,clientX:250});
+    assert.equal(sent.length,9);
+    assert.ok(sent.every(packet=>packet[0]===507&&packet[8]===1));
+    assert.deepEqual(f.turns,[]);
+    f.camera.dispose();
+});
 
 test("quick tap and tiny drift preserve original Java walking and menus",()=>{
     const f=fixture();

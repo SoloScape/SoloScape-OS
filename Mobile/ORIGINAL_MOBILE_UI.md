@@ -24,6 +24,13 @@ The desktop retains `orbs` (160) and `orbs_nomap` (895). No Java widget-position
 override is applied. Gameframe moves, minimap toggles and cinematic reopen paths
 preserve the appropriate variant; both mobile world-map buttons use the existing handler.
 
+Two fingers started over the game scene control camera zoom. Spreading them
+zooms in; bringing them together zooms out. Relative finger distance feeds the
+original Java AWT wheel path, with its existing zoom settings and limits. Pinch
+pauses rotation, cancels the delayed login zoom and suppresses compatibility taps
+until both fingers lift. A new one-finger gesture resumes normal camera swipes.
+Inventory, minimap and chat touches retain their original UI handling.
+
 The server registers the cache's mobile redirect mappings and handles that
 command using its existing gameframe move queue. It sets the original resizable
 mode and moves the existing overlays into mobile containers. A saved mobile

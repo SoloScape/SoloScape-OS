@@ -68,6 +68,13 @@ test("a stale timer never adjusts camera after logout",()=>{
     f.observe("CONNECTION_LOST");f.advance();
     assert.equal(f.fired.length,0);
 });
+
+test("manual pinch cancels delayed login zoom so it cannot override the gesture",()=>{
+    const f=fixture();f.observe("LOGGED_IN");
+    f.bridge.cancelPendingZoom();f.advance();
+    assert.equal(f.fired.length,0);
+    assert.equal(f.timers.size,0);
+});
 test("original engine only observes game state and calls the existing canvas input path",async()=>{
     const page=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
     const module=await readFile(new URL("../teavm-poc/site/original-login-camera.mjs",import.meta.url),"utf8");
