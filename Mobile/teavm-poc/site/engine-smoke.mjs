@@ -11,6 +11,13 @@ import {attachOriginalResizableLayout} from "/original-resizable-layout.mjs";
 import {attachOriginalTouchCamera} from "/original-touch-camera.mjs";
 const $=id=>document.getElementById(id);
 const diagnostics=document.body.dataset.publicGame!=="true";
+// Pixel sampling is a development proof, not part of rendering. Do not
+// request GPU-to-CPU canvas readbacks on iPhone/LAN player sessions: even one
+// willReadFrequently context acquired before the first game draw can lock
+// the original presentation canvas into a software-backed path. Keep the
+// exact colour/frame proof on localhost for isolated headless Chrome tests.
+const pixelAudit=diagnostics&&
+    (window.location.hostname==="127.0.0.1"||window.location.hostname==="localhost");
 function dismissStartupSplash(){
     const splash=$("startup-splash");
     if(splash)splash.hidden=true;
@@ -115,7 +122,7 @@ function collect(){
         }
         // A real original frame is a one-time condition. Once confirmed,
         // stop repeated canvas readbacks on memory-constrained iOS WebKit.
-        if(!state.frameChanged){
+        if(pixelAudit&&!state.frameChanged){
             const current=signature();
             state.canvasSampleColors=current?.colors??0;
             if(current&&initialPixelSignature&&current.hash!==initialPixelSignature.hash)
@@ -228,7 +235,7 @@ async function initializeOriginalEngine(){
             event("Original title-only smoke: local login RSA not configured");
         }else throw new Error("SoloScape public login key unavailable");
         bootstrapStage="engine-start";
-        initialPixelSignature=signature();
+        if(pixelAudit)initialPixelSignature=signature();
         event("Original engine initializeAsync invoked");
         framePoll=setInterval(collect,500);
         // A stalled client thread may never invoke initializeAsync's completion

@@ -12,8 +12,9 @@ export function categorizeOriginalClientError(value){
 }
 
 // Only the original revision-240 login text fields may request the mobile
-// keyboard. These rectangles follow the source title's 765x503 coordinates;
-// map browser clicks through the same displayed-canvas bounds as NativeCanvas.
+// keyboard. Title boxes are anchored to the original 765-wide title region,
+// centred horizontally when the real Java canvas is wider than 765 pixels.
+// Map browser clicks through the same canvas bounds as NativeCanvas.
 // The username baseline is y=253; the password baseline is y=268.
 export function isOriginalLoginFieldTap(canvas,clientX,clientY){
     if(!Number.isFinite(clientX)||!Number.isFinite(clientY))return false;
@@ -21,8 +22,10 @@ export function isOriginalLoginFieldTap(canvas,clientX,clientY){
     if(!(rect.width>0&&rect.height>0))return false;
     const x=(clientX-rect.left)*canvas.width/rect.width;
     const y=(clientY-rect.top)*canvas.height/rect.height;
-    return (x>=305&&x<=507&&y>=239&&y<255)||
-        (x>=327&&x<=507&&y>=255&&y<=273);
+    const titleX=(canvas.width-765)/2;
+    const loginX=x-titleX;
+    return (loginX>=305&&loginX<=507&&y>=239&&y<255)||
+        (loginX>=327&&loginX<=507&&y>=255&&y<=273);
 }
 
 // Mobile OS keyboard access for the original Java game canvas.

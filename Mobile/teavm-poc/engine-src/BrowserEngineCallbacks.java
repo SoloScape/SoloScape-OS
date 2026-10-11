@@ -45,7 +45,8 @@ public final class BrowserEngineCallbacks implements Callbacks {
         // only the initial AWT loading bar even after LOGIN_SCREEN begins.
         // Use the original buffer pixels, not a synthetic title renderer.
         if (graphics != null && buffer != null && buffer.getImage() != null) {
-            graphics.drawImage(buffer.getImage(), x, y, null);
+            if (!graphics.presentFramebuffer(buffer.getImage(), x, y))
+                graphics.drawImage(buffer.getImage(), x, y, null);
             framesPresented++;
         }
     }

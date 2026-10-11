@@ -55,10 +55,12 @@ test("old markers expire and iOS private browsing storage denials do not block i
  const f=fixture(denied);f.fire("pointerdown");
  assert.deepEqual(f.signals,["PAGE_STARTED","TITLE_RIGHT_TAP"]);
 });
-test("original engine samples frames only until changed pixels are confirmed",async()=>{
+test("original engine samples frame pixels only in the localhost diagnostic harness",async()=>{
  const {readFile}=await import("node:fs/promises");
  const source=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
  assert.match(source,/attachOriginalPageLifecycle\(/);
- assert.match(source,/if\(!state\.frameChanged\)\{/);
+ assert.match(source,/const pixelAudit=diagnostics&&/);
+ assert.match(source,/if\(pixelAudit&&!state\.frameChanged\)\{/);
+ assert.match(source,/if\(pixelAudit\)initialPixelSignature=signature\(\)/);
  assert.match(source,/pageRestartedAfterTitleTap/);
 });

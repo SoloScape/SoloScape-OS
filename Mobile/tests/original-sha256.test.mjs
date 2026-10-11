@@ -22,6 +22,32 @@ test("HTTP LAN SHA-256 fallback matches standard hash vectors and padding bounda
     assert.throws(()=>sha256("secret"),/requires at most/);
 });
 
+test("public hashcash prefix reuse yields identical SHA-256 for changing nonces and salts",()=>{
+    const encoder=new TextEncoder();
+    for(const salt of ["a".repeat(990),"f".repeat(990),"b".repeat(1020)]){
+        for(const nonce of [0,1,14,15,16,255,256,4095,65535,0x1000000]){
+            const challenge=encoder.encode("18"+salt+nonce.toString(16));
+            assert.equal(hex(sha256(challenge)),expected(challenge),
+                "SHA-256 challenge should match Node for nonce "+nonce);
+        }
+    }
+    // A different prefix at the same length must never reuse the old state.
+    for(const prefix of ["c".repeat(990),"d".repeat(990)]){
+        const input=encoder.encode("18"+prefix+"abcdef");
+        assert.equal(hex(sha256(input)),expected(input));
+    }
+    const short=encoder.encode("credential-free-short-vector");
+    assert.equal(hex(sha256(short)),expected(short));
+});
+test("long binary and SHA-256 padding-boundary inputs remain correct across prefix changes",()=>{
+    for(const size of [899,900,959,960,1023,1024,1025,1199,1200,1201]){
+        for(let pass=0;pass<3;pass++){
+            const bytes=Uint8Array.from({length:size},(_,i)=>(i*31+pass*17)&255);
+            assert.equal(hex(sha256(bytes)),expected(bytes),"size "+size+" pass "+pass);
+        }
+    }
+});
+
 const source=await readFile(new URL("../teavm-poc/engine-src/org/soloscape/teavm/platform/BrowserDigest.java",import.meta.url),"utf8");
 const script=/@JSBody\(params=\{"algorithm","bytes","done"\},script="([^"]*)"\)/.exec(source)?.[1];
 assert.ok(script,"BrowserDigest SHA-256 adapter must be compiled into original gamepack");

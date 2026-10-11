@@ -50,13 +50,14 @@ function gatewayActivity(type,code,session){
     if(type==="connected"){
         current={id:session,openedAt:new Date().toISOString(),clientFrames:0,
             serverFrames:0,connectionType:"UNCLASSIFIED",gameInitStatus:null,
-            gameLoginStatus:null,closedBy:null,closeCode:null};
+            gameLoginStatus:null,gamePostChallengeStatus:null,closedBy:null,closeCode:null};
         recentSessions.push(current);
         if(recentSessions.length>30)recentSessions.shift();
     }else if(current){
         if(type==="handshake")current.connectionType=code;
         else if(type==="gameInitStatus")current.gameInitStatus=code;
         else if(type==="gameLoginStatus")current.gameLoginStatus=code;
+        else if(type==="gamePostChallengeStatus")current.gamePostChallengeStatus=code;
         else if(type==="upstreamBytes")current.clientFrames++;
         else if(type==="downstreamBytes")current.serverFrames++;
         else if(type.startsWith("closed:")){

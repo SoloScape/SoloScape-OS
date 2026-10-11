@@ -12,9 +12,9 @@ import {
 } from "../teavm-poc/site/original-touch-camera.mjs";
 
 function fixture({state="LOGGED_IN",resized=false,allowRotation=true}={}){
-    const handlers=new Map(),timers=new Map(),turns=[],captures=[],wheels=[];
+    const handlers=new Map(),timers=new Map(),frames=new Map(),turns=[],captures=[],wheels=[];
     let zoomGestures=0;
-    let stamp=10000,serial=0,mode=state;
+    let stamp=10000,serial=0,frameSerial=0,mode=state;
     const r={left:0,top:0,width:resized?920:765,height:resized?720:503};
     const canvas={
         width:r.width,height:r.height,
@@ -38,7 +38,10 @@ function fixture({state="LOGGED_IN",resized=false,allowRotation=true}={}){
         createWheel:options=>({type:"wheel",button:0,key:"",keyCode:0,preventDefault(){},...options}),
         onZoomGesture:()=>zoomGestures++,
         schedule:(fn,ms)=>{const id=++serial;timers.set(id,{fn,ms});return id;},
-        cancel:id=>timers.delete(id),now:()=>stamp
+        cancel:id=>timers.delete(id),
+        scheduleFrame:fn=>{const id=++frameSerial;frames.set(id,fn);return id;},
+        cancelFrame:id=>frames.delete(id),
+        now:()=>stamp
     });
     const fire=(where,type,values={})=>{
         const event={
@@ -58,7 +61,11 @@ function fixture({state="LOGGED_IN",resized=false,allowRotation=true}={}){
             timers.delete(id);fn();
         }
     };
-    return {camera,canvas,turns,captures,handlers,timers,fire,tick,wheels,get zoomGestures(){return zoomGestures;},
+    const flushFrame=()=>{
+        const batch=[...frames.values()];frames.clear();
+        for(const fn of batch)fn();
+    };
+    return {camera,canvas,turns,captures,handlers,timers,frames,fire,tick,flushFrame,wheels,get zoomGestures(){return zoomGestures;},
         setState:s=>mode=s,advance:ms=>stamp+=ms};
 }
 const sum=turns=>turns.reduce((tot,[x,y])=>[tot[0]+x,tot[1]+y],[0,0]);
@@ -74,10 +81,12 @@ test("spreading fingers zooms in and closing them zooms out through original whe
     assert.equal(f.zoomGestures,1);
     const spread=f.fire("canvas","pointermove",{pointerId:2,clientX:350,clientY:150});
     assert.equal(spread.prevented,true);
+    f.flushFrame();
     assert.equal(f.wheels.length,9);
-    assert.ok(f.wheels.every(e=>e.type==="wheel"&&e.deltaY===-120&&e.bubbles&&e.clientX===150&&e.clientY===150));
+    assert.ok(f.wheels.every(e=>e.type==="wheel"&&e.deltaY===-120&&e.bubbles&&e.clientX===250&&e.clientY===150));
     f.wheels.length=0;
     f.fire("canvas","pointermove",{pointerId:2,clientX:250,clientY:150});
+    f.flushFrame();
     assert.equal(f.wheels.length,9);
     assert.ok(f.wheels.every(e=>e.deltaY===120));
     assert.deepEqual(f.turns,[],"pinch does not rotate the camera");
@@ -90,6 +99,7 @@ test("pinch scale is independent of event frequency and preserves sub-step movem
     for(let i=1;i<=50;i++)slow.fire("canvas","pointermove",{
         pointerId:2,clientX:150+100*factor**(i/50)
     });
+    fast.flushFrame();slow.flushFrame();
     assert.equal(fast.wheels.length,9);
     assert.equal(slow.wheels.length,fast.wheels.length);
 });
@@ -117,7 +127,13 @@ test("pinch respects scene boundaries, logout and cancellation",()=>{
     const ui=fixture();ui.fire("canvas","pointerdown");
     ui.fire("canvas","pointerdown",{pointerId:2,isPrimary:false,clientX:700});
     ui.fire("canvas","pointermove",{pointerId:2,clientX:300});
-    assert.equal(ui.wheels.length,0);
+    ui.flushFrame();
+    assert.ok(ui.wheels.length>0,"second contact over inventory still zooms");
+    const blocked=fixture();blocked.fire("canvas","pointerdown",{clientX:700});
+    blocked.fire("canvas","pointerdown",{pointerId:2,isPrimary:false,clientX:150});
+    blocked.fire("canvas","pointermove",{pointerId:2,clientX:300});
+    blocked.flushFrame();
+    assert.equal(blocked.wheels.length,0,"initial UI touch must not steal UI interaction");
     for(const action of [f=>{f.setState("LOGIN_SCREEN");f.camera.update();},
         f=>f.fire("page","blur"),f=>f.fire("page","resize"),
         f=>f.fire("page","pointercancel",{pointerId:2}),f=>f.camera.dispose()]){
@@ -140,16 +156,63 @@ test("pinch reaches the production Java AWT wheel boundary with native zoom dire
     runInNewContext(script,browser);
     startPinch(f);
     f.fire("canvas","pointermove",{pointerId:2,clientX:350});
+    f.flushFrame();
     assert.equal(sent.length,9);
     assert.ok(sent.every(packet=>packet[0]===507&&packet[8]===-1));
     sent.length=0;
     f.fire("canvas","pointermove",{pointerId:2,clientX:250});
+    f.flushFrame();
     assert.equal(sent.length,9);
     assert.ok(sent.every(packet=>packet[0]===507&&packet[8]===1));
     assert.deepEqual(f.turns,[]);
     f.camera.dispose();
 });
 
+test("two fingers translating together in one display frame do not zoom or rotate",()=>{
+    const f=fixture();startPinch(f);
+    f.fire("canvas","pointermove",{pointerId:1,clientX:210,clientY:220});
+    f.fire("canvas","pointermove",{pointerId:2,clientX:310,clientY:220});
+    assert.equal(f.frames.size,1,"coalesce both pointer updates into one frame");
+    f.flushFrame();
+    assert.equal(f.wheels.length,0,"unchanged pinch distance must not generate wheel steps");
+    assert.deepEqual(f.turns,[]);
+});
+test("page-level tracking works after pointer capture is lost and ignores duplicate moves",()=>{
+    const f=fixture();f.fire("canvas","pointerdown");
+    const event=f.fire("page","pointermove",{clientX:210,clientY:190});
+    for(const fn of f.handlers.get("canvas:pointermove")??[])fn(event);
+    assert.deepEqual(f.turns,[[-240,70]]);
+    f.fire("page","pointerup");
+    assert.deepEqual(f.captures,[[ "start",1 ],[ "end",1 ]]);
+    const zoom=fixture();startPinch(zoom);
+    zoom.fire("page","pointermove",{pointerId:2,clientX:350});
+    zoom.flushFrame();
+    assert.equal(zoom.wheels.length,9,"window movement still zooms even without canvas capture");
+});
+test("a pinch can begin with the second finger outside the original scene",()=>{
+    const f=fixture();f.fire("canvas","pointerdown");
+    f.fire("page","pointerdown",{pointerId:2,isPrimary:false,clientX:850,clientY:550});
+    assert.equal(f.zoomGestures,1);
+    f.fire("page","pointermove",{pointerId:2,clientX:650,clientY:550});
+    f.flushFrame();
+    assert.ok(f.wheels.length>0);
+});
+test("pinch finishing before the next frame applies its final distance once",()=>{
+    const f=fixture();startPinch(f);
+    f.fire("canvas","pointermove",{pointerId:2,clientX:350});
+    assert.equal(f.wheels.length,0);
+    f.fire("page","pointerup",{pointerId:2});
+    assert.equal(f.wheels.length,9);
+    f.flushFrame();
+    assert.equal(f.wheels.length,9,"cancelled frame must not replay pinch");
+});
+test("a new primary finger recovers from a missing surviving pointerup",()=>{
+    const f=fixture();startPinch(f);
+    f.fire("page","pointercancel",{pointerId:2});
+    f.fire("canvas","pointerdown",{pointerId:3,isPrimary:true,clientX:150});
+    f.fire("page","pointermove",{pointerId:3,clientX:200});
+    assert.deepEqual(f.turns,[[-200,0]]);
+});
 test("quick tap and tiny drift preserve original Java walking and menus",()=>{
     const f=fixture();
     const down=f.fire("canvas","pointerdown");

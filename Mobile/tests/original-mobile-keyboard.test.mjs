@@ -246,6 +246,21 @@ test("only actual original login field rectangles are keyboard focus targets",()
         left:122,top:0,width:700,height:700*503/765
     })},122+374*700/765,248*700/765),true,
         "landscape letterboxing should not shift the field hitbox");
+    // In native resizable landscape the title is centred horizontally
+    // inside a wider original Java canvas; the mobile keyboard follows it.
+    const landscapeWidth=1093,offset=(landscapeWidth-765)/2;
+    const wide={width:landscapeWidth,height:503,
+        getBoundingClientRect:()=>({left:0,top:0,width:landscapeWidth,height:503})};
+    assert.equal(isOriginalLoginFieldTap(wide,374+offset,248),true,
+        "native fullscreen landscape username field retains keyboard focus");
+    assert.equal(isOriginalLoginFieldTap(wide,374+offset,263),true,
+        "native fullscreen landscape password field retains keyboard focus");
+    assert.equal(isOriginalLoginFieldTap(wide,374,248),false,
+        "do not use obsolete fixed-screen hitboxes in landscape");
+    const tall={width:765,height:1656,
+        getBoundingClientRect:()=>({left:0,top:0,width:390,height:844})};
+    assert.equal(isOriginalLoginFieldTap(tall,374*390/765,248*844/1656),true,
+        "portrait fullscreen native framebuffer maps title input proportionally");
     assert.equal(isOriginalLoginFieldTap({...canvas,getBoundingClientRect:()=>({
         left:0,top:0,width:0,height:0
     })},374,248),false,"invalid layout must never request keyboard focus");

@@ -43,9 +43,12 @@ public final class EngineBridge {
         net.runelite.api.GameState state = original.getGameState();
         updateOriginalChatKeyboard(original);
         if (OriginalMobileLayout.shouldUseResizable(
-            state==net.runelite.api.GameState.LOGIN_SCREEN, original.isResized())) {
+            state==net.runelite.api.GameState.LOGIN_SCREEN,
+            state==net.runelite.api.GameState.LOGGED_IN,
+            original.isResized())) {
             // Original SETWINDOWMODE (5307) target and pinned revision-240 guard.
-            // Apply before login so the original login reports resizable dimensions.
+            // Apply before login, and reassert it if in-game settings reset
+            // the original window-mode flag while mobile UI remains active.
             uo.bh(2, -2061563598);
         }
         if (!OriginalMobileLayout.shouldRequest(
@@ -374,7 +377,9 @@ public final class EngineBridge {
     @JSExport public static boolean resizeOriginalViewport(int width,int height) {
         if (!(engine instanceof net.runelite.api.Client)) return false;
         net.runelite.api.Client original=(net.runelite.api.Client)engine;
-        if (original.getGameState()!=net.runelite.api.GameState.LOGGED_IN)
+        net.runelite.api.GameState state=original.getGameState();
+        if (state!=net.runelite.api.GameState.LOGIN_SCREEN &&
+            state!=net.runelite.api.GameState.LOGGED_IN)
             return false;
         if (width<765||height<503||width>2048||height>2048)
             return false;

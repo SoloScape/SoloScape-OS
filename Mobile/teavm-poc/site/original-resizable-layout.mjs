@@ -10,9 +10,13 @@ export function originalViewportSize(width,height){
     return w<=2048&&h<=2048?{width:w,height:h}:null;
 }
 
+// Allow a brief original window-mode transition without collapsing a
+// touch-screen gameframe. Intentional Fixed mode remains available afterward.
+export const ORIGINAL_RESIZE_TRANSITION_MS=1500;
 export function attachOriginalResizableLayout({
     canvas,body,engine,getGameState,
     viewport=()=>canvas.getBoundingClientRect(),
+    now=()=>Date.now(),
     addResize=handler=>{
         globalThis.addEventListener("resize",handler);
         globalThis.visualViewport?.addEventListener("resize",handler);
@@ -24,10 +28,32 @@ export function attachOriginalResizableLayout({
 }={}){
     if(!canvas||!body||!engine||typeof getGameState!=="function")
         throw new Error("Original resizable layout needs the original engine and canvas");
-    let resized=false,lastWidth=0,lastHeight=0;
+    let resized=false,lastWidth=0,lastHeight=0,fixedSince=null;
     const apply=()=>{
-        const active=getGameState()==="LOGGED_IN"&&engine.isResizableMode();
+        const gameState=getGameState();
+        // Login/challenge, authenticator, region loading and world hopping are
+        // not fixed-size screens. Keep the last native viewport and CSS mode
+        // while the Java client passes through these temporary states. In
+        // particular, LOGGING_IN must not undo the fullscreen LOGIN_SCREEN.
+        const transitioning=gameState==="LOGGING_IN"||
+            gameState==="LOGIN_SCREEN_AUTHENTICATOR"||
+            gameState==="LOADING"||gameState==="HOPPING";
+        if(transitioning){
+            fixedSince=null;
+            if(resized)body.classList.add("original-resizable");
+            return;
+        }
+        // Use the same native resizable viewport for the authentic Java title
+        // and login screen as the logged-in mobile game. Do not scale a fixed
+        // 765x503 picture to a different aspect ratio.
+        const gameVisible=gameState==="LOGIN_SCREEN"||gameState==="LOGGED_IN";
+        const active=gameVisible&&engine.isResizableMode();
         if(!active){
+            if(resized&&gameVisible){
+                if(fixedSince===null)fixedSince=now();
+                if(now()-fixedSince<ORIGINAL_RESIZE_TRANSITION_MS)return;
+            }
+            fixedSince=null;
             if(resized){
                 resized=false;
                 lastWidth=0;lastHeight=0;
@@ -37,6 +63,7 @@ export function attachOriginalResizableLayout({
             }
             return;
         }
+        fixedSince=null;
         body.classList.add("original-resizable");
         const v=viewport(),size=originalViewportSize(v.width,v.height);
         if(!size){
@@ -44,7 +71,13 @@ export function attachOriginalResizableLayout({
             return;
         }
         const {width,height}=size;
-        if(resized&&width===lastWidth&&height===lastHeight)return;
+        // Settings may recreate/reduce the Java canvas without changing the
+        // browser viewport; always repair that mismatch instead of trusting
+        // the last dimensions we asked for.
+        const physicalCanvasKnown=Number.isInteger(canvas.width)&&Number.isInteger(canvas.height);
+        const dimensionsMatch=!physicalCanvasKnown||
+            (canvas.width===width&&canvas.height===height);
+        if(resized&&width===lastWidth&&height===lastHeight&&dimensionsMatch)return;
         if(!engine.resizeOriginalViewport(width,height)){
             if(!resized)body.classList.remove("original-resizable");
             return;

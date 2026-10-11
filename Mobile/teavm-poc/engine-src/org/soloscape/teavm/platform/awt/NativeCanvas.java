@@ -30,8 +30,15 @@ public final class NativeCanvas {
     public static native double measure(JSObject context,String text);
     @JSBody(params={"context","canvas","x","y"},script="context.drawImage(canvas,x,y);")
     public static native void image(JSObject context,JSObject canvas,int x,int y);
-    @JSBody(params={"canvas","pixels","width","height","alpha"},script="const ctx=canvas.getContext('2d'),out=ctx.createImageData(width,height);for(let i=0;i<width*height;i++){const p=pixels[i],j=i*4;out.data[j]=(p>>>16)&255;out.data[j+1]=(p>>>8)&255;out.data[j+2]=p&255;out.data[j+3]=alpha?(p>>>24):255;}ctx.putImageData(out,0,0);")
-    public static native void pixels(JSObject canvas,@JSByRef int[] pixels,int width,int height,boolean alpha);
+    // Directly present packed pixels at their original integer draw position.
+    // Reuse the canvas context, ImageData, and Uint32Array across frames; no
+    // intermediate image canvas or per-frame RGBA allocation is needed.
+    // Opaque software game frames never read or branch on their alpha byte.
+    @JSBody(params={"canvas","pixels","width","height","alpha","dx","dy"},script="let cache=canvas.__soloscapeFramePixels;if(!cache||cache.width!==width||cache.height!==height){const ctx=canvas.getContext('2d'),img=ctx.createImageData(width,height);cache={width,height,ctx,img,words:new Uint32Array(img.data.buffer,img.data.byteOffset,img.data.byteLength/4)};canvas.__soloscapeFramePixels=cache;}const words=cache.words,count=width*height;if(alpha){for(let i=0;i<count;i++){const p=pixels[i];words[i]=(p&0xff00ff00)|((p>>>16)&255)|((p&255)<<16);}}else{for(let i=0;i<count;i++){const p=pixels[i];words[i]=0xff000000|(p&0x0000ff00)|((p>>>16)&255)|((p&255)<<16);}}cache.ctx.putImageData(cache.img,dx,dy);")
+    public static native void pixelsAt(JSObject canvas,@JSByRef int[] pixels,int width,int height,boolean alpha,int dx,int dy);
+    public static void pixels(JSObject canvas,int[] pixels,int width,int height,boolean alpha){
+        pixelsAt(canvas,pixels,width,height,alpha,0,0);
+    }
     @JSBody(params={"canvas","pixels","width","height"},script="const p=canvas.getContext('2d').getImageData(0,0,width,height).data;for(let i=0;i<width*height;i++){const j=i*4;pixels[i]=(p[j+3]<<24)|(p[j]<<16)|(p[j+1]<<8)|p[j+2];}")
     public static native void readPixels(JSObject canvas,@JSByRef int[] pixels,int width,int height);
 }

@@ -1,5 +1,42 @@
 # Original-engine scenery audit — 11 October 2026
 
+## Repair verification - 11 October 2026 (after the audit)
+
+**The verified untyped model-list decoding defect is repaired in the Mobile
+feature/mobile working tree.** BrowserOriginalLocationModels now skips
+the pinned original's action opcodes 30-34, flags 21/22/62/64, variable sound
+opcode 79, metadata opcode 93, and extended action formats 100/101/102.
+The scanner remains byte-bounded, rejects malformed streams and never
+replaces an already-decoded original model list. The arbitrary 160-opcode
+limit was removed so valid large extended-action tables can reach their
+model-list opcode.
+
+Verification against the same pinned gamepack and original JVM corpus:
+
+| Post-repair check | Result |
+| --- | --- |
+| Original JVM corpus | All 62,522 definitions checked; all 36,639 untyped model lists matched; **zero differences** |
+| Isolated TeaVM-compiled original decoder and restoration helper | 62,522 definitions checked; 36,639 missing model lists before restoration; **zero model-list differences after restoration**, including typed-list lengths |
+| Java regression tests | Cover each repaired opcode category, large extended-action tables and malformed/truncated prefixes |
+| Full-corpus regression test | node --test tests/original-location-models.test.mjs runs the complete JVM reference check when the ignored local definitions.bin is available |
+| Full Mobile test suite | 570 passed, 0 failed, 3 skipped |
+| Production original-engine TeaVM build | Succeeded, generated JavaScript syntax verified; engine module smoke passed; engine remains compiled-unverified until authenticated gameplay checks |
+
+The repeatable isolated TeaVM parity report is ignored diagnostic output at
+teavm-poc/target/engine/scenery-audit/verification/teavm-parity.json.
+The original cache, gameplay state and scene renderer were not modified.
+
+**Still open:** authenticated original-client visual and scene-insertion tests,
+including Lumbridge fountains/castle/church, vegetation, stairs, a region
+crossing and a cold login. The Desktop Controller was not running when
+checked after the repair, so no live scene-count or screenshot validation
+was possible during this pass. The audit below is the **pre-repair baseline**;
+its 26,136 missing definitions and 2,133,850 associated source placements
+must not be interpreted as post-repair gaps. Zero decoder differences do
+not by themselves prove screenshots, texture geometry or scene visibility.
+
+---
+
 ## Result
 
 **More scenery decoding gaps remain after the Lumbridge fountain patch.**

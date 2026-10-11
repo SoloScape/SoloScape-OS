@@ -38,3 +38,42 @@ test("rejected initial game handshake cannot be reported as a login result",()=>
  f.observe.serverFrame(Buffer.from([14,15,16,17,18,19,20,21,22]));
  assert.deepEqual(f.statuses,[{kind:"gameInitStatus",code:6}]);
 });
+
+test("a split proof-of-work challenge (69) is not mistaken for a login rejection",()=>{
+ const f=fixture();
+ f.observe.clientFrame();
+ f.observe.serverFrame(Buffer.from([0,11,12,13,14,15,16,17,18]));
+ f.observe.clientFrame();
+ f.observe.serverFrame(Buffer.from([69,0]));
+ f.observe.serverFrame(Buffer.from([5,0,1,2,3])); // No raw challenge bytes are retained.
+ f.observe.serverFrame(Buffer.from([4]));
+ assert.deepEqual(f.statuses,[
+  {kind:"gameInitStatus",code:0},{kind:"gameLoginStatus",code:69}
+ ]);
+ f.observe.clientFrame(); // PoW response: never inspect its contents.
+ f.observe.serverFrame(Buffer.from([2,37,1,2,3]));
+ assert.deepEqual(f.statuses,[
+  {kind:"gameInitStatus",code:0},{kind:"gameLoginStatus",code:69},
+  {kind:"gamePostChallengeStatus",code:2}
+ ]);
+});
+test("combined challenge chunks and post-PoW refusal are classified without exposing opaque bytes",()=>{
+ const f=fixture(); f.observe.clientFrame(); f.observe.clientFrame();
+ f.observe.serverFrame(Buffer.from([0,1,2,3,4,5,6,7,8,69,0,4,88,89,90,91]));
+ f.observe.clientFrame();
+ f.observe.serverFrame(Buffer.from([7,0,1]));
+ assert.deepEqual(f.statuses,[
+  {kind:"gameInitStatus",code:0},{kind:"gameLoginStatus",code:69},
+  {kind:"gamePostChallengeStatus",code:7}
+ ]);
+ assert.doesNotMatch(JSON.stringify(f.statuses),/88|89|90|91/);
+});
+test("incomplete proof-of-work payload must never masquerade as a later result",()=>{
+ const f=fixture();f.observe.clientFrame();f.observe.clientFrame();
+ f.observe.serverFrame(Buffer.from([0,1,2,3,4,5,6,7,8,69,0,5,99]));
+ f.observe.clientFrame();
+ f.observe.serverFrame(Buffer.from([9,8,7]));
+ assert.equal(f.statuses.length,2);
+ f.observe.serverFrame(Buffer.from([6,3]));
+ assert.deepEqual(f.statuses.at(-1),{kind:"gamePostChallengeStatus",code:3});
+});

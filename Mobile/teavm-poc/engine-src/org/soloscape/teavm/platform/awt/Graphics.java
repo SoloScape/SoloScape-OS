@@ -16,6 +16,10 @@ public class Graphics {
     public void setFont(Font font){this.font=font;NativeCanvas.font(context,font.css());}
     public void drawString(String text,int x,int y){NativeCanvas.text(context,text,x,y);}
     public boolean drawImage(Image image,int x,int y,ImageObserver observer){NativeCanvas.image(context,image.surface(),x,y);return true;}
+    /** Fast path only for the original opaque, untransformed full framebuffer. */
+    public boolean presentFramebuffer(Image image,int x,int y){
+        return image!=null&&image.presentOpaqueFrame(canvas,width,height,x,y);
+    }
     public Rectangle getClipBounds(){return new Rectangle(0,0,width,height);}
     public FontMetrics getFontMetrics(){return new FontMetrics(this);}
 }

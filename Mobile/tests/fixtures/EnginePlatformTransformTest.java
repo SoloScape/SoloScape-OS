@@ -70,6 +70,12 @@ public final class EnginePlatformTransformTest implements Opcodes {
             check(OriginalMobileLayout.shouldUseResizable(true,false),"mobile selects resizable before login");
             check(!OriginalMobileLayout.shouldUseResizable(true,true),"resizable selection is idempotent");
             check(!OriginalMobileLayout.shouldUseResizable(false,false),"window mode waits for login screen");
+            check(OriginalMobileLayout.shouldUseResizable(false,true,false),
+                "mobile restores resizable if in-game settings revert to Fixed");
+            check(!OriginalMobileLayout.shouldUseResizable(false,true,true),
+                "mobile does not reconfigure an already resized game");
+            check(!OriginalMobileLayout.shouldUseResizable(false,false,false),
+                "login/logout transition never forces the window mode");
             check(OriginalMobileLayout.isMobile(false)&&OriginalMobileLayout.isMobile(true),"browser selects mobile scripts");
             check(!OriginalMobileLayout.shouldRequest(false,548),"no command before manual login");
             check(!OriginalMobileLayout.shouldRequest(true,-1),"wait for server gameframe");
@@ -81,6 +87,14 @@ public final class EnginePlatformTransformTest implements Opcodes {
             check(!OriginalMobileLayout.shouldRequest(true,161),"desktop does not request mobile");
             OriginalMobileLayout.configure(true);
             check(!OriginalMobileLayout.shouldRequest(true,601),"already mobile needs no command");
+            check(OriginalMobileLayout.shouldRequest(true,548),
+                "FPS settings replacing mobile root with desktop root trigger recovery");
+            check(!OriginalMobileLayout.shouldRequest(true,548),
+                "do not flood the server while the mobile root is being restored");
+            check(!OriginalMobileLayout.shouldRequest(true,601),
+                "restored mobile root acknowledges recovery");
+            check(OriginalMobileLayout.shouldRequest(true,161),
+                "a second settings-induced root replacement can recover again");
             OriginalMobileLayout.configure(false);
             System.out.println("PASS: platform type/call rewriting retains engine methods and archive resources");
         }finally{Files.deleteIfExists(input);Files.deleteIfExists(output);Files.deleteIfExists(directory);}

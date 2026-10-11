@@ -17,6 +17,12 @@ const initialState=new Uint32Array([
  0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19
 ]);
 const rotr=(x,n)=>(x>>>n)|(x<<(32-n));
+// The native rev-240 login challenge hashes a long, unchanged public salt
+// followed by a changing hexadecimal nonce. Cache SHA-256 state after only
+// complete matching 64-byte blocks; the per-nonce suffix and final SHA-256
+// length padding are ALWAYS recomputed. This never caches a solution or
+// changes the original server challenge/difficulty.
+let publicChallengePrefix=null,publicChallengeState=null;
 export function sha256(input){
     if(!(input instanceof Uint8Array)||input.length>1024*1024)
         throw new TypeError("SHA-256 requires at most 1 MiB of bytes");
@@ -27,7 +33,18 @@ export function sha256(input){
     view.setUint32(message.length-8,Math.floor(len*8/0x100000000));
     view.setUint32(message.length-4,(len*8)>>>0);
     const h=new Uint32Array(initialState),words=new Uint32Array(64);
-    for(let base=0;base<message.length;base+=64){
+    // Only the original long hashcash inputs use this fast path. Do not
+    // retain general-purpose short digests or credentials in a prefix cache.
+    const candidateLen=len>=900&&len<=1200?Math.floor(len/64)*64:0;
+    let base=0;
+    if(candidateLen&&publicChallengePrefix?.length===candidateLen){
+        let matches=true;
+        for(let i=0;i<candidateLen;i++){
+            if(input[i]!==publicChallengePrefix[i]){matches=false;break;}
+        }
+        if(matches){h.set(publicChallengeState);base=candidateLen;}
+    }
+    for(;base<message.length;base+=64){
         for(let i=0;i<16;i++)words[i]=view.getUint32(base+i*4);
         for(let i=16;i<64;i++){
             const a=words[i-15],b=words[i-2];
@@ -49,6 +66,12 @@ export function sha256(input){
         h[2]=(h[2]+c)>>>0;h[3]=(h[3]+d)>>>0;
         h[4]=(h[4]+e)>>>0;h[5]=(h[5]+f)>>>0;
         h[6]=(h[6]+g)>>>0;h[7]=(h[7]+k)>>>0;
+        if(candidateLen&&base+64===candidateLen){
+            // Keep only the public challenge's common prefix; never hold
+            // the changing nonce or any digest output from earlier calls.
+            publicChallengePrefix=input.slice(0,candidateLen);
+            publicChallengeState=new Uint32Array(h);
+        }
     }
     const result=new Uint8Array(32),out=new DataView(result.buffer);
     for(let i=0;i<8;i++)out.setUint32(i*4,h[i]);
