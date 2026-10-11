@@ -10,6 +10,8 @@ test("original game page uses an external trusted stylesheet rather than CSP-blo
     assert.match(markup,/<link rel="stylesheet" href="\/engine-smoke\.css">/);
     assert.doesNotMatch(markup,/<style[\s>]/i);
     assert.match(markup,/id="original-engine-canvas"/);
+    assert.match(markup,/<meta name="apple-mobile-web-app-capable" content="yes">/);
+    assert.match(markup,/<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">/);
     assert.match(css,/#original-engine-canvas\s*\{/);
     assert.match(css,/aspect-ratio:765\/503/);
     assert.match(css,/width:min\(100vw,152\.0875vh\)/);
@@ -19,7 +21,7 @@ test("original game page uses an external trusted stylesheet rather than CSP-blo
     assert.doesNotMatch(fixedCss,/width:100vw;height:100vh/,
         "fixed game mode must keep its original aspect ratio");
     assert.match(css,/body\.original-resizable #original-engine-canvas\{/);
-    assert.match(css,/width:100vw;height:100vh;max-height:none;aspect-ratio:auto/,
+    assert.match(css,/width:100%;height:100%;max-height:none;aspect-ratio:auto/,
         "both native resizable modes should cover the viewport");
     assert.match(css,/background:\s*#000/);
     assert.doesNotMatch(markup,/id="internal-diagnostics"|id="start"/);

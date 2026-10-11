@@ -36,6 +36,17 @@ Both the Java engine and Kotlin server must be rebuilt. Stop the running server
 before packaging its replacement: Windows locks the active `build/direct/lib`
 directory. Restart the server, reload the browser, and log in manually.
 
+Resizable presentation measures the canvas inside the iPhone safe-area insets.
+The original engine's 765x503 minimum is satisfied by scaling both framebuffer
+dimensions by the same factor. Landscape phones therefore get a wider original
+render, rather than squeezing a 503px-tall image into a shorter screen. Portrait
+rotation also keeps the same proportions. Framebuffers are bounded to 2048 pixels
+per axis and are not multiplied by device pixel ratio. Safari viewport changes
+are observed; the native engine still owns rendering, UI layout and input mapping.
+For an iPhone launch without Safari's toolbars, add the page to the Home Screen
+and launch that icon. The page advertises Apple's standalone mode and translucent
+status bar; safe-area spacing keeps controls clear of system screen cutouts.
+
 ## Verification boundary
 
 The JVM transformation fixture checks that touch capability is added only to

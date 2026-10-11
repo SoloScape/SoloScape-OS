@@ -11,10 +11,14 @@ body{position:fixed;inset:0;display:flex;align-items:center;justify-content:cent
 /* In either authentic resizable mode, let the original Java canvas cover
    the whole page. Logical framebuffer resizing is owned by GameEngine. */
 body.original-resizable #original-engine-canvas{
-    width:100vw;height:100vh;max-height:none;aspect-ratio:auto;
+    width:100%;height:100%;max-height:none;aspect-ratio:auto;
+}
+body.original-resizable{
+    height:100vh;min-height:0;box-sizing:border-box;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 @supports (height:100dvh){
-    body.original-resizable #original-engine-canvas{height:100dvh;}
+    body.original-resizable{height:100dvh;}
 }
 /* HTML-only first paint. Disappears when the original framebuffer starts
    painting; no fabricated Java frames, progress percentages, or startup text. */

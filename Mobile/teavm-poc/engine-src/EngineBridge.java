@@ -347,7 +347,7 @@ public final class EngineBridge {
         net.runelite.api.Client original=(net.runelite.api.Client)engine;
         if (original.getGameState()!=net.runelite.api.GameState.LOGGED_IN)
             return false;
-        if (width<765||height<503||width>2048||height>1536)
+        if (width<765||height<503||width>2048||height>2048)
             return false;
         org.soloscape.teavm.platform.awt.Canvas canvas=
             original.getCanvas();

@@ -1,11 +1,26 @@
 // The original revision-240 client owns Classic and Modern resizable layouts.
 // This adapter only passes the browser's CSS-pixel viewport to its existing
 // Java AWT resizeCanvas path, and changes the page's presentation bounds.
+export function originalViewportSize(width,height){
+    if(!Number.isFinite(width)||!Number.isFinite(height)||width<=0||height<=0)return null;
+    // Preserve one scale on both axes, including native minimum-size expansion
+    // on phones and bounded framebuffer reduction on large desktop displays.
+    const scale=Math.max(765/width,503/height,Math.min(1,2048/width,2048/height));
+    const w=Math.round(width*scale),h=Math.round(height*scale);
+    return w<=2048&&h<=2048?{width:w,height:h}:null;
+}
+
 export function attachOriginalResizableLayout({
     canvas,body,engine,getGameState,
-    viewport=()=>({width:globalThis.innerWidth,height:globalThis.innerHeight}),
-    addResize=handler=>globalThis.addEventListener("resize",handler),
-    removeResize=handler=>globalThis.removeEventListener("resize",handler)
+    viewport=()=>canvas.getBoundingClientRect(),
+    addResize=handler=>{
+        globalThis.addEventListener("resize",handler);
+        globalThis.visualViewport?.addEventListener("resize",handler);
+    },
+    removeResize=handler=>{
+        globalThis.removeEventListener("resize",handler);
+        globalThis.visualViewport?.removeEventListener("resize",handler);
+    }
 }={}){
     if(!canvas||!body||!engine||typeof getGameState!=="function")
         throw new Error("Original resizable layout needs the original engine and canvas");
@@ -22,15 +37,18 @@ export function attachOriginalResizableLayout({
             }
             return;
         }
-        const v=viewport();
-        if(!Number.isFinite(v.width)||!Number.isFinite(v.height)||v.width<=0||v.height<=0)
+        body.classList.add("original-resizable");
+        const v=viewport(),size=originalViewportSize(v.width,v.height);
+        if(!size){
+            if(!resized)body.classList.remove("original-resizable");
             return;
-        // OSRS imposes a native minimum canvas size. Avoid HiDPI framebuffer
-        // multiplication on Safari; dimensions are CSS pixels, not device pixels.
-        const width=Math.max(765,Math.min(2048,Math.round(v.width)));
-        const height=Math.max(503,Math.min(1536,Math.round(v.height)));
+        }
+        const {width,height}=size;
         if(resized&&width===lastWidth&&height===lastHeight)return;
-        if(!engine.resizeOriginalViewport(width,height))return;
+        if(!engine.resizeOriginalViewport(width,height)){
+            if(!resized)body.classList.remove("original-resizable");
+            return;
+        }
         lastWidth=width;lastHeight=height;resized=true;
         body.classList.add("original-resizable");
     };
