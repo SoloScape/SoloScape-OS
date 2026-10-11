@@ -1,0 +1,6 @@
+# Run Caddy on the same machine as npm run start:public.
+# Set SOLOSCAPE_PUBLIC_HOST to the domain, e.g. play.example.com.
+# SOLOSCAPE_PUBLIC_PORT defaults to 8080, matching the Node host.
+{$SOLOSCAPE_PUBLIC_HOST} {
+	reverse_proxy 127.0.0.1:{$SOLOSCAPE_PUBLIC_PORT:8080}
+}

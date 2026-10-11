@@ -1,0 +1,3 @@
+[submodule "Mobile/tsps-upstream"]
+	path = Mobile/tsps-upstream
+	url = https://github.com/RSPSApp/tsps.git

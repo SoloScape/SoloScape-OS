@@ -13,6 +13,7 @@ import org.rsmod.api.player.ui.ifOpenFullOverlay
 import org.rsmod.api.player.ui.ifOpenSub
 import org.rsmod.api.player.ui.ifSetHide
 import org.rsmod.api.player.ui.ifSetText
+import org.rsmod.api.player.ui.orbsInterface
 import org.rsmod.api.player.vars.boolVarBit
 import org.rsmod.api.player.vars.enumVarBit
 import org.rsmod.events.EventBus
@@ -99,7 +100,8 @@ public object Cinematic {
     //  "gameframe" plugin script control over what is closed and re-opened.
 
     public fun closeToplevelTabs(player: Player, eventBus: EventBus) {
-        player.ifCloseOverlay("interface.orbs", eventBus)
+        player.ifCloseOverlay(player.orbsInterface(), eventBus)
+        player.ifCloseOverlay(player.orbsInterface(minimized = true), eventBus)
         player.ifCloseOverlay("interface.xp_drops", eventBus)
         player.ifCloseOverlay("interface.combat_interface", eventBus)
         player.ifCloseOverlay("interface.stats", eventBus)
@@ -117,7 +119,7 @@ public object Cinematic {
 
     public fun closeToplevelTabsLenient(player: Player, eventBus: EventBus) {
         player.ifOpenSub(
-            "interface.orbs",
+            player.orbsInterface(),
             "component.toplevel_osrs_stretch:orbs",
             IfSubType.Overlay,
             eventBus,

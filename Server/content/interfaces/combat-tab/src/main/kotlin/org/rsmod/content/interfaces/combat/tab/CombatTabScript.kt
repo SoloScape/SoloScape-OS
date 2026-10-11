@@ -103,6 +103,8 @@ constructor(
 
         onIfOverlayButton("component.combat_interface:special_attack") { player.toggleSpecialAttack() }
         onIfOverlayButton("component.orbs:specbutton") { player.toggleSpecialAttack() }
+        onIfOverlayButton("component.orbs_osm:specbutton") { player.toggleSpecialAttack() }
+        onIfOverlayButton("component.orbs_osm_nomap:specbutton") { player.toggleSpecialAttack() }
         onPlayerQueue("queue.sa_instant_spec") { activateInstantSpecial() }
 
         onIfOverlayButton("component.combat_interface:autocast_defensive") {

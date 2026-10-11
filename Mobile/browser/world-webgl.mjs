@@ -1,0 +1,1400 @@
+/*
+ * BSD 2-Clause License
+ * 
+ * Copyright (c) 2022-2026, dennisdev, xrsps
+ * GPU HSL conversion adapted from RuneLite, Copyright (c) 2018, Adam <Adam@sigterm.info>
+ * All rights reserved.
+ * 
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ * 
+ * * Redistributions of source code must retain the above copyright notice, this
+ *   list of conditions and the following disclaimer.
+ * 
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ * 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * 
+ */
+// Tile topology adapted from RSPSApp/tsps b9ca431 SceneTileModel (BSD-2-Clause).
+// Cache geometry and packed-HSL vertex colours use the client terrain pipeline.
+import { prepareFloorLighting, adjustFloorLight, HSL_PALETTE, sampleTerrain } from "./floor-lighting.mjs";
+import {SceneTileModel} from "./tsps-runtime/rs-scene-SceneTileModel.mjs";
+import {terrainPlane,sceneLevel,validateSceneLevel} from "./scene-planes.mjs";
+import {NpcLongPress} from "./npc-pointer.mjs";
+import {nativeRoofPlaneLimit} from "./native-roof-adapter.mjs";
+import {isKnownWaterTextureId} from "./tsps-runtime/common-world-WaterTextureIds.mjs";
+// Native scene distances are tiles, unlike RuneLite's client zoom values.
+export const GAME_CAMERA_ZOOM=Object.freeze({default:12,min:6,max:24});
+// Local OpenOSRS rev-240 CameraService policy and CameraController drag adapter.
+export const GAME_CAMERA_ROTATION=Object.freeze({
+    units:16384,minPitch:1024*2*Math.PI/16384,maxPitch:3064*2*Math.PI/16384,
+    radiansPerPixel:16*2*Math.PI/16384,
+});
+export function rotateCamera(camera,dx,dy){
+    const {minPitch,maxPitch,radiansPerPixel}=GAME_CAMERA_ROTATION;
+    camera.yaw=((camera.yaw-dx*radiansPerPixel)%(2*Math.PI)+2*Math.PI)%(2*Math.PI);
+    camera.pitch=Math.max(minPitch,Math.min(maxPitch,camera.pitch+dy*radiansPerPixel));
+}
+export const CLASSIC_DRAW_DISTANCE=25;
+export const GPU_SETTINGS=Object.freeze({brightness:.8,smoothBanding:true,brightTextures:false,
+    fogDepth:0,colorBlindMode:0,colorBlindIntensity:100,anisotropicFilteringLevel:1});
+const ZERO_MODEL_OFFSET=Object.freeze([0,0,0]);
+
+export function validateGpuSettings(settings={}){
+    const result={...GPU_SETTINGS,...settings};
+    if(!Number.isFinite(result.brightness)||result.brightness<=0||result.brightness>2||
+        typeof result.smoothBanding!=="boolean"||typeof result.brightTextures!=="boolean"||
+        !Number.isInteger(result.fogDepth)||result.fogDepth<0||result.fogDepth>100||
+        !Number.isInteger(result.colorBlindMode)||result.colorBlindMode<0||result.colorBlindMode>3||
+        !Number.isFinite(result.colorBlindIntensity)||result.colorBlindIntensity<0||result.colorBlindIntensity>100)
+        throw new Error("Invalid GPU settings");
+    if(!Number.isInteger(result.anisotropicFilteringLevel)||result.anisotropicFilteringLevel<0||result.anisotropicFilteringLevel>16)
+        throw new Error("Invalid GPU filtering level");
+    return result;
+}
+
+/** RuneLite vert.glsl scene-edge fog; positions and bounds are in tiles. */
+export function gpuFogAmount(x,z,bounds,depth){
+    if(depth<=0)return 0;
+    const xd=Math.min(x-bounds[0],bounds[2]-x),zd=Math.min(z-bounds[1],bounds[3]-z);
+    const nearest=Math.min(xd,zd),second=Math.max(xd,zd);
+    // The reference adds 2.25 in client units, while rounding is 1.5 tiles.
+    const distance=nearest-1.5*Math.max(0,(nearest+2.25/128)/(second+2.25/128));
+    return 1-Math.max(0,Math.min(1,distance/depth));
+}
+
+// OpenOSRS TextureManager.computeTextureAnimations and gpu/vert.glsl:
+// integer client ticks, directions 1/3 vertical and 2/4 horizontal, 1/128 UV.
+const TEXTURE_DIRECTIONS=[[0,0],[0,-1],[-1,0],[0,1],[1,0]];
+export function textureAnimationOffset(def,elapsedMs){
+    const direction=def?.animationDirection??0,speed=def?.animationSpeed??0;
+    if(!Number.isInteger(direction)||direction<0||direction>4||!Number.isFinite(speed)||
+        !Number.isFinite(elapsedMs)||elapsedMs<0)return [0,0];
+    const [u,v]=TEXTURE_DIRECTIONS[direction];
+    const steps=Math.floor(elapsedMs/20)*speed/128;
+    return [(u*steps)%1,(v*steps)%1];
+}
+
+export function sceneDrawBounds(target,yaw,pitch,distance){
+    // Classic visibility is a square of tiles around the camera, not its focal point.
+    // Mesh tile zero starts at -31.5, and cache north is flipped by the view matrix.
+    const x=Math.floor(target[0]+Math.sin(yaw)*Math.cos(pitch)*distance+31.5)-31.5;
+    const z=Math.floor(target[2]-Math.cos(yaw)*Math.cos(pitch)*distance+31.5)-31.5;
+    return [x-CLASSIC_DRAW_DISTANCE,z-CLASSIC_DRAW_DISTANCE,x+CLASSIC_DRAW_DISTANCE,z+CLASSIC_DRAW_DISTANCE];
+}
+
+export function withinDrawBounds(x,z,bounds){
+    return !bounds||(x>=bounds[0]&&z>=bounds[1]&&x<bounds[2]&&z<bounds[3]);
+}
+
+export function cameraWheelDistance(distance,event){
+    if(event.ctrlKey)return GAME_CAMERA_ZOOM.default;
+    if(!Number.isFinite(event.deltaY))return distance;
+    const pixels=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?334:1);
+    return Math.max(GAME_CAMERA_ZOOM.min,Math.min(GAME_CAMERA_ZOOM.max,distance*Math.exp(pixels*.001)));
+}
+function shader(gl,type,source){
+    const sh=gl.createShader(type);
+    gl.shaderSource(sh,source);gl.compileShader(sh);
+    if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS)){
+        const reason=gl.getShaderInfoLog(sh);gl.deleteShader(sh);
+        throw new Error("WebGL shader failed: "+reason);
+    }
+    return sh;
+}
+export function worldShaderSources(textured=false){
+    const hslConversion=`
+float hueChannel(float t,float low,float high){
+    if(t>1.0)t-=1.0;
+    if(t<0.0)t+=1.0;
+    if(6.0*t<1.0)return low+(high-low)*6.0*t;
+    if(2.0*t<1.0)return high;
+    if(3.0*t<2.0)return low+(high-low)*(0.6666666666666666-t)*6.0;
+    return low;
+}
+vec3 gpuHslComponents(vec3 hsl){
+    float hue=hsl.x/64.0+0.0078125;
+    float sat=hsl.y/8.0+0.0625;
+    float lum=hsl.z/128.0;
+    float high=lum<0.5?lum*(1.0+sat):lum+sat-lum*sat;
+    float low=2.0*lum-high;
+    return pow(vec3(hueChannel(hue+0.3333333333333333,low,high),
+        hueChannel(hue,low,high),hueChannel(hue-0.3333333333333333,low,high)),vec3(u_brightness));
+}
+vec3 gpuHslRgb(float packed){
+    int hsl=int(packed);
+    return gpuHslComponents(vec3((hsl>>10)&63,(hsl>>7)&7,hsl&127));
+}`;
+    const vertex=`#version 300 es
+in vec3 a_position;
+in vec3 a_color;
+uniform mat4 u_mvp;
+uniform vec3 u_modelOffset;
+uniform float u_brightness;
+uniform vec4 u_fogBounds;
+uniform float u_fogDepth;
+uniform float u_fogEnabled;
+out highp vec3 v_rgb;
+centroid out highp float v_hsl_w;
+centroid out highp float v_w;
+out highp vec2 v_uv;
+out highp vec2 v_scenePosition;
+out highp float v_fog;
+// RuneLite gpu/hsl_to_rgb.glsl: convert HSL and apply brightness before
+// perspective-correct RGB interpolation (default remove-colour-banding mode).
+${hslConversion}
+void main(){
+    vec3 position=a_position+u_modelOffset;
+    vec4 v=u_mvp*vec4(position,1.0);
+    // Match TSPS's small view-depth priority layers without moving world
+    // geometry or UVs. Projection near/far are .2/350: -projection[3][2].
+    float layer=floor(fract(a_color.x)*32.0+0.5);
+    v.z-=0.4002287*0.001*layer/max(v.w,0.2);
+    gl_Position=v;
+    v_hsl_w=floor(a_color.x)*v.w;
+    v_rgb=gpuHslRgb(floor(a_color.x));
+    ${textured?"":`// Actor tint targets are packed signed bytes; textures retain untouched UVs.
+    if(a_color.z>0.0){
+        int packed=int(a_color.y),color=int(floor(a_color.x));
+        ivec3 target=ivec3((packed>>16)&255,(packed>>8)&255,packed&255);
+        target=ivec3(target.x>=128?target.x-256:target.x,target.y>=128?target.y-256:target.y,target.z>=128?target.z-256:target.z);
+        vec3 hsl=vec3((color>>10)&63,(color>>7)&7,color&127);
+        hsl+=(vec3(target)-hsl)*a_color.z/128.0;
+        v_rgb=gpuHslComponents(hsl);
+        int tinted=((int(hsl.x)&63)<<10)|((int(hsl.y)&7)<<7)|(int(hsl.z)&127);
+        v_hsl_w=float(tinted)*v.w;
+    }`}
+    v_w=v.w;
+    v_uv=a_color.yz;
+    v_scenePosition=position.xz;
+    vec2 edge=min(position.xz-u_fogBounds.xy,u_fogBounds.zw-position.xz);
+    float nearest=min(edge.x,edge.y),second=max(edge.x,edge.y);
+    float d=nearest-1.5*max(0.0,(nearest+0.017578125)/(second+0.017578125));
+    v_fog=(1.0-clamp(d/max(0.0001,u_fogDepth),0.0,1.0))*u_fogEnabled;
+}`;
+    const fragment=`#version 300 es
+precision highp float;
+precision highp int;
+uniform sampler2D u_palette;
+uniform bool u_wireframe;
+uniform highp sampler2D u_texture;
+uniform vec2 u_textureShift;
+uniform vec4 u_drawBounds;
+uniform vec3 u_fogColor;
+uniform float u_opacity;
+uniform float u_brightness;
+uniform float u_textureBrightness;
+uniform float u_smoothBanding;
+uniform float u_textureLightMode;
+uniform int u_colorBlindMode;
+uniform float u_colorBlindIntensity;
+centroid in highp float v_hsl_w;
+centroid in highp float v_w;
+in highp vec2 v_uv;
+in highp vec2 v_scenePosition;
+in highp vec3 v_rgb;
+in highp float v_fog;
+out vec4 fragColor;
+${hslConversion}
+// RuneLite gpu/colorblind.glsl, using row-vector matrix multiplication.
+vec3 correctColor(vec3 color){
+    if(u_colorBlindMode==0)return color;
+    mat3 rgb2lms=mat3(vec3(17.8824,43.5161,4.11935),vec3(3.45565,27.1554,3.86714),vec3(0.0299566,0.184309,1.46709));
+    vec3 lms=color*rgb2lms;
+    if(u_colorBlindMode==1)lms=lms*mat3(vec3(0.0,2.02344,-2.52581),vec3(0.0,1.0,0.0),vec3(0.0,0.0,1.0));
+    else if(u_colorBlindMode==2)lms=lms*mat3(vec3(1.0,0.0,0.0),vec3(0.494207,0.0,1.24827),vec3(0.0,0.0,1.0));
+    else lms=lms*mat3(vec3(1.0,0.0,0.0),vec3(0.0,1.0,0.0),vec3(-0.395913,0.801109,0.0));
+    vec3 error=color-lms*inverse(rgb2lms);
+    vec3 correction=error*mat3(vec3(0.0,0.0,0.0),vec3(0.7,1.0,0.0),vec3(0.7,0.0,1.0));
+    return color+correction*clamp(u_colorBlindIntensity/100.0,0.0,1.0);
+}
+void main(){
+    if(v_scenePosition.x<u_drawBounds.x||v_scenePosition.y<u_drawBounds.y||
+        v_scenePosition.x>=u_drawBounds.z||v_scenePosition.y>=u_drawBounds.w)discard;
+    ${textured?`vec4 texel=texture(u_texture,v_uv+u_textureShift);
+    // Exact nearest base-level alpha, independent of mipmap interpolation.
+    ivec2 baseTexel=ivec2(fract(v_uv+u_textureShift)*vec2(textureSize(u_texture,0)));
+    if(texelFetch(u_texture,baseTexel,0).a<1.0)discard;
+    float light=clamp(v_hsl_w/v_w,2.0,126.0)/127.0;
+    vec3 mul=mix(vec3(light),v_rgb,u_textureLightMode);
+    fragColor=vec4(pow(texel.rgb,vec3(u_textureBrightness))*mul,1.0);`:""}
+    if(u_wireframe){fragColor=vec4(1.0);return;}
+    if(!${textured?"true":"false"})fragColor=vec4(mix(v_rgb,gpuHslRgb(v_hsl_w/v_w),u_smoothBanding),1.0);
+    fragColor.rgb=correctColor(fragColor.rgb);
+    fragColor=vec4(mix(fragColor.rgb,u_fogColor,v_fog),fragColor.a*u_opacity);
+}`;
+    return {vertex,fragment};
+}
+function program(gl,textured=false){
+    const {vertex,fragment}=worldShaderSources(textured);
+    const vs=shader(gl,gl.VERTEX_SHADER,vertex);
+    const fs=shader(gl,gl.FRAGMENT_SHADER,fragment);
+    const p=gl.createProgram();
+    gl.attachShader(p,vs);gl.attachShader(p,fs);gl.linkProgram(p);
+    gl.deleteShader(vs);gl.deleteShader(fs);
+    if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error("WebGL program link failed");
+    return p;
+}
+function cross(a,b){return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+function norm(v){const n=Math.hypot(...v)||1;return v.map(x=>x/n);}
+function sub(a,b){return a.map((x,i)=>x-b[i]);}
+function lookAt(eye,center){
+    const z=norm(sub(eye,center)), x=norm(cross([0,1,0],z)), y=cross(z,x);
+    return new Float32Array([
+        x[0],y[0],z[0],0, x[1],y[1],z[1],0,
+        x[2],y[2],z[2],0,
+        -x.reduce((v,k,i)=>v+k*eye[i],0),
+        -y.reduce((v,k,i)=>v+k*eye[i],0),
+        -z.reduce((v,k,i)=>v+k*eye[i],0),1,
+    ]);
+}
+function perspective(aspect){
+    const f=1/Math.tan(Math.PI/6),near=.2,far=350;
+    return new Float32Array([
+        f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)/(near-far),-1,
+        0,0,2*far*near/(near-far),0,
+    ]);
+}
+function multiply(a,b){
+    const out=new Float32Array(16);
+    for(let col=0;col<4;col++)for(let row=0;row<4;row++){
+        let sum=0;
+        for(let k=0;k<4;k++)sum+=a[k*4+row]*b[col*4+k];
+        out[col*4+row]=sum;
+    }
+    return out;
+}
+
+export function sceneCameraMatrix(target,yaw,pitch,distance,aspect){
+    // Mesh coordinates retain cache east/north, with height already flipped up.
+    // WebGL's right-handed Y-up space needs north mapped to negative Z too.
+    // Apply this once to the whole scene, preserving placement, lighting and UVs.
+    const center=[target[0],target[1],-target[2]];
+    const eye=[
+        center[0]+Math.sin(yaw)*Math.cos(pitch)*distance,
+        center[1]+Math.sin(pitch)*distance,
+        center[2]+Math.cos(yaw)*Math.cos(pitch)*distance,
+    ];
+    const cacheToWebgl=new Float32Array([1,0,0,0, 0,1,0,0, 0,0,-1,0, 0,0,0,1]);
+    return multiply(multiply(perspective(aspect),lookAt(eye,center)),cacheToWebgl);
+}
+
+const tileShapeVertexIndices = [
+    [1, 3, 5, 7],
+    [1, 3, 5, 7],
+    [1, 3, 5, 7],
+    [1, 3, 5, 7, 6],
+    [1, 3, 5, 7, 6],
+    [1, 3, 5, 7, 6],
+    [1, 3, 5, 7, 6],
+    [1, 3, 5, 7, 2, 6],
+    [1, 3, 5, 7, 2, 8],
+    [1, 3, 5, 7, 2, 8],
+    [1, 3, 5, 7, 11, 12],
+    [1, 3, 5, 7, 11, 12],
+    [1, 3, 5, 7, 13, 14],
+];
+
+const tileShapeFaces = [
+    [0, 1, 2, 3, 0, 0, 1, 3],
+    [1, 1, 2, 3, 1, 0, 1, 3],
+    [0, 1, 2, 3, 1, 0, 1, 3],
+    [0, 0, 1, 2, 0, 0, 2, 4, 1, 0, 4, 3],
+    [0, 0, 1, 4, 0, 0, 4, 3, 1, 1, 2, 4],
+    [0, 0, 4, 3, 1, 0, 1, 2, 1, 0, 2, 4],
+    [0, 1, 2, 4, 1, 0, 1, 4, 1, 0, 4, 3],
+    [0, 4, 1, 2, 0, 4, 2, 5, 1, 0, 4, 5, 1, 0, 5, 3],
+    [0, 4, 1, 2, 0, 4, 2, 3, 0, 4, 3, 5, 1, 0, 4, 5],
+    [0, 0, 4, 5, 1, 4, 1, 2, 1, 4, 2, 3, 1, 4, 3, 5],
+    [0, 0, 1, 5, 0, 1, 4, 5, 0, 1, 2, 4, 1, 0, 5, 3, 1, 5, 4, 3, 1, 4, 2, 3],
+    [1, 0, 1, 5, 1, 1, 4, 5, 1, 1, 2, 4, 0, 0, 5, 3, 0, 5, 4, 3, 0, 4, 2, 3],
+    [1, 0, 5, 4, 1, 0, 1, 5, 0, 0, 4, 3, 0, 4, 5, 3, 0, 5, 2, 3, 0, 1, 2, 5],
+];
+
+
+export function buildTileGeometry(shape,rotation,heights,cornerColors) {
+    if(!Number.isInteger(shape)||shape<0||shape>12||
+        !Number.isInteger(rotation)||rotation<0||rotation>3||
+        heights?.length!==4||!Array.from(heights).every(Number.isInteger)) {
+        throw new Error("Invalid cache tile geometry");
+    }
+    const [sw,se,ne,nw]=heights;
+    const coordinates=[
+        null,[0,0,sw],[.5,0,(sw+se)>>1],[1,0,se],
+        [1,.5,(se+ne)>>1],[1,1,ne],[.5,1,(ne+nw)>>1],[0,1,nw],
+        [0,.5,(nw+sw)>>1],[.5,.25,(sw+se)>>1],[.75,.5,(se+ne)>>1],
+        [.5,.75,(ne+nw)>>1],[.25,.5,(nw+sw)>>1],
+        [.25,.25,sw],[.75,.25,se],[.75,.75,ne],[.25,.75,nw],
+    ];
+    const vertices=tileShapeVertexIndices[shape].map(code=>{
+        if((code&1)===0&&code<=8)code=((code-2*rotation-1)&7)+1;
+        else if(code>8&&code<=12)code=((code-9-rotation)&3)+9;
+        else if(code>12)code=((code-13-rotation)&3)+13;
+        return {position:coordinates[code],code};
+    });
+    const indices=tileShapeFaces[shape],faces=[];
+    for(let i=0;i<indices.length;i+=4){
+        const corners=indices.slice(i+1,i+4).map(v=>v<4?(v-rotation)&3:v);
+        const isOverlay=indices[i]===1;
+        const colors=cornerColors?.[isOverlay?"overlay":"underlay"];
+        faces.push({isOverlay,vertices:corners.map(v=>{
+            const vertex=vertices[v];
+            if(!colors)return vertex.position;
+            const [sw,se,ne,nw]=colors;
+            const values=[0,sw,(sw+se)>>1,se,(se+ne)>>1,ne,(ne+nw)>>1,nw,
+                (nw+sw)>>1,(sw+se)>>1,(se+ne)>>1,(ne+nw)>>1,(nw+sw)>>1,sw,se,ne,nw];
+            return [...vertex.position,values[vertex.code]];
+        })});
+    }
+    return faces;
+}
+
+/** Emit triangles from the pinned TSPS SceneTileModel class rather than
+ * reproducing tile shape and rotation math a second time. Native mesh vertex
+ * units are tiles; the pinned model uses 128 units per tile. */
+export function buildTspsFloorTile({shape,rotation,heights,lights,underlayHsl,overlayHsl,overlayTexture=-1}){
+    if(!Number.isInteger(shape)||shape<0||shape>12||
+        !Number.isInteger(rotation)||rotation<0||rotation>3||
+        heights?.length!==4||lights?.length!==4)
+        throw new Error("Invalid pinned TSPS floor tile input");
+    const tile=new SceneTileModel(shape,rotation,overlayTexture,0,0,
+        heights[0],heights[1],heights[2],heights[3],
+        lights[0],lights[1],lights[2],lights[3],
+        underlayHsl,underlayHsl,underlayHsl,underlayHsl,
+        overlayHsl,overlayHsl,-1,-1);
+    return tile.faces.map(face=>({isOverlay:face.isOverlay,
+        vertices:face.vertices.map(v=>[v.x/128,v.z/128,v.y,v.hsl])}));
+}
+
+function buildPlaneMesh(terrain){
+    if(!terrain||terrain.side!==64||terrain.heights?.length!==4096||
+        terrain.underlays?.length!==4096||terrain.overlays?.length!==4096||
+        terrain.overlayShapes&&terrain.overlayShapes.length!==4096||
+        terrain.overlayRotations&&terrain.overlayRotations.length!==4096) {
+        throw new Error("Invalid terrain mesh input");
+    }
+    const levels=Array.from({length:4},()=>[]),textured=new Map();
+    const materials=terrain.floorMaterials;
+    const lighting=materials?prepareFloorLighting(terrain,materials):null;
+    for(let x=0;x<64;x++)for(let y=0;y<64;y++){
+        const i=x*64+y,overlay=terrain.overlays[i]&0x7fff;
+        const shape=overlay?(terrain.overlayShapes?.[i]??0)+1:0;
+        const rotation=overlay?(terrain.overlayRotations?.[i]??0):0;
+        const corners=[[x,y],[x+1,y],[x+1,y+1],[x,y+1]];
+        const heights=corners.map(([vx,vy])=>sampleTerrain(terrain,"heights",vx,vy));
+        if(heights.some(h=>h===undefined))continue;
+        const cornerIndices=corners.map(([vx,vy])=>vx*(lighting?.lightSide??64)+vy);
+        const underlayDef=materials?.underlays?.get(terrain.underlays[i]-1);
+        const underlay=underlayDef?.textureId>=0?-1:(lighting?.underlays[i]??-1);
+        const overlayHsl=lighting?.overlays.get(overlay-1)??-1;
+        const underlayTex=underlayDef?.textureId??-1,overlayTex=materials?.overlays?.get(overlay-1)?.textureId??-1;
+        const colors=lighting?{
+            underlay:cornerIndices.map(c=>underlayTex>=0?Math.max(2,Math.min(126,lighting.lights[c])):adjustFloorLight(underlay,lighting.lights[c])),
+            overlay:cornerIndices.map(c=>overlayTex>=0?Math.max(2,Math.min(126,lighting.lights[c])):adjustFloorLight(overlayHsl,lighting.lights[c])),
+        }:undefined;
+        const level=sceneLevel(terrain.baseTerrain??terrain,terrain.plane??0,x,y);
+        // Pinned TSPS tile faces replace the local reconstruction for cache floors.
+        // Textured underlays still use the legacy mesh pending the TSPS material adapter.
+        const faces=lighting&&underlayTex<0?buildTspsFloorTile({shape,rotation,heights,
+            lights:cornerIndices.map(c=>lighting.lights[c]),underlayHsl:underlay,
+            overlayHsl:overlayTex>=0?-1:overlayHsl<0?-2:overlayHsl,
+            overlayTexture:overlayTex}):buildTileGeometry(shape,rotation,heights,colors);
+        for(const face of faces){
+            const texture=face.isOverlay?overlayTex:underlayTex;
+            let numbers=levels[level];
+            if(lighting&&texture>=0){
+                if(!terrain.textures?.has(texture))continue;
+                const key=`${level}:${texture}`;
+                if(!textured.has(key))textured.set(key,{level,texture,numbers:[]});
+                numbers=textured.get(key).numbers;
+            }else if(lighting&&(face.isOverlay?overlayHsl:underlay)===-1)continue;
+            for(const [vx,vy,h,hsl] of face.vertices) {
+                numbers.push(x+vx-31.5,-h/128,y+vy-31.5,hsl??0,
+                    texture>=0?x+vx:0,texture>=0?y+vy:0);
+            }
+        }
+    }
+    return {levels,textured};
+}
+
+export function buildTerrainMesh(terrain){return new Float32Array(buildPlaneMesh(terrain).levels.flat());}
+
+export function buildTerrainScene(terrain){
+    if(terrain.regions){
+        const scenes=terrain.regions.map(region=>({scene:buildTerrainScene(region),dx:(region.mapX-terrain.mapX)*64,dy:(region.mapY-terrain.mapY)*64}));
+        return combineRegionMeshes(scenes);
+    }
+    const levels=Array.from({length:4},()=>[]),texturedBatches=[];
+    for(let p=0;p<4;p++){
+        const view=terrainPlane(terrain,p);if(!view||p>0&&!terrain.floorMaterials)continue;
+        const mesh=buildPlaneMesh(view);
+        for(let level=0;level<4;level++)for(const v of mesh.levels[level])levels[level].push(v);
+        for(const b of mesh.textured.values())texturedBatches.push({level:b.level,texture:b.texture,vertices:new Float32Array(b.numbers)});
+    }
+    return {vertices:new Float32Array(levels.flat()),levelCounts:levels.map(v=>v.length/6),texturedBatches};
+}
+
+export function combineRegionMeshes(scenes){
+    const levels=Array.from({length:4},()=>[]),texturedBatches=[],transparentBatches=[];
+    const shift=(vertices,dx,dy)=>{const out=vertices.slice();for(let i=0;i<out.length;i+=6){out[i]+=dx;out[i+2]+=dy;}return out;};
+    for(const {scene,dx=0,dy=0} of scenes){
+        let start=0;
+        for(let level=0;level<4;level++){
+            const count=(scene.levelCounts?.[level]??(level===0?scene.vertices.length/6:0))*6;
+            levels[level].push(shift(scene.vertices.subarray(start,start+count),dx,dy));start+=count;
+        }
+        for(const b of scene.texturedBatches??[])texturedBatches.push({...b,vertices:shift(b.vertices,dx,dy)});
+        for(const b of scene.transparentBatches??[])transparentBatches.push({...b,vertices:shift(b.vertices,dx,dy)});
+    }
+    const vertices=new Float32Array(levels.flat().reduce((n,v)=>n+v.length,0));let at=0;
+    for(const v of levels.flat()){vertices.set(v,at);at+=v.length;}
+    const pickMeshes=scenes.flatMap(({scene,dx=0,dy=0})=>(scene.pickMeshes??[]).map(loc=>({
+        ...loc,x:loc.x+dx,y:loc.y+dy,vertices:shift(loc.vertices,dx,dy),
+    })));
+    return {vertices,levelCounts:levels.map(parts=>parts.reduce((n,v)=>n+v.length/6,0)),texturedBatches,transparentBatches,pickMeshes};
+}
+
+// Sort across materials and scene owners, rather than rendering each alpha
+// texture separately. Clip W is view depth for the scene perspective matrix.
+export function sortTransparentFaces(batches,matrix,drawLevel=3){
+    const faces=[];
+    for(const batch of batches){
+        if(batch.level>drawLevel)continue;
+        const offset=batch.offset??ZERO_MODEL_OFFSET;
+        const translation=matrix[3]*offset[0]+matrix[7]*offset[1]+matrix[11]*offset[2];
+        for(let at=0;at<batch.vertices.length;at+=18){
+            let depth=0;
+            for(let v=at;v<at+18;v+=6)depth+=matrix[3]*batch.vertices[v]+matrix[7]*batch.vertices[v+1]+matrix[11]*batch.vertices[v+2]+matrix[15];
+            faces.push({batch,first:at/6,depth:depth/3+translation});
+        }
+    }
+    return faces.sort((a,b)=>b.depth-a.depth);
+}
+
+// Keep triangle order while combining consecutive faces from the same VBO.
+// RuneLite's Zone renderer similarly streams sorted alpha element indices,
+// retaining the original vertex data rather than drawing once per triangle.
+export function transparentIndexRanges(batches,matrix,drawLevel=3){
+    const indices=new Map(),draws=[];
+    for(const {batch,first} of sortTransparentFaces(batches,matrix,drawLevel)){
+        if(!indices.has(batch))indices.set(batch,[]);
+        const elements=indices.get(batch),at=elements.length;
+        elements.push(first,first+1,first+2);
+        const last=draws.at(-1);
+        if(last?.batch===batch)last.count+=3;
+        else draws.push({batch,first:at,count:3});
+    }
+    return {draws,indices:new Map(Array.from(indices,([batch,values])=>[batch,new Uint32Array(values)]))};
+}
+
+// Legacy centroid ordering retained for comparison tests. The active touch
+// renderer uses sorted element ranges so faces within a material also sort.
+const alphaCenters=new WeakMap();
+export function sortTransparentBatches(batches,matrix,drawLevel=3){
+    const visible=[];
+    for(const batch of batches){
+        if(batch.level>drawLevel||!batch.vertices?.length)continue;
+        let center=alphaCenters.get(batch.vertices);
+        if(!center){
+            const values=batch.vertices;
+            let x=0,y=0,z=0,count=0;
+            // Estimate the batch centroid once per mesh, not once per frame.
+            for(let at=0;at<values.length;at+=6){
+                x+=values[at];y+=values[at+1];z+=values[at+2];count++;
+            }
+            center=[x/count,y/count,z/count];
+            alphaCenters.set(batch.vertices,center);
+        }
+        const depth=matrix[3]*center[0]+matrix[7]*center[1]+matrix[11]*center[2]+matrix[15];
+        visible.push({batch,first:0,count:batch.count??batch.vertices.length/6,depth});
+    }
+    return visible.sort((a,b)=>b.depth-a.depth);
+}
+
+// Reuse one hit record per scan. Reject triangles outside the draw window before
+// projecting them; exact perspective-correct bounds/depth checks still decide hits.
+function pickTriangle(vertices,i,m,nx,ny,bounds,hit,offset=ZERO_MODEL_OFFSET){
+    const ax=vertices[i]+offset[0],ay=vertices[i+1]+offset[1],az=vertices[i+2]+offset[2];
+    const bx=vertices[i+6]+offset[0],by=vertices[i+7]+offset[1],bz=vertices[i+8]+offset[2];
+    const cx=vertices[i+12]+offset[0],cy=vertices[i+13]+offset[1],cz=vertices[i+14]+offset[2];
+    if(bounds&&(Math.max(ax,bx,cx)<bounds[0]||Math.max(az,bz,cz)<bounds[1]||
+        Math.min(ax,bx,cx)>=bounds[2]||Math.min(az,bz,cz)>=bounds[3]))return false;
+    const aw=m[3]*ax+m[7]*ay+m[11]*az+m[15];
+    const bw=m[3]*bx+m[7]*by+m[11]*bz+m[15];
+    const cw=m[3]*cx+m[7]*cy+m[11]*cz+m[15];
+    if(aw<=0||bw<=0||cw<=0)return false;
+    const aX=(m[0]*ax+m[4]*ay+m[8]*az+m[12])/aw;
+    const aY=(m[1]*ax+m[5]*ay+m[9]*az+m[13])/aw;
+    const bX=(m[0]*bx+m[4]*by+m[8]*bz+m[12])/bw;
+    const bY=(m[1]*bx+m[5]*by+m[9]*bz+m[13])/bw;
+    const cX=(m[0]*cx+m[4]*cy+m[8]*cz+m[12])/cw;
+    const cY=(m[1]*cx+m[5]*cy+m[9]*cz+m[13])/cw;
+    const d=(bY-cY)*(aX-cX)+(cX-bX)*(aY-cY);
+    if(Math.abs(d)<1e-10)return false;
+    const u=((bY-cY)*(nx-cX)+(cX-bX)*(ny-cY))/d;
+    const v=((cY-aY)*(nx-cX)+(aX-cX)*(ny-cY))/d,w=1-u-v;
+    if(u<0||v<0||w<0)return false;
+    const depth=u*(m[2]*ax+m[6]*ay+m[10]*az+m[14])/aw+
+        v*(m[2]*bx+m[6]*by+m[10]*bz+m[14])/bw+
+        w*(m[2]*cx+m[6]*cy+m[10]*cz+m[14])/cw;
+    if(depth< -1||depth>1||depth>=hit.depth)return false;
+    const ua=u/aw,vb=v/bw,wc=w/cw,sum=ua+vb+wc;
+    const x=(ua*ax+vb*bx+wc*cx)/sum,z=(ua*az+vb*bz+wc*cz)/sum;
+    if(!withinDrawBounds(x,z,bounds))return false;
+    hit.depth=depth;hit.x=x;hit.z=z;return true;
+}
+
+// Bounds belong to uploaded poses, not object origins: large models may straddle
+// the draw window. Refresh them whenever a scene/animation supplies its meshes.
+const pickMeshBounds=new WeakMap();
+function preparePickMeshes(meshes){
+    for(const {vertices} of meshes){
+        if(!(vertices instanceof Float32Array)||vertices.length%18)continue;
+        if(pickMeshBounds.has(vertices))continue;
+        let minX=Infinity,minZ=Infinity,maxX=-Infinity,maxZ=-Infinity;
+        for(let i=0;i<vertices.length;i+=6){
+            minX=Math.min(minX,vertices[i]);maxX=Math.max(maxX,vertices[i]);
+            minZ=Math.min(minZ,vertices[i+2]);maxZ=Math.max(maxZ,vertices[i+2]);
+        }
+        pickMeshBounds.set(vertices,[minX,minZ,maxX,maxZ]);
+    }
+    return meshes;
+}
+
+export function pickTerrainTile(vertices,matrix,nx,ny,bounds=null){
+    const hit={depth:Infinity,x:0,z:0};let found=false;
+    for(let i=0;i<vertices.length;i+=18){
+        if(pickTriangle(vertices,i,matrix,nx,ny,bounds,hit))found=true;
+    }
+    return found?{x:Math.floor(hit.x+31.5),y:Math.floor(hit.z+31.5)}:null;
+}
+
+// Pick real rendered triangles, including textured geometry, by nearest depth.
+export function pickNpcTriangles(meshes,matrix,nx,ny,bounds=null){
+    const hit={depth:Infinity,x:0,z:0};let best=null;
+    for(const {index,vertices,offset=ZERO_MODEL_OFFSET} of meshes){
+        if(!(vertices instanceof Float32Array)||vertices.length%18)continue;
+        const extent=pickMeshBounds.get(vertices);
+        if(bounds&&extent&&(extent[2]+offset[0]<bounds[0]||extent[3]+offset[2]<bounds[1]||
+            extent[0]+offset[0]>=bounds[2]||extent[1]+offset[2]>=bounds[3]))continue;
+        for(let i=0;i<vertices.length;i+=18){
+            if(pickTriangle(vertices,i,matrix,nx,ny,bounds,hit,offset))best=index;
+        }
+    }
+    return best===null?null:{index:best,depth:hit.depth};
+}
+
+// Browser context menus are never appropriate over the game canvas.
+// Keep hit routing independently testable from WebGL and browser startup.
+export function shouldRotateCameraDrag(button,pointerType){return pointerType==="touch"||button===1;}
+export function dispatchWorldContextMenu(event,{pickNpc,pickObject=()=>null,pickGround,onNpc,onObject=()=>{},onGround,onCancel}){
+    event.preventDefault();
+    const npc=pickNpc(event.clientX,event.clientY);
+    const object=pickObject(event.clientX,event.clientY);
+    if(npc&&(!object||npc.depth===undefined||npc.depth<=object.depth)){
+        onNpc({...npc,mode:"menu",run:Boolean(event.shiftKey)});return "npc";
+    }
+    if(object){onObject({...object,mode:"menu",run:Boolean(event.shiftKey)});return "object";}
+    const ground=pickGround(event.clientX,event.clientY);
+    if(ground){onGround({...ground,run:Boolean(event.shiftKey)});return "ground";}
+    onCancel();return "empty";
+}
+
+export function terrainWireframe(vertices){
+    if(!(vertices instanceof Float32Array)||vertices.length%18) {
+        throw new Error("Invalid triangle mesh");
+    }
+    const lines=new Float32Array(vertices.length*2);
+    let at=0;
+    for(let i=0;i<vertices.length;i+=18){
+        for(const v of [0,1,1,2,2,0]){
+            lines.set(vertices.subarray(i+v*6,i+v*6+6),at);
+            at+=6;
+        }
+    }
+    return lines;
+}
+// Mobile WebGL must not render a 2x Retina framebuffer every frame. This
+// budget reduces fill-rate cost while leaving text/interface canvas sharp.
+export function worldRenderPixels(width,height,devicePixelRatio=1,touch=false){
+    const cssWidth=Math.max(1,width),cssHeight=Math.max(1,height);
+    const ratio=Math.min(touch?1.25:2,
+        Number.isFinite(devicePixelRatio)?devicePixelRatio:1,
+        touch?Math.sqrt(850000/(cssWidth*cssHeight)):2);
+    return {width:Math.max(1,Math.floor(cssWidth*ratio)),
+        height:Math.max(1,Math.floor(cssHeight*ratio))};
+}
+// Consolidate static opaque, same-texture geometry across adjacent regions.
+// Original cache UVs/positions and level boundaries are preserved byte-for-byte.
+// Do not use for alpha batches, where depth and material sorting still matter.
+export function mergeOpaqueTextureBatches(batches){
+    const grouped=new Map(),order=[];
+    for(const batch of batches){
+        if(!(batch.vertices instanceof Float32Array)||batch.vertices.length%18)
+            throw new Error("Invalid opaque scene mesh batch");
+        const key=batch.level+":"+batch.texture;
+        let group=grouped.get(key);
+        if(!group){
+            group={level:batch.level,texture:batch.texture,chunks:[],length:0};
+            grouped.set(key,group);order.push(group);
+        }
+        if(batch.vertices.length){
+            group.chunks.push(batch.vertices);group.length+=batch.vertices.length;
+        }
+    }
+    return order.map(group=>{
+        const vertices=new Float32Array(group.length);
+        let offset=0;
+        for(const chunk of group.chunks){vertices.set(chunk,offset);offset+=chunk.length;}
+        return {level:group.level,texture:group.texture,vertices};
+    });
+}
+// Larger than OpenOSRS's 8x8 zones: fewer state changes on mobile Safari.
+export const MOBILE_SCENE_ZONE_SIZE=64;
+export function spatialBoundsOverlap(batchBounds,drawBounds){
+    return !batchBounds||batchBounds[0]<=drawBounds[2]&&batchBounds[2]>=drawBounds[0]&&
+        batchBounds[1]<=drawBounds[3]&&batchBounds[3]>=drawBounds[1];
+}
+// Partition only opaque triangles, never transparent models. Preserve UVs,
+// HSL layer bias, face order within each material/zone and exact world bounds.
+export function partitionOpaqueScene(batches,zoneSize=MOBILE_SCENE_ZONE_SIZE){
+    if(!Number.isInteger(zoneSize)||zoneSize<1)throw new Error("Invalid scene zone size");
+    const groups=new Map();
+    for(const batch of batches){
+        const vertices=batch.vertices;
+        if(!(vertices instanceof Float32Array)||vertices.length%18)
+            throw new Error("Invalid opaque scene mesh batch");
+        for(let at=0;at<vertices.length;at+=18){
+            const x=(vertices[at]+vertices[at+6]+vertices[at+12])/3;
+            const z=(vertices[at+2]+vertices[at+8]+vertices[at+14])/3;
+            const zx=Math.floor(x/zoneSize),zz=Math.floor(z/zoneSize);
+            const key=batch.level+":"+batch.texture+":"+zx+":"+zz;
+            let group=groups.get(key);
+            if(!group){
+                group={level:batch.level,texture:batch.texture,segments:[],
+                    count:0,bounds:[Infinity,Infinity,-Infinity,-Infinity]};
+                groups.set(key,group);
+            }
+            group.segments.push([vertices,at]);group.count+=18;
+            for(let k=at;k<at+18;k+=6){
+                group.bounds[0]=Math.min(group.bounds[0],vertices[k]);
+                group.bounds[1]=Math.min(group.bounds[1],vertices[k+2]);
+                group.bounds[2]=Math.max(group.bounds[2],vertices[k]);
+                group.bounds[3]=Math.max(group.bounds[3],vertices[k+2]);
+            }
+        }
+    }
+    return [...groups.values()].map(group=>{
+        const vertices=new Float32Array(group.count);
+        let at=0;
+        for(const [source,i] of group.segments){
+            vertices.set(source.subarray(i,i+18),at);at+=18;
+        }
+        return {level:group.level,texture:group.texture,
+            vertices,bounds:group.bounds};
+    });
+}
+export function partitionColorScene(vertices,levelCounts,zoneSize=MOBILE_SCENE_ZONE_SIZE){
+    const batches=[];let at=0;
+    for(let level=0;level<4;level++){
+        const length=(levelCounts?.[level]??(level===0?vertices.length/6:0))*6;
+        if(length)batches.push({level,texture:-1,vertices:vertices.subarray(at,at+length)});
+        at+=length;
+    }
+    return partitionOpaqueScene(batches,zoneSize);
+}
+export class NativeTerrainViewport {
+    constructor(canvas,{onDestination=()=>{},gpuSettings={}}={}) {
+        this.canvas=canvas;
+        this.gpuSettings=validateGpuSettings(gpuSettings);
+        this.touch=Boolean(window.matchMedia?.("(pointer: coarse)")?.matches);
+        // SoloScape requires WebGL 2; do not silently fall back to WebGL 1.
+        this.gl=canvas.getContext("webgl2",{antialias:!this.touch,alpha:false});
+        if(!this.gl)throw new Error("WebGL 2 is required to play SoloScape on this device");
+        const gl=this.gl;
+        this.program=program(gl);
+        this.textureProgram=program(gl,true);this.textures=new Map();this.textureMeta=new Map();this.textureClock=performance.now();this.terrainBatches=[];this.sceneryBatches=[];this.visibleLevel=0;
+        this.buf=gl.createBuffer();
+        this.sceneryBuf=gl.createBuffer();this.sceneryCount=0;
+        this.actorBuf=gl.createBuffer();this.actorCount=0;this.actorBatches=[];this.actorPickMeshes=[];
+        this.sceneryPickMeshes=[];this.onDestination=onDestination;this.onClickCross=()=>{};
+        this.onNpc=()=>{};this.onObject=()=>{};this.onNpcCancel=()=>{};this.onGroundMenu=()=>{};
+        this.palette=gl.createTexture();
+        const pixels=new Uint8Array(65536*4);
+        for(let i=0;i<HSL_PALETTE.length;i++){
+            const rgb=HSL_PALETTE[i];
+            pixels.set([rgb>>>16&255,rgb>>>8&255,rgb&255,255],i*4);
+        }
+        gl.bindTexture(gl.TEXTURE_2D,this.palette);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,256,256,0,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+        this.count=0;
+        this.yaw=.8;this.pitch=.66;this.distance=GAME_CAMERA_ZOOM.default;
+        this.target=[0,10,0];
+        this.pointer=null;
+        this.disposed=false;
+        this.pickNpcAt=(clientX,clientY)=>{
+            if(!this.actorPickMeshes.length)return null;
+            const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return null;
+            const nx=2*(clientX-rect.left)/rect.width-1,ny=1-2*(clientY-rect.top)/rect.height;
+            const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,rect.width/rect.height);
+            const npc=pickNpcTriangles(this.actorPickMeshes,matrix,nx,ny,this.drawBounds());
+            return npc?{index:npc.index,x:clientX-rect.left,y:clientY-rect.top,depth:npc.depth}:null;
+        };
+        this.pickObjectAt=(clientX,clientY)=>{
+            const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return null;
+            const nx=2*(clientX-rect.left)/rect.width-1,ny=1-2*(clientY-rect.top)/rect.height;
+            const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,rect.width/rect.height);
+            const plane=this.roofContext?.player?.plane??this.visibleLevel;
+            const roofLevel=this.visibleRoofLevel();
+            const valid=[...this.sceneryPickMeshes,...(this.dynamicPickMeshes??[])].filter(loc=>loc.plane===plane&&loc.level<=roofLevel);
+            const hit=pickNpcTriangles(valid.map((loc,index)=>({index,vertices:loc.vertices})),matrix,nx,ny,this.drawBounds());
+            if(!hit)return null;
+            const loc=valid[hit.index];
+            return {id:loc.id,name:loc.name,actions:loc.actions,tileX:loc.x,tileY:loc.y,
+                plane:loc.plane,x:clientX-rect.left,y:clientY-rect.top,depth:hit.depth};
+        };
+        this.lastNpcHold=-Infinity;
+        this.longPress=new NpcLongPress(hit=>{
+            this.lastNpcHold=performance.now();this.onNpc({...hit,mode:"menu"});
+        },{slop:6});
+        this.onPointerDown=e=>{
+            if(this.pointer)this.longPress.cancel();
+            this.pointer={id:e.pointerId,x:e.clientX,y:e.clientY,startX:e.clientX,startY:e.clientY,dragged:false,button:e.button,pointerType:e.pointerType};
+            if(e.pointerType==="touch"&&e.isPrimary!==false){
+                const hit=this.pickNpcAt(e.clientX,e.clientY);
+                this.longPress.start(e.pointerId,e.clientX,e.clientY,hit?{...hit,run:false}:null);
+            }
+            if(e.pointerType==="touch"||e.button===0||e.button===1)
+                canvas.setPointerCapture?.(e.pointerId);
+            if(e.button===1)e.preventDefault();};
+        this.onPointerMove=e=>{
+            if(!this.pointer||this.pointer.id!==e.pointerId)return;
+            const dx=e.clientX-this.pointer.x,dy=e.clientY-this.pointer.y;
+            this.longPress.move(e.pointerId,e.clientX,e.clientY);
+            // RuneLite desktop: only middle drag rotates; left-click selects,
+            // right-click opens the menu. Touch dragging remains camera orbit.
+            this.pointer.dragged ||=Math.hypot(e.clientX-this.pointer.startX,e.clientY-this.pointer.startY)>6;
+            if(!shouldRotateCameraDrag(this.pointer.button,this.pointer.pointerType)||!this.pointer.dragged)return;
+            rotateCamera(this,dx,dy);
+            this.pointer.x=e.clientX;this.pointer.y=e.clientY;
+        };
+        this.onPointerUp=e=>{
+            if(this.pointer?.id!==e.pointerId)return;
+            const pointer=this.pointer;this.pointer=null;
+            const held=this.longPress.finish(e.pointerId);
+            if(e.type==="pointercancel"||held||pointer.dragged||pointer.button!==0)return;
+            const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return;
+            const nx=2*(e.clientX-rect.left)/rect.width-1,ny=1-2*(e.clientY-rect.top)/rect.height;
+            const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,rect.width/rect.height);
+            const npc=this.pickNpcAt(e.clientX,e.clientY),object=this.pickObjectAt(e.clientX,e.clientY);
+            if(object&&(!npc||object.depth<npc.depth)){
+                this.onObject({...object,run:e.shiftKey,mode:"default"});
+                return;
+            }
+            if(npc){
+                this.onNpc({...npc,run:e.shiftKey,mode:"default"});
+                return;
+            }
+            this.onNpcCancel();
+            if(pointer.button!==0||!this.pickVertices)return;
+            const count=this.pickLevelCounts.slice(0,this.visibleRoofLevel()+1).reduce((a,b)=>a+b,0)*6;
+            const tile=pickTerrainTile(this.pickVertices.subarray(0,count),matrix,nx,ny,this.drawBounds());
+            if(tile)this.onDestination({...tile,run:e.shiftKey,
+                screenX:e.clientX-rect.left,screenY:e.clientY-rect.top});
+        };
+        this.onContextMenu=e=>{
+            // Suppress the native "Save image as..." canvas menu even when no NPC
+            // triangle is directly under the pointer.
+            e.preventDefault();
+            // Mobile OSes may synthesise contextmenu before or after our hold.
+            if(e.pointerType==="touch"||e.sourceCapabilities?.firesTouchEvents||
+                this.pointer?.pointerType==="touch"||performance.now()-this.lastNpcHold<800)return;
+            this.longPress.cancel();
+            const rect=canvas.getBoundingClientRect();
+            const pickGround=(clientX,clientY)=>{
+                if(!this.pickVertices||!rect.width||!rect.height)return null;
+                const nx=2*(clientX-rect.left)/rect.width-1,ny=1-2*(clientY-rect.top)/rect.height;
+                const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,rect.width/rect.height);
+                const count=this.pickLevelCounts.slice(0,this.visibleRoofLevel()+1).reduce((a,b)=>a+b,0)*6;
+                const tile=pickTerrainTile(this.pickVertices.subarray(0,count),matrix,nx,ny,this.drawBounds());
+                return tile?{tile,x:clientX-rect.left,y:clientY-rect.top}:null;
+            };
+            dispatchWorldContextMenu(e,{
+                pickNpc:(x,y)=>this.pickNpcAt(x,y),pickObject:(x,y)=>this.pickObjectAt(x,y),pickGround,
+                onNpc:hit=>this.onNpc(hit),onObject:hit=>this.onObject(hit),onGround:hit=>this.onGroundMenu(hit),
+                onCancel:()=>this.onNpcCancel()
+            });
+        };
+        this.onWheel=e=>{e.preventDefault();this.distance=cameraWheelDistance(this.distance,e);};
+        this.onKey=e=>{
+            if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName||""))return;
+            if(e.key==="ArrowLeft"||e.key.toLowerCase()==="a")rotateCamera(this,6,0);
+            else if(e.key==="ArrowRight"||e.key.toLowerCase()==="d")rotateCamera(this,-6,0);
+            else if(e.key==="ArrowUp"||e.key.toLowerCase()==="w")rotateCamera(this,0,3);
+            else if(e.key==="ArrowDown"||e.key.toLowerCase()==="s")rotateCamera(this,0,-3);
+            else return;
+            e.preventDefault();
+        };
+        canvas.addEventListener("pointerdown",this.onPointerDown);
+        canvas.addEventListener("pointermove",this.onPointerMove);
+        canvas.addEventListener("pointerup",this.onPointerUp);
+        canvas.addEventListener("pointercancel",this.onPointerUp);
+        canvas.addEventListener("contextmenu",this.onContextMenu);
+        canvas.addEventListener("wheel",this.onWheel,{passive:false});
+        window.addEventListener("keydown",this.onKey);
+        gl.enable(gl.DEPTH_TEST);
+        // Classic black void beyond the rendered scene (also used by distance fog).
+        gl.clearColor(0,0,0,1);
+        this.frame=timestamp=>{
+            if(this.disposed)return;
+            // Record before rendering: failures must not hide an expensive
+            // frame or silently stop RAF without surfacing the exception.
+            this.onFrame?.(timestamp);
+            const started=performance.now();
+            try{this.render();}
+            catch(error){
+                this.onRenderError?.(error);
+                if(!this.onRenderError)console.error("[native-world] WebGL rendering stopped:",error);
+                return;
+            }
+            this.onDrawTime?.(performance.now()-started);
+            if(!this.disposed)this.raf=requestAnimationFrame(this.frame);
+        };
+        this.raf=requestAnimationFrame(this.frame);
+    }
+    setTerrain(terrain,{resetCamera=true}={}){
+        const gl=this.gl;
+        const regions=terrain.regions??[terrain];
+        this.fogSceneBounds=[
+            Math.min(...regions.map(r=>((r.mapX??0)-(terrain.mapX??0))*64))-30.5,
+            Math.min(...regions.map(r=>((r.mapY??0)-(terrain.mapY??0))*64))-30.5,
+            Math.max(...regions.map(r=>((r.mapX??0)-(terrain.mapX??0))*64))+31.5,
+            Math.max(...regions.map(r=>((r.mapY??0)-(terrain.mapY??0))*64))+31.5,
+        ];
+        const scene=buildTerrainScene(terrain),mesh=scene.vertices;
+        this.pickVertices=mesh;this.pickLevelCounts=scene.levelCounts;
+        this.drawMode=terrain.floorMaterials?gl.TRIANGLES:gl.LINES;
+        const vertices=terrain.floorMaterials?mesh:terrainWireframe(mesh);
+        // Mobile draws chunk VBOs; avoid uploading an additional full-scene
+        // copy that would never be drawn. Wireframe keeps its original VBO.
+        if(!this.touch||this.drawMode===gl.LINES){
+            gl.bindBuffer(gl.ARRAY_BUFFER,this.buf);
+            gl.bufferData(gl.ARRAY_BUFFER,vertices,gl.STATIC_DRAW);
+        }
+        this.count=vertices.length/6;
+        this.terrainLevelCounts=this.drawMode===gl.LINES?scene.levelCounts.map(n=>n*2):scene.levelCounts;
+        this.replaceBatches("terrainBatches",this.touch?
+            partitionOpaqueScene(scene.texturedBatches):scene.texturedBatches);
+        this.replaceBatches("terrainColorBatches",this.touch&&this.drawMode===gl.TRIANGLES?
+            partitionColorScene(mesh,scene.levelCounts):[]);
+        if(resetCamera){
+            this.target=[0,-terrain.heights[32*64+32]/128,0];
+            this.setScenery(null);
+        }
+    }
+    setScenery(scene){
+        this.setDynamicScenery(null);
+        const vertices=scene?.vertices??new Float32Array();
+        if(!(vertices instanceof Float32Array)||vertices.length%18)throw new Error("Invalid scenery mesh");
+        if(!this.touch){
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER,this.sceneryBuf);
+            this.gl.bufferData(this.gl.ARRAY_BUFFER,vertices,this.gl.STATIC_DRAW);
+        }
+        this.sceneryCount=vertices.length/6;
+        this.sceneryLevelCounts=scene?.levelCounts??[this.sceneryCount,0,0,0];
+        const opaque=scene?.texturedBatches??[];
+        this.replaceBatches("sceneryBatches",this.touch?partitionOpaqueScene(opaque):opaque);
+        this.replaceBatches("sceneryColorBatches",this.touch?
+            partitionColorScene(vertices,this.sceneryLevelCounts):[]);
+        this.replaceBatches("sceneryAlphaBatches",scene?.transparentBatches??[]);
+        this.sceneryPickMeshes=preparePickMeshes(scene?.pickMeshes??[]);
+        for(const texture of this.textures.values())this.gl.deleteTexture(texture);
+        this.textures.clear();this.textureMeta?.clear();
+        this.addTextures(scene?.textures??new Map());
+    }
+    addTextures(textures){
+        const gl=this.gl;
+        for(const [id,data] of textures){
+            if(this.textures.has(id))continue;
+            if((data.size!==64&&data.size!==128)||data.pixels?.length!==data.size*data.size*4)throw new Error("Invalid scene texture");
+            const texture=gl.createTexture();this.textures.set(id,texture);
+            this.textureMeta?.set(id,data);
+            gl.bindTexture(gl.TEXTURE_2D,texture);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
+            gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,data.size,data.size,0,gl.RGBA,gl.UNSIGNED_BYTE,data.rawPixels??data.pixels);
+            // Real WebGL 2 always supplies mipmaps; lightweight test GLs may omit it.
+            gl.generateMipmap?.(gl.TEXTURE_2D);
+            this.applyTextureFiltering(texture);
+        }
+    }
+    applyTextureFiltering(texture){
+        const gl=this.gl,level=(this.gpuSettings??GPU_SETTINGS).anisotropicFilteringLevel;
+        gl.bindTexture?.(gl.TEXTURE_2D,texture);
+        gl.texParameteri?.(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,level>0?(gl.NEAREST_MIPMAP_LINEAR??gl.NEAREST):gl.NEAREST);
+        gl.texParameteri?.(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+        if(this.anisotropicExtension===undefined)this.anisotropicExtension=
+            gl.getExtension?.("EXT_texture_filter_anisotropic")??gl.getExtension?.("WEBKIT_EXT_texture_filter_anisotropic")??null;
+        const ext=this.anisotropicExtension;
+        if(ext&&gl.texParameterf&&gl.getParameter){
+            const max=gl.getParameter(ext.MAX_TEXTURE_MAX_ANISOTROPY_EXT);
+            gl.texParameterf(gl.TEXTURE_2D,ext.TEXTURE_MAX_ANISOTROPY_EXT,Math.max(1,Math.min(max,level)));
+        }
+    }
+    refreshTextureFiltering(){
+        const level=(this.gpuSettings??GPU_SETTINGS).anisotropicFilteringLevel;
+        if(this.appliedFilteringLevel===level)return;
+        for(const texture of this.textures.values())this.applyTextureFiltering(texture);
+        this.appliedFilteringLevel=level;
+    }
+    setActors(scene){
+        this.replaceBatches("actorColorBatches",[]);
+        const vertices=scene?.vertices??new Float32Array();
+        if(!(vertices instanceof Float32Array)||vertices.length%18)throw new Error("Invalid player mesh");
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER,this.actorBuf);
+        const bytes=vertices.byteLength;
+        if(bytes){
+            if(this.actorCapacity>=bytes&&this.gl.bufferSubData)
+                this.gl.bufferSubData(this.gl.ARRAY_BUFFER,0,vertices);
+            else{
+                this.gl.bufferData(this.gl.ARRAY_BUFFER,vertices,this.gl.DYNAMIC_DRAW);
+                this.actorCapacity=bytes;
+            }
+        }
+        this.actorCount=vertices.length/6;
+        this.replaceBatches("actorBatches",scene?.texturedBatches??[]);
+        this.replaceBatches("actorAlphaBatches",scene?.transparentBatches??[]);
+        this.actorPickMeshes=preparePickMeshes(scene?.npcPickMeshes??[]);
+        this.addTextures(scene?.textures??new Map());
+    }
+    setActorInstances(scene){
+        const colored=[],textured=[],alpha=[],picks=[];
+        for(const {key,mesh,index} of scene?.actors??[]){
+            const offset=mesh.offset??ZERO_MODEL_OFFSET;
+            const append=(destination,batch,material)=>{
+                if(!batch.vertices.length)return;
+                destination.push({...batch,key:`${key}:${material}`,offset});
+                if(index!==undefined)picks.push({index,vertices:batch.vertices,offset});
+            };
+            append(colored,{vertices:mesh.vertices,texture:-1,level:0},"color");
+            for(let i=0;i<mesh.texturedBatches.length;i++)append(textured,mesh.texturedBatches[i],`texture:${i}`);
+            for(let i=0;i<(mesh.transparentBatches?.length??0);i++)append(alpha,mesh.transparentBatches[i],`alpha:${i}`);
+        }
+        this.actorCount=0;
+        this.replaceBatches("actorColorBatches",colored);
+        this.replaceBatches("actorBatches",textured);
+        this.replaceBatches("actorAlphaBatches",alpha);
+        this.actorPickMeshes=preparePickMeshes(picks);
+        this.addTextures(scene?.textures??new Map());
+    }
+    setDynamicScenery(scene){
+        const next=scene?.batches??[],alpha=scene?.transparentBatches??[],pick=scene?.pickMeshes??[];
+        const same=(old,incoming)=>old?.length===incoming.length&&old.every((b,i)=>
+            b.key===incoming[i].key&&b.vertices===incoming[i].vertices&&b.texture===incoming[i].texture&&
+            b.level===incoming[i].level&&b.alpha===incoming[i].alpha);
+        // Preserve unchanged poses; changed placement/material identities are
+        // reconciled below without recreating their VBOs and retained VAOs.
+        if(same(this.dynamicBatches,next)&&same(this.dynamicAlphaBatches,alpha)&&
+            this.dynamicPickSources?.length===pick.length&&
+            this.dynamicPickSources.every((source,i)=>source===pick[i]))return;
+        this.dynamicPickSources=pick;
+        this.replaceBatches("dynamicBatches",next);
+        this.replaceBatches("dynamicAlphaBatches",scene?.transparentBatches??[]);
+        this.dynamicPickMeshes=preparePickMeshes(scene?.pickMeshes??[]);
+    }
+    setSceneLevel(level){validateSceneLevel(level);this.visibleLevel=level;}
+    setRoofContext(regions,origin,player){this.roofContext={regions,origin,player};}
+    visibleRoofLevel(){
+        const ctx=this.roofContext;
+        if(!ctx?.player)return this.visibleLevel;
+        return nativeRoofPlaneLimit(ctx.regions,{origin:ctx.origin,player:ctx.player,
+            position:this.target,yaw:this.yaw,pitch:this.pitch,distance:this.distance});
+    }
+    drawBounds(){return sceneDrawBounds(this.target,this.yaw,this.pitch,this.distance);}
+    // Safari incurs bridge overhead for every uniform-location lookup. The
+    // WebGLProgram's uniforms are stable for its lifetime; cache locations.
+    uniform(program,name){
+        if(!this.uniformLocations)this.uniformLocations=new WeakMap();
+        let locations=this.uniformLocations.get(program);
+        if(!locations){locations=new Map();this.uniformLocations.set(program,locations);}
+        if(!locations.has(name))locations.set(name,this.gl.getUniformLocation(program,name));
+        return locations.get(name);
+    }
+    // Attribute locations are stable for a linked program; avoid asking
+    // Safari's WebGL bridge for them on every material draw.
+    attribute(program,name){
+        if(!this.attributeLocations)this.attributeLocations=new WeakMap();
+        let locations=this.attributeLocations.get(program);
+        if(!locations){locations=new Map();this.attributeLocations.set(program,locations);}
+        if(!locations.has(name))locations.set(name,this.gl.getAttribLocation(program,name));
+        return locations.get(name);
+    }
+    // Only change the current GL program when a batch actually needs it.
+    useRenderProgram(program){
+        if(this.boundRenderProgram!==program){
+            this.gl.useProgram(program);
+            this.boundRenderProgram=program;
+        }
+    }
+    // Texture unit zero is shared by every world shader. Avoid redundant
+    // activeTexture/bindTexture calls when a material uses the same texture.
+    bindRenderTexture(texture){
+        const gl=this.gl;
+        if(!this.frameTextureUnitActive){
+            gl.activeTexture(gl.TEXTURE0);
+            this.frameTextureUnitActive=true;
+        }
+        if(this.lastFrameTexture!==texture){
+            gl.bindTexture(gl.TEXTURE_2D,texture);
+            this.lastFrameTexture=texture;
+        }
+    }
+    // Fog, view matrices and clipping bounds are shared by all triangles
+    // of one shader during a given frame. Upload once, not per draw call.
+    prepareRenderProgram(program,matrix,bounds){
+        this.useRenderProgram(program);
+        if(this.framePreparedPrograms?.has(program))return;
+        const gl=this.gl;
+        this.uploadFog(program);
+        gl.uniformMatrix4fv(this.uniform(program,"u_mvp"),false,matrix);
+        gl.uniform4fv(this.uniform(program,"u_drawBounds"),bounds);
+        gl.uniform1i(this.uniform(program,"u_wireframe"),0);
+        gl.uniform1i(this.uniform(program,program===this.textureProgram?"u_texture":"u_palette"),0);
+        gl.uniform1f(this.uniform(program,"u_opacity"),1);
+        this.uploadModelOffset(program);
+        const settings=this.gpuSettings??GPU_SETTINGS;
+        gl.uniform1f(this.uniform(program,"u_brightness"),settings.brightness);
+        gl.uniform1f(this.uniform(program,"u_smoothBanding"),settings.smoothBanding?0:1);
+        gl.uniform1f(this.uniform(program,"u_textureLightMode"),settings.brightTextures?1:0);
+        gl.uniform1i(this.uniform(program,"u_colorBlindMode"),settings.colorBlindMode);
+        gl.uniform1f(this.uniform(program,"u_colorBlindIntensity"),settings.colorBlindIntensity);
+        this.framePreparedPrograms?.add(program);
+        this.frameOpacity?.set(program,1);
+    }
+    uploadModelOffset(program,offset=ZERO_MODEL_OFFSET){
+        if(!this.frameModelOffsets)this.frameModelOffsets=new Map();
+        const old=this.frameModelOffsets.get(program);
+        if(old&&old.every((v,i)=>v===offset[i]))return;
+        this.gl.uniform3fv(this.uniform(program,"u_modelOffset"),offset);
+        this.frameModelOffsets.set(program,offset);
+    }
+    // A texture moves as one unit. Calculate UV scrolling once per texture
+    // per frame and reuse the exact same offset in every compatible batch.
+    frameTextureShift(texture){
+        if(!this.frameTextureOffsets)this.frameTextureOffsets=new Map();
+        if(!this.frameTextureOffsets.has(texture)){
+            const at=this.frameTime??(performance.now()-this.textureClock);
+            this.frameTextureOffsets.set(texture,textureAnimationOffset(this.textureMeta?.get(texture),at));
+        }
+        return this.frameTextureOffsets.get(texture);
+    }
+    uploadTextureBrightness(texture){
+        const value=this.textureMeta?.get(texture)?.rawPixels?(this.gpuSettings??GPU_SETTINGS).brightness:1;
+        if(value===this.boundTextureBrightness)return;
+        this.gl.uniform1f(this.uniform(this.textureProgram,"u_textureBrightness"),value);
+        this.boundTextureBrightness=value;
+    }
+    uploadFog(program){
+        const gl=this.gl,depth=(this.gpuSettings??GPU_SETTINGS).fogDepth;
+        const target=this.target??[0,0,0],yaw=this.yaw??0,pitch=this.pitch??0,distance=this.distance??0;
+        const x=target[0]+Math.sin(yaw)*Math.cos(pitch)*distance;
+        const z=target[2]-Math.cos(yaw)*Math.cos(pitch)*distance;
+        const scene=this.fogSceneBounds??[-30.5,-30.5,31.5,31.5];
+        gl.uniform4fv(this.uniform(program,"u_fogBounds"),[
+            Math.max(scene[0],x-CLASSIC_DRAW_DISTANCE),Math.max(scene[1],z-CLASSIC_DRAW_DISTANCE),
+            Math.min(scene[2],x+CLASSIC_DRAW_DISTANCE),Math.min(scene[3],z+CLASSIC_DRAW_DISTANCE),
+        ]);
+        gl.uniform1f(this.uniform(program,"u_fogDepth"),depth);
+        gl.uniform3f(this.uniform(program,"u_fogColor"),0,0,0);
+        gl.uniform1f(this.uniform(program,"u_fogEnabled"),depth>0?1:0);
+    }
+    replaceBatches(name,batches){
+        const gl=this.gl;
+        for(const b of batches){
+            if(!(b.vertices instanceof Float32Array)||b.vertices.length%18)throw new Error("Invalid scene mesh batch");
+            if(b.alpha!==undefined&&(!Number.isInteger(b.alpha)||b.alpha<1||b.alpha>254))throw new Error("Invalid scene face alpha");
+        }
+        const previous=this[name]??[],used=new Set();
+        const dynamic=name.startsWith("dynamic"),actor=name.startsWith("actor");
+        const byIdentity=dynamic||actor?new Map(previous.filter(b=>b.key!==undefined).map(b=>[b.key,b])):null;
+        if(dynamic)for(const b of previous)if(b.key===undefined)byIdentity.set(b.vertices,b);
+        this[name]=batches.map((b,i)=>{
+            const candidate=dynamic?byIdentity.get(b.key??b.vertices):actor?(b.key!==undefined?byIdentity.get(b.key):previous[i]):null;
+            const old=candidate&&!used.has(candidate)?candidate:null;
+            if(old)used.add(old);
+            const buffer=old?.buffer??gl.createBuffer();
+            const bytes=b.vertices.byteLength;
+            let capacity=old?.capacity??old?.vertices.byteLength??0;
+            if(!old||old.vertices!==b.vertices){
+                gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+                if(old&&capacity>=bytes&&gl.bufferSubData){
+                    if(bytes)gl.bufferSubData(gl.ARRAY_BUFFER,0,b.vertices);
+                }else{
+                    gl.bufferData(gl.ARRAY_BUFFER,b.vertices,actor||dynamic?gl.DYNAMIC_DRAW:gl.STATIC_DRAW);
+                    capacity=bytes;
+                }
+            }
+            return {key:b.key,buffer,capacity,count:b.vertices.length/6,texture:b.texture,level:b.level,
+                bounds:b.bounds,alpha:b.alpha,vertices:b.vertices,offset:b.offset,
+                isWater:isKnownWaterTextureId(b.texture)};
+        });
+        for(const old of previous)if(!used.has(old)){
+            this.releaseGeometry?.(old.buffer);
+            gl.deleteBuffer(old.buffer);
+        }
+    }
+    // WebGL 2 VAOs retain the buffer format for each shader/buffer pairing.
+    // Attribute indices are program-specific; never reuse one program's VAO
+    // blindly with the other program.
+    bindGeometry(buffer,program){
+        if(!this.vertexArrays)this.vertexArrays=new Map();
+        let programs=this.vertexArrays.get(buffer);
+        if(!programs){programs=new Map();this.vertexArrays.set(buffer,programs);}
+        let vao=programs.get(program);
+        if(!vao){
+            const gl=this.gl;
+            vao=gl.createVertexArray();
+            if(!vao)throw new Error("WebGL 2 could not allocate a vertex array");
+            programs.set(program,vao);
+            gl.bindVertexArray(vao);
+            gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+            const pos=this.attribute(program,"a_position"),color=this.attribute(program,"a_color");
+            gl.enableVertexAttribArray(pos);gl.vertexAttribPointer(pos,3,gl.FLOAT,false,24,0);
+            gl.enableVertexAttribArray(color);gl.vertexAttribPointer(color,3,gl.FLOAT,false,24,12);
+            this.boundVertexArray=vao;
+        }else if(this.boundVertexArray!==vao){
+            this.gl.bindVertexArray(vao);
+            this.boundVertexArray=vao;
+        }
+    }
+    releaseGeometry(buffer){
+        const order=this.transparentIndexBuffers?.get(buffer);
+        if(order){
+            this.gl.deleteBuffer(order.buffer);
+            this.transparentIndexBuffers.delete(buffer);
+            this.transparentOrderCache=null;
+        }
+        const programs=this.vertexArrays?.get(buffer);
+        if(!programs)return;
+        for(const vao of programs.values()){
+            this.gl.deleteVertexArray(vao);
+            if(this.boundVertexArray===vao)this.boundVertexArray=null;
+        }
+        this.vertexArrays.delete(buffer);
+    }
+    drawArrays(mode,first,count){
+        this.drawCallCount++;
+        this.gl.drawArrays(mode,first,count);
+    }
+    drawElements(mode,count,offset){
+        this.drawCallCount++;
+        this.gl.drawElements(mode,count,this.gl.UNSIGNED_INT,offset);
+    }
+    render(){
+        const gl=this.gl,canvas=this.canvas;
+        this.refreshTextureFiltering();
+        this.drawCallCount=0;
+        this.frameModelOffsets?.clear();
+        if(!this.framePreparedPrograms)this.framePreparedPrograms=new Set();
+        else this.framePreparedPrograms.clear();
+        if(!this.frameOpacity)this.frameOpacity=new Map();
+        else this.frameOpacity.clear();
+        if(!this.frameTextureOffsets)this.frameTextureOffsets=new Map();
+        else this.frameTextureOffsets.clear();
+        this.frameTextureUnitActive=false;
+        this.lastFrameTexture=undefined;
+        this.frameTime=performance.now()-this.textureClock;
+        // Any non-rendering upload may have changed WebGL's active program
+        // since the last requestAnimationFrame callback.
+        this.boundRenderProgram=null;
+        this.boundVertexArray=null;
+        const {width:w,height:h}=worldRenderPixels(canvas.clientWidth,canvas.clientHeight,
+            window.devicePixelRatio||1,this.touch);
+        if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
+        gl.viewport(0,0,w,h);
+        gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+        if(!this.count&&!this.sceneryCount&&!this.terrainBatches.length&&!this.sceneryBatches.length)return;
+        const matrix=sceneCameraMatrix(this.target,this.yaw,this.pitch,this.distance,w/h);
+        const drawLevel=this.visibleRoofLevel();
+
+
+        const bounds=this.drawBounds();
+        this.prepareRenderProgram(this.program,matrix,bounds);
+        this.bindRenderTexture(this.palette);
+        gl.uniform1i(this.uniform(this.program,"u_wireframe"),this.drawMode===gl.LINES?1:0);
+        if(!this.touch||this.drawMode===gl.LINES)this.bindGeometry(this.buf,this.program);
+        if(this.touch&&this.drawMode===gl.TRIANGLES){
+            for(const batch of this.terrainColorBatches??[]){
+                if(batch.level<=drawLevel&&spatialBoundsOverlap(batch.bounds,bounds))
+                    this.renderMaterialBatch(batch,0,batch.count,matrix,bounds,1);
+            }
+        }else this.drawArrays(this.drawMode,0,
+            this.terrainLevelCounts?.slice(0,drawLevel+1).reduce((a,b)=>a+b,0)??this.count);
+        if(this.sceneryCount){
+            gl.uniform1i(this.uniform(this.program,"u_wireframe"),0);
+            if(this.touch){
+                for(const batch of this.sceneryColorBatches??[]){
+                    if(batch.level<=drawLevel&&spatialBoundsOverlap(batch.bounds,bounds))
+                        this.renderMaterialBatch(batch,0,batch.count,matrix,bounds,1);
+                }
+            }else{
+                this.bindGeometry(this.sceneryBuf,this.program);
+                this.drawArrays(gl.TRIANGLES,0,this.sceneryLevelCounts.slice(0,drawLevel+1).reduce((a,b)=>a+b,0));
+            }
+        }
+        if(this.actorCount){
+            gl.uniform1i(this.uniform(this.program,"u_wireframe"),0);
+            this.bindGeometry(this.actorBuf,this.program);
+            this.drawArrays(gl.TRIANGLES,0,this.actorCount);
+        }
+        for(const batch of this.actorColorBatches??[])
+            this.renderMaterialBatch(batch,0,batch.count,matrix,bounds,1);
+        // Only the wireframe ground pass uses line mode; later opaque and
+        // alpha materials must be shaded normally even when F10 toggles lines.
+        this.useRenderProgram(this.program);
+        gl.uniform1i(this.uniform(this.program,"u_wireframe"),0);
+        this.prepareRenderProgram(this.textureProgram,matrix,bounds);
+        // The VAO stores both vertex attributes, even when texture changes.
+        // Iterate stable batch arrays without concatenating hundreds of
+        // wrapper objects on every requestAnimationFrame.
+        for(const batchSet of [this.terrainBatches,this.sceneryBatches])
+        for(const batch of batchSet){
+            const texture=this.textures.get(batch.texture);
+            if(!texture||batch.level>drawLevel||!spatialBoundsOverlap(batch.bounds,bounds))continue;
+            const offset=this.frameTextureShift(batch.texture);
+            this.uploadModelOffset(this.textureProgram);
+            gl.uniform2f(this.uniform(this.textureProgram,"u_textureShift"),offset[0],offset[1]);
+            this.uploadTextureBrightness(batch.texture);
+            // Water IDs retain the pinned TSPS classification in batch metadata.
+            // Foam, normals and water-material passes are not yet ported.
+            this.bindRenderTexture(texture);this.bindGeometry(batch.buffer,this.textureProgram);
+            this.drawArrays(gl.TRIANGLES,0,batch.count);
+        }
+        for(const batch of this.actorBatches??[]){
+            if(batch.level<=drawLevel)this.renderMaterialBatch(batch,0,batch.count,matrix,bounds,1);
+        }
+        for(const batch of this.dynamicBatches??[]){
+            if(batch.level<=drawLevel)this.renderMaterialBatch(batch,0,batch.count,matrix,bounds,1);
+        }
+        this.renderTransparent(matrix,drawLevel,bounds);
+        this.onDrawCalls?.(this.drawCallCount);
+        // Notify the loading tracker only after actual WebGL draw calls.
+        // Wireframe and actor-only frames are not a fully constructed map.
+        const groundReady=this.drawMode===gl.TRIANGLES&&
+            (this.count>0||this.terrainBatches.some(batch=>batch.count>0));
+        if(groundReady&&this.onSceneFrame){const done=this.onSceneFrame;this.onSceneFrame=null;done();}
+    }
+    renderTransparent(matrix,drawLevel,bounds){
+        const gl=this.gl;
+        const batches=[...(this.sceneryAlphaBatches??[]),...(this.actorAlphaBatches??[]),...(this.dynamicAlphaBatches??[])];
+        const faces=this.prepareTransparentDraws(batches,matrix,drawLevel);
+        if(!faces.length)return;
+        gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);
+        try{
+            for(const {batch,first,count=3} of faces){
+                this.renderMaterialBatch(batch,first,count,matrix,bounds,1-batch.alpha/255);
+            }
+        }finally{gl.depthMask(true);gl.disable(gl.BLEND);}
+    }
+    prepareTransparentDraws(batches,matrix,drawLevel){
+        const previous=this.transparentOrderCache;
+        // Camera translation changes every face's depth by the same amount.
+        // Only its direction, geometry or roof visibility can change ordering.
+        if(previous&&previous.level===drawLevel&&
+            previous.direction.every((v,i)=>v===matrix[[3,7,11][i]])&&
+            previous.sources.length===batches.length&&previous.sources.every((b,i)=>
+                b.buffer===batches[i].buffer&&b.vertices===batches[i].vertices&&
+                b.level===batches[i].level&&b.texture===batches[i].texture&&b.alpha===batches[i].alpha&&
+                (b.offset??ZERO_MODEL_OFFSET).every((v,j)=>v===(batches[i].offset??ZERO_MODEL_OFFSET)[j])))
+            return previous.draws;
+        const gl=this.gl,ordered=transparentIndexRanges(batches,matrix,drawLevel);
+        if(!this.transparentIndexBuffers)this.transparentIndexBuffers=new Map();
+        for(const [batch,indices] of ordered.indices){
+            let old=this.transparentIndexBuffers.get(batch.buffer);
+            if(old&&old.indices.length===indices.length&&old.indices.every((v,i)=>v===indices[i]))continue;
+            if(!old){
+                old={buffer:gl.createBuffer(),capacity:0};
+                this.transparentIndexBuffers.set(batch.buffer,old);
+            }
+            // ELEMENT_ARRAY_BUFFER belongs to the bound VAO. Upload with the
+            // default VAO so another shader's retained layout is not changed.
+            gl.bindVertexArray(null);this.boundVertexArray=null;
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,old.buffer);
+            if(old.capacity>=indices.byteLength)gl.bufferSubData(gl.ELEMENT_ARRAY_BUFFER,0,indices);
+            else{
+                gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,indices,gl.DYNAMIC_DRAW);
+                old.capacity=indices.byteLength;
+            }
+            old.indices=indices;
+        }
+        const draws=ordered.draws.map(({batch,first,count})=>({
+            batch:{...batch,orderBuffer:this.transparentIndexBuffers.get(batch.buffer).buffer},first,count}));
+        this.transparentOrderCache={level:drawLevel,direction:[matrix[3],matrix[7],matrix[11]],
+            sources:batches.map(b=>({...b})),draws};
+        return draws;
+    }
+    renderMaterialBatch(batch,first,count,matrix,bounds,opacity){
+        const gl=this.gl,textured=batch.texture>=0,texture=this.textures.get(batch.texture);
+        if(textured&&!texture)return;
+        const p=textured?this.textureProgram:this.program;
+        this.prepareRenderProgram(p,matrix,bounds);
+        this.uploadModelOffset(p,batch.offset);
+        if(this.frameOpacity?.get(p)!==opacity){
+            gl.uniform1f(this.uniform(p,"u_opacity"),opacity);
+            this.frameOpacity?.set(p,opacity);
+        }
+        this.bindRenderTexture(textured?texture:this.palette);
+
+        if(textured){
+            const offset=this.frameTextureShift(batch.texture);
+            gl.uniform2f(this.uniform(p,"u_textureShift"),...offset);
+            this.uploadTextureBrightness(batch.texture);
+        }
+        this.bindGeometry(batch.buffer,p);
+        if(batch.orderBuffer){
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,batch.orderBuffer);
+            this.drawElements(gl.TRIANGLES,count,first*4);
+        }else this.drawArrays(gl.TRIANGLES,first,count);
+    }
+    dispose(){
+        this.disposed=true;this.onSceneFrame=null;this.longPress.cancel();cancelAnimationFrame(this.raf);
+        for(const [name,fn] of [["pointerdown",this.onPointerDown],["pointermove",this.onPointerMove],
+            ["pointerup",this.onPointerUp],["pointercancel",this.onPointerUp],["contextmenu",this.onContextMenu],["wheel",this.onWheel]]) {
+            this.canvas.removeEventListener(name,fn);
+        }
+        window.removeEventListener("keydown",this.onKey);
+        // A VAO retains its vertex-buffer reference: release all VAOs first.
+        for(const programs of this.vertexArrays?.values()??[])
+            for(const vao of programs.values())this.gl.deleteVertexArray(vao);
+        this.vertexArrays?.clear();this.boundVertexArray=null;
+        for(const order of this.transparentIndexBuffers?.values()??[])this.gl.deleteBuffer(order.buffer);
+        this.transparentIndexBuffers?.clear();this.transparentOrderCache=null;
+        this.gl.deleteBuffer(this.buf);this.gl.deleteBuffer(this.sceneryBuf);this.gl.deleteBuffer(this.actorBuf);this.gl.deleteTexture(this.palette);
+        this.gl.deleteProgram(this.program);
+        this.gl.deleteProgram(this.textureProgram);
+        for(const texture of this.textures.values())this.gl.deleteTexture(texture);
+        for(const batch of [...this.terrainBatches,...this.sceneryBatches,...this.actorBatches,
+            ...(this.terrainColorBatches??[]),...(this.sceneryColorBatches??[]),
+            ...(this.sceneryAlphaBatches??[]),...(this.actorAlphaBatches??[]),...(this.actorColorBatches??[]),
+            ...(this.dynamicBatches??[]),...(this.dynamicAlphaBatches??[])])
+            this.gl.deleteBuffer(batch.buffer);
+    }
+}

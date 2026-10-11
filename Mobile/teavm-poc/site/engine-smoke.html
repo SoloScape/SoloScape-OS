@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SoloScape">
+<title>SoloScape</title>
+<link rel="stylesheet" href="/engine-smoke.css">
+</head>
+<body>
+<!-- Original OpenOSRS engine: local diagnostic identity used by the dev launcher/bridge. -->
+<!-- Paints on the first HTML render, before the Java gamepack is downloaded. -->
+<div id="startup-splash" role="status" aria-label="Loading SoloScape"></div>
+<canvas id="original-engine-canvas" width="765" height="503" tabindex="0" aria-label="Original RuneScape game"></canvas>
+<input id="original-soft-keyboard" type="password" aria-label="Original game keyboard"
+    autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done">
+<!-- Public rev-240 startup parameters only; no account data or editable controls. -->
+<script type="application/json" id="params">{"1":"1","3":"false","4":"1","5":"0","6":"0","7":"0","8":"true","9":"ElZAIrq5NpKN6D3mDdihco3oPeYN2KFy2DCquj7JMmECPmLrDP3Bnw","10":"5","12":"301","14":"0","15":"0","16":"false","18":""}</script>
+<div id="startup-error" role="alert" hidden></div>
+<script type="module" src="/engine-smoke.mjs"></script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+/* Revision-240 title artwork fills the window. The original 765x503 UI
+   coordinates scale uniformly with their transparent input targets. */
+:root{color-scheme:dark;background:#1a110d;color:#eee;font-family:Arial,Helvetica,sans-serif}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#1a110d}
+.app{width:100%;height:100dvh;display:flex;align-items:center;justify-content:center}
+.screen{position:relative;flex:none;width:100vw;height:100dvh;background:#000;overflow:hidden}
+/* Gameplay fills the browser on every device. Dynamic viewport height follows
+   mobile toolbar changes; landscape phones retain notch-side touch padding. */
+.in-game .screen{width:100%;height:100%;aspect-ratio:auto;min-width:0;min-height:0}
+@media (pointer:coarse) and (orientation:landscape){
+  .in-game .app{padding:0 env(safe-area-inset-right,0px) 0 env(safe-area-inset-left,0px)}
+  /* Fill behind translucent iOS status/home bars. Keep the PERF button below
+     status icons, and preserve the left/right camera-cutout touch-safe area. */
+  #world-performance{top:max(6px,env(safe-area-inset-top));right:6px}
+}
+#title-screen{position:absolute;inset:0;background:#000}
+#title-screen[hidden]{display:none}
+#osrs-title{position:absolute;inset:0;width:100%;height:100%;image-rendering:auto}
+#title-controls{position:absolute;left:0;top:0;width:765px;height:503px;transform-origin:0 0;pointer-events:none}
+.title-button{position:absolute;width:147px;height:41px;padding:0;border:0;background:transparent;color:transparent;cursor:pointer;pointer-events:auto;font-size:0}
+.title-button:focus-visible,#title-mute:focus-visible{outline:2px solid #ffff00;outline-offset:2px}
+.title-button:disabled{cursor:default}
+.welcome-new{left:228.5px;top:270.5px}
+.welcome-login{left:388.5px;top:270.5px}
+.form-login{left:228.5px;top:300.5px}
+.form-cancel{left:388.5px;top:300.5px}
+.title-option,.title-help{position:absolute;padding:0;border:0;background:transparent;color:transparent;font-size:0;cursor:pointer;pointer-events:auto}
+#title-remember{left:266px;top:274px;width:138px;height:22px}
+#title-hide-username{left:406px;top:274px;width:128px;height:22px}
+#title-login-help{left:284px;top:340px;width:196px;height:24px}
+.title-world-switch,.title-world-choice,.title-world-back,.title-world-sort{position:absolute;padding:0;border:0;background:transparent;color:transparent;font-size:0;pointer-events:auto;cursor:pointer}
+.title-world-switch{left:5px;top:463px;width:100px;height:35px}
+.title-world-choice{left:338px;top:253px;width:88px;height:19px}
+.title-world-back{left:708px;top:4px;width:50px;height:16px}
+.title-world-sort{top:3px;width:98px;height:19px}
+#title-world-sort-0{left:280px}
+#title-world-sort-1{left:390px}
+#title-world-sort-2{left:500px}
+#title-world-sort-3{left:610px}
+.title-world-switch:focus-visible,.title-world-choice:focus-visible,.title-world-back:focus-visible,.title-world-sort:focus-visible,.title-option:focus-visible,.title-help:focus-visible{outline:2px solid #ffff00;outline-offset:1px}
+#login-form{position:absolute;inset:0;pointer-events:none}
+#login-form[hidden]{display:none}
+#login-form input{position:absolute;width:192px;height:15px;margin:0;padding:0;border:0;border-radius:0;background:transparent;color:transparent;caret-color:transparent;font-size:16px;pointer-events:auto;outline:none}
+#login-form input::selection{background:transparent;color:transparent}
+#login-username{left:310px;top:241px}
+#login-password{left:333px;top:256px}
+#title-mute{position:absolute;width:36px;height:36px;padding:0;border:0;background:transparent;cursor:pointer}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.world-stage{position:absolute;inset:0;background:#000}
+.world-stage[hidden]{display:none}
+#world-canvas{display:block;width:100%;height:100%;touch-action:none}
+#world-input-surface{position:absolute;inset:0}
+#server-interface-canvas,#world-menu-canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
+#server-interface-canvas{pointer-events:none}
+#world-menu-canvas{z-index:2;touch-action:none}
+/* Touch-friendly optional diagnostics. Only the PERF button intercepts input. */
+#world-performance{position:absolute;top:max(6px,env(safe-area-inset-top));right:max(6px,env(safe-area-inset-right));z-index:4;pointer-events:none;max-width:min(58vw,200px);min-width:128px;color:#f6f6f6;font:12px/1.45 ui-monospace,Consolas,monospace;text-shadow:0 1px 1px #000}
+#world-performance-toggle{display:block;min-height:40px;margin:0 0 3px auto;padding:5px 12px;background:rgba(0,0,0,.86);border:1px solid #9a9a9a;border-radius:5px;color:#f8e966;font:700 13px ui-monospace,Consolas,monospace;cursor:pointer;pointer-events:auto;touch-action:manipulation}
+#world-performance-toggle:focus-visible{outline:2px solid #f8e966;outline-offset:2px}
+#world-performance-stats{padding:6px 9px;background:rgba(0,0,0,.84);border:1px solid #737373;border-radius:5px;font-variant-numeric:tabular-nums}
+#world-performance-stats>div{display:flex;justify-content:space-between;gap:10px;white-space:nowrap}
+#world-performance-stats output{color:#9eff9e;text-align:right}
+.world-overlay{position:absolute;inset:0;z-index:3;background:#000;color:#fff;font:13px Arial,sans-serif;pointer-events:auto;touch-action:none}
+.world-overlay span{position:absolute;top:6px;left:6px;border:1px solid #ddd;padding:3px 5px}
+.world-overlay[hidden]{display:none}
+
+[hidden]{display:none!important}
+#title-screen,#title-screen *{cursor:default;user-select:none;-webkit-user-select:none}

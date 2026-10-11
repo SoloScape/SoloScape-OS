@@ -1,0 +1,27 @@
+{
+  "name": "OpenOSRS",
+  "upstream": "https://github.com/OOSRS/OOSRS",
+  "localDefault": "../../Client",
+  "version": "1.2.0",
+  "protocolRevision": 240,
+  "gamepackVersion": "1.12.39",
+  "gamepackSha256": "25f42961c400bd9dfff1554402441c0ba6d1cffd011163cb9b0b4c42ae194f85",
+  "license": "BSD-2-Clause for repository source; game dependency separately licensed",
+  "sourceFiles": {
+    "gamepack.properties": "ac185bcf54200af48eb0bbb3f281e18b623ed514f4faa9fecb208bcb665f57d2",
+    "runelite-client/src/main/java/net/runelite/client/plugins/camera/CameraPlugin.java": "5ae59d1281048e2442a9a6ae10d6ec8b535aa0068b51ee1bfcc5335befeb689f",
+    "runelite-client/src/main/java/net/runelite/client/plugins/camera/CameraConfig.java": "7d3dacde420005e70c6e85662ca579ca2acd71d7f39cdd37c4356e2a28800bbe",
+    "runelite-client/src/main/java/net/runelite/client/menus/MenuManager.java": "7295f246162716fdb0c2ee29d80983610a4931016952d7fb42fce3e35cf2c302",
+    "runelite-client/src/main/java/net/runelite/client/plugins/gpu/SceneUploader.java": "a8ee331ba88e72448285c63e73f2fe9f052e969e8ce9099414b603518e5b191a",
+    "runelite-api/src/main/java/net/runelite/api/GameState.java": "d0bc8623d582741d2b4cb89098851dc80a3678f8a9351fd5a1ec057318d70eed",
+    "runelite-client/src/main/java/net/runelite/client/input/cursor/DestinationResolver.java": "c36eb472ceba8cd5c2f8611b9fa7927282fce0028fb3335127ad093bab1d4515",
+    "runelite-client/src/main/java/net/runelite/client/plugins/gpu/Zone.java": "f54b9739b1622c2a0031ff3e37657a559f5e5ae7cf9753d317bd8098299b4f9d",
+    "runelite-client/src/main/java/net/runelite/client/plugins/gpu/ModelUploader.java": "79a3b1f9f6bd6aafcff7f2b5d21677c695828bdcb730d45f49b7dac35bd71047",
+    "runelite-client/src/main/java/net/runelite/client/plugins/gpu/GpuPluginConfig.java": "1d9fc492672061830d8a5817348a22e1b7a01a5af0a962459c0fa833feed39b9",
+    "runelite-client/src/main/resources/net/runelite/client/plugins/gpu/vert.glsl": "847dd6c2ad7330eda248d94b48bbe834574a1182ebc7773d4a2737f0f704fce3",
+    "runelite-client/src/main/resources/net/runelite/client/plugins/gpu/frag.glsl": "ea6b6f1160d2b0fb82cc72040a55467e5640255d865ae35bc702ce3fd57e1066",
+    "runelite-client/src/main/resources/net/runelite/client/plugins/gpu/hsl_to_rgb.glsl": "a052ec368216729acbbd8fdf2b0d81f47f911a00f85e3f0512085dfa7b433030",
+    "runelite-client/src/main/resources/net/runelite/client/plugins/gpu/colorblind.glsl": "b2e723a74c211cf149f9dc831c083f133c2ba84f5039bdb2ec857c7b69b0bf36",
+    "runelite-client/src/main/java/net/runelite/client/plugins/gpu/TextureManager.java": "107fe7a3c72a9c4534db889cd45b11799a7d954cce59a8c60998ecdb02c8863e"
+  }
+}

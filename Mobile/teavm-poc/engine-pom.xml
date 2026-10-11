@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.soloscape</groupId><artifactId>openosrs-whole-engine-probe</artifactId><version>0.1.0</version>
+  <properties>
+    <!-- JDK 17 runs the compiler; Java 8 source mode permits the missing
+         java.lang classlib implementation without modifying the host JDK. -->
+    <maven.compiler.release>8</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <teavm.version>0.15.0</teavm.version>
+    <engine.mainClass>EngineBridge</engine.mainClass>
+    <engine.outputName>engine.js</engine.outputName>
+    <engine.reflectionProofType></engine.reflectionProofType>
+  </properties>
+  <dependencies>
+    <dependency><groupId>org.json</groupId><artifactId>json</artifactId><version>20240303</version></dependency>
+    <!-- Match the pinned reference client's logging API dependency. -->
+    <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId><version>1.7.32</version></dependency>
+    <dependency><groupId>com.google.guava</groupId><artifactId>guava</artifactId><version>30.1.1-jre</version></dependency>
+    <dependency><groupId>org.teavm</groupId><artifactId>teavm-jso</artifactId><version>${teavm.version}</version></dependency>
+    <dependency><groupId>org.teavm</groupId><artifactId>teavm-classlib</artifactId><version>${teavm.version}</version></dependency>
+    <dependency><groupId>org.teavm</groupId><artifactId>teavm-core</artifactId><version>${teavm.version}</version><scope>provided</scope></dependency>
+    <dependency><groupId>local.openosrs</groupId><artifactId>injected-client</artifactId><version>240</version>
+      <scope>system</scope><systemPath>${gamepack.path}</systemPath></dependency>
+    <dependency><groupId>local.openosrs</groupId><artifactId>runelite-api</artifactId><version>1.2.0</version>
+      <scope>system</scope><systemPath>${api.path}</systemPath></dependency>
+  </dependencies>
+  <build>
+    <directory>${project.basedir}/target/engine</directory>
+    <sourceDirectory>${project.basedir}/engine-src</sourceDirectory>
+    <resources>
+      <resource><directory>${project.basedir}/engine-resources</directory><filtering>true</filtering></resource>
+      <resource><directory>${project.basedir}/target/engine/generated-resources</directory></resource>
+    </resources>
+    <plugins>
+      <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.13.0</version></plugin>
+      <plugin><groupId>org.teavm</groupId><artifactId>teavm-maven-plugin</artifactId><version>${teavm.version}</version>
+        <executions><execution><phase>process-classes</phase><goals><goal>compile</goal></goals>
+          <configuration><mainClass>${engine.mainClass}</mainClass><targetType>JAVASCRIPT</targetType>
+            <jsModuleType>ES2015</jsModuleType><targetFileName>${engine.outputName}</targetFileName>
+            <!-- Obfuscated JVM class names can be JS keywords (for example do).
+                 TeaVM's minified aliases avoid those invalid identifiers. -->
+            <optimizationLevel>ADVANCED</optimizationLevel><incremental>false</incremental>
+            <sourceMapsGenerated>false</sourceMapsGenerated><minifying>true</minifying>
+          </configuration>
+        </execution></executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

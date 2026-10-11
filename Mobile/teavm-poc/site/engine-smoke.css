@@ -1,0 +1,31 @@
+/* Fixed mode preserves the original 765x503 Java framebuffer.
+   Fit inside the viewport without cropping or stretching any game pixels.
+   NativeCanvas uses the displayed canvas bounds for mouse/touch mapping. */
+:root,html,body{width:100%;height:100%;margin:0;padding:0;background:#000;overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+body{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;min-height:100vh}
+#original-engine-canvas{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;display:block;width:min(100vw,152.0875vh);height:auto;aspect-ratio:765/503;max-height:100vh;margin:0;padding:0;border:0;outline:0;background:#000;touch-action:none;image-rendering:auto}
+@supports (height:100dvh){
+    body{min-height:100dvh}
+    #original-engine-canvas{width:min(100vw,152.0875dvh);max-height:100dvh}
+}
+/* In either authentic resizable mode, let the original Java canvas cover
+   the whole page. Logical framebuffer resizing is owned by GameEngine. */
+body.original-resizable #original-engine-canvas{
+    width:100%;height:100%;max-height:none;aspect-ratio:auto;
+}
+body.original-resizable{
+    height:100vh;min-height:0;box-sizing:border-box;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+@supports (height:100dvh){
+    body.original-resizable{height:100dvh;}
+}
+/* HTML-only first paint. Disappears when the original framebuffer starts
+   painting; no fabricated Java frames, progress percentages, or startup text. */
+#startup-splash{position:fixed;inset:0;display:grid;place-items:center;background:#000;pointer-events:none;z-index:1}
+#startup-splash::after{content:"";width:32px;height:32px;border:3px solid #303030;border-top-color:#d4c9a4;border-radius:50%;animation:startup-spin .85s linear infinite}
+@keyframes startup-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){#startup-splash::after{animation:none}}
+#startup-error{position:fixed;inset:auto 0 0;padding:12px;text-align:center;color:#fff;background:#641e1e;font:14px system-ui,sans-serif;pointer-events:none}
+#original-soft-keyboard{position:fixed;top:0;left:0;width:24px;height:24px;opacity:.01;font-size:16px;color:transparent;background:transparent;border:0;outline:0;padding:0;pointer-events:none}
+[hidden]{display:none!important}

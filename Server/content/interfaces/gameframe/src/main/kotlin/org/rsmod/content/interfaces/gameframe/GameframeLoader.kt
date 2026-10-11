@@ -6,6 +6,8 @@ import dev.openrune.rscm.RSCM.asRSCM
 import dev.openrune.rscm.RSCMType
 import dev.openrune.types.aconverted.enum
 import dev.openrune.types.dbcol.DbColumnCodec.ComponentTypeCodec
+import dev.openrune.types.dbcol.DbColumnCodec.IntCodec
+import org.rsmod.api.player.ui.selectOrbsInterface
 import org.rsmod.api.table.GameframeRow
 import org.rsmod.game.ui.Component
 
@@ -28,6 +30,32 @@ internal class GameframeLoader {
                 throw IllegalStateException(message)
             }
             mapped[gameframe.topLevel.asRSCM(RSCMType.INTERFACE)] = gameframe
+        }
+
+        // The cache ships the original mobile widgets and redirect enum, but
+        // SoloScape's custom gameframe table currently contains desktop rows.
+        val mobileTop = "interface.toplevel_osm"
+        val mobileId = mobileTop.asRSCM(RSCMType.INTERFACE)
+        if (mobileId !in mapped) {
+            // Redirects include packed pseudo-components (for example 600:65535)
+            // without widget definitions. Preserve their IDs instead of resolving
+            // them through the nullable ComponentType codec.
+            val mobileMappings = enum("enum.mobile_pane_redirect", IntCodec, IntCodec)
+                .filter { it.key != -1 && it.value != -1 }
+                .associate { Component(it.key) to Component(it.value) }
+            mapped[mobileId] = Gameframe(
+                topLevel = mobileTop,
+                overlays = overlays.map {
+                    if (it.interf == "interface.orbs") {
+                        it.copy(interf = selectOrbsInterface(mobile = true, minimized = false))
+                    } else it
+                },
+                mappings = mobileMappings,
+                clientMode = 2,
+                resizable = true,
+                isDefault = false,
+                stoneArrangement = true,
+            )
         }
 
         return mapped

@@ -1,0 +1,53 @@
+{
+  "name": "@soloscape/mobile-integration",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "scripts": {
+    "dev": "node --watch browser/dev-server.mjs",
+    "build:teavm": "node scripts/build-teavm.mjs",
+    "build:openosrs-engine": "node scripts/build-openosrs-engine.mjs",
+    "test:engine-platform": "node teavm-poc/scripts/verify-platform.mjs",
+    "test:engine-services": "node teavm-poc/scripts/verify-platform.mjs --services",
+    "test:openosrs-engine": "node teavm-poc/scripts/verify-engine-module.mjs",
+    "dev:original-engine": "node scripts/run-original-engine.mjs",
+    "start:public": "node scripts/run-public-original.mjs",
+    "dev:original-engine:lan": "node scripts/run-original-lan.mjs",
+    "mcp:original-engine": "node dev-bridge/stdio.mjs",
+    "dev:desktop-controller": "node dev-bridge/controller-cli.mjs serve",
+    "test:desktop-controller": "node --test tests/desktop-controller.test.mjs",
+    "test:mcp:original-engine": "node --test tests/dev-bridge.test.mjs",
+    "test:mcp:original-browser": "node dev-bridge/verify-browser.mjs",
+    "test:original-browser": "node scripts/verify-original-browser.mjs",
+    "test:original-title": "node scripts/verify-original-title.mjs",
+    "test:teavm": "node teavm-poc/scripts/verify.mjs",
+    "build": "node scripts/run-client.mjs build",
+    "test": "node --test tests/*.test.mjs",
+    "verify:openosrs-reference": "node scripts/verify-openosrs-reference.mjs",
+    "generate:tsps-movement": "node scripts/adapt-tsps-movement.mjs",
+    "generate:tsps-skeletal": "node scripts/adapt-tsps-skeletal.mjs",
+    "generate:tsps-loading": "node scripts/adapt-tsps-loading.mjs",
+    "generate:tsps-scene": "node scripts/adapt-tsps-scene.mjs",
+    "generate:tsps-roofs": "node scripts/adapt-tsps-roofs.mjs",
+    "generate:tsps-water": "node scripts/adapt-tsps-water.mjs",
+    "test:rsprot": "node scripts/verify-native-login.mjs",
+    "test:interfaces:rsprot": "node scripts/verify-native-interfaces.mjs",
+    "test:objects:rsprot": "node scripts/verify-native-objects.mjs",
+    "gateway": "node gateway/cli.mjs",
+    "probe": "node gateway/probe-cli.mjs",
+    "probe:game": "node gateway/game-probe-cli.mjs",
+    "probe:gateway": "node gateway/gateway-probe-cli.mjs",
+    "probe:cache": "node gateway/js5-cache-cli.mjs",
+    "probe:cache:verify": "node gateway/js5-reference-cli.mjs",
+    "probe:asset": "node gateway/js5-asset-cli.mjs",
+    "dev:native": "node --watch browser/dev-server.mjs",
+    "dev:lan": "node scripts/run-lan.mjs",
+    "dev:tsps": "node scripts/run-client.mjs dev"
+  },
+  "dependencies": {
+    "ws": "8.22.0"
+  }
+}

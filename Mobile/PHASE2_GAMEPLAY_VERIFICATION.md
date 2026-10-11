@@ -1,0 +1,253 @@
+# Phase 2 original-engine gameplay verification — 10 October 2026
+
+## Scope and evidence boundary
+
+This report covers the **pinned revision-240 original OpenOSRS Java gamepack**
+compiled to JavaScript by TeaVM, its **original Java software renderer**, and
+the real local SoloScape Kotlin/RSMod server through the loopback gateway.
+It is not testing the separate TSPS/WebGL mobile renderer.
+
+The player logged into a disposable test account **manually**. Verification
+uses the Stage 2 Desktop Commander controller and real original-client canvas
+screenshots. No credentials, login packets, RSA private keys, or other account
+secrets are recorded.
+
+## Authenticated interaction checklist
+
+| Area | Current verification | Evidence and follow-up |
+| --- | --- | --- |
+| Login and original framebuffer | **Observed pass** | `LOGGED_IN`, real terrain, NPCs/other actors, player, minimap, chat, inventory and original game cycles confirmed by controller and screenshots |
+| Click-to-move | **Observed pass** | Safe ground click shifted the world/camera around the player; independently previously confirmed by the user |
+| Inventory context menu | **Observed pass** | Right-clicked a grimy guam leaf: gamepack showed `Use`, `Drop`, `Examine`. Choosing `Examine` subsequently produced original chat text `It needs cleaning.` |
+| Interface switching | **Observed pass** | Skills tab displayed authentic skill icons/levels and total level 43; switching is handled by the original client |
+| NPC interaction | **Passed (user-confirmed)** | The player confirmed talking to NPCs and successfully interacting with them in the real original client. This supersedes the earlier automated attempts that could not reliably target moving actors |
+| Banking | **Passed (user-confirmed)** | Player reports that banking works in the original Java client after testing it. Individual deposit/withdraw actions were not independently logged by Desktop Commander |
+| Dialogue | **Basic NPC talking passed (user-confirmed)** | Player confirms NPC conversations and interaction work. Extended dialogue-option branching, multi-step advance/close and quest-specific dialogues remain unverified |
+| Chat text input | **Observed pass after Enter fix** | First session: typed `phase2` but Java Enter did not submit. Browser-only NativeCanvas now maps DOM Enter 13 to Java AWT VK_ENTER 10; original gamepack and renderer unchanged. After rebuilding, sent `p2check`: original game showed the overhead chat bubble, a chat-log message and a cleared input (ignored screenshot `world-1791598354594-50921444.png`). Physical keyboard Enter has not been independently compared |
+| Region transition | **Not verified** | Character moves normally, but no new region/base-coordinate or cache-region transition has yet been proven |
+| Disconnect/reconnect | **Not verified** | Test after the sustained session, with a safe browser-only connection interruption and manual reauthentication where necessary; do not bounce the shared local game server |
+| Native mouse / keyboard | **Observed pass for tested CDP actions** | World clicks, inventory context menu, skills tab, letter entry and rebuilt-client Enter chat submission all verified. Physical-keyboard differences and touch input remain out of scope |
+
+## New gameplay defects reported after endurance test
+
+- **Combat: PASS (user-confirmed after fix).** The user retested attacking
+  a rat with the rebuilt original Java client and confirmed it **no longer
+  crashes**. Before the fix, the controller observed `phase:error`, with
+  `LOGGED_IN` frozen at game cycle 20,525, zero presented FPS, and a
+  `java.lang.RuntimeException; TypeError; null property: bxQ`. Sanitized
+  frames begin `BQ1:21440:419 | CkQ:19055:476 | C2y:16675:225`.
+  Bytecode inspection of the pinned source confirmed that `BQ1` is the
+  original `au.as(Ldz;Ldh;IIIIIIB)V` hitsplat/actor overlay method and that
+  `ym.aa` is its sprite-offset field. A narrowly scoped TeaVM-only build
+  guard skips absent optional sprites in this original overlay, keeping the
+  original Java drawing paths for any sprite that exists. The gameplay
+  retest is the evidence for marking this issue resolved.
+- **Static world scenery: NOW SHOWING (user-confirmed; repeatability pending).**
+  Stairs, tables, cabinets, cooking ranges and other world objects were
+  previously missing even while terrain, walls, player models and NPCs
+  rendered. The player now confirms that objects are appearing in the
+  castle. Treat this as a successful current-session observation, not yet
+  proof that cold login, region transitions or all objects work every time. This is a *separate* scene/region-loc
+  loading problem; the cause has not been verified. The existing cache has
+  `main_file_cache.dat2` and numbered `idx` files, but file presence is
+  not proof that the right map object archives decoded or spawned. Verify
+  original scene object counts, cache archive decoding and
+  server/client map-square expectations before modifying rendering.
+  **Further diagnostic evidence:** In the user's loaded castle-area scene,
+  the original Java gamepack reports 12,714 tiles, 1,570 walls, 460
+  decorations, 4,151 ground objects and 974 game-object tile references
+  across four map regions. None of the game objects has a null renderable,
+  and 777 references have a direct `Model` renderable. References by plane
+  are 286, 433, 210 and 45; these are not unique object totals. The four
+  candidate castle-area map archive groups 12850, 12851, 13106 and 13107
+  were read directly from the original `LIVE` cache and the server's
+  `SERVER` cache. Their decoded terrain (file 0) and location placements
+  (file 1) have matching SHA-256 values; the differences in whole compressed
+  archives come from additional server-side files. This rules out
+  mismatched location-file bytes in those four groups, **not** errors in
+  scene placement or software model drawing. The root cause remains open.
+  Attempts to query `Client.getObjectDefinition` for bulk object names in
+  the browser were not supported by the diagnostic and were withdrawn;
+  no object definitions or gameplay state were mutated. Use the safe
+  scene-model counters until location/model drawing can be verified by
+  targeted world actions.
+
+  **Lumbridge Castle location-specific evidence (10 Oct 2026):** The user
+  confirmed that the missing furniture and stairs are in the castle shown
+  in the controller screenshot. A read-only local decoder of the original
+  client `LIVE` map group 12850 found **1,614 location placements** in a
+  fixed castle study area (x=3203..3234, z=3204..3233), including 135
+  ground-floor game-object placements, 99 on floor 1, 74 on floor 2 and 2
+  on floor 3. The unmodified archive explicitly includes ground-floor
+  staircase placements at (3204,3207) and (3204,3229), kitchen-area
+  placement at (3212,3215), and large object placements at (3212,3218)
+  and (3212,3225). **The source map contains these records**, so the
+  next question is whether the original client created the corresponding
+  scene objects with usable face geometry. A browser-development-only,
+  read-only `scene` command now provides castle-per-plane counts,
+  empty-model counts and game-object/model-face counts at five fixed
+  placement anchors. This never supplies replacement JavaScript scenery,
+  never mutates the game cache, and never exports player coordinates or
+  object IDs. **Those new measurements require a manually authenticated
+  client after rebuilding; the root cause is not yet fixed.**
+- **NPC actions: PASS (user-confirmed).** The player can talk to and interact
+  with NPCs; this overrides the previous `Not verified` automation result.
+  Banking has also been tested and confirmed working by the player.
+  Longer dialogue chains and specific scene-object interactions still
+  require independent verification.
+
+**Do not mark an unobserved gameplay feature as passing based on test names,
+server availability, a sent click, or the engine merely remaining logged in.**
+
+## Lumbridge Castle original-scene/model decoding — further evidence
+
+A manually authenticated original Java client reported 561 wall placements,
+247 wall decorations and 496 ground decorations in the fixed castle study
+rectangle, exactly matching their original source-map categories. However,
+the source map contains 310 large/game-object placements there while the
+Java scene held only 121 game-object **tile references** (which are not
+unique object placements). None of five fixed kitchen/furniture/staircase
+anchor tiles held a game-object reference or rendered model. This is evidence
+of an object creation problem, not a blanket inability to draw castle walls.
+
+The original `LIVE` cache's configuration index 2, group 6 contains 62,522
+location-definition files. Offline decoding of fixed source definitions
+confirmed **Cooking range** (model 5274), **Staircase** (model 1237),
+**upper Staircase** (model 1287), **Barrel** (model 1460) and **Suit of
+armour** (model 1214). The referenced index-7 model archives all exist.
+Crucially, the object definitions use the expected **rev-240 opcode 7**
+(32-bit untyped model lists) or other valid opcodes, so converting old
+16-bit opcodes is **not** an appropriate fix.
+
+The runtime's first read-only original-definition probe reported the same
+seven fixed definitions as present, but each had **zero** decoded model
+references and the original `om.bk(10)` readiness method returned true.
+That readiness result is vacuous if the decoded model list is empty.
+This differs from what is in the original cache on disk. It does not
+yet establish *why* the original Java loader has empty lists.
+
+A more focused browser-only diagnostic now reports the **raw byte count**
+returned by the original configuration archive lookup for eight fixed
+object definitions, together with decoded model counts, typed-model
+counts and readiness (the eighth is a typed-wall comparison). It
+does not output raw cache bytes, coordinates, usernames, object IDs
+or gameplay packets. **The raw-byte probe requires a new manually
+authenticated session**, and its result has not yet been collected.
+Until it has, do not blame the decoder, JS5 gateway, cache revision, or
+renderer definitively, and do not modify the native cache to compensate.
+
+## Lumbridge fountains follow-up — 11 October 2026
+
+The player reported missing Lumbridge fountains. Read-only inspection of the
+original LIVE cache located two definition-879 placements in map group 12850,
+at (3221,3210) and (3221,3226), both ground-floor shape 10. Their definition
+contains untyped model 1497, and that model archive exists in index 7.
+The definition has opcode 78 (four bytes of rev-240 ambient sound metadata)
+before opcode 7. `BrowserOriginalLocationModels` previously stopped at opcode
+78, so its existing missing-model restoration did not reach the fountain's
+model list. The browser-only helper now skips those four metadata bytes.
+Original placement, sound, model and renderer logic are unchanged.
+
+A fixed fountain-definition JVM regression fails against the previous helper
+and passes after the change, including checks for preserved decoded lists,
+typed definitions, truncated input and unknown prefixes. This proves the
+restoration gap, not actual fountain visibility. **Authenticated screenshot
+verification remains pending**, and other missing scenery remains open.
+
+The subsequent [complete scenery decoding audit](SCENERY_AUDIT.md) compared
+all 62,522 original definitions with an isolated TeaVM build. It confirmed
+26,136 remaining empty untyped model lists after the current helper, affecting
+514 source placements in the four Lumbridge-area regions. This is offline
+decoding evidence; authenticated scene construction and visual verification
+remain outstanding.
+
+## Sustained original-world runtime and memory
+
+A dedicated **20-minute** authenticated sampler started at
+`2026-10-10T01:45:51.643Z`, requesting sanitized game state, original game
+cycles, software frames presented, FPS and callback errors at approximately
+10-second intervals. Its local JSON report is written to the ignored
+`teavm-poc/target/engine/phase2-reports/` directory.
+
+A separate **15-minute** Chrome-only memory sampler reads Windows process
+private/working-set bytes for the **bridge-owned visible Chrome profile**
+only, excluding other user browsing. The profile and session secrets are
+never printed into public reports. These measurements are total Chrome-process
+memory, not the TeaVM Java heap alone, and may fluctuate with Chrome's GC
+and compositor. A monotonic rise would indicate a need for longer investigation,
+not conclusively prove a leak.
+
+### Final measured results — FAILED
+
+The authenticated run **completed** and produced
+`teavm-poc/target/engine/phase2-reports/phase2-1791597951654.json`.
+It returned `FAILED_OR_INCOMPLETE` (exit 1), not `PASS_RUNTIME_ONLY`.
+
+- **Duration:** 120 collected samples, about **19 min 53 s** between first
+  and final sample (20 minutes requested).
+- **Original world runtime:** median **24.6 software frames/s**, median
+  **50.0 original game cycles/s**; original game cycle increased by 54,805
+  and presented software frames increased by 27,197.
+- **Performance degradation:** nine authenticated samples showed
+  severe slowdown (software FPS below 5 or game cycles/s below 35),
+  including shorter dips at approximately minutes 3.7 and 10.4. Around
+  minute 18 a much longer slowdown dropped performance to roughly **1 FPS /
+  10 cycles/s** and eventually **0.1 FPS / 1.1 cycles/s**. This is a genuine
+  instability signal even without a Java callback exception.
+- **Connection loss:** five samples were no longer `LOGGED_IN`. The game
+  entered `CONNECTION_LOST` at approximately 19 min 13 s, then fell back to
+  `LOGIN_SCREEN`. Client-thread telemetry remained present and callback
+  errors stayed empty. **Automatic reconnection was not demonstrated.**
+- **Clock evidence:** a subsequent sample showed an approximately **999 ms
+  game-loop gap / 994 ms wait** rather than ~20 ms. Browser scheduling or
+  background/minimized-window throttling is strongly suspected, but the
+  session did not record `document.visibilityState` or focus, so this is not
+  yet conclusively established. A repeat with the Chrome window visible
+  **and focused** is required. Read-only focus/visibility telemetry was added
+  after the run; the rebuilt title screen reported `visible` and `pageFocused:false`.
+  This later observation does not establish its state during the earlier stall.
+
+The **separate 15-minute visible Chrome memory monitor completed** with
+44 samples, watching nine browser processes. Private-memory totals were
+**1,029.7 MB initial, 1,058.6 MB final (+28.9 MB), peak 1,099.6 MB**.
+Source: ignored `phase2-reports/chrome-memory-20261010-030341.csv`.
+This does **not** demonstrate monotonic memory growth or prove a leak.
+The totals include Chrome's other processes and cannot predict phone memory
+consumption. JavaScript heap sampling was unavailable in the controller
+process loaded for the **20-minute run**. After restarting the controller
+and rebuilding the original Java client, the new allowlisted `heap` command
+reported **173,611,940 bytes used (about 166 MiB)** in a separate
+logged-in session. A single later heap reading is not a longitudinal
+memory-leak test and is not combined with the 15-minute process-memory
+series.
+
+**Phase 2 sign-off is blocked:** nine severe authenticated performance samples,
+late connection loss/timer throttling, and still-unverified
+NPC/banking/dialogue/region/reconnect interactions. **Chat submission is
+confirmed fixed in a new authenticated session** after the Java AWT Enter
+adapter correction. That shorter second session does not replace the failing
+20-minute endurance result.
+Passing simulation and renderer checks for most of the run is not full
+gameplay or mobile-device parity.
+
+## Reproduce
+
+Start the normal SoloScape game server separately, then from `Mobile/`:
+
+```powershell
+npm run build:openosrs-engine
+npm run dev:original-engine
+node dev-bridge/controller-cli.mjs start
+node dev-bridge/controller-cli.mjs initialize
+node dev-bridge/controller-cli.mjs wait LOGIN_SCREEN
+# Log in manually with a disposable test account in the owned Chrome window.
+node dev-bridge/controller-cli.mjs wait LOGGED_IN
+node dev-bridge/verify-gameplay.mjs 20
+powershell -NoProfile -File dev-bridge/verify-chrome-memory.ps1 -Minutes 15
+```
+
+The controller can be started separately using
+`npm run dev:desktop-controller`. The monitor is intentionally local-only.
+Never commit screenshot artifacts, raw logs, cache files or private runtime
+session descriptors. The user-provided native game cache and original Java
+gamepack remain unchanged.

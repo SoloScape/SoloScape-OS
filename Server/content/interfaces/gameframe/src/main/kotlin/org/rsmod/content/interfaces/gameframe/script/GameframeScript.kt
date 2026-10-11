@@ -10,13 +10,17 @@ import org.rsmod.api.player.cinematic.Cinematic
 import org.rsmod.api.player.output.ClientScripts
 import org.rsmod.api.player.output.runClientScript
 import org.rsmod.api.player.ui.ifOpenOverlay
+import org.rsmod.api.player.ui.ifMoveTop
 import org.rsmod.api.player.ui.ifOpenTop
 import org.rsmod.api.player.ui.ifSetEvents
+import org.rsmod.api.player.ui.orbsInterface
+import org.rsmod.api.player.ui.selectOrbsInterface
 import org.rsmod.api.player.vars.boolVarBit
 import org.rsmod.api.player.vars.intVarBit
 import org.rsmod.api.player.vars.resyncVar
 import org.rsmod.api.script.advanced.onIfMoveSub
 import org.rsmod.api.script.advanced.onIfMoveTop
+import org.rsmod.api.script.onCommand
 import org.rsmod.api.script.onPlayerInit
 import org.rsmod.api.script.onPlayerSoftQueueWithArgs
 import org.rsmod.content.interfaces.gameframe.Gameframe
@@ -46,6 +50,15 @@ class GameframeScript @Inject internal constructor(private val eventBus: EventBu
 
         onPlayerInit { player.openLoginGameframe() }
 
+        onCommand("mobileui") {
+            desc = "Use the original mobile gameframe"
+            cheat {
+                if (player.ui.topLevel.id != "interface.toplevel_osm".asRSCM(RSCMType.INTERFACE)) {
+                    player.ifMoveTop("interface.toplevel_osm", eventBus)
+                }
+            }
+        }
+
         for ((topLevel, gameframe) in gameframes) {
             val type = ServerCacheManager.getInterface(topLevel) ?: error("Unable to get Interface")
             onIfMoveTop(type) { player.queueGameframeMove(gameframe) }
@@ -64,7 +77,9 @@ class GameframeScript @Inject internal constructor(private val eventBus: EventBu
 
     private fun Player.openLoginGameframe() {
         val gameframe = gameframes[gameframeTopLevel]
-        if (gameframe != null && gameframe.resizable == ui.frameResizable) {
+        // The browser requests mobile after the current session logs in.
+        // A mobile layout saved last session must not force it onto the PC client.
+        if (gameframe != null && !gameframe.isMobile && gameframe.resizable == ui.frameResizable) {
             ifOpenTop(gameframe.topLevel)
             openGameframe(gameframe, eventBus)
             return
@@ -96,7 +111,11 @@ class GameframeScript @Inject internal constructor(private val eventBus: EventBu
     }
 
     private fun Player.moveXpDrops() {
-        ifOpenOverlay("interface.orbs", "component.toplevel_osrs_stretch:orbs", eventBus)
+        ifOpenOverlay(
+            orbsInterface(orbsMinimized && ui.frameResizable),
+            "component.toplevel_osrs_stretch:orbs",
+            eventBus,
+        )
     }
 
     private fun Player.moveEhcListener() {
@@ -125,7 +144,7 @@ class GameframeScript @Inject internal constructor(private val eventBus: EventBu
             if (!requiresIntermediate) {
                 return null
             }
-            return gameframes.values.first { it.hasFlags(resizable = true, stoneArrangements) }
+            return gameframes.values.first { !it.isMobile && it.hasFlags(resizable = true, stoneArrangements) }
         }
 
         private fun Gameframe.hasFlags(resizable: Boolean, stoneArrangements: Boolean): Boolean {
@@ -158,16 +177,20 @@ class GameframeScript @Inject internal constructor(private val eventBus: EventBu
             //  more information before adding this.
         }
 
-        this.ifOpenOverlay(if (orbsMinimized && dest.resizable) "interface.orbs_nomap" else "interface.orbs", "component.toplevel_osrs_stretch:orbs", eventBus)
+        ifOpenOverlay(
+            selectOrbsInterface(dest.isMobile, orbsMinimized && dest.resizable),
+            "component.toplevel_osrs_stretch:orbs",
+            eventBus,
+        )
         Cinematic.syncMinimapState(this)
     }
 
     private fun selectFallback(resizable: Boolean, stoneArrangements: Boolean): Gameframe? {
-        val priority = gameframes.values.firstOrNull { it.hasFlags(resizable, stoneArrangements) }
+        val priority = gameframes.values.firstOrNull { !it.isMobile && it.hasFlags(resizable, stoneArrangements) }
         if (priority != null) {
             return priority
         }
-        return gameframes.values.firstOrNull { it.resizable == resizable }
+        return gameframes.values.firstOrNull { !it.isMobile && it.resizable == resizable }
     }
 
     private fun loadAll() {
