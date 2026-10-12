@@ -1,21 +1,19 @@
-import org.soloscape.teavm.platform.BrowserDigest;
 import org.teavm.jso.JSBody;
 import org.teavm.jso.JSExport;
 
 /** Synthetic public hash workload only. Not reachable from EngineBridge. */
 public final class DigestProof {
     public static void main(String[] args) {}
-    @JSExport public static void verify() {
+    @JSExport public static void verify(int hashes) {
         new Thread(()->{
             try {
-                StringBuilder salt=new StringBuilder("18");
+                StringBuilder salt=new StringBuilder("112");
                 for(int i=0;i<990;i++)salt.append('a');
                 String prefix=salt.toString();
                 byte[] combined=new byte[32];
-                BrowserDigest digest=BrowserDigest.getInstance("SHA-256");
-                for(int i=0;i<20000;i++) {
-                    digest.update((prefix+Integer.toHexString(i)).getBytes("UTF-8"));
-                    byte[] hash=digest.digest();
+                ag digest=new ag(new aa(1,18,"synthetic-public-fixture"));
+                for(int i=0;i<hashes;i++) {
+                    byte[] hash=ag.fa(digest,prefix,i);
                     if(hash.length!=32)throw new AssertionError("Hash length");
                     for(int j=0;j<32;j++)combined[j]^=hash[j];
                 }

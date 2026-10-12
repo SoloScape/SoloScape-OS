@@ -63,8 +63,12 @@ test("reused public hash scratch handles unaligned input, shrinking nonces and i
 const source=await readFile(new URL("../teavm-poc/engine-src/org/soloscape/teavm/platform/BrowserDigest.java",import.meta.url),"utf8");
 const script=/@JSBody\(params=\{"algorithm","bytes","done"\},script="([^"]*)"\)/.exec(source)?.[1];
 assert.ok(script,"BrowserDigest SHA-256 adapter must be compiled into original gamepack");
+const localScript=/@JSBody\(params=\{"bytes","out"\},script="([^"]*)"\)/.exec(source)?.[1];
+const availableScript=/@JSBody\(params=\{"algorithm"\},script="([^"]*)"\)/.exec(source)?.[1];
+const yieldScript=/@JSBody\(params=\{"done"\},script="([^"]*)"\)/.exec(source)?.[1];
+assert.ok(localScript&&availableScript&&yieldScript);
 
-function digestBridge(algorithm,bytes,{crypto=null,fallback=sha256,timeout=setTimeout}={}){
+function digestBridge(algorithm,bytes,{crypto=null,fallback=sha256,timeout=setTimeout,ticks=0,now=()=>0,sliceStart=undefined}={}){
     return new Promise((resolve,reject)=>{
         const realm={
             algorithm,bytes,
@@ -72,9 +76,18 @@ function digestBridge(algorithm,bytes,{crypto=null,fallback=sha256,timeout=setTi
             Uint8Array,
             queueMicrotask,
             setTimeout:timeout,
+            performance:{now},
         };
-        realm.globalThis={crypto,soloscapeOriginalSha256:fallback,soloscapeOriginalSha256Ticks:0};
-        runInNewContext("(function(){"+script+"})()",realm);
+        realm.globalThis={crypto,soloscapeOriginalSha256:fallback,soloscapeOriginalSha256Ticks:ticks,
+            soloscapeOriginalSha256SliceStart:sliceStart};
+        if(runInNewContext("(function(){"+availableScript+"})()",realm)){
+            realm.out=new Int8Array(32);
+            const shouldYield=runInNewContext("(function(){"+localScript+"})()",realm);
+            if(shouldYield){
+                realm.done=()=>resolve(realm.out);
+                runInNewContext("(function(){"+yieldScript+"})()",realm);
+            }else resolve(realm.out);
+        }else runInNewContext("(function(){"+script+"})()",realm);
     });
 }
 
@@ -106,33 +119,66 @@ test("hashcash digest yields to the event loop periodically during long original
     const bytes=new Uint8Array([42]);
     let tasks=0;
     let calls=0;
-    const run=(algorithm,bytes,done)=>{
-        const realm={algorithm,bytes,done,
-            Uint8Array,queueMicrotask,
-            setTimeout:(task)=>{tasks++;queueMicrotask(task)}
-        };
-        realm.globalThis={
-            crypto:null,soloscapeOriginalSha256:(data)=>{calls++;return sha256(data);},
-            soloscapeOriginalSha256Ticks:255
-        };
-        runInNewContext("(function(){"+script+"})()",realm);
-    };
-    await new Promise((resolve,reject)=>run("SHA-256",bytes,(result,error)=>
-        error?reject(Error(error)):(assert.equal(hex(result),expected(bytes)),resolve())));
-    assert.equal(tasks,1,"every 256th proof hash must yield");
+    const result=await digestBridge("SHA-256",bytes,{
+        ticks:255,now:()=>8,sliceStart:0,fallback:data=>{calls++;return sha256(data);},
+        timeout:task=>{tasks++;queueMicrotask(task);}
+    });
+    assert.equal(hex(result),expected(bytes));
+    assert.equal(tasks,1,"yield at a batch boundary when the work budget is exhausted");
     assert.equal(calls,1);
 });
 
-test("ordinary HTTP proof hashes complete inline without a per-nonce microtask",()=>{
-    const bytes=new Uint8Array([42]);
-    let result,scheduled=0;
-    const realm={algorithm:"SHA-256",bytes,Uint8Array,
-        done:(data,error)=>{assert.equal(error,null);result=data;},
-        queueMicrotask:()=>{scheduled++;},setTimeout:()=>{scheduled++;},
-        globalThis:{crypto:null,soloscapeOriginalSha256:sha256,soloscapeOriginalSha256Ticks:0}};
-    runInNewContext("(function(){"+script+"})()",realm);
-    assert.equal(hex(result),expected(bytes));
-    assert.equal(scheduled,0);
+test("HTTP hash batches yield by elapsed work and exclude timer wait from the next budget",()=>{
+    let now=0,pending;
+    const realm={bytes:new Int8Array([42]),out:new Int8Array(32),Uint8Array,
+        performance:{now:()=>now},setTimeout:task=>{pending=task;},done:()=>{},
+        globalThis:{soloscapeOriginalSha256:sha256,soloscapeOriginalSha256Ticks:255}};
+    const batch=()=>{
+        realm.globalThis.soloscapeOriginalSha256Ticks=255;
+        return runInNewContext("(function(){"+localScript+"})()",realm);
+    };
+    assert.equal(batch(),false,"initialize the first budget");
+    now=7;assert.equal(batch(),false,"fast batches must not each incur a timer");
+    now=8;assert.equal(batch(),true,"yield after eight milliseconds of work");
+    runInNewContext("(function(){"+yieldScript+"})()",realm);
+    now=100;pending();
+    assert.equal(batch(),false,"timer latency must not exhaust the new work slice");
+    now=108;assert.equal(batch(),true);
+});
+
+test("cooperative HTTP digest resumes in a message task and releases both channel ports",()=>{
+    let message,completed=0,closed=0;
+    const realm={performance:{now:()=>100},globalThis:{},done:()=>completed++,
+        setTimeout:()=>assert.fail("message tasks must avoid chained timers"),
+        MessageChannel:class{
+            constructor(){
+                this.port1={close:()=>closed++};
+                this.port2={close:()=>closed++,postMessage:value=>{
+                    assert.equal(value,null,"only a task wakeup is posted");
+                    message=()=>this.port1.onmessage();
+                }};
+            }
+        }};
+    runInNewContext("(function(){"+yieldScript+"})()",realm);
+    assert.equal(completed,0,"yield must not resume inline");
+    message();
+    assert.equal(completed,1);
+    assert.equal(closed,2);
+    assert.equal(realm.globalThis.soloscapeOriginalSha256SliceStart,100);
+});
+
+test("HTTP digest hashes signed Java bytes at their offset without copying input or scheduling callbacks",()=>{
+    const backing=new Int8Array([11,-1,-128,42,12]),bytes=backing.subarray(1,4);
+    const realm={bytes,out:new Int8Array(32),Uint8Array,
+        globalThis:{soloscapeOriginalSha256:input=>{
+            assert.equal(input.buffer,backing.buffer,"hash the existing Java buffer");
+            assert.equal(input.byteOffset,bytes.byteOffset);
+            assert.equal(input.byteLength,bytes.byteLength);
+            return sha256(input);
+        },soloscapeOriginalSha256Ticks:0}};
+    assert.equal(runInNewContext("(function(){"+localScript+"})()",realm),false);
+    assert.equal(hex(realm.out),expected(bytes));
+    assert.match(source,/if\(calculateLocal\(input,result\)\)yieldLocal\(\)/);
 });
 test("original game imports local hash function before initializing authentic Java engine",async()=>{
     const page=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");

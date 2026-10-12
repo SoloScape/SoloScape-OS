@@ -13,6 +13,9 @@ import {prepareEngineBytecode,compileEngineTools} from "../../scripts/prepare-en
 
 const services=process.argv.includes("--services");
 const digestProof=process.argv.includes("--digest");
+const digestHashes=Number(process.env.SOLOSCAPE_DIGEST_PROOF_HASHES??262144);
+if(digestProof)assert.ok(Number.isInteger(digestHashes)&&digestHashes>=20000&&digestHashes<=1048576,
+    "Synthetic digest workload must contain 20,000 to 1,048,576 hashes");
 assert.ok(!(services&&digestProof),"Select one proof entry point");
 if(services)assert.ok(process.env.CHROME_BIN,"Service proof requires CHROME_BIN for IndexedDB, image decoding and audio");
 
@@ -52,19 +55,20 @@ if(digestProof){
         Object.defineProperty(globalThis,"crypto",{value:undefined,configurable:true});
         globalThis.soloscapeOriginalSha256=sha256;
         globalThis.soloscapeOriginalSha256Ticks=0;
+        delete globalThis.soloscapeOriginalSha256SliceStart;
         delete globalThis.soloscapeDigestProofResult;
         const module=await import("data:text/javascript;base64,"+Buffer.from(source).toString("base64"));
-        const start=performance.now();module.verify();
+        const start=performance.now();module.verify(digestHashes);
         while(!globalThis.soloscapeDigestProofResult&&performance.now()-start<120000)
             await new Promise(resolve=>setTimeout(resolve,10));
         const elapsedMs=Math.round(performance.now()-start),combined=Buffer.alloc(32);
-        for(let i=0;i<20000;i++){
-            const hash=createHash("sha256").update("18"+"a".repeat(990)+i.toString(16)).digest();
+        for(let i=0;i<digestHashes;i++){
+            const hash=createHash("sha256").update("112"+"a".repeat(990)+i.toString(16)).digest();
             for(let j=0;j<32;j++)combined[j]^=hash[j];
         }
         assert.equal(globalThis.soloscapeDigestProofResult,combined.toString("hex"));
         assert.ok(heartbeats>0,"Compiled original digest must yield during the workload");
-        const report={fixtureOnly:true,hashes:20000,elapsedMs,heartbeats,hashesMatchNode:true};
+        const report={fixtureOnly:true,originalHashMethod:"ag.fa",hashes:digestHashes,elapsedMs,heartbeats,hashesMatchNode:true};
         writeFileSync(join(target,"digest-proof-report.json"),JSON.stringify(report,null,2)+"\n");
         console.log("PASS compiled TeaVM HTTP digest: "+JSON.stringify(report));
     }finally{
@@ -72,6 +76,7 @@ if(digestProof){
         if(cryptoDescriptor)Object.defineProperty(globalThis,"crypto",cryptoDescriptor);else delete globalThis.crypto;
         delete globalThis.soloscapeOriginalSha256;
         delete globalThis.soloscapeOriginalSha256Ticks;
+        delete globalThis.soloscapeOriginalSha256SliceStart;
         delete globalThis.soloscapeDigestProofResult;
     }
     process.exit(0);
