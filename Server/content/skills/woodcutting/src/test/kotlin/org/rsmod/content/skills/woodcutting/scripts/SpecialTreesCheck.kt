@@ -42,6 +42,15 @@ fun main() {
     check(SpecialTreeDefinitions.get("loc.rosewood_tree_fullygrown")!!.depletionDenominator == 8)
     check(SpecialTreeDefinitions.get("loc.rosewood_tree_fullygrown_claimxp") == null)
     check("loc.rosewood_tree_fullygrown" in SpecialTreeDefinitions.farmedNames)
+    for (name in SpecialTreeDefinitions.farmedNames) {
+        val type = checkNotNull(ServerCacheManager.getObject(name.asRSCM(RSCMType.LOC)))
+        checkNotNull(SpecialTreeDefinitions.get(name))
+        check(type.actions.getOpOrNull(0) == "Chop down")
+    }
+    val infected = checkNotNull(ServerCacheManager.getObject(
+        "loc.demon_tear_tree_3x3_op".asRSCM(RSCMType.LOC)))
+    check(infected.actions.getOpOrNull(0) == "Chop")
+    check(ServerCacheManager.getItem("obj.demon_tear".asRSCM(RSCMType.OBJ)) != null)
     // A planted tree's depletion is private and is keyed to its tile, not its shared loc id.
     val farmer = Player()
     val neighbour = Player()
