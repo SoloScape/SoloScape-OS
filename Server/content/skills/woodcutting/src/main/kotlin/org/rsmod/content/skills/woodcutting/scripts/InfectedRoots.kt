@@ -13,6 +13,7 @@ import org.rsmod.api.stats.xpmod.XpModifiers
 import org.rsmod.content.quest.manager.QuestRequirements
 import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.axeWoodcuttingAnim
 import org.rsmod.game.MapClock
+import org.rsmod.game.loc.BoundLocInfo
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.type.getInvObj
 import org.rsmod.plugin.scripts.PluginScript
@@ -29,18 +30,18 @@ class InfectedRoots @Inject constructor(
 ) : PluginScript() {
     override fun ScriptContext.startup() {
         for (name in listOf("loc.demon_tear_tree_3x3_op")) {
-            onOpLoc1(name) { harvest(initial = true) }
-            onOpLoc3(name) { harvest(initial = false) }
+            onOpLoc1(name) { harvest(it.loc, initial = true) }
+            onOpLoc3(name) { harvest(it.loc, initial = false) }
             val axes = ServerCacheManager.getItems().values.filter {
                 it.isContentType("content.woodcutting_axe") ||
                     it.internalName in WoodcuttingAxes.fellingConversions.values ||
                     it.internalName == "obj.infernal_axe_empty"
             }
-            for (axe in axes) onOpLocU(name, axe.internalName) { harvest(initial = true) }
+            for (axe in axes) onOpLocU(name, axe.internalName) { harvest(it.loc, initial = true) }
         }
     }
 
-    private fun ProtectedAccess.harvest(initial: Boolean) {
+    private fun ProtectedAccess.harvest(root: BoundLocInfo, initial: Boolean) {
         if (!QuestRequirements.hasCompleted(player, "quest_vmq4")) {
             mes("You must complete The Final Dawn before gathering demon tears.")
             return
@@ -70,7 +71,7 @@ class InfectedRoots @Inject constructor(
                 return
             }
             statAdvance("stat.woodcutting", TEAR_XP * xpMods.get(player, "stat.woodcutting"))
-            if (random.of(LOG_CHANCE) == 0 && invAdd(inv, LOGS, 1).success) {
+            if (random.of(LOG_CHANCE) == 0 && !invAdd(inv, LOGS, 1).failure) {
                 statAdvance("stat.woodcutting", LOG_XP * xpMods.get(player, "stat.woodcutting"))
             }
             if (getInvObj(axe).internalName in listOf("obj.crystal_axe", "obj.crystal_axe_2h")) {
@@ -78,7 +79,7 @@ class InfectedRoots @Inject constructor(
             }
         }
         // Unlike ordinary trees, the infected root never depletes.
-        opLoc3("loc.demon_tear_tree_3x3_op")
+        opLoc3(root)
     }
 
     private fun ProtectedAccess.animateAxe(axe: InvObj) {
