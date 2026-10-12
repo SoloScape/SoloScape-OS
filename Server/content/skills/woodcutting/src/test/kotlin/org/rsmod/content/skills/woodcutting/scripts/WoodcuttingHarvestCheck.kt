@@ -4,7 +4,6 @@ import dev.openrune.ServerCacheManager
 import dev.openrune.rscm.RSCM.asRSCM
 import dev.openrune.rscm.RSCMType
 import dev.openrune.types.InvScope
-import dev.openrune.types.InvStackType
 import org.rsmod.api.inv.storage.PlayerItemStorage
 import org.rsmod.api.invtx.InvTransactionsScript
 import org.rsmod.api.player.events.skilling.SkillingActionCompleteEvent
@@ -19,7 +18,6 @@ import org.rsmod.events.EventBus
 import org.rsmod.game.cheat.CheatCommandMap
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.InvObj
-import org.rsmod.game.inv.Inventory
 import org.rsmod.game.loc.BoundLocInfo
 import org.rsmod.game.loc.LocEntity
 import org.rsmod.game.loc.LocInfo
@@ -100,14 +98,11 @@ fun main() {
     player.inv[0] = InvObj(ForestryRations.KIT)
     player.inv[6] = InvObj(ForestryRations.RATION, 15)
     val nativeStorage = player.invMap.getOrPut(ForestryRations.STORAGE)
-    if (nativeStorage.type.scope != InvScope.Perm) {
-        check(!ForestryKitRations.depositRations(player, 6))
-        check(player.inv[6]?.count == 15)
-    }
-    player.invMap[ForestryRations.STORAGE] = Inventory(
-        nativeStorage.type.copy(scope = InvScope.Perm, stack = InvStackType.Always),
-        arrayOfNulls(nativeStorage.size),
-    )
+    // Real cache types may still say Temp. Inventory.create must make kit storage
+    // persistent for both deposits and saved inventories restored on login.
+    check(nativeStorage.type.scope == InvScope.Perm)
+    check(nativeStorage.type.stack == dev.openrune.types.InvStackType.Always)
+    check(!nativeStorage.type.protect)
     check(ForestryKitRations.depositRations(player, 6))
     check(player.inv[6] == null)
     check(player.invMap[ForestryRations.STORAGE]!!.count(ForestryRations.RATION) == 15)
@@ -116,6 +111,16 @@ fun main() {
     check(ForestryRations.consume(player))
     check(player.inv.count(ForestryRations.RATION) == 2)
     check(player.invMap[ForestryRations.STORAGE]!!.count(ForestryRations.RATION) == 12)
+    // Simulate account inventory reconstruction after logout/login. It must
+    // remain Perm even when the packed cache has the older temporary definition.
+    val restored = harvestPlayer()
+    restored.inv[0] = InvObj(ForestryRations.KIT)
+    val loadedStorage = restored.invMap.getOrPut(ForestryRations.STORAGE)
+    loadedStorage[0] = InvObj(ForestryRations.RATION, 12)
+    check(loadedStorage.type.scope == InvScope.Perm)
+    check(ForestryKitRations.withdrawRations(restored, 3))
+    check(restored.inv.count(ForestryRations.RATION) == 3)
+    check(loadedStorage.count(ForestryRations.RATION) == 9)
     player.inv[0] = null
     player.inv.indices.filter { player.inv[it]?.id == ForestryRations.RATION.asRSCM(RSCMType.OBJ) }
         .forEach { player.inv[it] = null }
