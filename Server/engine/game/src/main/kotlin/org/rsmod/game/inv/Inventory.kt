@@ -166,14 +166,15 @@ public class Inventory(public val type: InventoryServerType, objs: Array<InvObj?
 
             val cachedType = ServerCacheManager.getInventory(internal.asRSCM(RSCMType.INV))
                 ?: error("Unable to find inventory: $internal")
-            // The revision-240 Forestry kit is Temp in older packed caches. Normalize new
-            // and account-restored inventories here until the cache overlay is deployed.
-            // Otherwise account saves discard deposited rations on logout.
+            // The native Forestry kit inventory can have zero usable slots in older
+            // packed caches. Without space even a correctly scoped inventory rejects
+            // all ration transfers. Normalize its capacity and persistence together.
             val type = if (internal == "inv.forestry_kit" &&
-                (cachedType.scope != InvScope.Perm ||
+                (cachedType.size < 28 || cachedType.scope != InvScope.Perm ||
                     cachedType.stack != InvStackType.Always || cachedType.protect)
             ) {
                 cachedType.copy(
+                    size = maxOf(cachedType.size, 28),
                     scope = InvScope.Perm,
                     stack = InvStackType.Always,
                     flags = cachedType.flags and InventoryServerType.PROTECT_FLAG.inv(),
