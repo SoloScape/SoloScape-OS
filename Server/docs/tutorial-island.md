@@ -24,11 +24,19 @@ The classic island uses its existing revision-240 NPCs and map objects. The
 9. Magic, runes, a successful offensive spell on a chicken, and an explicit choice
    to stay or depart for Lumbridge `(3222, 3218, 0)`.
 
-The dialogue is authored for SoloScape. Adam on the island reuses the existing
-Ironman setup and armour dialogue. No external account details are requested.
+The Guide opens with "Welcome to RuneScape!"; the remaining dialogue is authored
+for SoloScape. Adam on the island reuses the existing Ironman setup and armour
+dialogue. No external account details are requested.
 
 `varp.tutorial` saves the current step; `1000` means completed. The original
-tutorial overlay displays the current instruction and progress. Its native bar
+tutorial overlay is attached to the full game HUD, with its native progress bar
+at the bottom centre. Instructions use the native titled message panel in the
+chat overlay, replacing the normal chat log between NPC conversations. Chat
+modals take precedence and reveal the instruction again when they close. Tabs
+unlock as their lessons introduce them (Logout is available from the start);
+the native client hides icons for closed side panels. Login and gameframe
+changes reapply the current lesson, and departure restores all tabs and chat.
+Its native bar
 uses the cache's 0â€“20 scale, as shown by the
 [original progress-bar clientscript](https://raw.githubusercontent.com/Joshua-F/osrs-dumps/master/script/%5Bproc%2Ctutorial_progressbar_set%5D.cs2).
 Use `::tutorial` to repeat the current instruction. Tutor reminders replace missing
