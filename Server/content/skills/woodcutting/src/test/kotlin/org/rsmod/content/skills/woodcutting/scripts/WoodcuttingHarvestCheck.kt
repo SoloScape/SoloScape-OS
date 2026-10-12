@@ -45,6 +45,12 @@ fun main() {
     with(InvTransactionsScript(PlayerItemStorage(emptySet()))) {
         ScriptContext(EventBus(), CheatCommandMap(), EngineQueueCache()).startup()
     }
+    // Fail at startup if any native Forestry kit interface/component gameval is
+    // missing or misspelled (main 823, side 822, and quantity buttons).
+    val uiEvents = EventBus()
+    with(ForestryKitRations(uiEvents)) {
+        ScriptContext(uiEvents, CheatCommandMap(), EngineQueueCache()).startup()
+    }
     val treeType = ServerCacheManager.getObjects().values.first {
         it.isContentType("content.tree")
     }
