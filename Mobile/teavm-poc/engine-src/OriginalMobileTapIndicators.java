@@ -66,6 +66,7 @@ public final class OriginalMobileTapIndicators {
         // These pinned revision-240 obfuscated fields and their decoder
         // multipliers are the SAME ones used by the original cross renderer.
         final int color=client.mm*-2032519679;
+        if(color==2&&OriginalMobileInteractHighlight.replacesNpcMarker())return;
         final int age=client.my*1069629167;
         final int index=nativeFrame(color,age);
         if(index<0)return;

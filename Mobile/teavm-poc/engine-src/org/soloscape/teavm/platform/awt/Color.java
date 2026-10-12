@@ -9,5 +9,10 @@ public final class Color {
     private final int argb;
     public Color(int red,int green,int blue){if((red|green|blue)<0||red>255||green>255||blue>255)throw new IllegalArgumentException();argb=0xff000000|(red<<16)|(green<<8)|blue;}
     public Color(int rgb){argb=0xff000000|rgb;}
+    public Color(int value,boolean hasAlpha){argb=hasAlpha?value:0xff000000|value;}
     public int getRGB(){return argb;}
+    public int getAlpha(){return argb>>>24;}
+    public int getRed(){return (argb>>>16)&255;}
+    public int getGreen(){return (argb>>>8)&255;}
+    public int getBlue(){return argb&255;}
 }

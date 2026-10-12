@@ -197,6 +197,7 @@ async function initializeOriginalEngine(){
         engine.configureMobileLayout(true);
         // The authentic original client owns walk/interact decisions; only
         // touch devices see fading mobile circles in place of desktop X sprites.
+        // NPC interactions use RuneLite model outlines in the original scene.
         // A PC mouse keeps the unmodified original click cross.
         engine.configureMobileTapIndicators(
             (globalThis.navigator?.maxTouchPoints??0)>0 ||

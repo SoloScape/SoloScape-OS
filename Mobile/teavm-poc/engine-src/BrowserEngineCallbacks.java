@@ -30,13 +30,17 @@ public final class BrowserEngineCallbacks implements Callbacks {
     @JSBody(params={"error"},script="try{const js=error&&error.$jsException;const stack=js&&js.stack;if(typeof stack!=='string')return '';return stack.split(String.fromCharCode(10)).slice(1,17).map(line=>{const loc=line.match(/:(\\d+):(\\d+)\\)?$/);if(!loc)return '';const name=line.trim().match(/^at ([A-Za-z_$][A-Za-z0-9_$]*)/);return (name?name[1]:'anonymous')+':'+loc[1]+':'+loc[2];}).filter(Boolean).join(' | ');}catch(_){return '';}")
     private static native String javascriptExceptionFrames(Throwable error);
 
-    @Override public void post(Object event) { }
-    @Override public void postDeferred(Object event) { }
+    @Override public void post(Object event) {
+        OriginalMobileInteractHighlight.post(event,EngineBridge.originalClient());
+    }
+    @Override public void postDeferred(Object event) { post(event); }
     @Override public void tick() { }
     @Override public void tickEnd() { }
     @Override public void frame() { }
     @Override public void serverTick() { }
-    @Override public void drawScene() { }
+    @Override public void drawScene() {
+        OriginalMobileInteractHighlight.draw(EngineBridge.originalClient());
+    }
     @Override public void drawAboveOverheads() { }
     @Override public void draw(MainBufferProvider buffer, Graphics graphics, int x, int y) {
         EngineBridge.updateOriginalMobileLayout();

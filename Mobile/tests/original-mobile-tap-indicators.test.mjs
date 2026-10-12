@@ -73,6 +73,10 @@ test("pinned Java original click state selects all 40 cached frames, hides X for
     const api=join(dir,"net","runelite","api");
     mkdirSync(api,{recursive:true});
     const sources={
+        "OriginalMobileInteractHighlight.java":`class OriginalMobileInteractHighlight {
+    static boolean replace;
+    static boolean replacesNpcMarker(){return replace;}
+}`,
         "OriginalMobileTapIndicators.java":await readFile(javaUrl,"utf8"),
         "net/runelite/api/SpritePixels.java":`package net.runelite.api;
 public interface SpritePixels {int[] getPixels();}`,
@@ -132,14 +136,22 @@ class TestNativeClick {
         check(g.alpha==255-Math.min(255,(f*20*255)/400));
     }
     check(g.count==40);
+    OriginalMobileInteractHighlight.replace=true;
+    client.click(2,0,100,100);
+    OriginalMobileTapIndicators.draw(g,o,0,0);
+    check(g.count==40);
+    client.click(1,0,100,100);
+    OriginalMobileTapIndicators.draw(g,o,0,0);
+    check(g.count==41);
+    OriginalMobileInteractHighlight.replace=false;
     client.click(0,0,100,100);
     OriginalMobileTapIndicators.draw(g,o,0,0);
     client.click(1,400,100,100);
     OriginalMobileTapIndicators.draw(g,o,0,0);
-    check(g.count==40);
+    check(g.count==41);
     OriginalMobileTapIndicators.configure(false);
     OriginalMobileTapIndicators.draw(g,o,0,0);
-    check(g.count==40);
+    check(g.count==41);
     System.out.println("PASS original yellow/red 40 frames, hide desktop X only for touch");
  }
 }`

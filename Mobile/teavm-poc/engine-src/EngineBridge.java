@@ -34,6 +34,7 @@ public final class EngineBridge {
     @JSExport public static void configureMobileLayout(boolean enabled) {
         beforeStartup();
         OriginalMobileLayout.configure(enabled);
+        OriginalMobileInteractHighlight.configure(enabled);
     }
 
     /** Touch-only artwork; desktop mouse clicks retain the native red/yellow X. */
@@ -65,7 +66,7 @@ public final class EngineBridge {
         }
         if (!OriginalMobileLayout.shouldRequest(
             state==net.runelite.api.GameState.LOGGED_IN,
-            original.getTopLevelInterfaceId())) return;
+            state==net.runelite.api.GameState.LOGGED_IN?original.getTopLevelInterfaceId():-1)) return;
         // The pinned DOCHEAT opcode 5020 invokes this original method with -41.
         // One fixed UI command per login; no new packet writer or login changes.
         pt.bj("mobileui", (byte)-41);
