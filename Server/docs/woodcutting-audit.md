@@ -52,10 +52,11 @@ play or full skill parity.
 
 Native `inv.forestry_kit` is temporary in older packed revision-240 caches.
 The raw-cache override in `.data/raw-cache/server/inv.toml` changes it to
-persistent, always stacking and unprotected. Until that overlay is rebuilt into
-the deployed cache, `Inventory.create` now applies the same definition when
-creating this specific inventory. This covers both player deposits and the
-account inventory restoration path on login, so stored rations remain persistent
+persistent, always stacking and unprotected, with 28 storage slots. Until that
+overlay is rebuilt into the deployed cache, `Inventory.create` applies the
+same definition, including a minimum 28-slot capacity, when creating this
+specific inventory. This covers both player deposits and the account inventory
+restoration path on login, so stored rations remain persistent
 without requiring a separate cache rebuild. The deposit handler still refuses
 any explicitly temporary storage instead of silently losing items on logout.
 Rebuilding the cache with the overlay is recommended for consistency.
