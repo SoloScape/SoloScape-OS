@@ -50,13 +50,15 @@ play or full skill parity.
 
 ## Cache deployment and open dependencies
 
-Rebuild the server cache with the updated
-`.data/raw-cache/server/inv.toml` before enabling ration deposits. Native
-`inv.forestry_kit` originally has temporary scope; the overlay makes it persistent,
-always stacking and unprotected. The deposit handler refuses temporary storage,
-so running new scripts with the old cache cannot silently lose deposited rations
-on logout. Existing account inventory persistence handles the rebuilt definition.
-The active local cache was not changed by this work.
+Native `inv.forestry_kit` is temporary in older packed revision-240 caches.
+The raw-cache override in `.data/raw-cache/server/inv.toml` changes it to
+persistent, always stacking and unprotected. Until that overlay is rebuilt into
+the deployed cache, `Inventory.create` now applies the same definition when
+creating this specific inventory. This covers both player deposits and the
+account inventory restoration path on login, so stored rations remain persistent
+without requiring a separate cache rebuild. The deposit handler still refuses
+any explicitly temporary storage instead of silently losing items on logout.
+Rebuilding the cache with the overlay is recommended for consistency.
 
 Keep #42 open for the missing farmed-tree lifecycle and #46 open for its quest
 dependency. Those need their own implementations and proof. Do not replace a
