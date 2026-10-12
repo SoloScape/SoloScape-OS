@@ -10,6 +10,12 @@ character with no saved login or logout history receives new-character startup,
 even when the loader did not create its account in that request. Characters with
 saved login history retain their position and tutorial progress.
 
+Skippy (`npc.tutorial_skip`) stands at `(3097, 3108, 0)`, facing south without
+wandering. He asks "Would you like to skip the tutorial?" with **Yes** and **No**.
+Yes marks the tutorial complete, clears the new-account flag and any pending
+tutorial passage, restores normal tabs/chat, and teleports to Lumbridge.
+No closes the dialogue without changing progress or position.
+
 The classic island uses its existing revision-240 NPCs and map objects. The
 `content/areas/misc/tutorial-island` plugin supplies the complete teaching route:
 

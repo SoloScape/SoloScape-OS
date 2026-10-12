@@ -10,6 +10,7 @@ import org.rsmod.api.player.ui.ifOpenOverlay
 import org.rsmod.api.player.ui.ifSetHide
 import org.rsmod.api.player.ui.ifSetText
 import org.rsmod.api.player.vars.intVarp
+import org.rsmod.api.player.vars.boolVarBit
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
 import org.rsmod.game.ui.Component
@@ -17,6 +18,7 @@ import org.rsmod.map.CoordGrid
 
 public var Player.tutorialProgress: Int by intVarp("varp.tutorial")
 private var Player.tutorialProgressBar: Int by intVarp("varp.tutorial_progress_overlay")
+private var Player.newTutorialAccount: Boolean by boolVarBit("varbit.new_player_account")
 
 public val Player.tutorialStage: TutorialStage?
     get() = TutorialStage.fromCode(tutorialProgress)
@@ -34,9 +36,20 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
 
     public fun advance(player: Player, expected: TutorialStage): Boolean {
         if (!TutorialStage.accepts(player.tutorialStage ?: return false, expected)) return false
+        if (expected.next == TutorialStage.COMPLETE) {
+            complete(player)
+            return true
+        }
         player.tutorialProgress = expected.next.code
         show(player)
         return true
+    }
+
+    public fun complete(player: Player) {
+        player.tutorialProgress = TutorialStage.COMPLETE.code
+        player.newTutorialAccount = false
+        player.attr.remove(tutorialPassage)
+        show(player)
     }
 
     public fun show(player: Player) {
