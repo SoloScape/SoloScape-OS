@@ -49,7 +49,7 @@ original gamepack and its derived artifacts must not be redistributed.
 
 The entire pinned client now has an independent compilation probe:
 `npm run build:openosrs-engine` from `Mobile`. It verifies the untouched local
-gamepack and `../Client/runelite-api/build/libs/runelite-api-1.2.0.jar`.
+gamepack and `Mobile/local-openosrs/runelite-api/build/libs/runelite-api-1.2.0.jar`.
 Override those paths with `SOLOSCAPE_OPENOSRS_GAMEPACK` and
 `SOLOSCAPE_OPENOSRS_API`; `SOLOSCAPE_OPENOSRS_ROOT` changes the default
 reference checkout. The gamepack digest must match `openosrs-reference.json`.
@@ -182,9 +182,10 @@ draw order, exact clipping, and verifies the full buffer hash against a
 separate JVM execution of the **unmodified** `yw` class in the original
 `injected-client.oprs`, not the stripped JAR.
 
-The local OpenOSRS checkout is expected at
-`../Client/runelite-client/src/main/resources/injected-client.oprs`
-relative to the GitHub repositories directory. To override the path set
+The pinned local input snapshot is expected at
+`Mobile/local-openosrs/runelite-client/src/main/resources/injected-client.oprs`.
+See `Mobile/local-openosrs/README.md` for importing and backing up these ignored inputs.
+To override the path set
 `SOLOSCAPE_OPENOSRS_GAMEPACK`. Original bytes, generated subset JARs,
 and generated gamepack-derived JS stay under ignored `teavm-poc/target/`.
 **Do not redistribute** those outputs without the applicable rights.

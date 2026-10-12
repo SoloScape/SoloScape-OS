@@ -40,10 +40,10 @@ export function buildOpenOsrsEngine({root=mobile,env=process.env,platform=proces
         status:"blocked",stage:"prerequisites"};
     let log="";
     try{
-        if(!existsSync(gamepack))throw new Error("Pinned local gamepack missing; set SOLOSCAPE_OPENOSRS_GAMEPACK.");
+        if(!existsSync(gamepack))throw new Error("Pinned local gamepack missing; import the local OpenOSRS inputs or set SOLOSCAPE_OPENOSRS_GAMEPACK.");
         const digest=createHash("sha256").update(readFileSync(gamepack)).digest("hex");
         if(digest!==manifest.gamepackSha256)throw new Error("Gamepack SHA-256 mismatch; refusing to compile a different engine.");
-        if(!existsSync(api))throw new Error("Built local RuneLite API missing; build runelite-api in the reference checkout or set SOLOSCAPE_OPENOSRS_API.");
+        if(!existsSync(api))throw new Error("Pinned local RuneLite API missing; import the local OpenOSRS inputs or set SOLOSCAPE_OPENOSRS_API.");
         report.apiSha256=createHash("sha256").update(readFileSync(api)).digest("hex");
         const jdk=selectJdk({env,platform});
         const buildEnv={...env};

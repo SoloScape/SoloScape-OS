@@ -27,6 +27,7 @@
     "build": "node scripts/run-client.mjs build",
     "test": "node --test tests/*.test.mjs",
     "verify:openosrs-reference": "node scripts/verify-openosrs-reference.mjs",
+    "import:openosrs-inputs": "node scripts/import-openosrs-inputs.mjs",
     "generate:tsps-movement": "node scripts/adapt-tsps-movement.mjs",
     "generate:tsps-skeletal": "node scripts/adapt-tsps-skeletal.mjs",
     "generate:tsps-loading": "node scripts/adapt-tsps-loading.mjs",

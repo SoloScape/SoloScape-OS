@@ -1,6 +1,6 @@
 # OpenOSRS revision-240: primary SoloScape client reference
 
-**Reference source:** C:\Users\Callum\Documents\GitHub\Client on the development machine, normally ../../Client relative to Mobile. Upstream: https://github.com/OOSRS/OOSRS. The inspected tree identifies as **OpenOSRS 1.2.0**; gamepack.properties identifies **revision 240**, game dependency version **1.12.39** and its digest. This local copy has **no Git metadata**, so SHA-256 source hashes—not an invented commit ID—are recorded in openosrs-reference.json.
+**Local build/reference snapshot:** `Mobile/local-openosrs/`, imported from the original development checkout at `C:\Users\Callum\Documents\GitHub\Client`. Builds no longer require that separate checkout. Upstream: https://github.com/OOSRS/OOSRS. The inspected tree identifies as **OpenOSRS 1.2.0**; gamepack.properties identifies **revision 240**, game dependency version **1.12.39** and its digest. SHA-256 hashes are recorded in openosrs-reference.json. The snapshot contains the required build artifacts and fingerprinted reference files, not the full desktop source tree. See [local-openosrs/README.md](local-openosrs/README.md) for provisioning, backup and overrides.
 
 ## Source-of-truth policy
 
@@ -31,7 +31,7 @@ Run from Mobile:
 npm run verify:openosrs-reference
 ~~~
 
-Override the local folder with SOLOSCAPE_OPENOSRS_ROOT or pass a custom path to node scripts/verify-openosrs-reference.mjs --root PATH. The offline script validates fifteen source-file SHA-256 values and the declared revision, game dependency version and hash. The pin includes GPU alpha sorting, shader colour conversion, colourblind correction, texture filtering and GPU defaults. The source tree is not tracked by Git, so re-audit after any failed fingerprint before updating openosrs-reference.json. The script makes no network requests and does not read credentials or copy game binaries.
+Override the local folder with SOLOSCAPE_OPENOSRS_ROOT or pass a custom path to node scripts/verify-openosrs-reference.mjs --root PATH. The offline script validates twenty pinned source, metadata and build-input hashes, plus the declared revision, game dependency version and hash. The pin includes GPU alpha sorting, shader colour conversion, colourblind correction, texture filtering and GPU defaults. Imported inputs are not tracked by Git, so back them up separately and re-audit after any failed fingerprint before updating openosrs-reference.json. The script makes no network requests and does not read credentials or copy game binaries.
 
 Regular npm test does not require the external source checkout, and remains CI-compatible.
 

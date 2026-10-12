@@ -1,13 +1,20 @@
 {
   "name": "OpenOSRS",
   "upstream": "https://github.com/OOSRS/OOSRS",
-  "localDefault": "../../Client",
+  "localDefault": "local-openosrs",
   "version": "1.2.0",
   "protocolRevision": 240,
   "gamepackVersion": "1.12.39",
   "gamepackSha256": "25f42961c400bd9dfff1554402441c0ba6d1cffd011163cb9b0b4c42ae194f85",
   "license": "BSD-2-Clause for repository source; game dependency separately licensed",
+  "buildFiles": {
+    "runelite-client/src/main/resources/injected-client.oprs": "25f42961c400bd9dfff1554402441c0ba6d1cffd011163cb9b0b4c42ae194f85",
+    "runelite-api/build/libs/runelite-api-1.2.0.jar": "dc1b25a2e4fa67a88023ac53137d02484261f933fec5db719344e172ff61f5db",
+    "runelite-client/src/main/resources/runelite/index": "ad95131bc0b799c0b1af477fb14fcf26a6a9f76079e48bf090acb7e8367bfd0e"
+  },
   "sourceFiles": {
+    "LICENSE": "dd35829a586785621651857262168bd91374a84669592d2db28520648b55a519",
+    "settings.gradle.kts": "8b25ba9932d1970824025d963940f5144e301af9ccd1c1b47b1b95ad4d1a7cf6",
     "gamepack.properties": "ac185bcf54200af48eb0bbb3f281e18b623ed514f4faa9fecb208bcb665f57d2",
     "runelite-client/src/main/java/net/runelite/client/plugins/camera/CameraPlugin.java": "5ae59d1281048e2442a9a6ae10d6ec8b535aa0068b51ee1bfcc5335befeb689f",
     "runelite-client/src/main/java/net/runelite/client/plugins/camera/CameraConfig.java": "7d3dacde420005e70c6e85662ca579ca2acd71d7f39cdd37c4356e2a28800bbe",

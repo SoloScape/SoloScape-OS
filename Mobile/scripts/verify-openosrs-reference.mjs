@@ -1,5 +1,4 @@
-// Verify the user-provided OpenOSRS revision-240 source tree, never the
-// separately licensed injected gamepack binary. No network or writes.
+// Hash the pinned local OpenOSRS reference and build inputs. No network or writes.
 import {createHash} from "node:crypto";
 import {readFile} from "node:fs/promises";
 import {dirname,resolve} from "node:path";
@@ -14,7 +13,7 @@ const root=resolve(rootArgument!==-1?process.argv[rootArgument+1]:
     process.env.SOLOSCAPE_OPENOSRS_ROOT||resolve(mobile,manifest.localDefault));
 const errors=[];
 let checked=0;
-for(const [relative,expected] of Object.entries(manifest.sourceFiles)){
+for(const [relative,expected] of Object.entries({...manifest.sourceFiles,...manifest.buildFiles})){
     const file=resolve(root,relative);
     try{
         const bytes=await readFile(file);
@@ -40,6 +39,6 @@ if(errors.length){
     process.exitCode=1;
 }else{
     console.log("OpenOSRS reference verified: revision "+manifest.protocolRevision+
-        ", "+checked+" SHA-256-checked source files, root "+root);
-    console.log("Java reference only: no TSPS runtime replacement and no gamepack bundling.");
+        ", "+checked+" SHA-256-checked files, root "+root);
+    console.log("Local build inputs only; no login, network access or redistribution.");
 }

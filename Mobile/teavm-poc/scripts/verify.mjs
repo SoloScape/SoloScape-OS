@@ -45,7 +45,9 @@ assert.equal(module.framebufferHash()>>>0,hash>>>0,"TeaVM pixel bytes/hash agree
 // injected-client.oprs. The generated mini-JAR only isolates intact methods.
 const mobile=fileURLToPath(new URL("../../",import.meta.url));
 const original=join(mobile,"teavm-poc","target","gamepack","injected-client.oprs");
-const api=resolve(mobile,"..","..","Client","runelite-api","build","libs","runelite-api-1.2.0.jar");
+const manifest=JSON.parse(await readFile(join(mobile,"openosrs-reference.json"),"utf8"));
+const reference=resolve(process.env.SOLOSCAPE_OPENOSRS_ROOT||resolve(mobile,manifest.localDefault));
+const api=resolve(process.env.SOLOSCAPE_OPENOSRS_API||join(reference,`runelite-api/build/libs/runelite-api-${manifest.version}.jar`));
 const classes=join(mobile,"teavm-poc","target","classes");
 const java=findTeaVmJdk().binary;
 const native=spawnSync(java,["-cp",[classes,original,api].join(delimiter),"RendererBridge"],{

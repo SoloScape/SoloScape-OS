@@ -59,9 +59,11 @@ export function findTeaVmJdk({env=process.env,platform=process.platform,exists=e
 }
 
 export function runTeaVmBuild(){
-    // Only use the exact local rev-240 binary. Never commit or bundle its bytes.
+    // Only use the exact local rev-240 binary. Keep its bytes out of Git.
     const mobileRoot=resolve(dirname(fileURLToPath(import.meta.url)),"..");
-    const source=process.env.SOLOSCAPE_OPENOSRS_GAMEPACK||resolve(mobileRoot,"..","..","Client","runelite-client","src","main","resources","injected-client.oprs");
+    const manifest=JSON.parse(readFileSync(join(mobileRoot,"openosrs-reference.json"),"utf8"));
+    const reference=resolve(process.env.SOLOSCAPE_OPENOSRS_ROOT||resolve(mobileRoot,manifest.localDefault));
+    const source=process.env.SOLOSCAPE_OPENOSRS_GAMEPACK||join(reference,"runelite-client/src/main/resources/injected-client.oprs");
     if(!existsSync(source))throw new Error("Local rev-240 OpenOSRS injected-client.oprs missing. Set SOLOSCAPE_OPENOSRS_GAMEPACK to its local path.");
     const expected="25f42961c400bd9dfff1554402441c0ba6d1cffd011163cb9b0b4c42ae194f85";
     const hash=createHash("sha256").update(readFileSync(source)).digest("hex");
