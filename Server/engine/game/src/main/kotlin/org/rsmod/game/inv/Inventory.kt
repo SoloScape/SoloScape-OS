@@ -4,6 +4,7 @@ import dev.openrune.ServerCacheManager
 import dev.openrune.rscm.RSCM
 import dev.openrune.rscm.RSCM.asRSCM
 import dev.openrune.rscm.RSCMType
+import dev.openrune.types.InvScope
 import dev.openrune.types.InvStackType
 import dev.openrune.types.InventoryServerType
 import dev.openrune.types.ItemServerType
@@ -163,8 +164,21 @@ public class Inventory(public val type: InventoryServerType, objs: Array<InvObj?
         @OptIn(UncheckedType::class)
         public fun create(internal: String): Inventory {
 
-            val type = ServerCacheManager.getInventory(internal.asRSCM(RSCMType.INV))
+            val cachedType = ServerCacheManager.getInventory(internal.asRSCM(RSCMType.INV))
                 ?: error("Unable to find inventory: $internal")
+            // The revision-240 Forestry kit is Temp in older packed caches. Normalize new
+            // and account-restored inventories here until the cache overlay is deployed.
+            // Otherwise account saves discard deposited rations on logout.
+            val type = if (internal == "inv.forestry_kit" &&
+                (cachedType.scope != InvScope.Perm ||
+                    cachedType.stack != InvStackType.Always || cachedType.protect)
+            ) {
+                cachedType.copy(
+                    scope = InvScope.Perm,
+                    stack = InvStackType.Always,
+                    flags = cachedType.flags and InventoryServerType.PROTECT_FLAG.inv(),
+                )
+            } else cachedType
 
             val objs = arrayOfNulls<InvObj>(type.size)
             if (type.stock.isNotEmpty()) {
