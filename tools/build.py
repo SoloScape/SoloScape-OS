@@ -176,10 +176,60 @@ def validate_server_runtime(jar):
                            "refusing to publish or reuse it. Run build.bat --rebuild.")
 
 
+SERVER_CACHE_FILES = tuple(
+    f"Server/.data/cache/{name}/main_file_cache.dat2" for name in ("LIVE", "SERVER")
+)
+LFS_POINTER_HEADER = b"version https://git-lfs.github.com/spec/v1"
+
+
+def unavailable_server_caches():
+    pending = []
+    for name in SERVER_CACHE_FILES:
+        file = ROOT / name
+        if not file.is_file():
+            pending.append(name)
+            continue
+        with file.open("rb") as stream:
+            header = stream.read(128)
+        if not header or header.startswith(LFS_POINTER_HEADER):
+            pending.append(name)
+    return pending
+
+
+def ensure_server_cache():
+    pending = unavailable_server_caches()
+    if not pending:
+        return
+    print("Restoring server cache data with Git LFS...", flush=True)
+    recovery = ('Install Git LFS and run git lfs install, then retry build.bat. '
+                'If downloading fails, restore the matching LIVE and SERVER cache data '
+                'or run git lfs pull --include="Server/.data/cache/**" --exclude="".')
+    commands = [
+        ["checkout", *pending],
+        ["pull", "--include=" + ",".join(pending), "--exclude="],
+    ]
+    for args in commands:
+        try:
+            result = subprocess.run(["git", "-C", str(ROOT), "lfs", *args],
+                                    capture_output=True, text=True)
+        except OSError as error:
+            raise RuntimeError("Cannot restore server cache data. " + recovery) from error
+        if result.returncode:
+            raise RuntimeError("Git LFS could not restore server cache data. " + recovery)
+        pending = unavailable_server_caches()
+        if not pending:
+            print("Server cache data restored.", flush=True)
+            return
+    raise RuntimeError("Server cache data is still missing, empty or a Git LFS pointer: "
+                       + ", ".join(pending) + ". " + recovery)
+
+
 def build_project(project_name, rebuild, home, compiler_lib):
     project = ROOT / project_name
     progress = Progress(project_name)
     progress.update(0, "Checking inputs")
+    if project_name == "Server":
+        ensure_server_cache()
     installed = project / ("build/install/rsprox/lib" if project_name == "Client"
                            else "server/app/build/install/app/lib")
     if not installed.is_dir():

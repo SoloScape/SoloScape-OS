@@ -3,6 +3,7 @@ import contextlib
 import io
 from pathlib import Path
 import shlex
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -144,6 +145,10 @@ class ServerBuildCacheTests(BuildFixture):
 
     def setUp(self):
         super().setUp()
+        for name in build.SERVER_CACHE_FILES:
+            cache = build.ROOT / name
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_bytes(b"restored cache data")
         self.core = self.runtime.parents[2] / "engine/module/src/main/kotlin/Core.kt"
         self.core.parent.mkdir(parents=True)
         self.core.write_text("internal fun core() {}")
@@ -233,6 +238,73 @@ class ServerBuildCacheTests(BuildFixture):
         api.write_text("fun changedGenerated() {}")
         self.run_build()
         self.assertEqual(self.calls, 5)
+
+
+class ServerCacheLfsTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        root_patch = patch.object(build, "ROOT", self.root)
+        root_patch.start()
+        self.addCleanup(root_patch.stop)
+        self.files = [self.root / name for name in build.SERVER_CACHE_FILES]
+        for file in self.files:
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_bytes(build.LFS_POINTER_HEADER + b"\noid sha256:abc\nsize 100\n")
+
+    def restore(self):
+        for file in self.files:
+            file.write_bytes(b"cache data")
+
+    def ensure(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            build.ensure_server_cache()
+
+    def test_hydrated_cache_needs_no_git(self):
+        self.restore()
+        with patch.object(build.subprocess, "run") as run:
+            self.ensure()
+        run.assert_not_called()
+
+    def test_local_checkout_restores_pointers_without_download(self):
+        def checkout(command, **kwargs):
+            self.assertEqual(command[4], "checkout")
+            self.assertEqual(command[5:], list(build.SERVER_CACHE_FILES))
+            self.restore()
+            return subprocess.CompletedProcess(command, 0)
+        with patch.object(build.subprocess, "run", side_effect=checkout) as run:
+            self.ensure()
+        self.assertEqual(run.call_count, 1)
+
+    def test_missing_local_objects_trigger_targeted_download(self):
+        self.files[1].unlink()
+        def run_git(command, **kwargs):
+            if command[4] == "pull":
+                self.assertIn("--include=" + ",".join(build.SERVER_CACHE_FILES), command)
+                self.assertIn("--exclude=", command)
+                self.restore()
+            return subprocess.CompletedProcess(command, 0)
+        with patch.object(build.subprocess, "run", side_effect=run_git) as run:
+            self.ensure()
+        self.assertEqual(run.call_count, 2)
+
+    def test_failed_or_incomplete_restoration_stops_build(self):
+        for result in (subprocess.CompletedProcess([], 1), subprocess.CompletedProcess([], 0)):
+            with self.subTest(returncode=result.returncode):
+                with patch.object(build.subprocess, "run", return_value=result):
+                    with self.assertRaisesRegex(RuntimeError, "server cache data|Server cache data"):
+                        self.ensure()
+        with patch.object(build.subprocess, "run", side_effect=FileNotFoundError()):
+            with self.assertRaisesRegex(RuntimeError, "Install Git LFS"):
+                self.ensure()
+
+    def test_preflight_runs_before_server_compilation(self):
+        with patch.object(build, "ensure_server_cache", side_effect=RuntimeError("LFS failed")):
+            with patch.object(build, "run_compiler") as compile:
+                with self.assertRaisesRegex(RuntimeError, "LFS failed"):
+                    build.build_project("Server", False, self.root, self.root)
+        compile.assert_not_called()
 
 
 if __name__ == "__main__":

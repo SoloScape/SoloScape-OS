@@ -13,6 +13,12 @@ Fresh runtime builds live under each project's `build/direct/lib/` and take
 priority in the launchers. Rebuild after source changes. This runtime build does
 not run unit tests or rebuild the game cache.
 
+Both `build.bat` and `Server/build.bat` check the LIVE and SERVER cache data before
+compiling the server, including unchanged builds. Missing files or Git LFS pointers
+are restored from local LFS objects first, then downloaded through Git LFS if needed.
+Install Git LFS for this automatic restoration. If restoration fails, the build stops
+with recovery instructions rather than leaving a server that cannot load its cache.
+
 Server builds cache engine/API, cache support and shared services in
 `soloscape-server-core.jar`. Gameplay content and the application entry layer compile
 into `soloscape-server.jar` against that core. Content-only edits reuse the core;
