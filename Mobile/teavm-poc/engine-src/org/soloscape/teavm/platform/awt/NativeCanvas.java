@@ -12,6 +12,10 @@ public final class NativeCanvas {
     public static native void focus(JSObject canvas);
     @JSBody(params={"width","height","id"},script="const engineCanvas=id?document.getElementById(id):document.createElement('canvas'); if(!engineCanvas)throw new Error('Engine canvas missing: '+id); engineCanvas.width=width;engineCanvas.height=height;return engineCanvas;")
     public static native JSObject create(int width,int height,String id);
+    // The 40 authentic 64x64 cache frames are preloaded as one transparent
+    // 2560x64 sprite atlas. Never wait for a JS5 request in the game renderer.
+    @JSBody(params={"context","x","y","index","alpha"},script="let atlas=globalThis.__soloscapeMobileClickAtlas;if(!atlas){atlas=new Image();globalThis.__soloscapeMobileClickAtlas=atlas;atlas.src='/original-mobile-clicks-cache-1625.png';}if(!atlas.complete||atlas.naturalWidth!==2560||index<0||index>=40)return;context.save();context.globalAlpha=Math.max(0,Math.min(1,alpha/255));context.drawImage(atlas,index*64,0,64,64,x-32,y-32,64,64);context.restore();")
+    public static native void originalTouchCacheFrame(JSObject context,int x,int y,int index,int alpha);
     @JSBody(params={"canvas","width","height"},script="canvas.width=width;canvas.height=height;")
     public static native void resize(JSObject canvas,int width,int height);
     @JSBody(params={"canvas"},script="return canvas.getContext('2d');")

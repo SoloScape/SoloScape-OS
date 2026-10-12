@@ -4,7 +4,7 @@ import {readFile} from "node:fs/promises";
 import {attachOriginalResizableLayout,originalViewportSize} from "../teavm-poc/site/original-resizable-layout.mjs";
 function fixture(){
     const classes=new Set(),calls=[],listeners=new Set();
-    let state="LOGIN_SCREEN",mode=false,stamp=0,viewport={width:956,height:440};
+    let state="LOGIN_SCREEN",mode=false,stamp=0,portraitTouch=false,viewport={width:956,height:440};
     const engine={
         isResizableMode:()=>mode,
         resizeOriginalViewport:(w,h)=>{calls.push([w,h]);return true;}
@@ -15,10 +15,11 @@ function fixture(){
     }};
     const view=attachOriginalResizableLayout({canvas:{},body,engine,
         getGameState:()=>state,viewport:()=>viewport,now:()=>stamp,
+        isPortraitTouch:()=>portraitTouch,
         addResize:fn=>listeners.add(fn),removeResize:fn=>listeners.delete(fn)});
     return {view,classes,calls,listeners,
         state:s=>state=s,mode:m=>mode=m,viewport:v=>viewport=v,
-        advance:ms=>stamp+=ms};
+        portrait:value=>portraitTouch=value,advance:ms=>stamp+=ms};
 }
 test("Resizable Classic fills browser CSS viewport through original resizeCanvas",()=>{
     const f=fixture();f.state("LOGGED_IN");f.mode(true);f.view.update();
@@ -59,8 +60,8 @@ test("original title/login screen uses the same native fullscreen canvas as the 
     f.state("LOGGED_IN");f.view.update();
     assert.equal(f.calls.length,2,"portrait login-to-game transition keeps the canvas");
     f.state("CONNECTION_LOST");f.view.update();
-    assert.deepEqual(f.calls.at(-1),[765,503]);
-    assert.equal(f.classes.has("original-resizable"),false);
+    assert.equal(f.calls.length,2,"logging out never resets the viewport to Fixed");
+    assert.equal(f.classes.has("original-resizable"),true);
 });
 test("connecting to server preserves the title's fullscreen aspect ratio",()=>{
     const f=fixture();
@@ -85,8 +86,64 @@ test("connecting to server preserves the title's fullscreen aspect ratio",()=>{
         "successful login retains the title's aspect ratio");
     assert.equal(f.calls.length,1);
     f.state("CONNECTION_LOST");f.view.update();
-    assert.equal(f.classes.has("original-resizable"),false,
-        "a genuine disconnect still cleans up the fullscreen game state");
+    assert.equal(f.classes.has("original-resizable"),true,
+        "disconnect keeps the original fullscreen gameframe for logout");
+    assert.equal(f.calls.length,1);
+    f.state("LOGIN_SCREEN");f.mode(false);f.advance(5000);f.view.update();
+    assert.equal(f.classes.has("original-resizable"),true,
+        "logout title must not change aspect ratio even if the original window flag is briefly false");
+    assert.equal(f.calls.length,1);
+    f.mode(true);f.view.update();
+    assert.equal(f.calls.length,1,"restored login/title window mode reuses the previous dimensions");
+});
+test("logout through loading, connection loss and title keeps the same native landscape aspect",()=>{
+    const f=fixture();
+    f.mode(true);f.state("LOGGED_IN");f.view.update();
+    assert.deepEqual(f.calls,[[1093,503]]);
+    for(const state of ["LOADING","CONNECTION_LOST","UNKNOWN","STARTING","LOGIN_SCREEN"]){
+        f.state(state);f.mode(false);f.advance(3000);f.view.update();
+        assert.equal(f.classes.has("original-resizable"),true,state);
+        assert.equal(f.calls.length,1,state+" must not request Fixed mode");
+    }
+    f.mode(true);f.view.update();
+    assert.deepEqual(f.calls,[[1093,503]]);
+});
+test("portrait touch devices show rotate overlay and never request portrait Java canvas dimensions",()=>{
+    const f=fixture();
+    f.state("LOGIN_SCREEN");f.mode(true);f.view.update();
+    assert.deepEqual(f.calls,[[1093,503]]);
+    f.portrait(true);f.viewport({width:390,height:844});
+    for(const fn of f.listeners)fn();
+    f.state("LOGGED_IN");f.view.update();f.advance(3000);f.view.update();
+    assert.deepEqual(f.calls,[[1093,503]],
+        "portrait never expands the software framebuffer to 765x1656");
+    assert.equal(f.classes.has("original-resizable"),true,
+        "preserve canvas state until returning to landscape");
+    f.portrait(false);f.viewport({width:844,height:390});
+    for(const fn of f.listeners)fn();
+    assert.deepEqual(f.calls.at(-1),[1089,503],
+        "native canvas resumes at the landscape viewport after rotation");
+    f.viewport({width:1024,height:600});f.view.update();
+    assert.deepEqual(f.calls.at(-1),[1024,600]);
+});
+test("starting in portrait defers native canvas resizing until landscape",()=>{
+    const f=fixture();
+    f.mode(true);f.portrait(true);f.viewport({width:390,height:844});
+    f.view.update();assert.equal(f.calls.length,0);
+    assert.equal(f.classes.has("original-resizable"),false);
+    f.portrait(false);f.viewport({width:956,height:440});
+    f.view.update();assert.deepEqual(f.calls,[[1093,503]]);
+    assert.equal(f.classes.has("original-resizable"),true);
+});
+test("landscape-only overlay exists before JS boots and prevents canvas touches in portrait",async()=>{
+    const html=await readFile(new URL("../teavm-poc/site/engine-smoke.html",import.meta.url),"utf8");
+    const css=await readFile(new URL("../teavm-poc/site/engine-smoke.css",import.meta.url),"utf8");
+    assert.match(html,/id="landscape-required"/);
+    assert.match(html,/Rotate to landscape/);
+    assert.match(css,/@media \(pointer:coarse\) and \(orientation:portrait\)/);
+    assert.match(css,/#landscape-required\{display:flex\}/);
+    assert.match(css,/#original-engine-canvas\{pointer-events:none\}/);
+    assert.match(css,/#landscape-required\{display:none;position:fixed;inset:0;z-index:50/);
 });
 test("connecting before first full title resize never triggers an unsafe Java resize",()=>{
     const f=fixture();

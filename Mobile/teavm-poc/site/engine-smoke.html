@@ -9,12 +9,22 @@
 <meta name="apple-mobile-web-app-title" content="SoloScape">
 <title>SoloScape</title>
 <link rel="stylesheet" href="/engine-smoke.css">
+<link rel="preload" as="image" href="/original-mobile-clicks-cache-1625.png">
 </head>
 <body>
 <!-- Original OpenOSRS engine: local diagnostic identity used by the dev launcher/bridge. -->
 <!-- Paints on the first HTML render, before the Java gamepack is downloaded. -->
 <div id="startup-splash" role="status" aria-label="Loading SoloScape"></div>
 <canvas id="original-engine-canvas" width="765" height="503" tabindex="0" aria-label="Original RuneScape game"></canvas>
+<!-- Safari cannot force device orientation: block portrait input and preserve
+     the native landscape framebuffer until the device is rotated. -->
+<div id="landscape-required" role="status" aria-label="Landscape orientation required">
+  <div class="landscape-required-content">
+    <span class="landscape-phone" aria-hidden="true"></span>
+    <strong>Rotate to landscape</strong>
+    <span>SoloScape is designed to be played sideways.</span>
+  </div>
+</div>
 <input id="original-soft-keyboard" type="password" aria-label="Original game keyboard"
     autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done">
 <!-- Public rev-240 startup parameters only; no account data or editable controls. -->

@@ -7,6 +7,12 @@ import {createGameLoginStatusObserver} from "./original-login-status.mjs";
 const MAX_FRAME_BYTES = 64 * 1024;
 const MAX_BUFFER_BYTES = 1024 * 1024;
 const TCP_CONNECT_TIMEOUT_MS = 10_000;
+// Safari can suspend or terminate a page without a WebSocket Close frame.
+// RFC 6455 Ping/Pong runs on the gateway, not the browser JavaScript thread.
+// Close unresponsive browser links so their native game TCP channels are
+// destroyed and RSMod's existing client-disconnect/logout hook runs.
+export const BROWSER_PING_INTERVAL_MS = 20_000;
+export const BROWSER_PONG_TIMEOUT_MS = 60_000;
 // OSRS native handshakes are plain TCP, NOT TSPS's custom HELLO=200 / LOGIN=204.
 // This is a protective compatibility gate, not an OSRS packet translator.
 const NATIVE_FIRST_BYTES = new Set([14, 15, 16, 18]);
@@ -18,12 +24,19 @@ function forbidden(socket, status, message) {
 
 export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivity = () => {},
     isAllowedPeer=()=>true, requestHandler=null, allowedHost=null,
-    maxConnections=Infinity, handshakeTimeoutMs=0 }) {
+    maxConnections=Infinity, handshakeTimeoutMs=0,
+    heartbeatIntervalMs=BROWSER_PING_INTERVAL_MS,
+    heartbeatTimeoutMs=BROWSER_PONG_TIMEOUT_MS }) {
     if (!tcpHost || !Number.isInteger(tcpPort) || tcpPort < 1 || tcpPort > 65535) {
         throw new Error("A fixed TCP host and valid port are required");
     }
     if (!(allowedOrigins instanceof Set) || allowedOrigins.size === 0) {
         throw new Error("An explicit origin allowlist is required");
+    }
+    if (!Number.isInteger(heartbeatIntervalMs) || heartbeatIntervalMs<1 ||
+        !Number.isInteger(heartbeatTimeoutMs) ||
+        heartbeatTimeoutMs<=heartbeatIntervalMs) {
+        throw new Error("Heartbeat timeout must exceed a positive heartbeat interval");
     }
 
     const handler = requestHandler ?? ((_request, response) => {
@@ -72,10 +85,13 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
         let firstPacketAccepted = false;
         let ended = false;
         let gameStatus=null;
+        let heartbeatTimer=null;
+        let lastPong=Date.now();
         const stop = (code = 1000, reason = "upstream closed") => {
             if (ended) return;
             ended = true;
             clearTimeout(handshakeTimer);
+            clearInterval(heartbeatTimer);
             // Only a fixed lifecycle reason and WebSocket status are reported.
             // Never inspect or record usernames, packet bytes or credentials.
             onActivity("closed:"+reason,code,session);
@@ -87,6 +103,24 @@ export function createGateway({ tcpHost, tcpPort, allowedOrigins, tls, onActivit
         };
         const handshakeTimer=handshakeTimeoutMs>0?
             setTimeout(()=>stop(1008,"Handshake timeout"),handshakeTimeoutMs):null;
+        // A browser automatically replies to WebSocket Ping frames while its
+        // network stack is alive. Neither a game opcode nor a Java timer is
+        // involved. After an iOS force-quit, missing Pong proves this browser
+        // transport is abandoned even if its TCP socket looks established.
+        ws.on("pong",()=>{lastPong=Date.now();});
+        heartbeatTimer=setInterval(()=>{
+            if(ended)return;
+            if(Date.now()-lastPong>=heartbeatTimeoutMs){
+                stop(1001,"Browser heartbeat timeout");
+                return;
+            }
+            if(ws.readyState!==WebSocket.OPEN){
+                stop(1001,"Browser transport unavailable");
+                return;
+            }
+            try{ws.ping();}catch{stop(1011,"Browser ping failed");}
+        },heartbeatIntervalMs);
+        heartbeatTimer.unref?.();
 
         // Establish TCP only after we see a native OSRS handshake.
         // In particular, TSPS's high-level HELLO (opcode 200) must never reach

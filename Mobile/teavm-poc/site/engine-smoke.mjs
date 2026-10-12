@@ -5,6 +5,7 @@ import {sha256 as originalSha256} from "/original-sha256.mjs";
 // trusted-LAN origin has no Web Crypto subtle API; no account data is exposed.
 globalThis.soloscapeOriginalSha256=originalSha256;
 import {attachOriginalKeyboard,categorizeOriginalClientError} from "/original-mobile-keyboard.mjs";
+import {sendOriginalClientCrashReport} from "/original-client-crash.mjs";
 import {attachOriginalPageLifecycle} from "/original-mobile-lifecycle.mjs";
 import {attachOriginalLoginCamera} from "/original-login-camera.mjs";
 import {attachOriginalResizableLayout} from "/original-resizable-layout.mjs";
@@ -83,6 +84,8 @@ function collect(){
             state.phase="error";
             state.error="original client thread: "+hooksError;
             state.callbackTrace=engine.callbackTrace?.()??"";
+            sendOriginalClientCrashReport(
+                categorizeOriginalClientError(hooksError),state.gameState,state.callbackTrace);
             event("Original client callback error: "+hooksError);
             if(state.callbackTrace)event("Original client callback frames: "+state.callbackTrace);
             // Report only a fixed failure category; never expose raw exceptions,
@@ -187,11 +190,17 @@ async function initializeOriginalEngine(){
         originalResize=attachOriginalResizableLayout({
             canvas:$("original-engine-canvas"),body:document.body,engine,
             getGameState:()=>state.gameState});
-        for(const name of ["configureClient","configureClientParameter","configureMobileLayout","initializeAsync","gameCycle","hasClientThread"])
+        for(const name of ["configureClient","configureClientParameter","configureMobileLayout","configureMobileTapIndicators","initializeAsync","gameCycle","hasClientThread"])
             if(typeof engine[name]!=="function")throw new Error("Engine rebuild required: "+name+" missing");
         // Use the cached mobile UI and request its root through the original
         // post-login command path. Native authentication keeps parameter 4 = 1.
         engine.configureMobileLayout(true);
+        // The authentic original client owns walk/interact decisions; only
+        // touch devices see fading mobile circles in place of desktop X sprites.
+        // A PC mouse keeps the unmodified original click cross.
+        engine.configureMobileTapIndicators(
+            (globalThis.navigator?.maxTouchPoints??0)>0 ||
+            globalThis.matchMedia?.("(pointer: coarse)")?.matches===true);
         // Supply the exact small classpath resources packaged in the pinned
         // original gamepack, never placeholders or gameplay substitutions.
         // An explicit local development cache snapshot is mounted read-write

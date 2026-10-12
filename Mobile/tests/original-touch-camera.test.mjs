@@ -7,12 +7,12 @@ import {join} from "node:path";
 import {spawnSync} from "node:child_process";
 import {findTeaVmJdk} from "../scripts/build-teavm.mjs";
 import {
- attachOriginalTouchCamera,CAMERA_HOLD_MS,CAMERA_DRAG_START_PX,
+ attachOriginalTouchCamera,TOUCH_CONTEXT_HOLD_MS,CAMERA_DRAG_START_PX,
  CAMERA_YAW_UNITS_PER_PIXEL,CAMERA_PITCH_UNITS_PER_PIXEL,CAMERA_PINCH_SCALE_PER_STEP
 } from "../teavm-poc/site/original-touch-camera.mjs";
 
 function fixture({state="LOGGED_IN",resized=false,allowRotation=true}={}){
-    const handlers=new Map(),timers=new Map(),frames=new Map(),turns=[],captures=[],wheels=[];
+    const handlers=new Map(),timers=new Map(),frames=new Map(),turns=[],captures=[],wheels=[],mouse=[];
     let zoomGestures=0;
     let stamp=10000,serial=0,frameSerial=0,mode=state;
     const r={left:0,top:0,width:resized?920:765,height:resized?720:503};
@@ -24,7 +24,8 @@ function fixture({state="LOGGED_IN",resized=false,allowRotation=true}={}){
         setPointerCapture:id=>captures.push(["start",id]),
         releasePointerCapture:id=>captures.push(["end",id]),
         dispatchEvent:event=>{
-            wheels.push(event);
+            if(event.type==="wheel")wheels.push(event);
+            else mouse.push(event);
             for(const fn of handlers.get("canvas:"+event.type)??[])fn(event);
             return true;
         }
@@ -36,6 +37,9 @@ function fixture({state="LOGGED_IN",resized=false,allowRotation=true}={}){
     const camera=attachOriginalTouchCamera({
         canvas,page,getGameState:()=>mode,rotateCamera:(yaw,pitch)=>{turns.push([yaw,pitch]);return allowRotation;},
         createWheel:options=>({type:"wheel",button:0,key:"",keyCode:0,preventDefault(){},...options}),
+        createMouse:(type,options)=>({type,...options,
+            preventDefault(){this.prevented=true;},
+            stopImmediatePropagation(){this.stopped=true;}}),
         onZoomGesture:()=>zoomGestures++,
         schedule:(fn,ms)=>{const id=++serial;timers.set(id,{fn,ms});return id;},
         cancel:id=>timers.delete(id),
@@ -51,7 +55,12 @@ function fixture({state="LOGGED_IN",resized=false,allowRotation=true}={}){
             stopImmediatePropagation(){this.stopped=true;},
             ...values
         };
-        for(const fn of handlers.get(where+":"+type)??[])fn(event);
+        for(const fn of handlers.get(where+":"+type)??[]){
+            fn(event);
+            // Real DOM does not deliver further listeners after a handler
+            // calls stopImmediatePropagation; ghost clicks rely on this.
+            if(event.stopped)break;
+        }
         return event;
     };
     const tick=ms=>{
@@ -65,7 +74,7 @@ function fixture({state="LOGGED_IN",resized=false,allowRotation=true}={}){
         const batch=[...frames.values()];frames.clear();
         for(const fn of batch)fn();
     };
-    return {camera,canvas,turns,captures,handlers,timers,frames,fire,tick,flushFrame,wheels,get zoomGestures(){return zoomGestures;},
+    return {camera,canvas,turns,captures,handlers,timers,frames,fire,tick,flushFrame,wheels,mouse,get zoomGestures(){return zoomGestures;},
         setState:s=>mode=s,advance:ms=>stamp+=ms};
 }
 const sum=turns=>turns.reduce((tot,[x,y])=>[tot[0]+x,tot[1]+y],[0,0]);
@@ -133,7 +142,9 @@ test("pinch respects scene boundaries, logout and cancellation",()=>{
     blocked.fire("canvas","pointerdown",{pointerId:2,isPrimary:false,clientX:150});
     blocked.fire("canvas","pointermove",{pointerId:2,clientX:300});
     blocked.flushFrame();
-    assert.equal(blocked.wheels.length,0,"initial UI touch must not steal UI interaction");
+    assert.ok(blocked.wheels.length>0,
+        "two fingers must pinch even when the first lands over inventory");
+    assert.deepEqual(blocked.turns,[],"UI-started pinch cannot rotate camera");
     for(const action of [f=>{f.setState("LOGIN_SCREEN");f.camera.update();},
         f=>f.fire("page","blur"),f=>f.fire("page","resize"),
         f=>f.fire("page","pointercancel",{pointerId:2}),f=>f.camera.dispose()]){
@@ -144,6 +155,63 @@ test("pinch respects scene boundaries, logout and cancellation",()=>{
     }
 });
 
+test("diagonal, horizontal and vertical pinches produce the same zoom at equal distance",()=>{
+    const angles=[0,Math.PI/2,Math.PI/4,3*Math.PI/4,-Math.PI/4];
+    for(const angle of angles){
+        const f=fixture(),x=385,y=200;
+        const dx=100*Math.cos(angle),dy=100*Math.sin(angle);
+        f.fire("canvas","pointerdown",{clientX:x,clientY:y});
+        f.fire("canvas","pointerdown",{pointerId:2,isPrimary:false,
+            clientX:x+dx,clientY:y+dy});
+        const moved=f.fire("canvas","pointermove",{pointerId:2,
+            clientX:x+dx*2,clientY:y+dy*2});
+        assert.equal(moved.prevented,true,"pinch owns movement at every angle");
+        f.flushFrame();
+        assert.equal(f.wheels.length,9,"angle "+angle+" failed to zoom outward");
+        assert.ok(f.wheels.every(e=>e.deltaY===-120));
+        f.fire("canvas","pointermove",{pointerId:2,
+            clientX:x+dx,clientY:y+dy});
+        f.flushFrame();
+        assert.equal(f.wheels.length,18,"angle "+angle+" failed to zoom inward");
+        assert.ok(f.wheels.slice(9).every(e=>e.deltaY===120));
+        assert.deepEqual(f.turns,[]);
+    }
+});
+test("two-finger pinch works from chat/inventory while single UI drags remain untouched",()=>{
+    const f=fixture();
+    const first=f.fire("canvas","pointerdown",{clientX:700,clientY:420});
+    assert.equal(first.prevented,false);
+    assert.equal(f.captures.length,0,"single UI touch must not capture the pointer");
+    const uiMove=f.fire("canvas","pointermove",{clientX:690,clientY:420});
+    assert.equal(uiMove.prevented,false,"single UI drag remains available to the game");
+    assert.deepEqual(f.turns,[]);
+    const second=f.fire("canvas","pointerdown",{
+        pointerId:2,isPrimary:false,clientX:590,clientY:420});
+    assert.equal(second.prevented,true);
+    assert.equal(f.zoomGestures,1);
+    assert.deepEqual(f.captures,[["start",1],["start",2]]);
+    f.fire("canvas","pointermove",{pointerId:2,clientX:480,clientY:420});
+    f.flushFrame();
+    assert.equal(f.wheels.length,9,"two UI contacts still zoom via native scene wheel");
+    assert.ok(f.wheels.every(e=>e.clientX===258&&e.clientY===169),
+        "wheel must target the world rather than scroll inventory/chat");
+    assert.deepEqual(f.turns,[]);
+    f.fire("page","pointerup",{pointerId:2});
+    assert.equal(f.fire("canvas","click").stopped,true);
+    f.fire("page","pointerup",{pointerId:1});
+});
+test("UI-first pinch chooses the second scene finger as safe native wheel target",()=>{
+    const f=fixture();
+    f.fire("canvas","pointerdown",{clientX:700,clientY:450});
+    f.fire("page","pointerdown",{pointerId:2,isPrimary:false,
+        clientX:400,clientY:240});
+    f.fire("page","pointermove",{pointerId:2,
+        clientX:350,clientY:150});
+    f.flushFrame();
+    assert.ok(f.wheels.length>0);
+    assert.ok(f.wheels.every(e=>e.clientX===400&&e.clientY===240),
+        "if the moving pinch midpoint remains on the UI, retain the original in-scene anchor");
+});
 test("pinch reaches the production Java AWT wheel boundary with native zoom direction",async()=>{
     const {runInNewContext}=await import("node:vm");
     const src=await readFile(new URL("../teavm-poc/engine-src/org/soloscape/teavm/platform/awt/NativeCanvas.java",import.meta.url),"utf8");
@@ -168,6 +236,42 @@ test("pinch reaches the production Java AWT wheel boundary with native zoom dire
     f.camera.dispose();
 });
 
+test("mobile long press crosses the production NativeCanvas Java right-mouse boundary",async()=>{
+    const {runInNewContext}=await import("node:vm");
+    const source=await readFile(new URL(
+        "../teavm-poc/engine-src/org/soloscape/teavm/platform/awt/NativeCanvas.java",
+        import.meta.url),"utf8");
+    const script=/@JSBody\(params=\{"canvas","handler"\},script="([^"]*)"\)/.exec(source)?.[1];
+    assert.ok(script,"extract actual AWT mouse input code");
+    const f=fixture(),sent=[];
+    const dom={
+        canvas:f.canvas,
+        handler:(...args)=>{sent.push(args);return false;},
+        document:{getElementById:()=>null},
+        Date,Math
+    };
+    dom.globalThis=dom;
+    runInNewContext(script,dom);
+    f.fire("canvas","pointerdown",{clientX:323,clientY:226});
+    f.tick(TOUCH_CONTEXT_HOLD_MS);
+    assert.equal(sent.length,2,"the menu receives a full click at the hold threshold");
+    assert.equal(sent[0][0],501,"the native Java mousePressed opcode");
+    assert.equal(sent[0][5],3,"the original Java event button is right-click (3)");
+    assert.equal(sent[0][3],323);
+    assert.equal(sent[0][4],226);
+    f.fire("page","pointerup");
+    assert.equal(sent.length,2);
+    assert.equal(sent[1][0],502,"send Java mouseReleased immediately on long press");
+    assert.equal(sent[1][5],3);
+    assert.deepEqual(f.turns,[]);
+    const after=f.fire("canvas","mousedown",{button:0,clientX:323,clientY:226});
+    assert.equal(after.stopped,true,"iOS compatibility left-click must not reopen a walk action");
+    assert.equal(sent.length,2,"the browser ghost left click never reaches Java");
+    f.advance(601);
+    f.fire("canvas","mousedown",{button:0,clientX:323,clientY:226});
+    assert.equal(sent.length,3,"subsequent ordinary mouse input is not permanently disabled");
+    assert.equal(sent[2][5],1,"desktop left-click still reports original button 1");
+});
 test("two fingers translating together in one display frame do not zoom or rotate",()=>{
     const f=fixture();startPinch(f);
     f.fire("canvas","pointermove",{pointerId:1,clientX:210,clientY:220});
@@ -275,15 +379,95 @@ test("slow subpixel drags accumulate fractional pitch without losing movement",(
     assert.equal(pitch,Math.trunc(10*CAMERA_PITCH_UNITS_PER_PIXEL));
 });
 
-test("long press followed by drag still controls camera",()=>{
-    const f=fixture();f.fire("canvas","pointerdown");
-    assert.equal([...f.timers.values()][0].ms,CAMERA_HOLD_MS);
-    f.tick(CAMERA_HOLD_MS);
-    const drag=f.fire("canvas","pointermove",{clientX:170,clientY:170});
+test("stationary touch triggers the original right-button press and release, not camera rotation",()=>{
+    const f=fixture();
+    const initial=f.fire("canvas","pointerdown",{clientX:260,clientY:205});
+    assert.equal(initial.prevented,false);
+    assert.equal([...f.timers.values()][0].ms,TOUCH_CONTEXT_HOLD_MS);
+    assert.equal(f.mouse.length,0,"do not right-click on an ordinary quick tap");
+    f.tick(TOUCH_CONTEXT_HOLD_MS);
+    assert.equal(f.mouse.length,2,"hold immediately completes original right-click");
+    assert.equal(f.mouse[0].type,"mousedown");
+    assert.equal(f.mouse[0].button,2);
+    assert.equal(f.mouse[0].buttons,2);
+    assert.equal(f.mouse[0].clientX,260);
+    assert.equal(f.mouse[0].clientY,205);
+    assert.equal(f.mouse[0].bubbles,true);
+    assert.equal(f.mouse[0].composed,true);
+    assert.equal(f.fire("canvas","mousedown").stopped,true,
+        "synthetic native press is allowed, later iOS left click is blocked");
+    const drag=f.fire("canvas","pointermove",{clientX:300,clientY:240});
     assert.equal(drag.prevented,true);
-    assert.deepEqual(f.turns,[[-80,35]]);
+    assert.deepEqual(f.turns,[],"moving after context menu opens cannot rotate the camera");
+    const lifted=f.fire("page","pointerup",{clientX:300,clientY:240});
+    assert.equal(lifted.prevented,true);
+    assert.deepEqual(f.mouse.map(e=>[e.type,e.button,e.buttons]),
+        [["mousedown",2,2],["mouseup",2,0]]);
+    assert.equal(f.mouse[1].clientX,260,"right-button release matches original menu position");
+    assert.equal(f.fire("canvas","click").stopped,true);
+    f.advance(601);
+    assert.equal(f.fire("canvas","click").stopped,false);
+    assert.deepEqual(f.turns,[]);
+});
+test("moving to rotate camera before hold cancels native context menu",()=>{
+    const f=fixture();f.fire("canvas","pointerdown",{clientX:200,clientY:160});
+    f.tick(TOUCH_CONTEXT_HOLD_MS-50);
+    const drag=f.fire("canvas","pointermove",{clientX:220,clientY:185});
+    assert.equal(drag.prevented,true);
+    assert.deepEqual(f.turns,[[-80,43]]);
+    assert.equal(f.timers.size,0,"camera movement cancels pending context hold");
+    f.tick(TOUCH_CONTEXT_HOLD_MS+100);
+    assert.deepEqual(f.mouse,[],"drag never generates an unwanted right-click");
     f.fire("page","pointerup");
-    assert.deepEqual(f.turns,[[-80,35]]);
+});
+test("hold opens original context menu on inventory/chat without blocking quick UI touches",()=>{
+    const quick=fixture();
+    quick.fire("canvas","pointerdown",{clientX:700,clientY:420});
+    quick.fire("page","pointerup",{clientX:700,clientY:420});
+    quick.tick(TOUCH_CONTEXT_HOLD_MS);
+    assert.deepEqual(quick.mouse,[]);
+    assert.equal(quick.fire("canvas","click").stopped,false);
+    const held=fixture();
+    held.fire("canvas","pointerdown",{clientX:710,clientY:410});
+    assert.equal(held.captures.length,0);
+    held.tick(TOUCH_CONTEXT_HOLD_MS);
+    assert.equal(held.mouse.length,2);
+    assert.equal(held.mouse[0].clientX,710);
+    assert.equal(held.mouse[0].clientY,410);
+    assert.deepEqual(held.captures,[["start",1]],
+        "capture UI touch only once a long-press is confirmed");
+    held.fire("page","pointerup");
+    assert.equal(held.mouse[1].type,"mouseup");
+    const move=fixture();
+    move.fire("canvas","pointerdown",{clientX:700,clientY:420});
+    move.fire("canvas","pointermove",{clientX:730,clientY:450});
+    move.tick(TOUCH_CONTEXT_HOLD_MS);
+    assert.deepEqual(move.mouse,[],"a UI drag must not accidentally open a context menu");
+});
+test("pinch, cancellation, hiding the page and a late second finger never leak a right button",()=>{
+    for(const action of [
+        f=>startPinch(f),
+        f=>f.fire("page","pointercancel"),
+        f=>f.fire("page","blur"),
+        f=>f.fire("page","pagehide"),
+        f=>{f.setState("LOGIN_SCREEN");f.camera.update();},
+        f=>f.camera.dispose()
+    ]){
+        const f=fixture();
+        if(action===null)continue;
+        // startPinch already starts two contacts.
+        if(action.toString().includes("startPinch"))action(f);
+        else {f.fire("canvas","pointerdown");action(f);}
+        f.tick(TOUCH_CONTEXT_HOLD_MS+50);
+        assert.deepEqual(f.mouse,[],"cancelled hold never opens the right menu");
+    }
+    const late=fixture();
+    late.fire("canvas","pointerdown");
+    late.tick(TOUCH_CONTEXT_HOLD_MS);
+    late.fire("canvas","pointerdown",{pointerId:2,isPrimary:false});
+    assert.equal(late.zoomGestures,0,"a second finger after the menu opens must not pinch");
+    late.fire("page","pointerup");
+    assert.deepEqual(late.mouse.map(e=>e.type),["mousedown","mouseup"]);
 });
 
 test("opposite drags cancel, no inertia or post-lift synthetic key states",()=>{

@@ -41,6 +41,11 @@ const {rsa:loginRsaPublic}=await loadPublicLoginConfig({
 // developer on the host PC can fetch it. No packet content or peer identity.
 const recentSessions=[];
 const recentPageEvents=[];
+const recentClientCrashes=[];
+function clientCrashActivity(report){
+    recentClientCrashes.push({at:new Date().toISOString(),...report});
+    if(recentClientCrashes.length>20)recentClientCrashes.shift();
+}
 function pageActivity(type){
     recentPageEvents.push({type,at:new Date().toISOString()});
     if(recentPageEvents.length>40)recentPageEvents.shift();
@@ -70,8 +75,9 @@ const gateway=createGateway({tcpHost:"127.0.0.1",tcpPort:upstreamPort,
     allowedOrigins:new Set([origin,"http://localhost:"+port,...(lanOrigin?[lanOrigin]:[])]),
     isAllowedPeer,onActivity:gatewayActivity});
 const server=createEngineSmokeServer({nativeCacheRoot,gatewayPort,loginRsaPublic,
-    isAllowedPeer,allowedHosts,onLifecycleEvent:pageActivity,
-    sessionDiagnostics:()=>({sessions:recentSessions,pageEvents:recentPageEvents})});
+    isAllowedPeer,allowedHosts,onLifecycleEvent:pageActivity,onClientCrash:clientCrashActivity,
+    sessionDiagnostics:()=>({sessions:recentSessions,pageEvents:recentPageEvents,
+        clientCrashes:recentClientCrashes})});
 function listen(instance,port){
     return new Promise((resolve,reject)=>{
         instance.once("error",reject);

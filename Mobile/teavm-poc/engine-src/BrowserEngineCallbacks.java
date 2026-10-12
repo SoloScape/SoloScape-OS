@@ -47,6 +47,8 @@ public final class BrowserEngineCallbacks implements Callbacks {
         if (graphics != null && buffer != null && buffer.getImage() != null) {
             if (!graphics.presentFramebuffer(buffer.getImage(), x, y))
                 graphics.drawImage(buffer.getImage(), x, y, null);
+            if(EngineBridge.originalClient()!=null)
+                OriginalMobileTapIndicators.draw(graphics,EngineBridge.originalClient(),x,y);
             framesPresented++;
         }
     }

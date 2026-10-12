@@ -6,6 +6,7 @@ import {fileURLToPath} from "node:url";
 import {dirname,join} from "node:path";
 import {serveOriginalClientAssets} from "./original-client-assets.mjs";
 import {isLocalPeer} from "./original-lan.mjs";
+import {parseOriginalClientCrashReport} from "../teavm-poc/site/original-client-crash.mjs";
 
 const root=join(dirname(fileURLToPath(import.meta.url)),"..");
 // The phone can access normal LAN game resources, not PC-local debug output.
@@ -14,7 +15,7 @@ export function isLoopbackPeer(peer){
 }
 export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.env.SOLOSCAPE_ENGINE_LOCAL_CACHE_ROOT,
     gatewayPort=null,loginRsaPublic=null,publicClientConfig=null,sessionDiagnostics=null,
-    onLifecycleEvent=null,
+    onLifecycleEvent=null,onClientCrash=null,
     isAllowedPeer=isLocalPeer,allowedHosts=null}={}) {
     return createServer(async(req,res)=>{
         const peer=req.socket.remoteAddress;
@@ -38,6 +39,29 @@ export function createEngineSmokeServer({read=readFile,nativeCacheRoot=process.e
             res.writeHead(200,{"Content-Type":"application/json; charset=utf-8",
                 "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});
             res.end(JSON.stringify(sessionDiagnostics()));return;
+        }
+        // Fail-closed, account-free original client exception fingerprints.
+        // Only allow same-origin browser submissions and fixed syntax: no raw
+        // JS error messages, packet contents, chat, account names or URLs.
+        // Expose only from the developer's existing localhost diagnostics.
+        if(onClientCrash&&req.method==="POST"&&req.url==="/original-client-crash"){
+            if(req.headers.origin!=="http://"+req.headers.host||
+                req.headers["content-type"]?.split(";")[0]!=="application/json"||
+                Number(req.headers["content-length"]??0)>900){
+                res.writeHead(403);res.end();return;
+            }
+            let count=0,parts=[];
+            try{
+                for await(const chunk of req){
+                    count+=chunk.length;
+                    if(count>900){res.writeHead(413);res.end();return;}
+                    parts.push(chunk);
+                }
+                const crash=parseOriginalClientCrashReport(Buffer.concat(parts).toString("utf8"));
+                onClientCrash(crash);
+                res.writeHead(204,{"Cache-Control":"no-store"});res.end();
+            }catch{if(!res.headersSent){res.writeHead(400);res.end();}}
+            return;
         }
         // Fixed, content-free browser lifecycle events on the trusted LAN.
         // Never receive usernames, login packets, game state or arbitrary text.

@@ -28,4 +28,22 @@ body.original-resizable{
 @media (prefers-reduced-motion:reduce){#startup-splash::after{animation:none}}
 #startup-error{position:fixed;inset:auto 0 0;padding:12px;text-align:center;color:#fff;background:#641e1e;font:14px system-ui,sans-serif;pointer-events:none}
 #original-soft-keyboard{position:fixed;top:0;left:0;width:24px;height:24px;opacity:.01;font-size:16px;color:transparent;background:transparent;border:0;outline:0;padding:0;pointer-events:none}
+/* iPhone Safari does not expose a reliable webpage orientation lock. Block
+   pointer input in portrait rather than stretching the native Java renderer
+   or accepting gameplay touches with invalid canvas coordinates. Desktop
+   portrait windows retain their original resizable/fixed behaviour. */
+#landscape-required{display:none;position:fixed;inset:0;z-index:50;
+    box-sizing:border-box;padding:24px;background:#090909;color:#f4f0e8;
+    font:16px/1.45 system-ui,-apple-system,sans-serif;text-align:center;
+    align-items:center;justify-content:center;touch-action:none;
+    overscroll-behavior:contain}
+.landscape-required-content{display:flex;flex-direction:column;align-items:center;gap:12px;max-width:320px}
+.landscape-required-content strong{font-size:24px;line-height:1.2;font-weight:700}
+.landscape-required-content span:last-child{color:#b9b6af}
+.landscape-phone{display:block;width:43px;height:72px;border:4px solid #d4c9a4;
+    border-radius:10px;box-sizing:border-box;transform:rotate(90deg);margin:18px 0 24px}
+@media (pointer:coarse) and (orientation:portrait){
+    #landscape-required{display:flex}
+    #original-engine-canvas{pointer-events:none}
+}
 [hidden]{display:none!important}

@@ -202,7 +202,7 @@ test("original software-engine diagnostics measure frames separately from game c
     const bridge=await readFile(new URL("../teavm-poc/engine-src/EngineBridge.java",import.meta.url),"utf8");
     const page=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");
     const html=await readFile(new URL("../teavm-poc/site/engine-smoke.html",import.meta.url),"utf8");
-    assert.match(callbacks,/graphics\.drawImage\(buffer\.getImage\(\), x, y, null\);\s*framesPresented\+\+;/);
+    assert.match(callbacks,/graphics\.drawImage\(buffer\.getImage\(\), x, y, null\);[\s\S]*OriginalMobileTapIndicators\.draw\(graphics,EngineBridge\.originalClient\(\),x,y\);[\s\S]*framesPresented\+\+;/);
     assert.match(bridge,/\(\(net\.runelite\.api\.Client\) engine\)\.getFPS\(\)/);
     assert.match(bridge,/callbacks\.framesPresented\(\)/);
     assert.match(page,/state\.presentedFrames=engine\.presentedFrames\(\)/);

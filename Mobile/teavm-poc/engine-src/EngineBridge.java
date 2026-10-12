@@ -36,11 +36,23 @@ public final class EngineBridge {
         OriginalMobileLayout.configure(enabled);
     }
 
+    /** Touch-only artwork; desktop mouse clicks retain the native red/yellow X. */
+    @JSExport public static void configureMobileTapIndicators(boolean touch) {
+        beforeStartup();
+        OriginalMobileTapIndicators.configure(touch);
+    }
+
+    /** Package-level original client for native mobile presentation only. */
+    static net.runelite.api.Client originalClient(){
+        return engine instanceof net.runelite.api.Client?(net.runelite.api.Client)engine:null;
+    }
+
     /** Called on the original Java drawing thread to select browser window/gameframe modes. */
     public static void updateOriginalMobileLayout() {
         if (!(engine instanceof net.runelite.api.Client)) return;
         net.runelite.api.Client original = (net.runelite.api.Client)engine;
         net.runelite.api.GameState state = original.getGameState();
+        OriginalMobileTapIndicators.update(original);
         updateOriginalChatKeyboard(original);
         if (OriginalMobileLayout.shouldUseResizable(
             state==net.runelite.api.GameState.LOGIN_SCREEN,

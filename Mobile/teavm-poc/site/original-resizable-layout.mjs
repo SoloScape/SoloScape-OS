@@ -17,6 +17,9 @@ export function attachOriginalResizableLayout({
     canvas,body,engine,getGameState,
     viewport=()=>canvas.getBoundingClientRect(),
     now=()=>Date.now(),
+    // Match the CSS landscape-only overlay. On real touch devices, never
+    // resize the original Java framebuffer to a portrait aspect ratio.
+    isPortraitTouch=()=>globalThis.matchMedia?.("(orientation: portrait) and (pointer: coarse)")?.matches===true,
     addResize=handler=>{
         globalThis.addEventListener("resize",handler);
         globalThis.visualViewport?.addEventListener("resize",handler);
@@ -30,6 +33,14 @@ export function attachOriginalResizableLayout({
         throw new Error("Original resizable layout needs the original engine and canvas");
     let resized=false,lastWidth=0,lastHeight=0,fixedSince=null;
     const apply=()=>{
+        // The rotate-device screen intercepts portrait input. Preserve the
+        // previous landscape Java framebuffer while the handset is rotated;
+        // when it returns to landscape, the resize event recomputes dimensions.
+        if(isPortraitTouch()){
+            fixedSince=null;
+            if(resized)body.classList.add("original-resizable");
+            return;
+        }
         const gameState=getGameState();
         // Login/challenge, authenticator, region loading and world hopping are
         // not fixed-size screens. Keep the last native viewport and CSS mode
@@ -37,7 +48,9 @@ export function attachOriginalResizableLayout({
         // particular, LOGGING_IN must not undo the fullscreen LOGIN_SCREEN.
         const transitioning=gameState==="LOGGING_IN"||
             gameState==="LOGIN_SCREEN_AUTHENTICATOR"||
-            gameState==="LOADING"||gameState==="HOPPING";
+            gameState==="LOADING"||gameState==="HOPPING"||
+            gameState==="CONNECTION_LOST"||gameState==="STARTING"||
+            gameState==="UNKNOWN";
         if(transitioning){
             fixedSince=null;
             if(resized)body.classList.add("original-resizable");
@@ -47,8 +60,17 @@ export function attachOriginalResizableLayout({
         // and login screen as the logged-in mobile game. Do not scale a fixed
         // 765x503 picture to a different aspect ratio.
         const gameVisible=gameState==="LOGIN_SCREEN"||gameState==="LOGGED_IN";
-        const active=gameVisible&&engine.isResizableMode();
-        if(!active){
+        const resizable=gameVisible&&engine.isResizableMode();
+        // The rev-240 Java window flag can be cleared by logout before the
+        // LOGIN_SCREEN renderer reasserts mobile window mode. A returning
+        // title must NEVER snap to 765x503 during that handshake. Retain the
+        // fullscreen surface until the original client restores its flag.
+        if(resized&&gameState==="LOGIN_SCREEN"&&!resizable){
+            fixedSince=null;
+            body.classList.add("original-resizable");
+            return;
+        }
+        if(!resizable){
             if(resized&&gameVisible){
                 if(fixedSince===null)fixedSince=now();
                 if(now()-fixedSince<ORIGINAL_RESIZE_TRANSITION_MS)return;

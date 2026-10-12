@@ -20,6 +20,10 @@ public class Graphics {
     public boolean presentFramebuffer(Image image,int x,int y){
         return image!=null&&image.presentOpaqueFrame(canvas,width,height,x,y);
     }
+    /** Genuine sprite atlas extracted from OSRS JS5 group 1625. */
+    public void drawOriginalTouchCacheFrame(int x,int y,int index,int alpha){
+        NativeCanvas.originalTouchCacheFrame(context,x,y,index,alpha);
+    }
     public Rectangle getClipBounds(){return new Rectangle(0,0,width,height);}
     public FontMetrics getFontMetrics(){return new FontMetrics(this);}
 }
