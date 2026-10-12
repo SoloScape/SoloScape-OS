@@ -44,6 +44,12 @@ object SpecialTreeDefinitions {
         "loc.jatoba_tree", "loc.camphor_tree", "loc.ironwood_tree", "loc.rosewood_tree",
     )
 
+    /** Mature planted hardwood variants have a separate, personal depletion lifecycle. */
+    val farmedNames: List<String> = listOf(
+        "loc.camphor_tree_fullygrown", "loc.ironwood_tree_fullygrown",
+        "loc.rosewood_tree_fullygrown",
+    )
+
     /** Only mature farmed trees, after Check-health, expose the Chop down operation. */
     val ordinaryNames: List<String> = listOf(
         "loc.jatoba_tree", "loc.camphor_tree", "loc.ironwood_tree", "loc.rosewood_tree",
