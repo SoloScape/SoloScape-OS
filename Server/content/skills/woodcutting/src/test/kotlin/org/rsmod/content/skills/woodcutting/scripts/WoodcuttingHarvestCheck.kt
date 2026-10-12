@@ -103,13 +103,19 @@ fun main() {
     check(nativeStorage.type.scope == InvScope.Perm)
     check(nativeStorage.type.stack == dev.openrune.types.InvStackType.Always)
     check(!nativeStorage.type.protect)
+    check(nativeStorage.size >= 28) { "Forestry kit inventory has no usable slots." }
     check(ForestryKitRations.depositRations(player, 6))
     check(player.inv[6] == null)
     check(player.invMap[ForestryRations.STORAGE]!!.count(ForestryRations.RATION) == 15)
-    check(ForestryKitRations.withdrawRations(player, 3))
-    check(player.inv.count(ForestryRations.RATION) == 3)
+    // Repeated deposits must merge into the same stored stack.
+    player.inv[6] = InvObj(ForestryRations.RATION, 5)
+    check(ForestryKitRations.depositRations(player, 6))
+    check(player.inv[6] == null)
+    check(player.invMap[ForestryRations.STORAGE]!!.count(ForestryRations.RATION) == 20)
+    check(ForestryKitRations.withdrawRations(player, 8))
+    check(player.inv.count(ForestryRations.RATION) == 8)
     check(ForestryRations.consume(player))
-    check(player.inv.count(ForestryRations.RATION) == 2)
+    check(player.inv.count(ForestryRations.RATION) == 7)
     check(player.invMap[ForestryRations.STORAGE]!!.count(ForestryRations.RATION) == 12)
     // Simulate account inventory reconstruction after logout/login. It must
     // remain Perm even when the packed cache has the older temporary definition.
@@ -118,6 +124,7 @@ fun main() {
     val loadedStorage = restored.invMap.getOrPut(ForestryRations.STORAGE)
     loadedStorage[0] = InvObj(ForestryRations.RATION, 12)
     check(loadedStorage.type.scope == InvScope.Perm)
+    check(loadedStorage.size >= 28)
     check(ForestryKitRations.withdrawRations(restored, 3))
     check(restored.inv.count(ForestryRations.RATION) == 3)
     check(loadedStorage.count(ForestryRations.RATION) == 9)
