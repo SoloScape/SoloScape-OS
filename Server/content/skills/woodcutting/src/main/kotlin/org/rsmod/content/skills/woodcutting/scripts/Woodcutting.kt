@@ -313,6 +313,14 @@ constructor(
         private val ObjectServerType.hasDespawnTimer: Boolean
             get() = specialTree?.let { it.despawnTicks > 0 } ?: hasParam(params.despawn_time)
 
+        /**
+         * Special resources which are not ordinary trees have no axe-rate loc params.
+         * Reuse the normal usability and quest/Firemaking gates, but rank by axe tier.
+         */
+        fun findAxeForSpecialResource(player: Player): InvObj? =
+            (listOfNotNull(player.wornAxe()) + player.carriedAxes())
+                .maxByOrNull { WoodcuttingAxes.effectiveType(it).axeWoodcuttingReq }
+
         fun findAxe(player: Player, tree: ObjectServerType): InvObj? {
             val worn = player.wornAxe()
             val carried = player.carriedAxes()
