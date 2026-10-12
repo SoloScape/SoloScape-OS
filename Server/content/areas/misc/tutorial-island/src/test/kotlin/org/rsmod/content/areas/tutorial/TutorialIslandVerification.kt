@@ -50,6 +50,8 @@ import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.api.registry.zone.ZonePlayerActivityBitSet
 import org.rsmod.api.registry.zone.ZoneUpdateMap
 import org.rsmod.api.repo.loc.LocRepository
+import org.rsmod.api.repo.npc.NpcRepository
+import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.route.BoundValidator
 import org.rsmod.content.generic.locs.passages.GenericPassageScript
 import org.rsmod.content.generic.locs.passages.StairNavigator
@@ -76,6 +78,7 @@ import org.rsmod.game.hit.HitType
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.inv.Inventory
 import org.rsmod.game.map.LocZoneStorage
+import org.rsmod.game.map.Direction
 import org.rsmod.game.loc.BoundLocInfo
 import org.rsmod.game.loc.LocInfo
 import org.rsmod.game.loc.LocEntity
@@ -105,6 +108,7 @@ public fun main() {
         fixture.verifyPendingPassageAndEquipment()
         fixture.verifyCombat()
         fixture.verifyLimitsAndDeparture()
+        fixture.verifySkippy()
         println("PASS: Tutorial Island login, resume, nine instructors, supplies, action gates, " +
             "passages, equipment, experience limits and departure")
     } finally {
@@ -161,6 +165,7 @@ private class Fixture {
         with(InvTransactionsScript(PlayerItemStorage(emptySet()))) { scripts.startup() }
         with(FriendsIgnoreScript(events)) { scripts.startup() }
         with(script) { scripts.startup() }
+        with(TutorialSkippyScript(NpcRepository(clock, npcRegistry, npcs), progress)) { scripts.startup() }
         context = ProtectedAccessContextFactory.empty().copy(
             getEventBus = { events }, getAlignment = { TextAlignment() },
             getCollision = { collision }, getNpcList = { npcs }, getPlayerList = { players },
@@ -472,6 +477,47 @@ private class Fixture {
     private fun packetText(packet: Any): String? =
         packet.javaClass.methods.firstOrNull { it.name == "getText" && it.parameterCount == 0 }
             ?.invoke(packet) as? String
+
+    fun verifySkippy() {
+        collision.allocateIfAbsent(3097, 3108, 0)
+        events.publish(GameLifecycle.Startup)
+        val skippy = npcs.first { it.id == TutorialSkippyScript.NPC.asRSCM() }
+        check(skippy.type.name == "Skippy")
+        check(skippy.coords == CoordGrid(3097, 3108, 0))
+        check(skippy.respawnDir == Direction.South && skippy.movementLocked && skippy.type.wanderRange == 0)
+        check(skippy.pendingFaceSquare == CoordGrid(3097, 3107, 0))
+        events.publish(GameLifecycle.Startup)
+        check(npcs.count { it.id == TutorialSkippyScript.NPC.asRSCM() } == 1)
+        for (stage in listOf(TutorialStage.GUIDE, TutorialStage.SMITH, TutorialStage.DEPART)) {
+            player.coords = TutorialProgress.START
+            player.tutorialProgress = stage.code
+            VarPlayerIntMapSetter.set(player, "varbit.new_player_account", 1)
+            progress.open(player)
+            val pending = TutorialPassage(TutorialStage.LEAVE_START, CoordGrid(3098, 3107))
+            player.attr[tutorialPassage] = pending
+            packets.clear()
+            interaction(listOf(2)) {
+                check(events.publish(ProtectedAccess(player, coroutine, context), NpcEvents.Op1(skippy)))
+            }
+            check(packets.any { packetText(it) == "Would you like to skip the tutorial?" })
+            check(player.coords == TutorialProgress.START && player.tutorialStage == stage)
+            check(player.vars["varbit.new_player_account"] == 1 && player.attr[tutorialPassage] == pending)
+            check(!player.ui.containsModal("interface.chatmenu"))
+            check(player.ui.containsOverlay("interface.tutorial_overlay"))
+            interaction(listOf(1)) {
+                check(events.publish(ProtectedAccess(player, coroutine, context), NpcEvents.Op1(skippy)))
+            }
+            check(player.coords == TutorialProgress.LUMBRIDGE && player.tutorialStage == TutorialStage.COMPLETE)
+            check(player.vars["varbit.new_player_account"] == 0 && player.attr[tutorialPassage] == null)
+            check(!player.ui.containsOverlay("interface.tutorial_overlay"))
+            check(!player.ui.containsOverlay("interface.messagebox_titled"))
+            check(player.ui.containsOverlay("interface.side_channels"))
+            events.publish(SessionStateEvent.PrepareLogin(player))
+            check(player.coords == TutorialProgress.LUMBRIDGE && player.tutorialStage == TutorialStage.COMPLETE)
+        }
+        println("PASS: Skippy spawn/south facing, exact prompt, No leaves progress intact, " +
+            "Yes completes tutorial/account and teleports from early/middle/final lessons")
+    }
 
     fun verifyCombat() {
         players[player.slotId] = player
