@@ -22,24 +22,24 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-import net.runelite.api.Actor;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
-import net.runelite.api.MenuAction;
 import net.runelite.api.NPC;
-import net.runelite.api.events.InteractingChanged;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.NpcDespawned;
 import org.soloscape.teavm.platform.awt.Color;
 
-/** NPC interaction portion of RuneLite Interact Highlight, hosted without the
- * desktop dependency injection/event bus. Never consumes or changes an action.
+/** Browser NPC tap selection controlled by the original mobile cache setting.
+ * Reuses the attributed model-outline rasterizer, not RuneLite plugin behavior.
+ * Never consumes or changes an action.
  * Draws the actual animated Java model silhouette in the software scene buffer.
  */
 public final class OriginalMobileInteractHighlight {
     private static boolean enabled;
+    static final int INTERACT_ENTITY_HIGHLIGHTS_DISABLED=13666;
+    // Browser presentation choice pending visual comparison with Jagex mobile.
+    private static final Color TAP_OUTLINE=new Color(0x9000ffff,true);
     private static NPC target;
-    private static int clickTick,clickCycle;
     private static boolean npcClick;
     private static OriginalNpcOutlineRenderer renderer;
     private OriginalMobileInteractHighlight() {}
@@ -51,8 +51,18 @@ public final class OriginalMobileInteractHighlight {
     }
     private static void clear(){target=null;npcClick=false;}
 
+    private static boolean active(Client original) {
+        return enabled&&original!=null&&original.getGameState()==GameState.LOGGED_IN&&
+            original.getVarbitValue(INTERACT_ENTITY_HIGHLIGHTS_DISABLED)==0;
+    }
+
+    /** Sample every presented frame, including frames without a scene redraw. */
+    public static void update(Client original) {
+        if(!active(original))clear();
+    }
+
     public static void post(Object event,Client original) {
-        if(!enabled||original==null||original.getGameState()!=GameState.LOGGED_IN) {
+        if(!active(original)) {
             clear();
             return;
         }
@@ -66,10 +76,9 @@ public final class OriginalMobileInteractHighlight {
                 case NPC_THIRD_OPTION:
                 case NPC_FOURTH_OPTION:
                 case NPC_FIFTH_OPTION:
+                case EXAMINE_NPC:
                     target=click.getMenuEntry().getNpc();
                     npcClick=target!=null;
-                    clickTick=original.getTickCount();
-                    clickCycle=original.getGameCycle();
                     break;
                 case WALK:
                 case ITEM_USE:
@@ -99,12 +108,6 @@ public final class OriginalMobileInteractHighlight {
                     break;
                 default: break;
             }
-        } else if(event instanceof InteractingChanged) {
-            InteractingChanged changed=(InteractingChanged)event;
-            if(changed.getSource()==original.getLocalPlayer()&&original.getTickCount()>clickTick) {
-                Actor actor=changed.getTarget();
-                target=actor instanceof NPC?(NPC)actor:null;
-            }
         } else if(event instanceof NpcDespawned&&((NpcDespawned)event).getNpc()==target) {
             clear();
         }
@@ -113,24 +116,13 @@ public final class OriginalMobileInteractHighlight {
     /** Only replaces the marker for the clicked NPC, never other red actions. */
     public static boolean replacesNpcMarker(){return enabled&&npcClick;}
 
-    static Color clickColor(int elapsed) {
-        // RuneLite's default yellow -> white flash -> translucent red (10 cycles).
-        int start=elapsed<5?0x90ffff00:0x90ffffff;
-        int end=elapsed<5?0x90ffffff:0x90ff0000;
-        float t=Math.max(0,Math.min(1,(elapsed<5?elapsed:elapsed-5)/5f));
-        int r=(int)(((start>>>16)&255)*(1-t)+((end>>>16)&255)*t);
-        int g=(int)(((start>>>8)&255)*(1-t)+((end>>>8)&255)*t);
-        int b=(int)((start&255)*(1-t)+(end&255)*t);
-        return new Color(0x90000000|(r<<16)|(g<<8)|b,true);
-    }
-
     /** Scene callback runs before interfaces, so the outline stays below UI. */
     public static void draw(Client original) {
-        if(!enabled||original==null||original.getGameState()!=GameState.LOGGED_IN) {
+        if(!active(original)) {
             clear();return;
         }
         if(target==null)return;
         if(renderer==null)renderer=new OriginalNpcOutlineRenderer(original);
-        renderer.drawOutline(target,2,clickColor(original.getGameCycle()-clickCycle),4);
+        renderer.drawOutline(target,2,TAP_OUTLINE,4);
     }
 }

@@ -54,6 +54,7 @@ public final class EngineBridge {
         net.runelite.api.Client original = (net.runelite.api.Client)engine;
         net.runelite.api.GameState state = original.getGameState();
         OriginalMobileTapIndicators.update(original);
+        OriginalMobileInteractHighlight.update(original);
         updateOriginalChatKeyboard(original);
         if (OriginalMobileLayout.shouldUseResizable(
             state==net.runelite.api.GameState.LOGIN_SCREEN,

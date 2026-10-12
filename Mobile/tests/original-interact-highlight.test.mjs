@@ -7,7 +7,7 @@ import {fileURLToPath} from "node:url";
 import {spawnSync} from "node:child_process";
 import {findTeaVmJdk} from "../scripts/build-teavm.mjs";
 
-test("original NPC outlines project real animated model faces, clip pixels and clear interaction state",t=>{
+test("original mobile setting controls animated NPC tap selection and marker replacement",t=>{
     const root=fileURLToPath(new URL("../",import.meta.url));
     const manifest=JSON.parse(readFileSync(join(root,"openosrs-reference.json")));
     const reference=resolve(process.env.SOLOSCAPE_OPENOSRS_ROOT||resolve(root,manifest.localDefault));
@@ -29,6 +29,7 @@ public class HighlightProof {
  static void check(boolean value){if(!value)throw new AssertionError();}
  static <T> T mock(Class<T> type,Map<String,Object> values){
   return type.cast(Proxy.newProxyInstance(type.getClassLoader(),new Class[]{type},(p,m,a)->{
+   if(type==Client.class&&m.getName().equals("getVarbitValue"))check((int)a[0]==13666);
    if(m.getName().equals("equals"))return p==a[0];
    if(m.getName().equals("hashCode"))return System.identityHashCode(p);
    if(values.containsKey(m.getName()))return values.get(m.getName());
@@ -56,6 +57,7 @@ public class HighlightProof {
   state.put("getCameraX",1000);state.put("getCameraY",0);state.put("getCameraZ",0);
   state.put("getScale",512);state.put("getTopLevelWorldView",wv);state.put("getWorldView",wv);
   state.put("getBufferProvider",mock(MainBufferProvider.class,buffer));state.put("getGameCycle",100);state.put("getTickCount",1);
+  state.put("getVarbitValue",0);
   Player player=mock(Player.class,new HashMap<>());state.put("getLocalPlayer",player);
   Client client=mock(Client.class,state);
   Map<String,Object> geometry=new HashMap<>();
@@ -69,7 +71,7 @@ public class HighlightProof {
   OriginalMobileInteractHighlight.configure(true);
   for(MenuAction action:new MenuAction[]{MenuAction.NPC_FIRST_OPTION,MenuAction.NPC_SECOND_OPTION,
     MenuAction.NPC_THIRD_OPTION,MenuAction.NPC_FOURTH_OPTION,MenuAction.NPC_FIFTH_OPTION,
-    MenuAction.ITEM_USE_ON_NPC,MenuAction.WIDGET_TARGET_ON_NPC}){
+    MenuAction.ITEM_USE_ON_NPC,MenuAction.WIDGET_TARGET_ON_NPC,MenuAction.EXAMINE_NPC}){
    OriginalMobileInteractHighlight.post(click(action,npc),client);
    check(OriginalMobileInteractHighlight.replacesNpcMarker());
   }
@@ -81,10 +83,9 @@ public class HighlightProof {
   check(painted>0);int[] before=pixels.clone();Arrays.fill(pixels,0);
   geometry.put("getVerticesX",new float[]{-60,60,0});
   OriginalMobileInteractHighlight.draw(client);check(!Arrays.equals(before,pixels));
-  check(OriginalMobileInteractHighlight.clickColor(0).getRGB()==0x90ffff00);
-  check(OriginalMobileInteractHighlight.clickColor(5).getRGB()==0x90ffffff);
-  check(OriginalMobileInteractHighlight.clickColor(10).getRGB()==0x90ff0000);
-  check(OriginalMobileInteractHighlight.clickColor(100).getRGB()==0x90ff0000);
+  // No RuneLite yellow/white/red flash: the same selection survives cycles.
+  int[] stable=pixels.clone();Arrays.fill(pixels,0);state.put("getGameCycle",200);
+  OriginalMobileInteractHighlight.draw(client);check(Arrays.equals(stable,pixels));
   OriginalMobileInteractHighlight.post(click(MenuAction.WALK,null),client);
   check(!OriginalMobileInteractHighlight.replacesNpcMarker());Arrays.fill(pixels,0);
   OriginalMobileInteractHighlight.draw(client);check(Arrays.equals(pixels,new int[pixels.length]));
@@ -92,7 +93,17 @@ public class HighlightProof {
   state.put("getTickCount",2);
   OriginalMobileInteractHighlight.post(new InteractingChanged(player,null),client);
   Arrays.fill(pixels,0);OriginalMobileInteractHighlight.draw(client);
+  check(!Arrays.equals(pixels,new int[pixels.length]));
+  // The original disabled-bit is checked without a new input or scene redraw.
+  state.put("getVarbitValue",1);OriginalMobileInteractHighlight.update(client);
+  check(!OriginalMobileInteractHighlight.replacesNpcMarker());
+  Arrays.fill(pixels,0);OriginalMobileInteractHighlight.draw(client);
   check(Arrays.equals(pixels,new int[pixels.length]));
+  OriginalMobileInteractHighlight.post(click(MenuAction.NPC_FIRST_OPTION,npc),client);
+  check(!OriginalMobileInteractHighlight.replacesNpcMarker());
+  state.put("getVarbitValue",0);OriginalMobileInteractHighlight.update(client);
+  check(!OriginalMobileInteractHighlight.replacesNpcMarker());
+  // Enabling does not resurrect the old selection; another tap is required.
   OriginalMobileInteractHighlight.post(click(MenuAction.NPC_SECOND_OPTION,npc),client);
   OriginalMobileInteractHighlight.post(new NpcDespawned(npc),client);
   check(!OriginalMobileInteractHighlight.replacesNpcMarker());
@@ -102,7 +113,7 @@ public class HighlightProof {
   state.put("getGameState",GameState.LOGGED_IN);OriginalMobileInteractHighlight.configure(false);
   OriginalMobileInteractHighlight.post(click(MenuAction.NPC_SECOND_OPTION,npc),client);
   check(!OriginalMobileInteractHighlight.replacesNpcMarker());
-  System.out.println("PASS animated silhouettes, viewport clipping, click colors, NPC menu actions, walk/end/despawn/logout clears");
+  System.out.println("PASS animated silhouettes, viewport clipping, original setting, stable tap selection, walk/despawn/logout clears");
  }
 }
 `);
