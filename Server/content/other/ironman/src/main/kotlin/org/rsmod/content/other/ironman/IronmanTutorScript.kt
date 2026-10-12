@@ -15,9 +15,11 @@ import org.rsmod.plugin.scripts.ScriptContext
 
 public class IronmanTutorScript @Inject constructor() : PluginScript() {
     override fun ScriptContext.startup() {
-        onOpNpc1(NPC) { startDialogue(it.npc) { talk() } }
-        onOpNpc3(NPC) { startDialogue(it.npc) { giveArmour() } }
-        onOpNpc4(NPC) { ifOpenMainModal(SETUP) }
+        for (npc in listOf(NPC, "npc.ironman_tutor_2")) {
+            onOpNpc1(npc) { startDialogue(it.npc) { talk() } }
+            onOpNpc3(npc) { startDialogue(it.npc) { giveArmour() } }
+            onOpNpc4(npc) { ifOpenMainModal(SETUP) }
+        }
     }
 
     private suspend fun Dialogue.talk() {

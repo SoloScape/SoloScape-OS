@@ -4,6 +4,7 @@ import dev.openrune.rscm.RSCM
 import dev.openrune.rscm.RSCMType
 import jakarta.inject.Inject
 import org.rsmod.api.player.protect.ProtectedAccess
+import org.rsmod.api.player.events.skilling.SkillingProcessingEvent
 import org.rsmod.api.player.stat.smithingLvl
 import org.rsmod.api.player.vars.intVarBit
 import org.rsmod.api.script.onIfModalButton
@@ -213,6 +214,8 @@ class AnvilSmithingScript @Inject constructor(private val xpMods: XpModifiers) :
             spam(forgedMessage(meta))
             val xp = meta.barCount * meta.bar.smithxp * xpMods.get(player, "stat.smithing")
             statAdvance("stat.smithing", xp.toDouble())
+            publish(SkillingProcessingEvent(player, "stat.smithing", meta.bar.output.internalName,
+                meta.product.internalName))
         }
     }
 
