@@ -5,6 +5,13 @@ package org.rsmod.content.areas.tutorial
 import dev.openrune.ServerCacheManager
 import dev.openrune.rscm.RSCM.asRSCM
 import dev.openrune.types.InventoryServerType
+import dev.or2.central.account.AccountData
+import dev.or2.central.account.CharacterData
+import dev.or2.central.account.Rights
+import java.time.LocalDateTime
+import org.rsmod.api.account.loader.request.AccountLoadAuth
+import org.rsmod.api.account.loader.request.AccountLoadResponse
+import org.rsmod.api.account.loader.request.isNewAccount
 import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
@@ -88,6 +95,7 @@ public fun main() {
     val cache = ServerCacheManager.init(240)
     try {
         val fixture = Fixture()
+        fixture.verifyPrecreatedCharacterLogin()
         fixture.verifyLoginAndResume()
         fixture.verifyInstructorDialogueAndRecovery()
         fixture.verifyTrainingActions()
@@ -187,6 +195,39 @@ private class Fixture {
             dev.openrune.types.varp.VarpLifetime.Perm)
         check(!progress.advance(player, TutorialStage.GUIDE))
         check(player.tutorialStage == TutorialStage.SMITH)
+    }
+
+    fun verifyPrecreatedCharacterLogin() {
+        val character = CharacterData(
+            characterId = 1, displayName = "tutorial_fixture", previousDisplayName = null,
+            displayNameChangedAtMillis = null, members = true, modLevel = null, worldId = null,
+            coordX = 3222, coordZ = 3218, coordLevel = 0, varps = emptyMap(),
+            createdAt = LocalDateTime.of(2026, 1, 1, 0, 0), lastLogin = null, lastLogout = null,
+            mutedUntil = null, bannedUntil = null, runEnergy = 10000, xpRate = 1.0, attrs = emptyMap(),
+        )
+        val account = AccountData(1, "tutorial_fixture", Rights.NONE, null, characterData = character)
+        val firstLogin = AccountLoadResponse.Ok.LoadAccount(AccountLoadAuth.UnknownDevice, account, emptyList())
+        check(firstLogin.isNewAccount()) { "A precreated character's first game login is classified as returning" }
+        player.coords = TutorialProgress.LUMBRIDGE
+        player.tutorialProgress = 0
+        VarPlayerIntMapSetter.set(player, "varbit.new_player_account", if (firstLogin.isNewAccount()) 1 else 0)
+        events.publish(SessionStateEvent.PrepareLogin(player))
+        check(player.coords == TutorialProgress.START && player.tutorialStage == TutorialStage.GUIDE)
+
+        val returning = firstLogin.copy(account = account.copy(characterData = character.copy(
+            lastLogin = LocalDateTime.of(2026, 1, 1, 1, 0),
+        )))
+        check(!returning.isNewAccount())
+        check(!firstLogin.copy(account = account.copy(characterData = character.copy(
+            lastLogout = LocalDateTime.of(2026, 1, 1, 2, 0),
+        ))).isNewAccount())
+        player.coords = TutorialProgress.LUMBRIDGE
+        player.tutorialProgress = 0
+        VarPlayerIntMapSetter.set(player, "varbit.new_player_account", 0)
+        events.publish(SessionStateEvent.PrepareLogin(player))
+        check(player.coords == TutorialProgress.LUMBRIDGE && player.tutorialProgress == 0)
+        check(AccountLoadResponse.Ok.NewAccount(AccountLoadAuth.UnknownDevice, account, emptyList()).isNewAccount())
+        println("PASS: precreated character first login enters tutorial; returning mainland characters stay put")
     }
 
     fun verifyInstructorDialogueAndRecovery() {
