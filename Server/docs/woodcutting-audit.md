@@ -61,6 +61,19 @@ without requiring a separate cache rebuild. The deposit handler still refuses
 any explicitly temporary storage instead of silently losing items on logout.
 Rebuilding the cache with the overlay is recommended for consistency.
 
+### Native Forestry kit interface
+
+The item's Open action now opens the existing native Forestry kit main (823)
+and side (822) interfaces instead of presenting a ration withdrawal dialogue.
+On interface open, the server transmits the persistent kit inventory (814) so
+the client can draw its stored quantities; this transmission is stopped on close.
+Fill and Empty use the ration transfer helpers. The native 1, 5, X, and All
+controls withdraw rations after selecting their entry in the kit list. The X
+button alone prompts for a quantity. Other Forestry item categories shown by
+the native interface still require their own storage/withdrawal handlers.
+The cache-loaded audit check verifies the interface and component registrations;
+full live client interaction and logout/login persistence still need testing.
+
 Keep #42 open for the missing farmed-tree lifecycle and #46 open for its quest
 dependency. Those need their own implementations and proof. Do not replace a
 personal farming parent with a shared world stump or add a shortcut teleport to
