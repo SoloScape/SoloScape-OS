@@ -88,6 +88,7 @@ protect = false
 isServerOnly = true
 id = "inv.forestry_kit"
 inherit = "inv.forestry_kit"
+size = 28
 scope = "Perm"
 stack = "Always"
 protect = false
