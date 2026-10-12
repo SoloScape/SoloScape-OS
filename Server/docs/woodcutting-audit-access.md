@@ -2,7 +2,7 @@
 
 Issue #46 remains open. The revision-240 cache contains the relevant native map
 placements, but this audit found no server implementation of the quest access
-routes or progression that makes those objects available. Adding an arbitrary
+routes or progression that makes those objects available. A basic infected-root harvesting handler has now been registered, but it is still inaccessible without the quest transform and journey. Adding an arbitrary
 teleport or setting quest progress on login would not implement the reported
 expected behavior.
 
@@ -59,8 +59,8 @@ Searches of `content/quest`, `content/areas` and `content/travel` found no `myq6
 quest progress. Those mechanisms do not advance these map-object transforms or
 provide travel interactions.
 
-A completed fix needs native entry and return routes, the applicable completion
-policy, and the original post-quest object interactions. Verify both completion
+A completed fix still needs native entry and return routes, the applicable completion
+policy, and the original post-quest Bloodwood chopping/tapping and sap collection. The current infected-root handler awards tears and logs with a provisional log rate; its action still requires end-to-end verification. Verify both completion
 and unfinished-quest cases in the client, including actual travel, reachable
 objects, rewards and return travel. If quest maps are copied into instances,
 verify their mapping rather than treating source coordinates as destinations.
