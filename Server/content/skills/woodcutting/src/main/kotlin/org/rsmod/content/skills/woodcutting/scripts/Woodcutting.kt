@@ -61,7 +61,7 @@ constructor(
         for (axe in WoodcuttingAxes.fellingConversions.values + "obj.infernal_axe_empty" + "obj.crystal_axe_inactive") {
             onOpContentMixedLocU("content.tree", axe) { cut(it.loc, it.type) }
         }
-        for (tree in SpecialTreeDefinitions.naturalNames) {
+        for (tree in SpecialTreeDefinitions.naturalNames + SpecialTreeDefinitions.farmedNames) {
             onOpLoc1(tree) { attempt(it.loc, it.type) }
             onOpLoc3(tree) { cut(it.loc, it.type) }
             onOpLocU(tree) {
@@ -74,6 +74,7 @@ constructor(
     }
 
     private fun ProtectedAccess.attempt(tree: BoundLocInfo, type: ObjectServerType) {
+        if (!checkFarmedTreeReady(tree, type)) return
         if (player.woodcuttingLvl < type.treeLevelReq) {
             mes("You need a Woodcutting level of ${type.treeLevelReq} to chop down this tree.")
             return
@@ -103,6 +104,7 @@ constructor(
     }
 
     private fun ProtectedAccess.cut(tree: BoundLocInfo, type: ObjectServerType) {
+        if (!checkFarmedTreeReady(tree, type)) return
         val axe = findAxe(player, type)
         if (axe == null) {
             mesAxeMissing()
@@ -152,6 +154,13 @@ constructor(
         }
 
         if (despawn && cutLogs) {
+            if (type.internalName in SpecialTreeDefinitions.farmedNames) {
+                // Farmed trees are personal: never mutate the shared world loc.
+                FarmedHardwoodCooldowns.deplete(player, tree.coords, type.treeRespawnTime)
+                resetAnim()
+                mes("You have cut down your tree. It will regrow shortly.")
+                return
+            }
             val respawnTime = type.resolveRespawnTime(random)
             locRepo.change(tree, type.treeStump, respawnTime)
             resetAnim()
@@ -160,6 +169,18 @@ constructor(
         }
 
         opLoc3(tree)
+    }
+
+    private fun ProtectedAccess.checkFarmedTreeReady(
+        tree: BoundLocInfo,
+        type: ObjectServerType,
+    ): Boolean {
+        if (type.internalName !in SpecialTreeDefinitions.farmedNames) return true
+        val remaining = FarmedHardwoodCooldowns.remainingMillis(player, tree.coords)
+        if (remaining == 0L) return true
+        mes("Your tree has been cut down. It will regrow in ${(remaining + 999) / 1000} seconds.")
+        resetAnim()
+        return false
     }
 
     private fun Controller.treeDespawnTick() {
