@@ -12,7 +12,6 @@ import org.rsmod.api.script.onOpLocU
 import org.rsmod.api.stats.xpmod.XpModifiers
 import org.rsmod.content.quest.manager.QuestRequirements
 import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.axeWoodcuttingAnim
-import org.rsmod.game.MapClock
 import org.rsmod.game.loc.BoundLocInfo
 import org.rsmod.game.inv.InvObj
 import org.rsmod.game.type.getInvObj
@@ -25,7 +24,6 @@ import org.rsmod.plugin.scripts.ScriptContext
  * or invent a bypass around the still-missing quest access route.
  */
 class InfectedRoots @Inject constructor(
-    private val clock: MapClock,
     private val xpMods: XpModifiers,
 ) : PluginScript() {
     override fun ScriptContext.startup() {
@@ -55,15 +53,15 @@ class InfectedRoots @Inject constructor(
             mes("You need an axe which you have the Woodcutting level to use.")
             return
         }
-        if (skillAnimDelay <= clock) {
-            skillAnimDelay = clock + 4
+        if (skillAnimDelay <= mapClock) {
+            skillAnimDelay = mapClock + 4
             animateAxe(axe)
         }
         if (initial) spam("You swing your axe at the infected root.")
-        if (actionDelay < clock) {
-            actionDelay = clock + 3
-        } else if (actionDelay == clock) {
-            actionDelay = clock + 4
+        if (actionDelay < mapClock) {
+            actionDelay = mapClock + 3
+        } else if (actionDelay == mapClock) {
+            actionDelay = mapClock + 4
             // Tears are stackable. Do not block a full inventory containing an existing stack.
             if (invAdd(inv, TEAR, 1).failure) {
                 mes("You don't have enough inventory space.")
