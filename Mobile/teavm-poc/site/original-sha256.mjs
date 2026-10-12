@@ -22,28 +22,48 @@ const rotr=(x,n)=>(x>>>n)|(x<<(32-n));
 // complete matching 64-byte blocks; the per-nonce suffix and final SHA-256
 // length padding are ALWAYS recomputed. This never caches a solution or
 // changes the original server challenge/difficulty.
-let publicChallengePrefix=null,publicChallengeState=null;
+let publicChallengePrefix=null,publicChallengeState=null,publicChallengeWords=null;
+// Reuse scratch space only for the same long public-prefix workload. Ordinary
+// digest inputs keep isolated temporary storage; result arrays are never reused.
+let publicChallengeScratch=null;
 export function sha256(input){
     if(!(input instanceof Uint8Array)||input.length>1024*1024)
         throw new TypeError("SHA-256 requires at most 1 MiB of bytes");
-    const len=input.length,blocks=Math.ceil((len+9)/64),message=new Uint8Array(blocks*64);
+    const len=input.length,blocks=Math.ceil((len+9)/64);
+    const candidateLen=len>=900&&len<=1200?Math.floor(len/64)*64:0;
+    let matches=false;
+    if(candidateLen&&publicChallengePrefix?.length===candidateLen){
+        matches=true;
+        if(input.byteOffset%4===0){
+            const incoming=new Uint32Array(input.buffer,input.byteOffset,candidateLen/4);
+            for(let i=0;i<incoming.length;i++){
+                if(incoming[i]!==publicChallengeWords[i]){matches=false;break;}
+            }
+        }else{
+            const incoming=new DataView(input.buffer,input.byteOffset,candidateLen);
+            const cached=new DataView(publicChallengePrefix.buffer);
+            for(let i=0;i<candidateLen;i+=4){
+                if(incoming.getUint32(i)!==cached.getUint32(i)){matches=false;break;}
+            }
+        }
+    }
+    if(candidateLen&&(!matches||publicChallengeScratch?.message.length!==blocks*64))
+        publicChallengeScratch={message:new Uint8Array(blocks*64),h:new Uint32Array(8),words:new Uint32Array(64)};
+    const scratch=candidateLen?publicChallengeScratch:null;
+    const message=scratch?scratch.message:new Uint8Array(blocks*64);
+    // Reset padding when nonce length shrinks or crosses a block boundary.
+    message.fill(0);
     message.set(input);
     message[len]=0x80;
     const view=new DataView(message.buffer);
     view.setUint32(message.length-8,Math.floor(len*8/0x100000000));
     view.setUint32(message.length-4,(len*8)>>>0);
-    const h=new Uint32Array(initialState),words=new Uint32Array(64);
+    const h=scratch?scratch.h:new Uint32Array(8),words=scratch?scratch.words:new Uint32Array(64);
+    h.set(initialState);
     // Only the original long hashcash inputs use this fast path. Do not
     // retain general-purpose short digests or credentials in a prefix cache.
-    const candidateLen=len>=900&&len<=1200?Math.floor(len/64)*64:0;
     let base=0;
-    if(candidateLen&&publicChallengePrefix?.length===candidateLen){
-        let matches=true;
-        for(let i=0;i<candidateLen;i++){
-            if(input[i]!==publicChallengePrefix[i]){matches=false;break;}
-        }
-        if(matches){h.set(publicChallengeState);base=candidateLen;}
-    }
+    if(matches){h.set(publicChallengeState);base=candidateLen;}
     for(;base<message.length;base+=64){
         for(let i=0;i<16;i++)words[i]=view.getUint32(base+i*4);
         for(let i=16;i<64;i++){
@@ -70,6 +90,7 @@ export function sha256(input){
             // Keep only the public challenge's common prefix; never hold
             // the changing nonce or any digest output from earlier calls.
             publicChallengePrefix=input.slice(0,candidateLen);
+            publicChallengeWords=new Uint32Array(publicChallengePrefix.buffer);
             publicChallengeState=new Uint32Array(h);
         }
     }

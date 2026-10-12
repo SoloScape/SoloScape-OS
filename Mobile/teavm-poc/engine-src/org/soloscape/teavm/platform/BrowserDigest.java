@@ -4,7 +4,7 @@ import java.security.NoSuchAlgorithmException;
 import org.teavm.interop.*;
 import org.teavm.jso.*;
 
-/** Secure-context Web Crypto, awaited through TeaVM's coroutine bridge. */
+/** Web Crypto or HTTP SHA-256, preserving the original Java digest contract. */
 public final class BrowserDigest {
     private final String algorithm;
     private final ByteArrayOutputStream bytes=new ByteArrayOutputStream();
@@ -26,7 +26,9 @@ public final class BrowserDigest {
         });
     }
     @JSFunctor private interface Completion extends JSObject {void done(JSObject bytes,String error);}
-    @JSBody(params={"algorithm","bytes","done"},script="const input=new Uint8Array(bytes);if(globalThis.crypto?.subtle){globalThis.crypto.subtle.digest(algorithm,input).then(data=>done(new Uint8Array(data),null),error=>done(null,'Web Crypto digest failed'));return;}if(algorithm!=='SHA-256'||typeof globalThis.soloscapeOriginalSha256!=='function'){queueMicrotask(()=>done(null,'Digest not available on HTTP LAN'));return;}try{const hash=globalThis.soloscapeOriginalSha256(input);const schedule=globalThis.soloscapeOriginalSha256Ticks=((globalThis.soloscapeOriginalSha256Ticks||0)+1);if(schedule%256===0)setTimeout(()=>done(hash,null),0);else queueMicrotask(()=>done(hash,null));}catch(_){queueMicrotask(()=>done(null,'SHA-256 computation failed'));}")
+    // Local hashes complete inline; only every 256th yields. Scheduling a
+    // coroutine resume for every nonce needlessly slows the original PoW loop.
+    @JSBody(params={"algorithm","bytes","done"},script="const input=new Uint8Array(bytes);if(globalThis.crypto?.subtle){globalThis.crypto.subtle.digest(algorithm,input).then(data=>done(new Uint8Array(data),null),error=>done(null,'Web Crypto digest failed'));return;}if(algorithm!=='SHA-256'||typeof globalThis.soloscapeOriginalSha256!=='function'){queueMicrotask(()=>done(null,'Digest not available on HTTP LAN'));return;}try{const hash=globalThis.soloscapeOriginalSha256(input);const schedule=globalThis.soloscapeOriginalSha256Ticks=((globalThis.soloscapeOriginalSha256Ticks||0)+1);if(schedule%256===0)setTimeout(()=>done(hash,null),0);else done(hash,null);}catch(_){queueMicrotask(()=>done(null,'SHA-256 computation failed'));}")
     private static native void digestNative(String algorithm,@JSByRef byte[] bytes,Completion done);
     @JSBody(params={"bytes"},script="return bytes.length;")private static native int length(JSObject bytes);
     @JSBody(params={"bytes","index"},script="return bytes[index];")private static native int at(JSObject bytes,int index);

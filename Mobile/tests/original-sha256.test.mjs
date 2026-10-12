@@ -48,6 +48,18 @@ test("long binary and SHA-256 padding-boundary inputs remain correct across pref
     }
 });
 
+test("reused public hash scratch handles unaligned input, shrinking nonces and independent results",()=>{
+    const encoder=new TextEncoder(),prefix="18"+"a".repeat(1020);
+    const first=sha256(encoder.encode(prefix+"abcdef")),saved=first.slice();
+    for(const nonce of ["abcdef","0","fffffff","1"]){
+        const bytes=encoder.encode(prefix+nonce),backing=new Uint8Array(bytes.length+3);
+        backing.set(bytes,1);
+        const unaligned=backing.subarray(1,1+bytes.length);
+        assert.equal(hex(sha256(unaligned)),expected(bytes));
+        assert.deepEqual(first,saved,"later hashes must not mutate an earlier result");
+    }
+});
+
 const source=await readFile(new URL("../teavm-poc/engine-src/org/soloscape/teavm/platform/BrowserDigest.java",import.meta.url),"utf8");
 const script=/@JSBody\(params=\{"algorithm","bytes","done"\},script="([^"]*)"\)/.exec(source)?.[1];
 assert.ok(script,"BrowserDigest SHA-256 adapter must be compiled into original gamepack");
@@ -109,6 +121,18 @@ test("hashcash digest yields to the event loop periodically during long original
         error?reject(Error(error)):(assert.equal(hex(result),expected(bytes)),resolve())));
     assert.equal(tasks,1,"every 256th proof hash must yield");
     assert.equal(calls,1);
+});
+
+test("ordinary HTTP proof hashes complete inline without a per-nonce microtask",()=>{
+    const bytes=new Uint8Array([42]);
+    let result,scheduled=0;
+    const realm={algorithm:"SHA-256",bytes,Uint8Array,
+        done:(data,error)=>{assert.equal(error,null);result=data;},
+        queueMicrotask:()=>{scheduled++;},setTimeout:()=>{scheduled++;},
+        globalThis:{crypto:null,soloscapeOriginalSha256:sha256,soloscapeOriginalSha256Ticks:0}};
+    runInNewContext("(function(){"+script+"})()",realm);
+    assert.equal(hex(result),expected(bytes));
+    assert.equal(scheduled,0);
 });
 test("original game imports local hash function before initializing authentic Java engine",async()=>{
     const page=await readFile(new URL("../teavm-poc/site/engine-smoke.mjs",import.meta.url),"utf8");

@@ -12,6 +12,8 @@ import {findTeaVmJdk} from "../../scripts/build-teavm.mjs";
 import {prepareEngineBytecode,compileEngineTools} from "../../scripts/prepare-engine-bytecode.mjs";
 
 const services=process.argv.includes("--services");
+const digestProof=process.argv.includes("--digest");
+assert.ok(!(services&&digestProof),"Select one proof entry point");
 if(services)assert.ok(process.env.CHROME_BIN,"Service proof requires CHROME_BIN for IndexedDB, image decoding and audio");
 
 const root=fileURLToPath(new URL("../../",import.meta.url));
@@ -23,10 +25,10 @@ assert.equal(createHash("sha256").update(readFileSync(gamepack)).digest("hex"),m
 const jdk=findTeaVmJdk(),target=join(root,"teavm-poc/target/engine");mkdirSync(target,{recursive:true});
 const env={...process.env,JAVA_HOME:jdk.home,PATH:join(jdk.home,"bin")+delimiter+(process.env.PATH||process.env.Path||"")};
 const prepared=prepareEngineBytecode({root,target,gamepack,api,jdk,env});
-const outputName=services?"services.js":"platform.js";
+const outputName=digestProof?"digest-proof.js":services?"services.js":"platform.js";
 rmSync(join(target,"javascript",outputName),{force:true});
 const args=["-B","-f",join(root,"teavm-poc/engine-pom.xml"),`-Dgamepack.path=${prepared.gamepack}`,`-Dapi.path=${prepared.api}`,
-    `-Dengine.mainClass=${services?"ServicesProof":"PlatformProof"}`,`-Dengine.outputName=${outputName}`,
+    `-Dengine.mainClass=${digestProof?"DigestProof":services?"ServicesProof":"PlatformProof"}`,`-Dengine.outputName=${outputName}`,
     `-Dengine.reflectionProofType=${services?"ServicesProof$ReflectionTarget":""}`,"package"];
 let binary="mvn",commandArgs=args;
 if(process.platform==="win32"){
@@ -41,6 +43,39 @@ const built=spawnSync(binary,commandArgs,{env,encoding:"utf8",maxBuffer:32*1024*
 writeFileSync(join(target,services?"services-compiler.log":"platform-compiler.log"),(built.stdout||"")+(built.stderr||""));
 assert.equal(built.status,0,"Platform build failed; inspect platform-compiler.log");
 const source=readFileSync(join(target,"javascript",outputName),"utf8");
+if(digestProof){
+    const {sha256}=await import("../site/original-sha256.mjs");
+    const cryptoDescriptor=Object.getOwnPropertyDescriptor(globalThis,"crypto");
+    let heartbeats=0;
+    const heartbeat=setInterval(()=>heartbeats++,5);
+    try{
+        Object.defineProperty(globalThis,"crypto",{value:undefined,configurable:true});
+        globalThis.soloscapeOriginalSha256=sha256;
+        globalThis.soloscapeOriginalSha256Ticks=0;
+        delete globalThis.soloscapeDigestProofResult;
+        const module=await import("data:text/javascript;base64,"+Buffer.from(source).toString("base64"));
+        const start=performance.now();module.verify();
+        while(!globalThis.soloscapeDigestProofResult&&performance.now()-start<120000)
+            await new Promise(resolve=>setTimeout(resolve,10));
+        const elapsedMs=Math.round(performance.now()-start),combined=Buffer.alloc(32);
+        for(let i=0;i<20000;i++){
+            const hash=createHash("sha256").update("18"+"a".repeat(990)+i.toString(16)).digest();
+            for(let j=0;j<32;j++)combined[j]^=hash[j];
+        }
+        assert.equal(globalThis.soloscapeDigestProofResult,combined.toString("hex"));
+        assert.ok(heartbeats>0,"Compiled original digest must yield during the workload");
+        const report={fixtureOnly:true,hashes:20000,elapsedMs,heartbeats,hashesMatchNode:true};
+        writeFileSync(join(target,"digest-proof-report.json"),JSON.stringify(report,null,2)+"\n");
+        console.log("PASS compiled TeaVM HTTP digest: "+JSON.stringify(report));
+    }finally{
+        clearInterval(heartbeat);
+        if(cryptoDescriptor)Object.defineProperty(globalThis,"crypto",cryptoDescriptor);else delete globalThis.crypto;
+        delete globalThis.soloscapeOriginalSha256;
+        delete globalThis.soloscapeOriginalSha256Ticks;
+        delete globalThis.soloscapeDigestProofResult;
+    }
+    process.exit(0);
+}
 let serialized="";
 if(services){
     const {classes}=compileEngineTools({root,target,jdk,env,fixture:true});
