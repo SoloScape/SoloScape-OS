@@ -2,6 +2,7 @@ package org.rsmod.content.skills.cooking
 
 import jakarta.inject.Inject
 import org.rsmod.api.player.protect.ProtectedAccess
+import org.rsmod.api.player.events.skilling.SkillingProcessingEvent
 import org.rsmod.api.player.stat.cookingLvl
 import org.rsmod.api.script.onOpContentLoc1
 import org.rsmod.api.script.onOpContentMixedLocU
@@ -197,7 +198,9 @@ class CookingEvents @Inject constructor(
     }
 
     private fun ProtectedAccess.applyCook(food: CookingFoodsRow, surface: CookingSurface) {
-        val burned = isBurned(food, surface)
+        val firstTutorialShrimp = player.vars["varp.tutorial"] == 120 &&
+            food.raw.internalName == "obj.raw_shrimp"
+        val burned = firstTutorialShrimp || isBurned(food, surface)
         invDel(inv, food.raw.internalName, 1)
 
         if (burned) {
@@ -209,6 +212,12 @@ class CookingEvents @Inject constructor(
             statAdvance("stat.cooking", food.xp.toDouble() * xpModifier)
             mes("You successfully cook the ${food.raw.name}.")
         }
+        val loc = when (surface) {
+            is CookingSurface.Fire -> surface.locInternal
+            is CookingSurface.Range -> surface.locInternal
+        }
+        publish(SkillingProcessingEvent(player, "stat.cooking", food.raw.internalName,
+            if (burned) food.burnt.internalName else food.cooked.internalName, loc))
     }
 
     private data class CookTask(

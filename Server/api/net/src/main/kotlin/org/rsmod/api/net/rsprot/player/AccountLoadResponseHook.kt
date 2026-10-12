@@ -310,7 +310,7 @@ class AccountLoadResponseHook(
             return
         }
 
-        coords = config.spawnCoord
+        coords = CoordGrid(3094, 3107)
         xpRate = config.baseXpRate
         if (config.autoAssignDisplayNames) {
             displayName = username.toDisplayName()
