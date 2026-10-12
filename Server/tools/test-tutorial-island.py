@@ -38,6 +38,7 @@ java = str(build.java_home() / "bin/java.exe")
 sources = [source]
 if "--source" in sys.argv[1:]:
     sources += list((server / "content/areas/misc/tutorial-island/src/main/kotlin").rglob("*.kt"))
+    sources.append(server / "api/account/src/main/kotlin/org/rsmod/api/account/loader/request/AccountLoadResponse.kt")
 compile_result = subprocess.run([java, "-Xmx1g", "-cp", str(build.compiler() / "*"),
                 "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler", "-jvm-target", "21",
                 "-Xcontext-parameters", "-Xnested-type-aliases", "-Xskip-prerelease-check",

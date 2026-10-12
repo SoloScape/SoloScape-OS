@@ -5,6 +5,11 @@ creation writes this position explicitly, and new-account login applies the same
 position before the initial map rebuild. Existing mainland characters keep their
 saved position and do not enter the tutorial.
 
+First-login detection also covers characters created before game login: a loaded
+character with no saved login or logout history receives new-character startup,
+even when the loader did not create its account in that request. Characters with
+saved login history retain their position and tutorial progress.
+
 The classic island uses its existing revision-240 NPCs and map objects. The
 `content/areas/misc/tutorial-island` plugin supplies the complete teaching route:
 
