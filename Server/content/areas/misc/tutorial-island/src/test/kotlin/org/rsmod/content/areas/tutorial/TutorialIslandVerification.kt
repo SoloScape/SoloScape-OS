@@ -28,7 +28,12 @@ import org.rsmod.api.player.protect.ProtectedAccessContextFactory
 import org.rsmod.api.player.stat.TutorialExperience
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.player.ui.IfOverlayButton
+import org.rsmod.api.player.ui.IfMoveSub
+import org.rsmod.api.player.ui.ifOpenOverlay
+import org.rsmod.api.player.ui.ifOpenSub
+import org.rsmod.api.player.ui.ifCloseChat
 import dev.openrune.types.aconverted.interf.IfButtonOp
+import dev.openrune.types.aconverted.interf.IfSubType
 import org.rsmod.api.registry.controller.ControllerRegistry
 import org.rsmod.api.registry.loc.LocRegistry
 import org.rsmod.api.registry.loc.LocRegistryNormal
@@ -43,9 +48,12 @@ import org.rsmod.content.generic.locs.passages.GenericPassageScript
 import org.rsmod.content.generic.locs.passages.StairNavigator
 import org.rsmod.content.interfaces.emotes.PlayEmote
 import org.rsmod.content.interfaces.gameframe.script.FriendsIgnoreScript
+import org.rsmod.content.interfaces.gameframe.Gameframe
 import org.rsmod.coroutine.GameCoroutine
 import org.rsmod.events.EventBus
 import org.rsmod.game.MapClock
+import org.rsmod.game.client.Client
+import org.rsmod.game.client.NoopClient
 import org.rsmod.game.area.AreaIndex
 import org.rsmod.game.cheat.CheatCommandMap
 import org.rsmod.game.entity.ControllerList
@@ -71,6 +79,7 @@ import org.rsmod.game.region.RegionListSmall
 import org.rsmod.game.region.RegionListWorldEntity
 import org.rsmod.game.seq.EntitySeq
 import org.rsmod.game.ui.UserInterface
+import org.rsmod.game.ui.Component
 import org.rsmod.map.CoordGrid
 import org.rsmod.plugin.scripts.ScriptContext
 import org.rsmod.routefinder.collision.CollisionFlagMap
@@ -84,6 +93,7 @@ public fun main() {
         fixture.verifyTrainingActions()
         fixture.verifySuccessfulProcessing()
         fixture.verifyTabsAndOverlay()
+        fixture.verifyTutorialPresentation()
         fixture.verifyPendingPassageAndEquipment()
         fixture.verifyCombat()
         fixture.verifyLimitsAndDeparture()
@@ -96,12 +106,16 @@ public fun main() {
 
 private class Fixture {
     val events = EventBus()
-    val progress = TutorialProgress()
+    val progress = TutorialProgress(events)
     val ticks = TutorialTickHook(progress)
     val players = PlayerList()
     val npcs = NpcList()
     val collision = CollisionFlagMap()
+    val packets = mutableListOf<Any>()
     val player = Player().apply {
+        client = object : Client<Any, Any> by NoopClient {
+            override fun write(message: Any) { packets.add(message) }
+        }
         uuid = 123
         slotId = 1
         assignUid()
@@ -190,7 +204,12 @@ private class Fixture {
         for ((npc, stage) in lessons) {
             player.coords = TutorialProgress.START
             player.tutorialProgress = stage.code
+            packets.clear()
             talk(npc)
+            if (stage == TutorialStage.GUIDE) {
+                check(packets.any { packetText(it)?.startsWith("Welcome to RuneScape!") == true })
+                check(packets.none { packetText(it)?.startsWith("Welcome to SoloScape!") == true })
+            }
             check(player.tutorialStage == stage.next) { "$npc failed to advance $stage" }
         }
         player.inv.fillNulls()
@@ -329,10 +348,89 @@ private class Fixture {
         check(player.tutorialStage == TutorialStage.DEPART)
         talk("npc.newbie_magic_instructor", listOf(1))
         check(player.tutorialStage == TutorialStage.COMPLETE && player.coords == TutorialProgress.LUMBRIDGE)
+        check(!player.ui.containsOverlay("interface.tutorial_overlay"))
+        check(!player.ui.containsOverlay("interface.messagebox_titled"))
+        check(player.ui.containsOverlay("interface.magic_spellbook"))
+        check(player.ui.containsOverlay("interface.side_channels"))
         check(TutorialTeleportHook().validate(player, TeleportType.Standard, context.areaChecker) == null)
         events.publish(SessionStateEvent.PrepareLogin(player))
         check(player.coords == TutorialProgress.LUMBRIDGE && player.tutorialStage == TutorialStage.COMPLETE)
     }
+
+    fun verifyTutorialPresentation() {
+        val slots = listOf("combat_interface", "stats", "side_journal", "inventory", "wornitems",
+            "prayerbook", "magic_spellbook", "side_channels", "account", "friends", "logout",
+            "settings_side", "emote", "music")
+        val unlocks = listOf(TutorialStage.MELEE, TutorialStage.STATS, TutorialStage.JOURNAL,
+            TutorialStage.INVENTORY, TutorialStage.EQUIPMENT, TutorialStage.PRAYER,
+            TutorialStage.SPELLBOOK, TutorialStage.COMPLETE, TutorialStage.ACCOUNT,
+            TutorialStage.FRIENDS, TutorialStage.GUIDE, TutorialStage.SETTINGS,
+            TutorialStage.EMOTES, TutorialStage.MUSIC)
+        val overlay = UserInterface("interface.tutorial_overlay".asRSCM())
+        val hud = Component("component.toplevel_osrs_stretch:overlay_hud".asRSCM())
+        val chat = Component("component.chatbox:chatoverlay".asRSCM())
+        val bar = ServerCacheManager.fromComponent("component.tutorial_overlay:progressbar_container")
+        check(bar.xMode == 1 && bar.yMode == 2 && bar.width == 370)
+        // Load the production redirect tables, including the mobile fallback, rather than
+        // pretending every client uses the desktop component ids.
+        val loaderType = Class.forName("org.rsmod.content.interfaces.gameframe.GameframeLoader")
+        val loader = loaderType.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+        @Suppress("UNCHECKED_CAST")
+        val gameframes = loaderType.getMethod("loadGameframes").invoke(loader) as Map<Int, Gameframe>
+        for (frame in listOf("toplevel", "toplevel_pre_eoc", "toplevel_osrs_stretch", "toplevel_osm")) {
+            player.ui.topLevel = UserInterface("interface.$frame".asRSCM())
+            player.ui.gameframe.clear()
+            for ((original, translated) in gameframes.getValue(player.ui.topLevel.id).mappings) {
+                player.ui.gameframe[original] = translated
+            }
+            // Reproduce the ordinary gameframe's fully populated side panels on login.
+            for ((slot, name) in slots.withIndex()) {
+                player.ifOpenOverlay("interface.$name", "component.toplevel_osrs_stretch:side$slot", events)
+            }
+            player.tutorialProgress = TutorialStage.GUIDE.code
+            events.publish(SessionStateEvent.Login(player))
+            check(player.ui.overlays.getComponent(overlay) == hud)
+            check(gameframes.getValue(player.ui.topLevel.id).mappings.getValue(hud).parent == player.ui.topLevel.id)
+            check(player.ui.overlays[chat] == UserInterface("interface.messagebox_titled".asRSCM()))
+            player.ifOpenSub("interface.chat_left", "component.chatbox:chatmodal", IfSubType.Modal, events)
+            check(player.ui.containsModal("interface.chat_left"))
+            check(player.ui.containsOverlay("interface.messagebox_titled"))
+            player.ifCloseChat(events)
+            check(!player.ui.containsModal("interface.chat_left"))
+            check(player.ui.containsOverlay("interface.messagebox_titled"))
+            for (stage in TutorialStage.entries.filter { it != TutorialStage.COMPLETE }) {
+                player.tutorialProgress = stage.code
+                progress.show(player)
+                for ((slot, name) in slots.withIndex()) {
+                    check(player.ui.containsOverlay("interface.$name") == (stage.code >= unlocks[slot].code)) {
+                        "$frame $stage: incorrect visibility for $name"
+                    }
+                }
+                check(packets.any { packetText(it) == stage.instruction })
+            }
+            // Restoring an earlier saved lesson closes later tabs again.
+            player.tutorialProgress = TutorialStage.INVENTORY.code
+            events.publish(SessionStateEvent.Login(player))
+            check(player.ui.containsOverlay("interface.inventory"))
+            check(!player.ui.containsOverlay("interface.stats"))
+            events.publish(IfMoveSub(player, "component.toplevel_osrs_stretch:popout".asRSCM()))
+            check(player.ui.overlays.getComponent(overlay) == hud)
+            check(!player.ui.containsOverlay("interface.magic_spellbook"))
+        }
+        player.tutorialProgress = TutorialStage.IGNORE.code
+        progress.show(player)
+        player.ifOpenOverlay("interface.ignore", "component.toplevel_osrs_stretch:side9", events)
+        ticks.onPostTick(player)
+        check(player.tutorialStage == TutorialStage.PRIEST_RETURN)
+        check(player.ui.containsOverlay("interface.ignore"))
+        check(!player.ui.containsOverlay("interface.friends"))
+        println("PASS: tutorial tab unlocks/resume, HUD progress placement, chat instructions, " +
+            "RuneScape greeting, frame changes and Ignore selection")
+    }
+
+    private fun packetText(packet: Any): String? =
+        packet.javaClass.methods.firstOrNull { it.name == "getText" && it.parameterCount == 0 }
+            ?.invoke(packet) as? String
 
     fun verifyCombat() {
         players[player.slotId] = player

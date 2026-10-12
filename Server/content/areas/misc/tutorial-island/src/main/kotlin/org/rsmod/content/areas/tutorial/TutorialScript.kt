@@ -23,9 +23,9 @@ import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.player.stat.statAdd
-import org.rsmod.api.player.ui.ifOpenOverlay
 import org.rsmod.api.player.ui.ifSetEvents
 import org.rsmod.api.script.onCommand
+import org.rsmod.api.script.advanced.onIfMoveSub
 import org.rsmod.api.script.onEvent
 import org.rsmod.api.script.onIfOverlayButton
 import org.rsmod.api.script.onOpLoc1
@@ -74,10 +74,15 @@ public class TutorialScript @Inject constructor(
         }
         onPlayerLogin {
             if (player.onTutorial) {
-                player.ifOpenOverlay("interface.tutorial_overlay",
-                    "component.toplevel_osrs_stretch:helper_content", eventBus)
+                progress.open(player)
                 enableTabButtons(player)
+            }
+        }
+        // Popout is moved last, after the HUD, chatbox and side panels are in the new frame.
+        onIfMoveSub("component.toplevel_osrs_stretch:popout") {
+            if (player.onTutorial) {
                 progress.show(player)
+                enableTabButtons(player)
             }
         }
         onPlayerLogout { player.attr.remove(tutorialPassage) }
@@ -260,7 +265,7 @@ public class TutorialScript @Inject constructor(
     private suspend fun Dialogue.guide() {
         when (player.tutorialStage) {
             TutorialStage.GUIDE -> {
-                chatNpc(happy, "Welcome to SoloScape! I will help you learn the controls before " +
+                chatNpc(happy, "Welcome to RuneScape! I will help you learn the controls before " +
                     "the other instructors teach you how to survive and explore.")
                 when (choice3("I'm new to this.", 1, "I've played before.", 2,
                     "I know my way around.", 3)) {
@@ -502,7 +507,6 @@ public class TutorialScript @Inject constructor(
                 chatNpc(neutral, "If you want an Ironman mode, choose it with the Ironman " +
                     "tutor before leaving. You can stay here to practise a little longer.")
                 if (choice2("Take me to Lumbridge.", 1, "I'd like to stay for now.", 2) != 1) return
-                access.ifCloseSub("interface.tutorial_overlay")
                 progress.advance(player, TutorialStage.DEPART)
                 access.telejump(TutorialProgress.LUMBRIDGE, TeleportType.Exempt)
                 access.statRestore("stat.hitpoints")
