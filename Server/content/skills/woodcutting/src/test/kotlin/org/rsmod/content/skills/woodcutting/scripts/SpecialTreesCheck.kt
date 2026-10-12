@@ -6,6 +6,7 @@ import dev.openrune.rscm.RSCMType
 import org.rsmod.api.random.GameRandom
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.InvObj
+import org.rsmod.map.CoordGrid
 
 private class TableRolls(vararg values: Int) : GameRandom {
     private val rolls = ArrayDeque(values.toList())
@@ -40,6 +41,21 @@ fun main() {
     check(SpecialTreeDefinitions.get("loc.rosewood_tree")!!.despawnTicks == 458)
     check(SpecialTreeDefinitions.get("loc.rosewood_tree_fullygrown")!!.depletionDenominator == 8)
     check(SpecialTreeDefinitions.get("loc.rosewood_tree_fullygrown_claimxp") == null)
+    check("loc.rosewood_tree_fullygrown" in SpecialTreeDefinitions.farmedNames)
+    // A planted tree's depletion is private and is keyed to its tile, not its shared loc id.
+    val farmer = Player()
+    val neighbour = Player()
+    val home = CoordGrid(1234, 5678)
+    val other = CoordGrid(1235, 5678)
+    FarmedHardwoodCooldowns.deplete(farmer, home, respawnTicks = 200, now = 1000L)
+    check(FarmedHardwoodCooldowns.remainingMillis(farmer, home, now = 1000L) == 120_000L)
+    check(FarmedHardwoodCooldowns.remainingMillis(farmer, other, now = 1000L) == 0L)
+    check(FarmedHardwoodCooldowns.remainingMillis(neighbour, home, now = 1000L) == 0L)
+    check(FarmedHardwoodCooldowns.remainingMillis(farmer, home, now = 121_000L) == 0L)
+    check(FarmedHardwoodCooldowns.parse("not-a-record;123=bad").isEmpty())
+    check(FarmedHardwoodCooldowns.parse(
+        FarmedHardwoodCooldowns.encode(mapOf(FarmedHardwoodCooldowns.key(home) to 100L))
+    ).values.single() == 100L)
     val player = Player()
     repeat(12) { chop ->
         check(player.sulliuscepStage == chop % 6)
