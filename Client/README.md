@@ -51,6 +51,14 @@ extension require separate SDKs and are excluded. Unit tests are not run by this
 
 ### Usage
 
+When launched through `Client/run.bat`, connections to the local SoloScape game
+server (loopback port `43594`) read the public RSA modulus from
+`Server/.data/client.key` at login. You do not need to paste it into the proxy
+target after restarting or replacing the server keys. Start the server first so
+the public key exists. Remote targets keep their configured modulus; the server
+private key is never read by this client feature. Restart RSProx once after
+installing this change to enable it in an existing session.
+
 In **New Session**, select an **Account** and **Client Type**, then press **Launch Session**.
 For OSRS, **Native** selects the Windows-native client and **RuneLite** selects RuneLite.
 For RS3, select **RuneScape 3**. OSRS also allows selecting a **Proxy Target**;
