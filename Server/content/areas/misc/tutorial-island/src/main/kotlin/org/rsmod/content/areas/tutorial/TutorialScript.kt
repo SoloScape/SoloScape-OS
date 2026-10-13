@@ -334,8 +334,10 @@ public class TutorialScript @Inject constructor(
     private suspend fun Dialogue.chef() {
         when (player.tutorialStage) {
             TutorialStage.CHEF -> {
-                chatNpc(happy, "Welcome to my kitchen! Let's bake bread. Take this pot of " +
-                    "flour and bucket of water. Mix them to make bread dough, then use the range.")
+                chatNpc(happy, "Ah, another hungry adventurer! I'm Lev, the Master Chef. " +
+                    "Brynna's campfire shrimp are a start, but this is a proper kitchen!")
+                chatNpc(happy, "Let's see you bake something fit for a king. I'll give you " +
+                    "flour and water; combine them into dough and bake it on the range.")
                 if (!supply("obj.pot_flour") || !supply("obj.bucket_water")) return
                 progress.advance(player, TutorialStage.CHEF)
             }
@@ -344,12 +346,30 @@ public class TutorialScript @Inject constructor(
                     supply("obj.pot_flour")
                     supply("obj.bucket_water")
                 }
-                reminder()
+                if (player.tutorialStage == TutorialStage.DOUGH) {
+                    chatNpc(neutral, "A good loaf begins with dough. Use your pot of flour " +
+                        "on the bucket of water, or the other way around.")
+                } else {
+                    chatNpc(happy, "Splendid, you've made the dough! Now use it on the range. " +
+                        "A proper oven makes all the difference.")
+                }
             }
             else -> {
-                chatNpc(happy, "The Music tab controls the music you unlock while exploring. " +
-                    "Emotes let you express yourself. Running moves you faster but uses energy.")
-                reminder()
+                if (player.tutorialProgress < TutorialStage.CHEF.code) {
+                    reminder()
+                    return
+                }
+                chatNpc(happy, "Welcome back to my kitchen! Need another cooking lesson?")
+                when (choice3("No thanks, Chef.", 1,
+                    "Remind me how to make dough.", 2,
+                    "Why should I use a range?", 3)) {
+                    2 -> chatNpc(neutral, "Combine a pot of flour and a bucket of water " +
+                        "in your inventory. You can refill a bucket at a water source.")
+                    3 -> chatNpc(happy, "Ranges are better suited to bread and more " +
+                        "elaborate dishes than an open fire. Bring the ingredients along.")
+                    else -> chatNpc(happy, "Very well! Keep practising, and perhaps " +
+                        "you'll cook a royal banquet one day.")
+                }
             }
         }
     }
@@ -357,41 +377,88 @@ public class TutorialScript @Inject constructor(
     private suspend fun Dialogue.quest() {
         when (player.tutorialStage) {
             TutorialStage.QUEST -> {
-                chatNpc(happy, "Adventurers help people by completing quests. Open the Quest " +
-                    "Journal to see the quests available to you.")
+                chatNpc(happy, "Ah, a budding adventurer! I'm the Quest Guide. " +
+                    "There's more to Gielinor than gathering supplies and fighting rats.")
+                chatNpc(neutral, "Some quests ask you to find a few curious items; others " +
+                    "send you against dragons. Open your Quest Journal to begin.")
                 progress.advance(player, TutorialStage.QUEST)
             }
+            TutorialStage.JOURNAL -> {
+                chatNpc(neutral, "Haven't found the Quest Journal yet? Open the quest " +
+                    "tab on the side of the screen, then come back and see me.")
+            }
             TutorialStage.QUEST_RETURN -> {
-                chatNpc(neutral, "Quest entries describe requirements and track your progress. " +
-                    "Red means not started, yellow means in progress and green means complete.")
-                chatNpc(happy, "Quest rewards include experience, items and new places to visit. " +
-                    "Climb down the ladder to meet the Mining Instructor.")
+                questOverview()
+                chatNpc(happy, "The best tales are the ones you discover yourself. " +
+                    "Head down the ladder and meet the Mining Instructor.")
                 progress.advance(player, TutorialStage.QUEST_RETURN)
             }
-            else -> reminder()
+            else -> {
+                if (player.tutorialProgress < TutorialStage.QUEST.code) {
+                    reminder()
+                    return
+                }
+                chatNpc(happy, "Still curious about quests, adventurer?")
+                if (choice2("No, I'll explore for myself.", 1,
+                    "Tell me about quests again.", 2) == 2) {
+                    questOverview()
+                } else {
+                    chatNpc(happy, "Excellent! There are stories waiting beyond this island.")
+                }
+            }
         }
+    }
+
+    private suspend fun Dialogue.questOverview() {
+        chatNpc(neutral, "Your Quest Journal shows where to start a quest, its requirements " +
+            "and your next steps. Look for quest symbols on the minimap.")
+        chatNpc(neutral, "Red entries have not been started, yellow entries are underway, " +
+            "and green entries are finished.")
+        chatNpc(happy, "Adventures can earn experience, equipment and access to new places. " +
+            "A simple errand might be the beginning of something much greater!")
     }
 
     private suspend fun Dialogue.miner() {
         when (player.tutorialStage) {
             TutorialStage.MINER -> {
-                chatNpc(happy, "I'm Dezzick. Mining gives you ore; Smithing turns it into metal " +
-                    "equipment. Take this pickaxe and prospect the tin and copper rocks.")
+                chatNpc(happy, "Welcome to my mine! I'm Dezzick. Stone and metal are " +
+                    "the foundations of a good adventurer's equipment.")
+                chatNpc(neutral, "Take this pickaxe. First inspect the grey and brown " +
+                    "rocks to tell tin from copper; then mine one of each.")
                 if (!supply("obj.bronze_pickaxe")) return
                 progress.advance(player, TutorialStage.MINER)
             }
             TutorialStage.MINER_RETURN -> {
-                chatNpc(happy, "Copper and tin make bronze. Take this hammer, then use your " +
-                    "bronze bar on the nearby anvil to smith a dagger.")
+                chatNpc(happy, "Nice work! One copper ore and one tin ore make a bronze " +
+                    "bar in the furnace. Now let's put that metal to use.")
+                chatNpc(neutral, "Here's a hammer. Use your bronze bar on the anvil " +
+                    "and select a dagger from the smithing options.")
                 if (!supply("obj.hammer")) return
                 progress.advance(player, TutorialStage.MINER_RETURN)
             }
             else -> {
-                if (player.tutorialProgress in TutorialStage.PROSPECT_TIN.code..TutorialStage.LEAVE_MINE.code) {
+                if (player.tutorialProgress < TutorialStage.MINER.code) {
+                    reminder()
+                    return
+                }
+                if (player.tutorialProgress in
+                    TutorialStage.PROSPECT_TIN.code..TutorialStage.SMITH.code) {
                     supply("obj.bronze_pickaxe")
                     if (player.tutorialStage == TutorialStage.SMITH) supply("obj.hammer")
                 }
-                reminder()
+                chatNpc(neutral, "Need a pointer? There's plenty of ore, but " +
+                    "you'll need to learn what to do with it.")
+                when (choice3("No, I'll get to work.", 1,
+                    "Remind me about Mining.", 2,
+                    "Remind me about Smithing.", 3)) {
+                    2 -> chatNpc(neutral, "Inspect rocks to identify their ore, then " +
+                        "mine them with a pickaxe. Grey holds tin; brown holds copper here.")
+                    3 -> chatNpc(happy, "Smelt tin and copper together at the furnace. " +
+                        "Use the bronze bar on an anvil with a hammer to make a dagger.")
+                    else -> chatNpc(happy, "That's the spirit! Every great sword " +
+                        "began with someone swinging a pickaxe.")
+                }
+                if (player.tutorialProgress <= TutorialStage.SMITH.code) reminder()
             }
         }
     }
@@ -399,31 +466,40 @@ public class TutorialScript @Inject constructor(
     private suspend fun Dialogue.combat() {
         when (player.tutorialStage) {
             TutorialStage.COMBAT -> {
-                chatNpc(happy, "I'm Vannaka. Your equipment changes how you fight. Open the " +
-                    "Worn Equipment tab, then wield the bronze dagger you made.")
+                chatNpc(neutral, "So, another newcomer thinks they're ready to fight? " +
+                    "I'm Vannaka, and I've handled swords longer than you've held that dagger.")
+                chatNpc(happy, "A weapon is only useful when you wield it. Open the " +
+                    "Worn Equipment tab and equip your bronze dagger.")
                 if (!supply("obj.bronze_dagger")) return
                 progress.advance(player, TutorialStage.COMBAT)
             }
             TutorialStage.EQUIP_DAGGER -> {
                 if (!player.worn.contains("obj.bronze_dagger")) {
                     supply("obj.bronze_dagger")
-                    reminder()
+                    chatNpc(neutral, "That dagger won't fight from inside your pack. " +
+                        "Equip it and then we'll see what you can do.")
                     return
                 }
-                chatNpc(happy, "Good. A sword gives you another melee weapon, and a shield " +
-                    "helps defend you. Equip both, then enter the pen and attack a giant rat.")
+                chatNpc(happy, "Good! Now you look more like a fighter. Take this " +
+                    "bronze sword and shield, and equip both before facing a rat.")
                 if (!supply("obj.bronze_sword") || !supply("obj.wooden_shield")) return
                 progress.advance(player, TutorialStage.EQUIP_DAGGER)
             }
             TutorialStage.COMBAT_RETURN -> {
-                chatNpc(happy, "You defeated the rat! Melee uses Attack, Strength and Defence. " +
-                    "Choose your fighting style in the Combat tab. Next, try Ranged.")
+                chatNpc(happy, "Not bad, recruit! You survived your first melee fight. " +
+                    "Attack, Strength and Defence improve different parts of your fighting.")
+                chatNpc(neutral, "Now show me you can strike from a distance. " +
+                    "Take this shortbow and fifty bronze arrows.")
                 if (!supply("obj.shortbow") || !supply("obj.bronze_arrow", 50)) return
-                chatNpc(neutral, "Wield the shortbow and equip your arrows. Stand outside the " +
-                    "pen and shoot a giant rat over the fence. Bows need both a weapon and ammunition.")
+                chatNpc(neutral, "Equip the bow and arrows, then shoot a giant rat " +
+                    "from outside the pen. You don't need to stand beside your target.")
                 progress.advance(player, TutorialStage.COMBAT_RETURN)
             }
             else -> {
+                if (player.tutorialProgress < TutorialStage.COMBAT.code) {
+                    reminder()
+                    return
+                }
                 when (player.tutorialStage) {
                     TutorialStage.EQUIP_SWORD, TutorialStage.MELEE -> {
                         supply("obj.bronze_sword")
@@ -435,9 +511,22 @@ public class TutorialScript @Inject constructor(
                     }
                     else -> Unit
                 }
-                if (player.tutorialProgress in TutorialStage.EQUIP_DAGGER.code..TutorialStage.RANGED.code)
+                if (player.tutorialProgress in
+                    TutorialStage.EQUIP_DAGGER.code..TutorialStage.RANGED.code) {
                     supply("obj.shrimp", 3)
-                reminder()
+                }
+                chatNpc(neutral, "Back for more instruction? A fighter ought to " +
+                    "understand both close combat and ranged attacks.")
+                when (choice3("I'm ready to carry on.", 1,
+                    "Explain melee combat again.", 2,
+                    "Explain Ranged combat again.", 3)) {
+                    2 -> chatNpc(neutral, "Combat styles can train Attack, Strength or " +
+                        "Defence. Open the Combat tab to choose a style for your weapon.")
+                    3 -> chatNpc(neutral, "Equip a bow and arrows to fight at a distance. " +
+                        "You can shoot from outside a pen without stepping into it.")
+                    else -> chatNpc(happy, "Then put that training to good use, recruit!")
+                }
+                if (player.tutorialProgress <= TutorialStage.RANGED.code) reminder()
             }
         }
     }
@@ -500,29 +589,62 @@ public class TutorialScript @Inject constructor(
     private suspend fun Dialogue.priest() {
         when (player.tutorialStage) {
             TutorialStage.PRIEST -> {
-                chatNpc(happy, "Welcome. I'm Brother Brace. Prayer offers useful temporary " +
-                    "bonuses, but active prayers drain Prayer points. Burying bones earns experience " +
-                    "to unlock more prayers. Open the Prayer tab to see them.")
+                chatNpc(happy, "Peace be with you, traveller. I'm Brother Brace, " +
+                    "and I'll teach you about Prayer.")
+                chatNpc(neutral, "Prayers aid you in battle, but they use Prayer points. " +
+                    "Open the Prayer tab to see the ones you can use.")
                 if (!supply("obj.bones")) return
                 progress.advance(player, TutorialStage.PRIEST)
             }
+            TutorialStage.PRAYER -> {
+                chatNpc(neutral, "Open the Prayer tab to view your prayers. " +
+                    "A prayer is switched on by clicking it and off by clicking again.")
+            }
             TutorialStage.BURY -> {
                 supply("obj.bones")
-                chatNpc(neutral, "Prayers drain Prayer points while active. Higher Prayer " +
-                    "levels unlock more prayers. Bury these bones to earn Prayer experience.")
-                reminder()
+                chatNpc(happy, "To gain Prayer experience, bury bones from your backpack. " +
+                    "Altars restore Prayer points when they've run low.")
             }
             TutorialStage.PRIEST_RETURN -> {
-                chatNpc(happy, "The Friends list helps you find people you know and send " +
-                    "private messages. The Ignore list hides messages from people you do not wish to hear.")
-                chatNpc(neutral, "Be respectful, keep personal details private and use Report " +
-                    "for abuse. You don't need to add a stranger to finish this lesson.")
-                chatNpc(happy, "Leave through the church door. The Magic Instructor " +
-                    "will teach your final lesson.")
+                chatNpc(happy, "Well done! Prayer is a comfort on dangerous journeys. " +
+                    "Remember to restore your Prayer points at an altar.")
+                socialOverview()
+                chatNpc(neutral, "Please treat fellow adventurers kindly and use " +
+                    "the Report option for abusive behaviour.")
+                chatNpc(happy, "Now follow the path to your final instructor, Terrova.")
                 progress.advance(player, TutorialStage.PRIEST_RETURN)
             }
-            else -> reminder()
+            else -> {
+                if (player.tutorialProgress < TutorialStage.PRIEST.code) {
+                    reminder()
+                    return
+                }
+                chatNpc(happy, "Welcome back, my child. What can I explain?")
+                when (choice3("No thanks, brother.", 1,
+                    "Tell me about Prayer again.", 2,
+                    "Tell me about Friends and Ignore.", 3)) {
+                    2 -> prayerOverview()
+                    3 -> socialOverview()
+                    else -> chatNpc(happy, "Go in peace, and treat others as " +
+                        "you would wish to be treated.")
+                }
+                if (player.tutorialProgress < TutorialStage.LEAVE_CHURCH.code) reminder()
+            }
         }
+    }
+
+    private suspend fun Dialogue.prayerOverview() {
+        chatNpc(neutral, "Click a prayer to turn it on or off. Higher Prayer " +
+            "levels unlock stronger effects, but active prayers drain points.")
+        chatNpc(neutral, "Pray at an altar to restore your Prayer points, " +
+            "and bury bones to gain Prayer experience.")
+    }
+
+    private suspend fun Dialogue.socialOverview() {
+        chatNpc(neutral, "Your Friends list helps you see when friends are online. " +
+            "You can add or remove names through the social controls.")
+        chatNpc(neutral, "The Ignore list helps block unwanted contact. " +
+            "Use it if someone is bothering you; you can also report abuse.")
     }
 
     private suspend fun Dialogue.magic() {
