@@ -57,6 +57,35 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
         return true
     }
 
+    /**
+     * Revision-240 has no Learning the Ropes DB row, but its native questjournal
+     * interface can display a live, stage-aware record for this mandatory quest.
+     * Opened by the first Quest tab lesson and the explicit tutorial journal command.
+     */
+    public fun openLearningRopesJournal(player: Player) {
+        if (player.tutorialProgress < TutorialStage.QUEST.code) return
+        val completed = player.tutorialProgress >= TutorialStage.DEPART.code
+        val title = "Learning the Ropes"
+        val lines = if (completed) listOf(
+            "<col=008000>Quest complete!</col>",
+            "You finished your training on Tutorial Island.",
+            "Rewards: 1 Quest Point and access to the mainland.",
+            "Lumbridge Home Teleport is now available.",
+        ) else listOf(
+            "Talk to the Quest Guide on Tutorial Island.",
+            "Learn the basics of Gielinor from its instructors.",
+            "Current lesson: ${player.tutorialStage?.lesson ?: "Explore Tutorial Island"}",
+            "Next step: ${player.tutorialStage?.objective ?: "Talk to the Quest Guide."}",
+            "Cast Wind Strike on a chicken to finish the quest.",
+        )
+        player.ifOpenMain("interface.questjournal", eventBus)
+        player.runClientScript(5240)
+        player.ifSetText("component.questjournal:title", "<col=7f0000>$title</col>")
+        for (index in 1..20) {
+            player.ifSetText("component.questjournal:qj$index", lines.getOrNull(index - 1) ?: "")
+        }
+    }
+
     public fun cookedShrimp(player: Player): Boolean {
         if (player.tutorialStage !in listOf(TutorialStage.COOK_FIRST, TutorialStage.COOK_RETRY)) {
             return false
