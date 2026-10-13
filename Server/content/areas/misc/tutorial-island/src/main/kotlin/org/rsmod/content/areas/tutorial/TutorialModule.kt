@@ -19,6 +19,8 @@ public class TutorialTickHook @Inject constructor(private val progress: Tutorial
     PlayerPostTickHook {
     override fun onPostTick(player: Player) {
         if (!player.onTutorial) return
+        // Also repair an online character whose save predates the optional-lessons update.
+        if (player.tutorialStage?.legacyOptional == true) progress.show(player)
         player.attr[tutorialPassage]?.let {
             if (player.coords == it.destination) {
                 player.attr.remove(tutorialPassage)
@@ -26,8 +28,6 @@ public class TutorialTickHook @Inject constructor(private val progress: Tutorial
             }
         }
         when (player.tutorialStage) {
-            TutorialStage.RUN -> if (player.vars["varp.option_run"] == 1)
-                progress.advance(player, TutorialStage.RUN)
             TutorialStage.EQUIP_SWORD -> if (player.worn.contains("obj.bronze_sword") &&
                 player.worn.contains("obj.wooden_shield"))
                 progress.advance(player, TutorialStage.EQUIP_SWORD)
@@ -42,6 +42,6 @@ public class TutorialTickHook @Inject constructor(private val progress: Tutorial
 
 public class TutorialTeleportHook @Inject constructor() : PlayerTeleportValidateHook {
     override fun validate(player: Player, type: TeleportType, areaChecker: AreaChecker): String? =
-        if (player.onTutorial) "Finish your training and ask the Magic Instructor to leave Tutorial Island."
+        if (player.onTutorial) "Finish your training, then cast Lumbridge Home Teleport to leave Tutorial Island."
         else null
 }
