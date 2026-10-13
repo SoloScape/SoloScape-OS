@@ -735,9 +735,11 @@ private class Fixture {
     fun verifyOptionalLessons() {
         check(TutorialStage.BREAD.requiredNext == TutorialStage.LEAVE_KITCHEN)
         check(TutorialStage.MINER.requiredNext == TutorialStage.MINE_TIN)
-        check(TutorialStage.entries.count { it.legacyOptional } == 5)
+        check(TutorialStage.SETTINGS.requiredNext == TutorialStage.LEAVE_START)
+        check(TutorialStage.entries.count { it.legacyOptional } == 6)
         player.coords = TutorialProgress.START
         for ((before, after) in listOf(
+            TutorialStage.GUIDE_RETURN to TutorialStage.LEAVE_START,
             TutorialStage.MUSIC to TutorialStage.LEAVE_KITCHEN,
             TutorialStage.EMOTES to TutorialStage.LEAVE_KITCHEN,
             TutorialStage.RUN to TutorialStage.LEAVE_KITCHEN,
@@ -848,7 +850,7 @@ private class Fixture {
                 override fun resumeWith(result: Result<Unit>) { this@Fixture.result = result }
             })
             result?.getOrThrow()
-            check(player.tutorialStage == TutorialStage.GUIDE_RETURN)
+            check(player.tutorialStage == TutorialStage.LEAVE_START)
 
             // The Account tab itself, rather than a second NPC chat, advances this step.
             player.tutorialProgress = TutorialStage.ACCOUNT_MANAGEMENT.code
@@ -983,18 +985,21 @@ private class Fixture {
             events.publish(SessionStateEvent.Login(player))
             check(player.ui.overlays.getComponent(overlay) == hud)
             check(gameframes.getValue(player.ui.topLevel.id).mappings.getValue(hud).parent == player.ui.topLevel.id)
-            check(player.ui.overlays[chat] != UserInterface("interface.messagebox_titled".asRSCM()))
+            check(player.ui.overlays[chat] == UserInterface("interface.messagebox_titled".asRSCM()))
             player.ifOpenSub("interface.chat_left", "component.chatbox:chatmodal", IfSubType.Modal, events)
             check(player.ui.containsModal("interface.chat_left"))
-            check(!player.ui.containsOverlay("interface.messagebox_titled"))
+            check(player.ui.containsOverlay("interface.messagebox_titled"))
             player.ifCloseChat(events)
             check(!player.ui.containsModal("interface.chat_left"))
-            check(!player.ui.containsOverlay("interface.messagebox_titled"))
+            check(player.ui.containsOverlay("interface.messagebox_titled"))
             for (stage in TutorialStage.entries.filter { it != TutorialStage.COMPLETE &&
                 !it.legacyOptional }) {
                 packets.clear()
                 player.tutorialProgress = stage.code
                 progress.show(player)
+                check(player.ui.containsOverlay("interface.messagebox_titled"))
+                check(packets.any { packetText(it) == stage.panelTitle })
+                check(packets.any { packetText(it) == stage.panelText })
                 val expectedFlash = when (stage) {
                     TutorialStage.SETTINGS -> 12
                     TutorialStage.INVENTORY -> 4

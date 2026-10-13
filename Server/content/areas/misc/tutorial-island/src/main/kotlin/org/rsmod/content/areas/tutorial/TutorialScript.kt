@@ -325,7 +325,7 @@ public class TutorialScript @Inject constructor(
                 chatNpc(neutral, "Click a nearby tile to walk. Drag the camera with the middle " +
                     "mouse button, or use the arrow keys. On mobile, drag to rotate and tap to walk.")
                 chatNpc(neutral, "Open the Settings tab with the spanner button. You can adjust " +
-                    "sound and display settings there. Then talk to me again.")
+                    "sound and display settings there.")
                 progress.advance(player, TutorialStage.GUIDE)
             }
             TutorialStage.GUIDE_RETURN -> {

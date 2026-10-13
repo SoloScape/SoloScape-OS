@@ -116,23 +116,43 @@ sells memberships or Bonds, or implements OSRS inbox/name-change/store links.
 
 `varp.tutorial` saves the current step; `1000` means departed. The tutorial
 overlay is attached to the game HUD, with its native progress bar at the bottom
-centre. Instructions use its native orange Control Guide; the tutorial no longer
-occupies the normal chat log with a titled message panel. The guide hides during
-character setup and NPC chat, and returns after chat closes. Required side tabs
+centre. Lesson instructions use `interface.messagebox_titled` in the chat overlay:
+a blue heading above the explanatory parchment text. NPC chat temporarily takes
+precedence over this panel, which remains underneath and returns when chat closes.
+The orange Control Guide supplements the lesson panel. It is not its replacement.
+The guide hides during character setup and NPC chat. Required side tabs
 use the cache's `varbit.flashside`, clearing the highlight after the action.
 
 The native `tutorial_overlay_hint` clientscript (2584) supplies the actual Jagex
 desktop/mobile wording, colours and four-line layout for fishing, skills,
 woodcutting, firemaking, cooking, baking, mining, smelting, smithing, combat,
-transitions and Home Teleport. The server selects the existing lesson rather
-than copying those strings or rebuilding their interface. Other server-owned
-steps still use authored objectives in the same guide; their exact modern OSRS
-wording is unverified. Instructor objectives use hover names and location cues.
+transitions and Home Teleport. Its short action objectives are separate from the
+chatbox lesson title and body. The primary panel does not inherit the helper's
+two-line limit.
+
+The supplied [ComfyQuesting video](https://www.youtube.com/watch?v=WVNWI1wtPFU)
+is the reference for the corrected primary panels. Directly inspected frames:
+
+- 2:06: `Moving on`, after opening Settings; the door is the next action.
+- 2:56: `You've gained some experience`, before opening Skills.
+- 3:01: `Skills and Experience`, after opening Skills.
+- 3:53: `Cooking`, including selection, using shrimp on a fire and hover-action text.
+- 5:13: `Attacking`, explaining the click-to-attack action.
+- 5:28: `Well done, you've made your first kill!`, returning to the instructor.
+- 5:33: `Rat ranging`, including equipping and remaining outside the pen.
+- 5:43: `Banking`, with both the parchment lesson and orange reminder visible.
+
+These observed titles and paragraphs are supplied separately by `panelTitle` and
+`panelText`; unobserved panels retain their existing authored text. Opening Settings
+now advances directly to the door instruction. Saves at the obsolete Guide-return
+stage 30 migrate to stage 40. The native familiarity screen and quest integration
+remain in place. The edited video does not expose every stage, so this is not a
+claim that every remaining panel or reminder timing matches OSRS exactly.
 
 The [historical interface transcript](https://rune-server.org/threads/tutorial-island-dialogue-interfaces.397139/)
 informed the teaching style, but the text is newly written for SoloScape's
-implemented sequence rather than copied verbatim. Historical chatbox text is
-not the reference for the modern Control Guide. Fishing precedes woodcutting,
+implemented sequence rather than copied verbatim. It must not be substituted for
+the video-observed modern panels without checking each stage. Fishing precedes woodcutting,
 and the first cooked shrimp succeeds.
 
 Per the [25 October 2018 OSRS update history](https://oldschool.runescape.wiki/w/Tutorial_Island#Changes),

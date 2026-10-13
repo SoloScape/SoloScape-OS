@@ -73,6 +73,44 @@ public enum class TutorialStage(
     public val objective: String
         get() = instruction
 
+    public val panelTitle: String
+        get() = when (this) {
+            LEAVE_START -> "Moving on"
+            STATS -> "You've gained some experience"
+            SURVIVAL_RETURN -> "Skills and Experience"
+            COOK_FIRST -> "Cooking"
+            COMBAT_RETURN -> "Well done, you've made your first kill!"
+            RANGED -> "Rat ranging"
+            else -> lesson
+        }
+
+    public val panelText: String
+        get() = when (this) {
+            LEAVE_START -> "It's time to meet your first instructor. To continue, all you need " +
+                "to do is click on the door. It's indicated by a flashing yellow arrow. " +
+                "Remember, you can use your arrow keys to rotate the camera."
+            STATS -> "Click on the flashing bar graph icon near the inventory button to " +
+                "see your skills menu."
+            SURVIVAL_RETURN -> "On this menu you can view your skills. Your skills can be levelled " +
+                "up by earning experience. As you level up your skills, you will earn " +
+                "new unlocks. Speak to the survival expert to continue."
+            COOK_FIRST -> "Now it's time to get cooking. To do so, click on the shrimp in " +
+                "your inventory. Then, with the shrimp highlighted, click on a fire " +
+                "to cook them. If you look at the top left of the screen, you'll see " +
+                "the instructions that you're giving to your character."
+            MELEE -> "It's time to slay some rats! Go attack a rat, all you have to do is " +
+                "click on it. This will cause you to walk over and start hitting it."
+            COMBAT_RETURN -> "Pass through the gate and talk to the combat instructor. " +
+                "He will give you your next task."
+            RANGED -> "Before you can use the shortbow and arrows you'll need to equip " +
+                "them by clicking on them. Once equipped with the ranging gear, " +
+                "try killing another rat. You don't need to enter the pen this time. " +
+                "To attack a rat, just click on it."
+            BANK -> "This is the Bank of Gielinor, where you can store all your most " +
+                "valued items. To open your bank, just click on the indicated booth."
+            else -> instruction
+        }
+
     public val controlGuide: Int?
         get() = when (this) {
             LEAVE_START -> 1
@@ -99,10 +137,11 @@ public enum class TutorialStage(
 
     /** Deprecated tutorial lessons remain recognised so saved stages can be migrated. */
     public val legacyOptional: Boolean
-        get() = this in listOf(MUSIC, EMOTES, RUN, PROSPECT_TIN, PROSPECT_COPPER)
+        get() = this in listOf(GUIDE_RETURN, MUSIC, EMOTES, RUN, PROSPECT_TIN, PROSPECT_COPPER)
 
     public val requiredNext: TutorialStage
         get() = when (this) {
+            SETTINGS -> LEAVE_START
             BREAD, MUSIC, EMOTES, RUN -> LEAVE_KITCHEN
             MINER, PROSPECT_TIN, PROSPECT_COPPER -> MINE_TIN
             DEPART, IRONMAN_TUTOR -> COMPLETE
@@ -111,6 +150,7 @@ public enum class TutorialStage(
 
     public val resumeStage: TutorialStage
         get() = when (this) {
+            GUIDE_RETURN -> LEAVE_START
             MUSIC, EMOTES, RUN -> LEAVE_KITCHEN
             PROSPECT_TIN, PROSPECT_COPPER -> MINE_TIN
             else -> this

@@ -245,7 +245,12 @@ public class TutorialProgress @Inject constructor(
         }
         if (player.ui.containsOverlay("interface.tutorial_overlay")) {
             syncTabs(player, stage)
-            player.ifCloseOverlay("interface.messagebox_titled", eventBus)
+            if (!player.ui.containsOverlay("interface.messagebox_titled")) {
+                player.ifOpenOverlay("interface.messagebox_titled", "component.chatbox:chatoverlay", eventBus)
+            }
+            player.ifSetText("component.messagebox_titled:title", stage.panelTitle)
+            player.ifSetText("component.messagebox_titled:text", stage.panelText)
+            player.ifSetHide("component.messagebox_titled:continue", true)
             if (player.tutorialSetupPending) {
                 player.ifSetHide("component.tutorial_overlay:hint_layer", true)
             } else if (stage.controlGuide != null) {
