@@ -13,6 +13,9 @@ public sealed class RestrictedAction {
     /** A walk request from the client (map click or minimap click). */
     public data object Walk : RestrictedAction()
 
+    /** Client requests to dismiss all open modal interfaces (e.g., Escape). */
+    public data object CloseModal : RestrictedAction()
+
     /** Turning a prayer on, including quick-prayers. */
     public data object Prayer : RestrictedAction()
 
