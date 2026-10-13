@@ -185,9 +185,10 @@ private class Fixture {
             val lines = TutorialProgress.hintLines(stage.instruction)
             check(stage.lesson.isNotBlank() && stage.lesson.length <= 32)
             check(stage.instruction.isNotBlank())
-            check(lines.size <= 3 && lines.all { it.length <= 40 }) {
-                "$stage: instruction exceeds the three-line tutorial chatbox"
+            check(lines.size <= 2 && lines.all { it.length <= 40 }) {
+                "$stage: objective exceeds two lines of the tutorial chatbox"
             }
+            check(stage.objective == stage.instruction)
             check(lines.joinToString(" ") == stage.instruction)
         }
         check(TutorialStage.GUIDE.lesson == "Getting started")
@@ -269,7 +270,7 @@ private class Fixture {
                 check(packets.any { packetText(it)?.startsWith("Welcome to RuneScape!") == true })
                 check(packets.none { packetText(it)?.startsWith("Welcome to SoloScape!") == true })
             }
-            check(player.tutorialStage == stage.next) { "$npc failed to advance $stage" }
+            check(player.tutorialStage == stage.requiredNext) { "$npc failed to advance $stage" }
         }
         player.inv.fillNulls()
         player.tutorialProgress = TutorialStage.COOK_RETRY.code
@@ -431,9 +432,13 @@ private class Fixture {
         check(player.tutorialStage == TutorialStage.SMITH)
         events.publish(SkillingProcessingEvent(player, "stat.smithing", "obj.bronze_bar", "obj.bronze_dagger"))
         check(player.tutorialStage == TutorialStage.LEAVE_MINE)
-        player.tutorialProgress = TutorialStage.EMOTES.code
+        player.tutorialProgress = TutorialStage.LEAVE_KITCHEN.code
         events.publish(PlayEmote(player, ServerCacheManager.getAnim("seq.emote_yes".asRSCM())!!))
-        check(player.tutorialStage == TutorialStage.RUN)
+        check(player.tutorialStage == TutorialStage.LEAVE_KITCHEN)
+        player.vars["varp.option_run"] = 1
+        ticks.onPostTick(player)
+        check(player.tutorialStage == TutorialStage.LEAVE_KITCHEN)
+        player.vars["varp.option_run"] = 0
     }
 
     fun verifyTrainingActions() {
@@ -450,11 +455,11 @@ private class Fixture {
         player.inv.fillNulls()
         player.inv[0] = InvObj("obj.bronze_pickaxe", 1)
         player.coords = CoordGrid(3081, 9503)
-        player.tutorialProgress = TutorialStage.PROSPECT_TIN.code
-        locAction("loc.newbietinrock", CoordGrid(3075, 9504))
-        check(player.tutorialStage == TutorialStage.PROSPECT_COPPER && !player.inv.contains("obj.tin_ore"))
-        locAction("loc.newbiecopperrock", CoordGrid(3085, 9501))
-        check(player.tutorialStage == TutorialStage.MINE_TIN)
+        player.tutorialProgress = TutorialStage.MINE_TIN.code
+        locProspect("loc.newbietinrock", CoordGrid(3075, 9504))
+        check(player.tutorialStage == TutorialStage.MINE_TIN && !player.inv.contains("obj.tin_ore"))
+        locProspect("loc.newbiecopperrock", CoordGrid(3085, 9501))
+        check(player.tutorialStage == TutorialStage.MINE_TIN && !player.inv.contains("obj.copper_ore"))
         locAction("loc.newbietinrock", CoordGrid(3075, 9504))
         check(player.tutorialStage == TutorialStage.MINE_COPPER && player.inv.count("obj.tin_ore") == 1)
         locAction("loc.newbiecopperrock", CoordGrid(3085, 9501))
@@ -470,7 +475,8 @@ private class Fixture {
         player.inv[0] = InvObj("obj.bread_dough", 1)
         player.tutorialProgress = TutorialStage.BREAD.code
         locAction("loc.newbierange", CoordGrid(3075, 3081))
-        check(player.tutorialStage == TutorialStage.MUSIC && player.inv.count("obj.bread") == 1)
+        check(player.tutorialStage == TutorialStage.LEAVE_KITCHEN &&
+            player.inv.count("obj.bread") == 1)
         player.inv.fillNulls()
         player.inv[0] = InvObj("obj.raw_shrimp", 1)
         player.tutorialProgress = TutorialStage.COOK_FIRST.code
@@ -590,7 +596,7 @@ private class Fixture {
             TutorialStage.INVENTORY, TutorialStage.EQUIPMENT, TutorialStage.PRAYER,
             TutorialStage.SPELLBOOK, TutorialStage.COMPLETE, TutorialStage.ACCOUNT,
             TutorialStage.FRIENDS, TutorialStage.GUIDE, TutorialStage.SETTINGS,
-            TutorialStage.EMOTES, TutorialStage.MUSIC)
+            TutorialStage.LEAVE_KITCHEN, TutorialStage.LEAVE_KITCHEN)
         val overlay = UserInterface("interface.tutorial_overlay".asRSCM())
         val hud = Component("component.toplevel_osrs_stretch:overlay_hud".asRSCM())
         val chat = Component("component.chatbox:chatoverlay".asRSCM())
@@ -623,7 +629,8 @@ private class Fixture {
             player.ifCloseChat(events)
             check(!player.ui.containsModal("interface.chat_left"))
             check(player.ui.containsOverlay("interface.messagebox_titled"))
-            for (stage in TutorialStage.entries.filter { it != TutorialStage.COMPLETE }) {
+            for (stage in TutorialStage.entries.filter { it != TutorialStage.COMPLETE &&
+                !it.legacyOptional }) {
                 player.tutorialProgress = stage.code
                 progress.show(player)
                 for ((slot, name) in slots.withIndex()) {
@@ -634,7 +641,7 @@ private class Fixture {
                 check(packets.any { packetText(it) == stage.lesson }) {
                     "$frame $stage: missing tutorial instruction title"
                 }
-                check(packets.any { packetText(it) == stage.instruction }) {
+                check(packets.any { packetText(it) == stage.objective }) {
                     "$frame $stage: missing tutorial instruction text"
                 }
             }
@@ -766,6 +773,15 @@ private class Fixture {
         val loc = BoundLocInfo(LocInfo(2, coords, LocEntity(type.id, 10, 0)), type)
         interaction {
             check(events.publish(ProtectedAccess(player, coroutine, context), LocEvents.Op1(loc, loc, type)))
+        }
+    }
+
+    private fun locProspect(symbol: String, coords: CoordGrid) {
+        val type = checkNotNull(ServerCacheManager.getObject(symbol.asRSCM()))
+        val loc = BoundLocInfo(LocInfo(2, coords, LocEntity(type.id, 10, 0)), type)
+        interaction {
+            check(events.publish(ProtectedAccess(player, coroutine, context),
+                LocEvents.Op2(loc, loc, type)))
         }
     }
 
