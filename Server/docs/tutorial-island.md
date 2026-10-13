@@ -17,6 +17,16 @@ When enabled, Skippy (`npc.tutorial_skip`) stands at `(3097, 3108, 0)`,
 facing south without wandering. Yes gives the same mainland starter supplies
 as normal completion and teleports to Lumbridge; No leaves progress unchanged.
 
+When a new character first logs into Tutorial Island, the existing appearance
+editor opens before the first Gielinor Guide lesson. Confirming the choice
+stores `tutorial_appearance_confirmed` as a permanent character attribute, so
+relogging does not repeatedly reopen it. Trying to speak to the Guide before
+confirmation returns to the editor instead of bypassing character setup.
+The rev-240 client supports the reusable Makeover Mage appearance panel
+(body type, skin colour and pronouns), not yet all of the newer official
+character creator's hair, clothing and palette selectors. Tutorial confirmation
+never invokes the Makeover Mage's NPC dialogue.
+
 The classic island uses its existing revision-240 NPCs and map objects. The
 `content/areas/misc/tutorial-island` plugin supplies the complete teaching route:
 
@@ -73,7 +83,11 @@ chat overlay, replacing the normal chat log between NPC conversations. Chat
 modals take precedence and reveal the instruction again when they close. The
 non-NPC panels now give only a concise, contextual action objective (maximum
 two wrapped lines of 40 characters) rather than reproducing instructor speeches.
-NPC conversations provide the explanations, character and optional recaps.
+Objective wording now matches the action gates: running is optional rather
+than a required "run to the next guide" lesson, the furnace teaches bronze-bar
+smelting, equipment prompts state what to equip and the ranged objective names
+the giant rat. These remain concise authored instructions, not verbatim Jagex
+UI text. NPC conversations provide the explanations, character and optional recaps.
 The standalone verification checks the titled panel and the objective packets.
 
 The [historical interface transcript](https://rune-server.org/threads/tutorial-island-dialogue-interfaces.397139/)
@@ -148,8 +162,10 @@ character attributes rather than custom varps, so the standalone server
 build works with the existing SERVER cache without running a cache repack.
 
 The older client already understands world/minimap hint-arrow packets. These
-now direct players to instructors and selected training targets, update with
-tutorial progress and disappear at completion. They do not replace the later
+now target each instructor's **live NPC slot**, so the overhead marker follows
+the Gielinor Guide and the other tutors even if they move from their spawn tiles.
+Non-NPC scenery targets still use fixed coordinate hints; all hints clear on
+completion. They do not replace the later
 official client's glowing NPC/loc outlines or pulsing side-tab icons. Newer
 client assets and an authenticated display test are needed for exact parity.
 
