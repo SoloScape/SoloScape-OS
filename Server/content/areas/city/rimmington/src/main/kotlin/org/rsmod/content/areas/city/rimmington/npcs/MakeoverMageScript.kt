@@ -19,6 +19,7 @@ import org.rsmod.api.script.onNpcQueue
 import org.rsmod.api.script.onOpNpc1
 import org.rsmod.api.script.onOpNpc4
 import org.rsmod.api.player.output.mes
+import org.rsmod.api.player.ui.ifSetEvents
 import org.rsmod.api.table.FacialHairStylesRow
 import org.rsmod.api.table.HairStylesRow
 import org.rsmod.api.table.HandStylesRow
@@ -51,6 +52,8 @@ class MakeoverMageScript @Inject constructor(private val random: GameRandom) : P
                 player.vars["varp.if1"] = appearance.bodyType
                 player.vars["varp.if2"] = player.vars[VAR_COLOUR]
                 player.vars["varp.if3"] = appearance.pronoun
+                player.ifSetEvents("component.makeover_mage:colour",
+                    SKIN_COLOUR_ORDER.indices, IfEvent.Op1)
             }
         }
         for ((index, mage) in MAGES.withIndex()) {
