@@ -1206,3 +1206,10 @@ isServerOnly = true
 id = "varp.tutorial_familiarity"
 scope = "Perm"
 transmit = "Never"
+
+# One-time Learning the Ropes quest credit, distinct from merely leaving via Skippy.
+[[varp]]
+isServerOnly = true
+id = "varp.tutorial_quest_awarded"
+scope = "Perm"
+transmit = "Never"
