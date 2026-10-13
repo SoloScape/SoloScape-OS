@@ -18,8 +18,17 @@ public class TutorialSkippyScript @Inject constructor(
     private val npcs: NpcRepository,
     private val progress: TutorialProgress,
 ) : PluginScript() {
+    /**
+     * Skippy is a Deadman-style convenience, not an NPC on the normal modern OSRS tutorial.
+     * Default to the official no-skip route; private/dev worlds can opt in explicitly.
+     */
+    private val skipEnabled: Boolean
+        get() = System.getProperty("soloscape.tutorial.skip") == "true" ||
+            System.getenv("SOLOSCAPE_TUTORIAL_SKIP") == "true"
+
     override fun ScriptContext.startup() {
         onGameStartup {
+            if (!skipEnabled) return@onGameStartup
             if (npcs.findAll(SPAWN).none { it.id == NPC.asRSCM() }) {
                 val cached = checkNotNull(ServerCacheManager.getNpc(NPC.asRSCM()))
                 val type = cached.copy(wanderRange = 0, defaultMode = NpcMode.None).also {
@@ -34,7 +43,7 @@ public class TutorialSkippyScript @Inject constructor(
             }
         }
         onOpNpc1(NPC) {
-            if (!player.onTutorial) return@onOpNpc1
+            if (!skipEnabled || !player.onTutorial) return@onOpNpc1
             startDialogue(it.npc) {
                 chatNpc(neutral, "Would you like to skip the tutorial?")
                 val skip = choice2("Yes", 1, "No", 2)
