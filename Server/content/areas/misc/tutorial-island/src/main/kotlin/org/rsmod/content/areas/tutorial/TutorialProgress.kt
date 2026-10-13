@@ -24,6 +24,8 @@ import org.rsmod.game.ui.Component
 import org.rsmod.map.CoordGrid
 
 public var Player.tutorialProgress: Int by intVarp("varp.tutorial")
+/** 0: undecided, 1: newcomer, 2: returning, 3: experienced; permanent server-side setting. */
+public var Player.tutorialFamiliarity: Int by intVarp("varp.tutorial_familiarity")
 private var Player.tutorialProgressBar: Int by intVarp("varp.tutorial_progress_overlay")
 private var Player.newTutorialAccount: Boolean by boolVarBit("varbit.new_player_account")
 private var Player.tutorialQuestPoints: Int by intVarp("varp.qp")
