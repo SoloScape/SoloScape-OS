@@ -528,9 +528,13 @@ private class Fixture {
             check(player.vars["varbit.new_player_account"] == 1 && player.attr[tutorialPassage] == pending)
             check(!player.ui.containsModal("interface.chatmenu"))
             check(player.ui.containsOverlay("interface.tutorial_overlay"))
+            val questPointsBeforeSkip = player.vars["varp.qp"]
+            val questsBeforeSkip = player.vars["varbit.quests_completed_count"]
             interaction(listOf(1)) {
                 check(events.publish(ProtectedAccess(player, coroutine, context), NpcEvents.Op1(skippy)))
             }
+            check(player.vars["varp.qp"] == questPointsBeforeSkip)
+            check(player.vars["varbit.quests_completed_count"] == questsBeforeSkip)
             check(player.coords == TutorialProgress.LUMBRIDGE && player.tutorialStage == TutorialStage.COMPLETE)
             check(player.vars["varbit.new_player_account"] == 0 && player.attr[tutorialPassage] == null)
             check(!player.ui.containsOverlay("interface.tutorial_overlay"))
