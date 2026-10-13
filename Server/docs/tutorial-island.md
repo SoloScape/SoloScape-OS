@@ -22,11 +22,12 @@ The classic island uses its existing revision-240 NPCs and map objects. The
 1. Guide conversation, settings, camera/movement explanation and the starting door.
 2. Inventory, fishing, skills, woodcutting, firemaking, and a guaranteed
    successful first cooked shrimp with the Survival Expert.
-3. A pot of flour and bucket of water, bread dough, baking bread, music,
-   an actual emote and running.
+3. A pot of flour and bucket of water, bread dough and baking bread.
+   Music, Emotes and the Run orb are available after baking but no longer
+   block reaching the Quest Guide.
 4. Quest Guide dialogue and the quest journal, followed by the underground ladder.
-5. Identifying tin/copper rocks, mining both ores, smelting bronze and making a
-   bronze dagger through the normal smithing interface.
+5. Mining tin and copper, smelting bronze and making a bronze dagger
+   through the normal smithing interface. Prospecting is not required.
 6. Equipment, wielding a dagger, equipping sword/shield, a melee rat kill, then
    a ranged rat kill with a shortbow and arrows.
 7. Opening the bank (with 25 starter coins already deposited), reading
@@ -50,8 +51,8 @@ and replay menus do not award extra supplies. The dialogue draws on the
 [Quest Guide](https://oldschool.runescape.wiki/w/Transcript:Quest_Guide) and
 [Brother Brace](https://oldschool.runescape.wiki/w/Transcript:Brother_Brace)
 transcripts and OSRS combat/mining teaching topics. It is rewritten, not copied
-as a word-for-word official transcript; SoloScape's existing mandatory lessons
-and level gates remain unchanged.
+as a word-for-word official transcript; the remaining required lessons
+and their gameplay gates remain unchanged.
 Adam on the island reuses the existing Ironman setup and armour
 dialogue. No external account details are requested. The Account Guide draws
 on the [OSRS Account Guide transcript](https://oldschool.runescape.wiki/w/Transcript:Account_Guide)
@@ -69,16 +70,27 @@ tutorial overlay is attached to the full game HUD, with its native progress bar
 at the bottom centre. Instructions use the native titled message panel in the
 chat overlay, replacing the normal chat log between NPC conversations. Chat
 modals take precedence and reveal the instruction again when they close. The
-non-NPC panels now use classic Tutorial Island-style titles and short explanations
-of what an interaction does, not just single-line objectives. Their instructions
-are kept within the native three-line, 40-character-per-line chatbox limit, and
-the standalone verification checks both title and text packets.
+non-NPC panels now give only a concise, contextual action objective (maximum
+two wrapped lines of 40 characters) rather than reproducing instructor speeches.
+NPC conversations provide the explanations, character and optional recaps.
+The standalone verification checks the titled panel and the objective packets.
 
 The [historical interface transcript](https://rune-server.org/threads/tutorial-island-dialogue-interfaces.397139/)
 informed the teaching style, but the text is newly written for SoloScape's
 implemented sequence rather than copied verbatim. It is not a claim of exact
 modern OSRS parity: current OSRS has revised control guidance, and SoloScape
 still teaches fishing before woodcutting but no longer forces the first shrimp to burn.
+
+Per the [25 October 2018 OSRS update history](https://oldschool.runescape.wiki/w/Tutorial_Island#Changes),
+Music, Emotes and prospecting are no longer required lessons; using Run is
+optional. Baking bread (stage 180) now advances directly to LEAVE_KITCHEN
+(220), and Dezzick (270) advances directly to MINE_TIN (300). The old stage
+codes 190/200/210 and 280/290 are still decoded but automatically migrate
+forward on a tick or tutorial overlay refresh, protecting saved characters.
+Music and Emotes tabs become available after baking, and clicking either, or
+toggling Run, never advances the route. Prospecting requests explain the rock
+type but do not advance mining; the existing cache may not expose a visible
+Prospect option on rocks, so direct mining is the supported route.
 Tabs unlock as their lessons introduce them (Logout is available from the start);
 the native client hides icons for closed side panels. Login and gameframe
 changes reapply the current lesson, and departure restores all tabs and chat.
@@ -90,8 +102,9 @@ tools and materials without advancing the lesson or repeatedly adding supplies
 already held, worn or banked. Full inventories leave the current step intact.
 
 Doors gate later areas until their lessons are finished; passage lessons advance
-after arrival on the other side. The cache exposes only `Mine` on the training
-rocks, so initial clicks identify the ore before mining. This island has one
+after arrival on the other side. The cache exposes `Mine` on the training
+rocks, so clicking a rock now mines directly without requiring a prospecting
+lesson. This island has one
 church door, which also serves as the exit. Ladder destinations use the existing
 collision-aware stair navigator. Ordinary teleports remain blocked until departure.
 Experience stops at level 3 (174 XP), Hitpoints XP is withheld, and tutorial combat
@@ -123,6 +136,8 @@ tutorial alongside the existing Friends/Ignore handlers, runs all nine instructo
 dialogues and the fishing, chopping, mining, smelting and baking handlers, and
 checks login/resume, Account Management tab/recap and coin safety,
 five instructors' replay menus and stage-specific reminders,
+short objective panel limits, optional step bypasses, legacy-save migration,
+mining without prospecting, Music/Emotes and Run no longer gating progress,
 supply recovery, inventory-full recovery,
 successful versus incorrect processing events, equipment, passage arrival, XP
 limits, combat-style and hit-result gates, desktop/mobile tab handlers, the
@@ -135,7 +150,9 @@ ignored `build/direct/tutorial-verification/`.
 This harness does not prove an end-to-end client walkthrough. For release
 verification, manually create a disposable character and follow every step in the
 original client, including all gates/ladders, fishing/fire/cooking, the smithing
-menu, melee and ranged kills, banking, emotes, Friends/Ignore, and Wind Strike.
+menu, melee and ranged kills, banking, Friends/Ignore, and Wind Strike. Music,
+Emotes, Run and prospecting must be skippable; optionally try them without
+changing the current required step.
 Log out and back in during survival, mining and magic; verify that progress and
 position resume. After Wind Strike, close the quest completion scroll, talk to the
 Ironman tutor and return to Terrova, then cast the actual Lumbridge Home Teleport
