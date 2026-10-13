@@ -63,7 +63,7 @@ public enum class TutorialStage(
     SPELLBOOK(560, "Open your final menu", "Open the Magic tab, marked by a spellbook icon. It shows your spells and the runes they need."),
     MAGIC_RETURN(570, "Magic spells", "Wind Strike is a basic attack spell that uses air and mind runes. Ask the Magic Instructor for some runes."),
     CAST(580, "Cast Wind Strike", "Select Wind Strike in the Magic tab, then click a chicken in the pen to cast the spell using your runes."),
-    DEPART(590, "Almost finished", "You have reached the end of Tutorial Island. Talk to the Magic Instructor when you are ready to go to Lumbridge."),
+    DEPART(590, "Home Teleport", "To leave the island, cast Lumbridge Home Teleport in the Magic tab. Speak to the Ironman tutor first if you wish."),
     COMPLETE(1000, "Welcome to Lumbridge", "Your tutorial is complete. Explore Gielinor, try new skills and speak with the people you meet.");
 
     public val next: TutorialStage
