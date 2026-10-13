@@ -660,28 +660,36 @@ private class Fixture {
         player.invMap.getOrPut("inv.bank")[1] = InvObj("obj.logs", 1)
         progress.complete(player)
         player.coords = TutorialProgress.LUMBRIDGE
+        // Verify by OSRS item ID: local gameval names are intentionally not
+        // assumed (notably the empty bucket/pot mappings).
         val starterKit = mapOf(
-            "obj.bronze_axe" to 1,
-            "obj.bronze_pickaxe" to 1,
-            "obj.tinderbox" to 1,
-            "obj.net" to 1,
-            "obj.shrimp" to 2,
-            "obj.bronze_dagger" to 1,
-            "obj.bronze_sword" to 1,
-            "obj.wooden_shield" to 1,
-            "obj.shortbow" to 1,
-            "obj.bronze_arrow" to 25,
-            "obj.airrune" to 25,
-            "obj.mindrune" to 15,
-            "obj.bucket" to 1,
-            "obj.pot" to 1,
-            "obj.bread" to 1,
-            "obj.waterrune" to 6,
-            "obj.earthrune" to 4,
-            "obj.bodyrune" to 2,
+            1351 to 1, // bronze axe
+            1265 to 1, // bronze pickaxe
+            590 to 1, // tinderbox
+            303 to 1, // small fishing net
+            315 to 2, // shrimps
+            1205 to 1, // bronze dagger
+            1277 to 1, // bronze sword
+            1171 to 1, // wooden shield
+            841 to 1, // shortbow
+            882 to 25, // bronze arrows
+            556 to 25, // air runes
+            558 to 15, // mind runes
+            1925 to 1, // empty bucket
+            1931 to 1, // empty pot
+            2309 to 1, // bread
+            555 to 6, // water runes
+            557 to 4, // earth runes
+            559 to 2, // body runes
         )
-        for ((item, amount) in starterKit) {
-            check(player.inv.count(item) == amount) { "Wrong mainland starter quantity for $item" }
+        for ((itemId, amount) in starterKit) {
+            check(ServerCacheManager.getItem(itemId) != null) {
+                "Missing item definition for starter kit item $itemId"
+            }
+            val actual = player.inv.filterNotNull { it.id == itemId }.sumOf { it.count }
+            check(actual == amount) {
+                "Wrong mainland starter quantity for $itemId: got $actual, expected $amount"
+            }
         }
         check(player.inv.count("obj.logs") == 0)
         check(player.worn.isEmpty())
