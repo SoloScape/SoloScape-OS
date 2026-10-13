@@ -199,8 +199,14 @@ private class Fixture {
         player.tutorialProgress = TutorialStage.GUIDE.code
         talk("npc.newbie_basics_instructor", listOf(3))
         check(player.tutorialFamiliarity == 3)
-        check(ServerCacheManager.getVarp("varp.tutorial_familiarity".asRSCM())!!.scope ==
-            dev.openrune.types.varp.VarpLifetime.Perm)
+        // Both custom tutorial varps must be present in the RSCM registry as
+        // well as the server cache. A raw-cache definition alone is not enough.
+        for (varp in listOf("varp.tutorial_familiarity", "varp.tutorial_quest_awarded")) {
+            check(ServerCacheManager.getVarp(varp.asRSCM())!!.scope ==
+                dev.openrune.types.varp.VarpLifetime.Perm) {
+                "$varp is missing a permanent RSCM/cache varp definition"
+            }
+        }
 
         player.tutorialProgress = TutorialStage.QUEST_RETURN.code
         packets.clear()
