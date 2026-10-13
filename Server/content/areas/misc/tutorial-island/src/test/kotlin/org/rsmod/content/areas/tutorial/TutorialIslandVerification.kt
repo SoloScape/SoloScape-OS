@@ -600,7 +600,11 @@ private class Fixture {
         talk("npc.newbie_magic_instructor", listOf(2))
         check(player.tutorialStage == TutorialStage.DEPART &&
             player.coords == CoordGrid(3140, 3095))
+        // The tutorial mine is underground but still part of Tutorial Island.
         player.coords = CoordGrid(3083, 9498)
+        check(TutorialProgress.canDepartByHomeTeleport(player))
+        // Lumbridge is outside the tutorial footprint, including its underground level.
+        player.coords = TutorialProgress.LUMBRIDGE
         check(!TutorialProgress.canDepartByHomeTeleport(player))
         player.coords = CoordGrid(3140, 3095)
         progress.complete(player)
