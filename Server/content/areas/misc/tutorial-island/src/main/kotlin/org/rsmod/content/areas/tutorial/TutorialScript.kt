@@ -22,6 +22,9 @@ import org.rsmod.api.player.events.skilling.SkillingProcessingEvent
 import org.rsmod.api.player.hook.TeleportType
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.output.mes
+import org.rsmod.api.player.vars.VarPlayerIntMapSetter
+import org.rsmod.api.table.SettingsConfigsRow
+import org.rsmod.content.interfaces.settings.scripts.varValue
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.player.stat.statAdd
 import org.rsmod.api.player.ui.ifSetEvents
@@ -291,6 +294,13 @@ public class TutorialScript @Inject constructor(
                         "I've played before, but not recently.", 2,
                         "I'm an experienced player.", 3,
                     ).coerceIn(1, 3)
+                    // OSRS defaults Accept Aid to on for new and returning players.
+                    // Resolve the backing var from the cache's settings table instead
+                    // of guessing an interface-era-specific varbit ID.
+                    if (player.tutorialFamiliarity in 1..2) {
+                        SettingsConfigsRow.all().firstOrNull { it.settingId == 59 }
+                            ?.varValue?.let { VarPlayerIntMapSetter.set(player, it, 1) }
+                    }
                 }
                 if (player.tutorialFamiliarity == 1) {
                     chatNpc(happy, "Take your time. The instructions on screen explain your next task.")
