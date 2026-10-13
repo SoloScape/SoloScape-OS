@@ -4,6 +4,7 @@ package org.rsmod.content.areas.tutorial
 
 import dev.openrune.ServerCacheManager
 import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
 import dev.openrune.types.InventoryServerType
 import dev.or2.central.account.AccountData
 import dev.or2.central.account.CharacterData
