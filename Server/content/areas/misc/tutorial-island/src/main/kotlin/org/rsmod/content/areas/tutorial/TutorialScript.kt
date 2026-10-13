@@ -243,7 +243,9 @@ public class TutorialScript @Inject constructor(
         val frame = RSCM.getReverseMapping(RSCMType.INTERFACE, player.ui.topLevel.id)
             .removePrefix("interface.")
         if (frame !in TOPLEVELS) return
-        for (tab in TAB_STEPS.keys) {
+        // Optional Music and Emotes tabs must stay clickable even though they
+        // no longer advance a mandatory tutorial stage.
+        for (tab in TAB_STEPS.keys + OPTIONAL_TABS) {
             player.ifSetEvents("component.$frame:stone$tab", -1..0, IfEvent.Op1)
         }
     }
@@ -864,6 +866,7 @@ public class TutorialScript @Inject constructor(
 
     private companion object {
         val TOPLEVELS = listOf("toplevel_osrs_stretch", "toplevel_pre_eoc", "toplevel", "toplevel_osm")
+        val OPTIONAL_TABS = listOf(12, 13)
         val TAB_STEPS = mapOf(11 to TutorialStage.SETTINGS, 3 to TutorialStage.INVENTORY,
             1 to TutorialStage.STATS,
             2 to TutorialStage.JOURNAL, 4 to TutorialStage.EQUIPMENT,
