@@ -459,7 +459,13 @@ public class TutorialScript @Inject constructor(
                 "Ask a banker about your bank settings. Do not share a PIN or reuse your password.")
             else -> Unit
         }
-        chatNpc(happy, "Your starter coins are already safe in your bank. " +
+        val bank = access.bank
+        val missingCoins = (25 - bank.count("obj.coins")).coerceAtLeast(0)
+        if (missingCoins > 0 && !access.invAdd(bank, "obj.coins", missingCoins).success) {
+            chatNpc(neutral, "Your bank is full. Make room and come back for your starter coins.")
+            return
+        }
+        chatNpc(happy, "Your starter coins are safe in your bank. " +
             "Leave through the next door and find Brother Brace at the church.")
         progress.advance(player, TutorialStage.ACCOUNT)
     }
