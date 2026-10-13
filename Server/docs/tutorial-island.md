@@ -10,11 +10,12 @@ character with no saved login or logout history receives new-character startup,
 even when the loader did not create its account in that request. Characters with
 saved login history retain their position and tutorial progress.
 
-Skippy (`npc.tutorial_skip`) stands at `(3097, 3108, 0)`, facing south without
-wandering. He asks "Would you like to skip the tutorial?" with **Yes** and **No**.
-Yes marks the tutorial complete, clears the new-account flag and any pending
-tutorial passage, restores normal tabs/chat, and teleports to Lumbridge.
-No closes the dialogue without changing progress or position.
+In standard OSRS-parity mode, Skippy does **not** spawn: the tutorial cannot be
+skipped. Private/development servers may opt into the former custom shortcut with
+`SOLOSCAPE_TUTORIAL_SKIP=true` or JVM property `-Dsoloscape.tutorial.skip=true`.
+When enabled, Skippy (`npc.tutorial_skip`) stands at `(3097, 3108, 0)`,
+facing south without wandering. Yes gives the same mainland starter supplies
+as normal completion and teleports to Lumbridge; No leaves progress unchanged.
 
 The classic island uses its existing revision-240 NPCs and map objects. The
 `content/areas/misc/tutorial-island` plugin supplies the complete teaching route:
@@ -112,10 +113,12 @@ cannot reduce Hitpoints below one. These restrictions end on arrival in Lumbridg
 
 Wind Strike quest credit and the completion scroll are awarded at the chicken hit,
 while `varp.tutorial` remains at DEPART until a real Home Teleport successfully
-arrives in Lumbridge. On departure the server tops up to at least 25 air and
-15 mind runes in the inventory and 25 coins in the bank, including for Skippy
-skip departures. It does not yet normalise the entire OSRS starter inventory;
-unrelated gathered items are preserved. Other teleports stay blocked; Home Teleport bypasses the
+arrives in Lumbridge. On departure the server replaces the inventory, equipment and bank contents
+from Tutorial Island with the standard OSRS mainland starter kit, including
+25 bronze arrows, 25 air and 15 mind runes, 6 water, 4 earth and 2 body runes,
+tools, weapons, food and 25 banked coins. This applies to opt-in Skippy
+departures as well. Non-starter training supplies do not leave the island, and
+run energy is restored. Other teleports stay blocked; Home Teleport bypasses the
 island restriction only at that final stage. No dialogue choice teleports the player,
 and the Ironman tutor stays accessible before departure. Skipping with Skippy
 does not award quest credit. The full Learning the Ropes Quest Journal entry
@@ -143,7 +146,8 @@ successful versus incorrect processing events, equipment, passage arrival, XP
 limits, combat-style and hit-result gates, desktop/mobile tab handlers, the
 one-time Wind Strike quest reward, blocked teleports, the non-departing
 Ironman/Magic Instructor dialogue branches, Chef's bucket-of-water supplies,
-first-attempt shrimp success, initial bank coins and starter rune amounts. Character creation is also checked in
+first-attempt shrimp success on a normal fire, initial bank coins, exact mainland
+starter supplies, run energy and the standard no-Skippy default. Character creation is also checked in
 an isolated in-memory SQLite database. Outputs stay under
 ignored `build/direct/tutorial-verification/`.
 
