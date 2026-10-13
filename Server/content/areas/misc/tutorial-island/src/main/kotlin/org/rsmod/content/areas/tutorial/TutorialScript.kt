@@ -42,7 +42,6 @@ import org.rsmod.content.generic.locs.passages.GenericPassageScript
 import org.rsmod.content.generic.locs.passages.Passages
 import org.rsmod.content.generic.locs.passages.StairNavigator
 import org.rsmod.content.interfaces.bank.openBank
-import org.rsmod.content.interfaces.emotes.PlayEmote
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.Player
@@ -210,9 +209,6 @@ public class TutorialScript @Inject constructor(
                 progress.advance(player, TutorialStage.BURY)
             }
         }
-        onEvent<PlayEmote> {
-            if (TutorialProgress.onIsland(player.coords)) progress.advance(player, TutorialStage.EMOTES)
-        }
         onEvent<NpcHitEvents.AnyImpact> {
             if (!hit.isFromPlayer) return@onEvent
             val player = hit.resolvePlayerSource(players) ?: return@onEvent
@@ -359,6 +355,11 @@ public class TutorialScript @Inject constructor(
                     reminder()
                     return
                 }
+                if (player.tutorialStage == TutorialStage.LEAVE_KITCHEN) {
+                    chatNpc(neutral, "Your bread is ready. You can try the Music or Emotes " +
+                        "tab, and turn on running with the run orb, if you like. " +
+                        "None is required; follow the path to the Quest Guide when ready.")
+                }
                 chatNpc(happy, "Welcome back to my kitchen! Need another cooking lesson?")
                 when (choice3("No thanks, Chef.", 1,
                     "Remind me how to make dough.", 2,
@@ -423,8 +424,9 @@ public class TutorialScript @Inject constructor(
             TutorialStage.MINER -> {
                 chatNpc(happy, "Welcome to my mine! I'm Dezzick. Stone and metal are " +
                     "the foundations of a good adventurer's equipment.")
-                chatNpc(neutral, "Take this pickaxe. First inspect the grey and brown " +
-                    "rocks to tell tin from copper; then mine one of each.")
+                chatNpc(neutral, "Take this pickaxe and mine one tin ore from a grey rock " +
+                    "and one copper ore from a brown rock. You can also prospect " +
+                    "rocks to identify them, but that isn't required.")
                 if (!supply("obj.bronze_pickaxe")) return
                 progress.advance(player, TutorialStage.MINER)
             }
@@ -684,7 +686,8 @@ public class TutorialScript @Inject constructor(
     }
 
     private suspend fun Dialogue.reminder() {
-        chatNpc(neutral, player.tutorialStage?.instruction ?: "Please follow your tutorial instructions.")
+        chatNpc(neutral, "Your next objective is shown in the tutorial guide. " +
+            "Follow it to continue, or ask me again if you need supplies.")
     }
 
     private suspend fun Dialogue.supply(item: String, count: Int = 1): Boolean {
@@ -745,17 +748,12 @@ public class TutorialScript @Inject constructor(
     }
 
     private suspend fun ProtectedAccess.prospect(copper: Boolean) {
-        if (!lessonAtLeast(TutorialStage.PROSPECT_TIN)) return
+        if (!lessonAtLeast(TutorialStage.MINE_TIN)) return
         mesbox("This rock contains ${if (copper) "copper" else "tin"} ore.")
-        progress.advance(player, if (copper) TutorialStage.PROSPECT_COPPER else TutorialStage.PROSPECT_TIN)
+        // Prospecting is optional. Only a successful ore collection advances the lesson.
     }
 
     private suspend fun ProtectedAccess.mine(loc: BoundLocInfo, copper: Boolean) {
-        if ((player.tutorialStage == TutorialStage.PROSPECT_TIN && !copper) ||
-            (player.tutorialStage == TutorialStage.PROSPECT_COPPER && copper)) {
-            prospect(copper)
-            return
-        }
         if (!lessonAtLeast(TutorialStage.MINE_TIN)) return
         if (!inv.contains("obj.bronze_pickaxe") && !player.worn.contains("obj.bronze_pickaxe")) {
             mes("Ask the Mining Instructor for a pickaxe.")
@@ -793,7 +791,7 @@ public class TutorialScript @Inject constructor(
     private suspend fun ProtectedAccess.cookBread() {
         if (!lessonAtLeast(TutorialStage.BREAD)) return
         if (!inv.contains("obj.bread_dough")) {
-            mes("Mix a pot of flour and a jug of water to make bread dough first.")
+            mes("Mix a pot of flour and a bucket of water to make bread dough first.")
             return
         }
         anim("seq.human_cooking")
@@ -867,7 +865,7 @@ public class TutorialScript @Inject constructor(
     private companion object {
         val TOPLEVELS = listOf("toplevel_osrs_stretch", "toplevel_pre_eoc", "toplevel", "toplevel_osm")
         val TAB_STEPS = mapOf(11 to TutorialStage.SETTINGS, 3 to TutorialStage.INVENTORY,
-            1 to TutorialStage.STATS, 13 to TutorialStage.MUSIC,
+            1 to TutorialStage.STATS,
             2 to TutorialStage.JOURNAL, 4 to TutorialStage.EQUIPMENT,
             5 to TutorialStage.PRAYER, 9 to TutorialStage.FRIENDS, 6 to TutorialStage.SPELLBOOK,
             8 to TutorialStage.ACCOUNT_MANAGEMENT)
