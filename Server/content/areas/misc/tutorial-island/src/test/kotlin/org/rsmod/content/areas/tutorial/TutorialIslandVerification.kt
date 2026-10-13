@@ -367,10 +367,7 @@ private class Fixture {
             check(player.tutorialStage == case.stage) {
                 "${case.npc} replay unexpectedly advanced ${case.stage}"
             }
-            val spoken = packets.mapNotNull(::packetText)
-                .joinToString(" ")
-                .replace(Regex("<br\\s*/?>"), " ")
-                .replace(Regex("\\s+"), " ")
+            val spoken = spokenDialogue()
             check(case.expected in spoken) {
                 "${case.npc} did not provide its expected recap: ${case.expected}; got: $spoken"
             }
@@ -395,8 +392,9 @@ private class Fixture {
             packets.clear()
             talk(case.npc, case.choices)
             check(player.tutorialStage == case.stage)
-            check(packets.any { packetText(it)?.contains(case.expected) == true }) {
-                "${case.npc} missing in-progress reminder: ${case.expected}"
+            val spoken = spokenDialogue()
+            check(case.expected in spoken) {
+                "${case.npc} missing in-progress reminder: ${case.expected}; got: $spoken"
             }
         }
         // Completed lessons offer a no-thanks branch without mutating progress or supplies.
@@ -699,6 +697,15 @@ private class Fixture {
         println("PASS: tutorial tab unlocks/resume, HUD progress placement, chat instructions, " +
             "RuneScape greeting, frame changes and Ignore selection")
     }
+
+    // Dialogues can be split across chat packets and contain client line-break markup.
+    // Verify the words the player sees rather than the raw packet boundaries.
+    private fun spokenDialogue(): String =
+        packets.mapNotNull(::packetText)
+            .joinToString(" ")
+            .replace(Regex("<[^>]*>"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
 
     private fun packetText(packet: Any): String? =
         packet.javaClass.methods.firstOrNull { it.name == "getText" && it.parameterCount == 0 }
