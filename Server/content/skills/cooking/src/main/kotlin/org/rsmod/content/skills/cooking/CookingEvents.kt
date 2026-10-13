@@ -198,9 +198,12 @@ class CookingEvents @Inject constructor(
     }
 
     private fun ProtectedAccess.applyCook(food: CookingFoodsRow, surface: CookingSurface) {
+        // OSRS guarantees that the first shrimp cooked during Tutorial Island succeeds.
+        // The normal firemaking code spawns loc.fire, so this must be handled here rather
+        // than only by the tutorial-specific loc.newbiefire interaction.
         val firstTutorialShrimp = player.vars["varp.tutorial"] == 120 &&
             food.raw.internalName == "obj.raw_shrimp"
-        val burned = firstTutorialShrimp || isBurned(food, surface)
+        val burned = !firstTutorialShrimp && isBurned(food, surface)
         invDel(inv, food.raw.internalName, 1)
 
         if (burned) {
