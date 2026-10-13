@@ -218,7 +218,7 @@ public class TutorialScript @Inject constructor(
                 }
             } else if (name == "npc.newbiechicken" && hit.type == HitType.Magic &&
                 hit.damage > 0 && player.tutorialStage == TutorialStage.CAST) {
-                progress.advance(player, TutorialStage.CAST)
+                progress.finishWindStrike(player)
             }
         }
         onEvent<PlayerHitEvents.Modify> {
@@ -502,15 +502,17 @@ public class TutorialScript @Inject constructor(
                     "inside the pen. If a spell misses, try again. You can cast without a staff.")
             }
             TutorialStage.DEPART -> {
-                chatNpc(happy, "Your training is complete. Lumbridge is your first stop on " +
-                    "the mainland. Explore, meet people and try a quest when you arrive.")
-                chatNpc(neutral, "If you want an Ironman mode, choose it with the Ironman " +
-                    "tutor before leaving. You can stay here to practise a little longer.")
-                if (choice2("Take me to Lumbridge.", 1, "I'd like to stay for now.", 2) != 1) return
-                progress.advance(player, TutorialStage.DEPART)
-                access.telejump(TutorialProgress.LUMBRIDGE, TeleportType.Exempt)
-                access.statRestore("stat.hitpoints")
-                access.statRestore("stat.prayer")
+                chatNpc(happy, "Congratulations! You have completed Learning the Ropes. " +
+                    "Your final lesson is the Lumbridge Home Teleport spell.")
+                chatNpc(neutral, "Open your Magic tab and select Lumbridge Home Teleport. " +
+                    "It needs no runes and will take you to the mainland.")
+                when (choice2("I'd like to be an Ironman.", 1,
+                    "I'm ready to cast Home Teleport.", 2)) {
+                    1 -> chatNpc(neutral, "Speak to the Ironman tutor outside my building " +
+                        "before you leave. You can come back here once you've chosen your mode.")
+                    else -> chatNpc(happy, "Cast Lumbridge Home Teleport from your spellbook " +
+                        "when you are ready. You can remain on the island until then.")
+                }
             }
             else -> reminder()
         }
