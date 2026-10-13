@@ -19,12 +19,20 @@ public class TutorialSkippyScript @Inject constructor(
     private val progress: TutorialProgress,
 ) : PluginScript() {
     /**
-     * Skippy is a Deadman-style convenience, not an NPC on the normal modern OSRS tutorial.
-     * Default to the official no-skip route; private/dev worlds can opt in explicitly.
+     * SoloScape exposes Skippy as an optional island shortcut. Official OSRS
+     * only spawns him during selected events, but here players can talk to him
+     * on every new character after accepting their appearance.
+     *
+     * Set -Dsoloscape.tutorial.skip=false or SOLOSCAPE_TUTORIAL_SKIP=false
+     * to enforce the full, unskippable OSRS tutorial instead.
      */
     private val skipEnabled: Boolean
-        get() = System.getProperty("soloscape.tutorial.skip") == "true" ||
-            System.getenv("SOLOSCAPE_TUTORIAL_SKIP") == "true"
+        get() {
+            val configured = System.getProperty("soloscape.tutorial.skip")
+                ?: System.getenv("SOLOSCAPE_TUTORIAL_SKIP")
+            return configured?.equals("false", ignoreCase = true) != true &&
+                configured != "0"
+        }
 
     override fun ScriptContext.startup() {
         onGameStartup {
@@ -43,14 +51,57 @@ public class TutorialSkippyScript @Inject constructor(
             }
         }
         onOpNpc1(NPC) {
-            if (!skipEnabled || !player.onTutorial) return@onOpNpc1
+            if (!skipEnabled || !player.onTutorial ||
+                !TutorialProgress.onIsland(player.coords)) return@onOpNpc1
+            // The first appearance-editor screen is mandatory. Skippy must
+            // never become another route around its Accept button.
+            if (player.tutorialAppearancePending) {
+                progress.ensureAppearanceCreation(player)
+                return@onOpNpc1
+            }
             startDialogue(it.npc) {
-                chatNpc(neutral, "Would you like to skip the tutorial?")
-                val skip = choice2("Yes", 1, "No", 2)
-                access.ifCloseChat()
-                if (skip != 1) return@startDialogue
-                progress.complete(player)
-                access.telejump(TutorialProgress.LUMBRIDGE, TeleportType.Exempt)
+                chatNpc(neutral, "Want to skip the lessons and head for the mainland?")
+                while (true) {
+                    when (choice4(
+                        "Send me to the mainland.", 1,
+                        "Who are you?", 2,
+                        "Can I decide later?", 3,
+                        "I'll stay for the tutorial.", 4,
+                    )) {
+                        1 -> {
+                            chatNpc(neutral, "I can take you straight to Lumbridge, but you'll miss " +
+                                "the lessons and the Learning the Ropes Quest Point.")
+                            val confirmed = choice2(
+                                "Yes, take me to Lumbridge.", true,
+                                "No, I'll finish my training.", false,
+                            )
+                            if (!confirmed) {
+                                chatNpc(happy, "Suit yourself! Come back if you change your mind.")
+                                return@startDialogue
+                            }
+                            // Revalidate before granting rewards and using an exempt teleport.
+                            if (!player.onTutorial || player.tutorialAppearancePending ||
+                                !TutorialProgress.onIsland(player.coords)) return@startDialogue
+                            chatNpc(happy, "All right! Good luck out there, adventurer.")
+                            access.ifCloseChat()
+                            progress.complete(player)
+                            access.telejump(TutorialProgress.LUMBRIDGE, TeleportType.Exempt)
+                            return@startDialogue
+                        }
+                        2 -> chatNpc(neutral, "Skippy's the name. I'm usually near Rimmington, " +
+                            "but they've put me in charge of getting seasoned adventurers " +
+                            "through here faster.")
+                        3 -> {
+                            chatNpc(happy, "Of course. Have a look around, and come talk to " +
+                                "me when you've decided.")
+                            return@startDialogue
+                        }
+                        4 -> {
+                            chatNpc(happy, "Good choice! The instructors will show you the ropes.")
+                            return@startDialogue
+                        }
+                    }
+                }
             }
         }
     }
