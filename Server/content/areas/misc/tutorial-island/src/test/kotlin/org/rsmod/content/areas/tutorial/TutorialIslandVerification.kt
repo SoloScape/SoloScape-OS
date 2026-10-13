@@ -125,10 +125,10 @@ public fun main() {
 
 private class Fixture {
     val events = EventBus()
-    val progress = TutorialProgress(events)
+    val npcs = NpcList()
+    val progress = TutorialProgress(events, npcs)
     val ticks = TutorialTickHook(progress)
     val players = PlayerList()
-    val npcs = NpcList()
     val collision = CollisionFlagMap()
     val packets = mutableListOf<Any>()
     val player = Player().apply {
