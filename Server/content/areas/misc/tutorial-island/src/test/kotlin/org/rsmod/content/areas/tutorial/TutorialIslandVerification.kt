@@ -874,21 +874,44 @@ private class Fixture {
 
     fun verifySkippy() {
         collision.allocateIfAbsent(3097, 3108, 0)
-        System.clearProperty("soloscape.tutorial.skip")
+        // Operators can disable the shortcut when requiring full training.
+        System.setProperty("soloscape.tutorial.skip", "false")
         events.publish(GameLifecycle.Startup)
         check(npcs.none { it.id == TutorialSkippyScript.NPC.asRSCM() }) {
-            "Normal OSRS Tutorial Island must not spawn Skippy."
+            "The configured no-skip tutorial must not spawn Skippy."
         }
-        // Skippy remains available only to explicitly opted-in private/development worlds.
-        System.setProperty("soloscape.tutorial.skip", "true")
+
+        // SoloScape default: Skippy in the first room, beside the exit door.
+        System.clearProperty("soloscape.tutorial.skip")
         events.publish(GameLifecycle.Startup)
         val skippy = npcs.first { it.id == TutorialSkippyScript.NPC.asRSCM() }
         check(skippy.type.name == "Skippy")
         check(skippy.coords == CoordGrid(3097, 3108, 0))
-        check(skippy.respawnDir == Direction.South && skippy.movementLocked && skippy.type.wanderRange == 0)
+        check(skippy.respawnDir == Direction.South &&
+            skippy.movementLocked && skippy.type.wanderRange == 0)
         check(skippy.pendingFaceSquare == CoordGrid(3097, 3107, 0))
         events.publish(GameLifecycle.Startup)
         check(npcs.count { it.id == TutorialSkippyScript.NPC.asRSCM() } == 1)
+
+        // No bypass of the Accept button on initial character creation.
+        val appearanceKey = org.rsmod.api.attr.AttributeKey<Int>("tutorial_appearance_confirmed")
+        player.coords = TutorialProgress.START
+        player.tutorialProgress = TutorialStage.GUIDE.code
+        VarPlayerIntMapSetter.set(player, "varbit.new_player_account", 1)
+        player.attr.remove(appearanceKey)
+        packets.clear()
+        interaction {
+            check(events.publish(ProtectedAccess(player, coroutine, context), NpcEvents.Op1(skippy)))
+        }
+        check(player.tutorialAppearancePending)
+        check(player.ui.containsModal("interface.makeover_mage"))
+        check(player.tutorialStage == TutorialStage.GUIDE &&
+            player.coords == TutorialProgress.START)
+        check(!spokenDialogue().contains("Want to skip the lessons"))
+        // Other parts of this fixture separately exercise the actual Accept button.
+        player.attr[appearanceKey] = 1
+        player.ifCloseModals(events)
+
         for (stage in listOf(TutorialStage.GUIDE, TutorialStage.SMITH, TutorialStage.DEPART)) {
             player.coords = TutorialProgress.START
             player.tutorialProgress = stage.code
@@ -897,38 +920,50 @@ private class Fixture {
             progress.open(player)
             val pending = TutorialPassage(TutorialStage.LEAVE_START, CoordGrid(3098, 3107))
             player.attr[tutorialPassage] = pending
-            packets.clear()
-            interaction(listOf(2)) {
-                check(events.publish(ProtectedAccess(player, coroutine, context), NpcEvents.Op1(skippy)))
+
+            // Stay, decide later, explanation, and cancelled confirmation all
+            // leave progress, existing passage and account state untouched.
+            for (choices in listOf(listOf(4), listOf(3), listOf(2, 4), listOf(1, 2))) {
+                packets.clear()
+                interaction(choices) {
+                    check(events.publish(ProtectedAccess(player, coroutine, context), NpcEvents.Op1(skippy)))
+                }
+                check(spokenDialogue().contains("Want to skip the lessons"))
+                check(player.coords == TutorialProgress.START && player.tutorialStage == stage)
+                check(player.vars["varbit.new_player_account"] == 1 &&
+                    player.attr[tutorialPassage] == pending)
+                check(!player.ui.containsModal("interface.chatmenu"))
+                check(player.ui.containsOverlay("interface.tutorial_overlay"))
             }
-            check(packets.any { packetText(it) == "Would you like to skip the tutorial?" })
-            check(player.coords == TutorialProgress.START && player.tutorialStage == stage)
-            check(player.vars["varbit.new_player_account"] == 1 && player.attr[tutorialPassage] == pending)
-            check(!player.ui.containsModal("interface.chatmenu"))
-            check(player.ui.containsOverlay("interface.tutorial_overlay"))
+
             val questPointsBeforeSkip = player.vars["varp.qp"]
             val questsBeforeSkip = player.vars["varbit.quests_completed_count"]
-            interaction(listOf(1)) {
+            packets.clear()
+            interaction(listOf(1, 1)) {
                 check(events.publish(ProtectedAccess(player, coroutine, context), NpcEvents.Op1(skippy)))
             }
+            check(spokenDialogue().contains("miss the lessons"))
             check(player.vars["varp.qp"] == questPointsBeforeSkip)
             check(player.vars["varbit.quests_completed_count"] == questsBeforeSkip)
             check(player.tutorialQuestAwarded == 0)
-            check(player.coords == TutorialProgress.LUMBRIDGE && player.tutorialStage == TutorialStage.COMPLETE)
+            check(player.coords == TutorialProgress.LUMBRIDGE &&
+                player.tutorialStage == TutorialStage.COMPLETE)
             check(player.inv.count("obj.bronze_arrow") == 25)
             check(player.inv.count("obj.airrune") == 25)
             check(player.inv.count("obj.mindrune") == 15)
             check(player.runEnergy == 10000)
-            check(player.vars["varbit.new_player_account"] == 0 && player.attr[tutorialPassage] == null)
+            check(player.vars["varbit.new_player_account"] == 0 &&
+                player.attr[tutorialPassage] == null)
             check(!player.ui.containsOverlay("interface.tutorial_overlay"))
             check(!player.ui.containsOverlay("interface.messagebox_titled"))
             check(player.ui.containsOverlay("interface.side_channels"))
             events.publish(SessionStateEvent.PrepareLogin(player))
-            check(player.coords == TutorialProgress.LUMBRIDGE && player.tutorialStage == TutorialStage.COMPLETE)
+            check(player.coords == TutorialProgress.LUMBRIDGE &&
+                player.tutorialStage == TutorialStage.COMPLETE)
         }
         System.clearProperty("soloscape.tutorial.skip")
-        println("PASS: Skippy disabled for standard tutorial; opt-in skip preserves progress safety, " +
-            "Yes/No choices and starter rewards")
+        println("PASS: Skippy defaults to the Guide's house; mandatory appearance, " +
+            "all conversation choices, confirmed-only skip and starter rewards")
     }
 
     fun verifyCombat() {
