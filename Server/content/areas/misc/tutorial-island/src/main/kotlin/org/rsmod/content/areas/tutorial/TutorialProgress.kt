@@ -5,6 +5,7 @@ import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import org.rsmod.api.invtx.invAdd
 import org.rsmod.api.player.midiJingle
+import org.rsmod.api.player.output.HintArrows
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.output.runClientScript
 import org.rsmod.api.player.ui.ifCloseOverlay
@@ -113,6 +114,15 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
         val stage = current.resumeStage
         if (stage != current) player.tutorialProgress = stage.code
         player.tutorialProgressBar = stage.ordinal * 20 / TutorialStage.COMPLETE.ordinal
+        // The revision-240 client supports native world/minimap hint arrows. Use them
+        // to guide the player to instructors and objects until newer UI outlines ship.
+        if (player.onTutorial) {
+            val target = HINT_TARGETS[stage]
+            if (target != null) HintArrows.hintCoord(player, target)
+            else HintArrows.hintStop(player)
+        } else {
+            HintArrows.hintStop(player)
+        }
         if (!player.onTutorial) {
             player.ifCloseOverlay("interface.tutorial_overlay", eventBus)
             player.ifCloseOverlay("interface.messagebox_titled", eventBus)
@@ -153,6 +163,35 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
     }
 
     public companion object {
+        /** Coordinates taken from the rev-240 Tutorial Island spawn/interaction map. */
+        private val HINT_TARGETS: Map<TutorialStage, CoordGrid> = mapOf(
+            TutorialStage.GUIDE to CoordGrid(3094, 3107),
+            TutorialStage.GUIDE_RETURN to CoordGrid(3094, 3107),
+            TutorialStage.SURVIVAL to CoordGrid(3103, 3095),
+            TutorialStage.SURVIVAL_RETURN to CoordGrid(3103, 3095),
+            TutorialStage.SURVIVAL_FINISH to CoordGrid(3103, 3095),
+            TutorialStage.FISH to CoordGrid(3099, 3090),
+            TutorialStage.CHOP to CoordGrid(3100, 3098),
+            TutorialStage.CHEF to CoordGrid(3075, 3085),
+            TutorialStage.QUEST to CoordGrid(3085, 3122),
+            TutorialStage.QUEST_RETURN to CoordGrid(3085, 3122),
+            TutorialStage.MINER to CoordGrid(3081, 9504),
+            TutorialStage.MINE_TIN to CoordGrid(3075, 9504),
+            TutorialStage.MINE_COPPER to CoordGrid(3085, 9501),
+            TutorialStage.SMELT to CoordGrid(3078, 9495),
+            TutorialStage.MINER_RETURN to CoordGrid(3081, 9504),
+            TutorialStage.COMBAT to CoordGrid(3106, 9509),
+            TutorialStage.EQUIP_DAGGER to CoordGrid(3106, 9509),
+            TutorialStage.COMBAT_RETURN to CoordGrid(3106, 9509),
+            TutorialStage.ACCOUNT to CoordGrid(3127, 3124),
+            TutorialStage.ACCOUNT_RETURN to CoordGrid(3127, 3124),
+            TutorialStage.PRIEST to CoordGrid(3125, 3106),
+            TutorialStage.PRIEST_RETURN to CoordGrid(3125, 3106),
+            TutorialStage.MAGIC to CoordGrid(3141, 3088),
+            TutorialStage.MAGIC_RETURN to CoordGrid(3141, 3088),
+            TutorialStage.CAST to CoordGrid(3140, 3093),
+        )
+
         private val STARTER_KIT: List<Pair<String, Int>> = listOf(
             "obj.bronze_axe" to 1,
             "obj.bronze_pickaxe" to 1,
