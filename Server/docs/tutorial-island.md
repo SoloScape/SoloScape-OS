@@ -48,7 +48,13 @@ sets `tutorial_appearance_confirmed = 1` and unlocks movement. Normal mainland
 Makeover Mage visits remain closable and do not restrict walking.
 The rev-240 client supports the reusable Makeover Mage appearance panel
 (body type, skin colour and pronouns), not yet all of the newer official
-character creator's hair, clothing and palette selectors. Tutorial confirmation
+character creator's hair, clothing and palette selectors. The server explicitly
+enables click events on both body-type models, pronoun choices, skin-colour
+swatches, Apply and Confirm whenever the editor opens. The input path also
+honours an explicit event mask for static IF3 component clicks, which can
+otherwise be rejected before reaching any gameplay script. Modal recovery
+restores these event permissions after a dismissed editor is reopened.
+Tutorial confirmation
 never invokes the Makeover Mage's NPC dialogue.
 
 The classic island uses its existing revision-240 NPCs and map objects. The
