@@ -413,8 +413,8 @@ public class TutorialScript @Inject constructor(
     }
 
     private suspend fun Dialogue.questOverview() {
-        chatNpc(neutral, "Your Quest Journal shows where to start a quest, its requirements " +
-            "and your next steps. Look for quest symbols on the minimap.")
+        chatNpc(neutral, "Look for quest symbols on the minimap. Your Quest Journal " +
+            "shows where to start a quest, what you need, and your next steps.")
         chatNpc(neutral, "Red entries have not been started, yellow entries are underway, " +
             "and green entries are finished.")
         chatNpc(happy, "Adventures can earn experience, equipment and access to new places. " +
