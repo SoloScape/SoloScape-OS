@@ -69,18 +69,27 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
         val completed = player.tutorialProgress >= TutorialStage.DEPART.code &&
             (player.tutorialQuestAwarded == 1 || player.tutorialStage == TutorialStage.DEPART)
         val title = "Learning the Ropes"
-        val lines = if (completed) listOf(
-            "<col=008000>Quest complete!</col>",
-            "You finished your training on Tutorial Island.",
-            "Rewards: 1 Quest Point and access to the mainland.",
-            "Lumbridge Home Teleport is now available.",
-        ) else listOf(
+        val skipped = player.tutorialStage == TutorialStage.COMPLETE &&
+            player.tutorialQuestAwarded != 1
+        val lines = when {
+            skipped -> listOf(
+                "You skipped the Tutorial Island lessons.",
+                "Learning the Ropes quest credit was not awarded.",
+            )
+            completed -> listOf(
+                "<col=008000>Quest complete!</col>",
+                "You finished your training on Tutorial Island.",
+                "Rewards: 1 Quest Point and access to the mainland.",
+                "Lumbridge Home Teleport is now available.",
+            )
+            else -> listOf(
             "Talk to the Quest Guide on Tutorial Island.",
             "Learn the basics of Gielinor from its instructors.",
             "Current lesson: ${player.tutorialStage?.lesson ?: "Explore Tutorial Island"}",
             "Next step: ${player.tutorialStage?.objective ?: "Talk to the Quest Guide."}",
             "Cast Wind Strike on a chicken to finish the quest.",
-        )
+            )
+        }
         player.ifOpenMain("interface.questjournal", eventBus)
         player.runClientScript(5240)
         player.ifSetText("component.questjournal:title", "<col=7f0000>$title</col>")
