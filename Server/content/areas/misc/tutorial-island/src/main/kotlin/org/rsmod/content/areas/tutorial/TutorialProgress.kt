@@ -2,6 +2,7 @@ package org.rsmod.content.areas.tutorial
 
 import dev.openrune.ServerCacheManager
 import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
 import org.rsmod.api.attr.AttributeKey
@@ -22,6 +23,7 @@ import org.rsmod.api.player.vars.intVarBit
 import org.rsmod.content.quest.manager.Quest
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
+import org.rsmod.game.entity.NpcList
 import org.rsmod.game.ui.Component
 import org.rsmod.map.CoordGrid
 
@@ -54,7 +56,10 @@ public val Player.onTutorial: Boolean
     get() = tutorialProgress in 1 until TutorialStage.COMPLETE.code
 
 @Singleton
-public class TutorialProgress @Inject constructor(private val eventBus: EventBus) {
+public class TutorialProgress @Inject constructor(
+    private val eventBus: EventBus,
+    private val npcs: NpcList,
+) {
     public fun open(player: Player) {
         player.ifOpenOverlay("interface.tutorial_overlay",
             "component.toplevel_osrs_stretch:overlay_hud", eventBus)
@@ -181,12 +186,23 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
         val stage = current.resumeStage
         if (stage != current) player.tutorialProgress = stage.code
         player.tutorialProgressBar = stage.ordinal * 20 / TutorialStage.COMPLETE.ordinal
-        // The revision-240 client supports native world/minimap hint arrows. Use them
-        // to guide the player to instructors and objects until newer UI outlines ship.
+        // Instructors move from their map spawn tiles. A coordinate marker remains
+        // on the floor (as in the Guide's house), whereas a slot hint follows the
+        // live NPC and displays over its head on both the world view and minimap.
         if (player.onTutorial) {
-            val target = HINT_TARGETS[stage]
-            if (target != null) HintArrows.hintCoord(player, target)
-            else HintArrows.hintStop(player)
+            val npcType = NPC_HINTS[stage]
+            val npc = npcType?.let { type ->
+                val id = type.asRSCM(RSCMType.NPC)
+                npcs.firstOrNull { it.type.id == id && it.isVisible &&
+                    it.coords.level == player.coords.level }
+            }
+            when {
+                npc != null -> HintArrows.hintNpc(player, npc)
+                npcType != null -> HintArrows.hintStop(player)
+                HINT_TARGETS[stage] != null ->
+                    HintArrows.hintCoord(player, HINT_TARGETS.getValue(stage))
+                else -> HintArrows.hintStop(player)
+            }
         } else {
             HintArrows.hintStop(player)
         }
@@ -230,32 +246,36 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
     }
 
     public companion object {
-        /** Coordinates taken from the rev-240 Tutorial Island spawn/interaction map. */
+        /** Instructor targets are NPC slot hints, not stationary spawn tile hints. */
+        private val NPC_HINTS: Map<TutorialStage, String> = mapOf(
+            TutorialStage.GUIDE to "npc.newbie_basics_instructor",
+            TutorialStage.GUIDE_RETURN to "npc.newbie_basics_instructor",
+            TutorialStage.SURVIVAL to "npc.newbie_survival_instructor",
+            TutorialStage.SURVIVAL_RETURN to "npc.newbie_survival_instructor",
+            TutorialStage.SURVIVAL_FINISH to "npc.newbie_survival_instructor",
+            TutorialStage.CHEF to "npc.newbie_cook_instructor",
+            TutorialStage.QUEST to "npc.newbie_quest_instructor",
+            TutorialStage.QUEST_RETURN to "npc.newbie_quest_instructor",
+            TutorialStage.MINER to "npc.newbie_mining_instructor",
+            TutorialStage.MINER_RETURN to "npc.newbie_mining_instructor",
+            TutorialStage.COMBAT to "npc.newbie_combat_instructor",
+            TutorialStage.COMBAT_RETURN to "npc.newbie_combat_instructor",
+            TutorialStage.ACCOUNT to "npc.newbie_account_instructor",
+            TutorialStage.ACCOUNT_RETURN to "npc.newbie_account_instructor",
+            TutorialStage.PRIEST to "npc.brother_noob",
+            TutorialStage.PRIEST_RETURN to "npc.brother_noob",
+            TutorialStage.MAGIC to "npc.newbie_magic_instructor",
+            TutorialStage.MAGIC_RETURN to "npc.newbie_magic_instructor",
+        )
+
+        /** Fixed-location scenery objectives; instructor targets use NPC_HINTS instead. */
         private val HINT_TARGETS: Map<TutorialStage, CoordGrid> = mapOf(
-            TutorialStage.GUIDE to CoordGrid(3094, 3107),
-            TutorialStage.GUIDE_RETURN to CoordGrid(3094, 3107),
-            TutorialStage.SURVIVAL to CoordGrid(3103, 3095),
-            TutorialStage.SURVIVAL_RETURN to CoordGrid(3103, 3095),
-            TutorialStage.SURVIVAL_FINISH to CoordGrid(3103, 3095),
             TutorialStage.FISH to CoordGrid(3099, 3090),
             TutorialStage.CHOP to CoordGrid(3100, 3098),
-            TutorialStage.CHEF to CoordGrid(3075, 3085),
-            TutorialStage.QUEST to CoordGrid(3085, 3122),
-            TutorialStage.QUEST_RETURN to CoordGrid(3085, 3122),
-            TutorialStage.MINER to CoordGrid(3081, 9504),
             TutorialStage.MINE_TIN to CoordGrid(3075, 9504),
             TutorialStage.MINE_COPPER to CoordGrid(3085, 9501),
             TutorialStage.SMELT to CoordGrid(3078, 9495),
-            TutorialStage.MINER_RETURN to CoordGrid(3081, 9504),
-            TutorialStage.COMBAT to CoordGrid(3106, 9509),
             TutorialStage.EQUIP_DAGGER to CoordGrid(3106, 9509),
-            TutorialStage.COMBAT_RETURN to CoordGrid(3106, 9509),
-            TutorialStage.ACCOUNT to CoordGrid(3127, 3124),
-            TutorialStage.ACCOUNT_RETURN to CoordGrid(3127, 3124),
-            TutorialStage.PRIEST to CoordGrid(3125, 3106),
-            TutorialStage.PRIEST_RETURN to CoordGrid(3125, 3106),
-            TutorialStage.MAGIC to CoordGrid(3141, 3088),
-            TutorialStage.MAGIC_RETURN to CoordGrid(3141, 3088),
             TutorialStage.CAST to CoordGrid(3140, 3093),
         )
 
