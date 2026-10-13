@@ -181,9 +181,17 @@ private class Fixture {
     fun verifyLoginAndResume() {
         for (stage in TutorialStage.entries) {
             val lines = TutorialProgress.hintLines(stage.instruction)
-            check(lines.size <= 3 && lines.all { it.length <= 40 })
+            check(stage.lesson.isNotBlank() && stage.lesson.length <= 32)
+            check(stage.instruction.isNotBlank())
+            check(lines.size <= 3 && lines.all { it.length <= 40 }) {
+                "$stage: instruction exceeds the three-line tutorial chatbox"
+            }
             check(lines.joinToString(" ") == stage.instruction)
         }
+        check(TutorialStage.GUIDE.lesson == "Getting started")
+        check(TutorialStage.SETTINGS.lesson == "Player controls")
+        check(TutorialStage.INVENTORY.instruction.contains("backpack"))
+        check(TutorialStage.CAST.instruction.contains("Wind Strike"))
         player.tutorialProgress = 0
         player.coords = CoordGrid(3222, 3218)
         events.publish(SessionStateEvent.PrepareLogin(player))
@@ -452,7 +460,12 @@ private class Fixture {
                         "$frame $stage: incorrect visibility for $name"
                     }
                 }
-                check(packets.any { packetText(it) == stage.instruction })
+                check(packets.any { packetText(it) == stage.lesson }) {
+                    "$frame $stage: missing tutorial instruction title"
+                }
+                check(packets.any { packetText(it) == stage.instruction }) {
+                    "$frame $stage: missing tutorial instruction text"
+                }
             }
             // Restoring an earlier saved lesson closes later tabs again.
             player.tutorialProgress = TutorialStage.INVENTORY.code
