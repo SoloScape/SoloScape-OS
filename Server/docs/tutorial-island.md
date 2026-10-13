@@ -138,10 +138,14 @@ manager/list registration needs a newer cache or an explicit client DB-row patch
 The revision-240 gamepack predates Jagex's dedicated familiarity-selection
 screen and new 2025 yellow entity/side-icon highlighting assets. The initial
 Gielinor Guide dialogue therefore remains the compatible three-choice fallback.
-Its response is now saved permanently in `varp.tutorial_familiarity`
+Its response is now saved permanently in the character attribute `tutorial_familiarity`
 (1 = brand new, 2 = returning, 3 = experienced), and new/returning characters
 receive the Accept Aid default from the server's settings table. This does
 not implement Jagex's entire 2025 preferences preset or Adventure Paths.
+
+Both `tutorial_familiarity` and `tutorial_quest_awarded` use persistent
+character attributes rather than custom varps, so the standalone server
+build works with the existing SERVER cache without running a cache repack.
 
 The older client already understands world/minimap hint-arrow packets. These
 now direct players to instructors and selected training targets, update with
