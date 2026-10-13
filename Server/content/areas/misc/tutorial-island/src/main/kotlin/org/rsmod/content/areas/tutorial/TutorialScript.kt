@@ -443,31 +443,58 @@ public class TutorialScript @Inject constructor(
     }
 
     private suspend fun Dialogue.account() {
-        if (player.tutorialStage != TutorialStage.ACCOUNT) {
-            reminder()
-            return
+        when (player.tutorialStage) {
+            TutorialStage.ACCOUNT -> {
+                chatNpc(happy, "I'm the Account Guide. Your character belongs to an account, " +
+                    "and account settings help you look after it.")
+                chatNpc(neutral, "Open the Account Management tab using the account icon on " +
+                    "the side of the screen. Come back to me once you've found it.")
+                progress.advance(player, TutorialStage.ACCOUNT)
+            }
+            TutorialStage.ACCOUNT_MANAGEMENT -> {
+                chatNpc(neutral, "Find the Account Management tab on the side of the game " +
+                    "screen and open it. Then speak to me again.")
+            }
+            TutorialStage.ACCOUNT_RETURN -> {
+                accountOverview()
+                val bank = access.bank
+                val missingCoins = (25 - bank.count("obj.coins")).coerceAtLeast(0)
+                if (missingCoins > 0 && !access.invAdd(bank, "obj.coins", missingCoins).success) {
+                    chatNpc(neutral, "Your bank is full. Make room and come back for your starter coins.")
+                    return
+                }
+                chatNpc(happy, "Your 25 starter coins are in your bank. That covers the basics! " +
+                    "Follow the path to the church and meet Brother Brace.")
+                progress.advance(player, TutorialStage.ACCOUNT_RETURN)
+            }
+            else -> {
+                if (player.tutorialProgress < TutorialStage.ACCOUNT.code) {
+                    reminder()
+                    return
+                }
+                chatNpc(happy, "Hello again! Would you like a recap of Account Management?")
+                if (choice2("Yes, please.", 1, "No thanks.", 2) == 1) {
+                    accountOverview()
+                } else {
+                    chatNpc(happy, "No problem. Enjoy your adventures!")
+                }
+            }
         }
-        chatNpc(happy, "Banks keep items safe and free space in your inventory. You can deposit " +
-            "and withdraw items at bank booths throughout the world.")
-        chatNpc(neutral, "You can earn coins by gathering resources, making useful items, " +
-            "fighting monsters or trading. Shops buy and sell many basic supplies.")
-        when (choice3("How do I keep my account safe?", 1, "What is a bank PIN?", 2,
-            "I'm ready to continue.", 3)) {
-            1 -> chatNpc(neutral, "Use a unique password, enable an authenticator where available, " +
-                "and never share your login details. Staff will never need your password.")
-            2 -> chatNpc(neutral, "A bank PIN adds another check before opening your bank. " +
-                "Ask a banker about your bank settings. Do not share a PIN or reuse your password.")
-            else -> Unit
-        }
-        val bank = access.bank
-        val missingCoins = (25 - bank.count("obj.coins")).coerceAtLeast(0)
-        if (missingCoins > 0 && !access.invAdd(bank, "obj.coins", missingCoins).success) {
-            chatNpc(neutral, "Your bank is full. Make room and come back for your starter coins.")
-            return
-        }
-        chatNpc(happy, "Your starter coins are safe in your bank. " +
-            "Leave through the next door and find Brother Brace at the church.")
-        progress.advance(player, TutorialStage.ACCOUNT)
+    }
+
+    private suspend fun Dialogue.accountOverview() {
+        chatNpc(neutral, "In official Old School RuneScape, Account Management covers " +
+            "membership, Bonds, account messages, display names and useful links.")
+        chatNpc(neutral, "Worlds are different game servers. In OSRS, the Logout tab has " +
+            "a World Switcher, and some worlds need membership to enter.")
+        chatNpc(neutral, "Membership unlocks extra skills, areas and quests in OSRS. " +
+            "Bonds can be redeemed for membership or traded between players.")
+        chatNpc(neutral, "SoloScape does not currently offer OSRS membership or Bond " +
+            "purchases through its Account tab, so those store options may be unavailable.")
+        chatNpc(neutral, "OSRS also provides an account inbox, a display-name changer " +
+            "and support links. SoloScape may manage these differently or outside the client.")
+        chatNpc(neutral, "Keep your password private and use additional authentication " +
+            "when available. A bank PIN protects bank items in OSRS; never share a PIN.")
     }
 
     private suspend fun Dialogue.priest() {
@@ -720,7 +747,8 @@ public class TutorialScript @Inject constructor(
         val TAB_STEPS = mapOf(11 to TutorialStage.SETTINGS, 3 to TutorialStage.INVENTORY,
             1 to TutorialStage.STATS, 13 to TutorialStage.MUSIC,
             2 to TutorialStage.JOURNAL, 4 to TutorialStage.EQUIPMENT,
-            5 to TutorialStage.PRAYER, 9 to TutorialStage.FRIENDS, 6 to TutorialStage.SPELLBOOK)
+            5 to TutorialStage.PRAYER, 9 to TutorialStage.FRIENDS, 6 to TutorialStage.SPELLBOOK,
+            8 to TutorialStage.ACCOUNT_MANAGEMENT)
         val RATS = setOf("npc.newbiegiantrat", "npc.newbiegiantrat2", "npc.newbiegiantrat3")
         val PASSAGE_STEPS = setOf(TutorialStage.LEAVE_START, TutorialStage.LEAVE_SURVIVAL,
             TutorialStage.LEAVE_KITCHEN, TutorialStage.LEAVE_MINE, TutorialStage.LEAVE_BANK,
