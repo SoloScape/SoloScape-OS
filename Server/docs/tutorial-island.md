@@ -20,19 +20,20 @@ The classic island uses its existing revision-240 NPCs and map objects. The
 `content/areas/misc/tutorial-island` plugin supplies the complete teaching route:
 
 1. Guide conversation, settings, camera/movement explanation and the starting door.
-2. Inventory, fishing, skills, woodcutting, firemaking, a burned shrimp and a
-   successful retry with the Survival Expert.
-3. Flour and water, bread dough, baking bread, music, an actual emote and running.
+2. Inventory, fishing, skills, woodcutting, firemaking, and a guaranteed
+   successful first cooked shrimp with the Survival Expert.
+3. A pot of flour and bucket of water, bread dough, baking bread, music,
+   an actual emote and running.
 4. Quest Guide dialogue and the quest journal, followed by the underground ladder.
 5. Identifying tin/copper rocks, mining both ores, smelting bronze and making a
    bronze dagger through the normal smithing interface.
 6. Equipment, wielding a dagger, equipping sword/shield, a melee rat kill, then
    a ranged rat kill with a shortbow and arrows.
-7. Opening a bank, reading the local poll booth, finance/account-safety dialogue
-   and the starter coins. Ultimate Ironman receives an explanation instead of
-   access to a bank.
+7. Opening the bank (with 25 starter coins already deposited), reading
+   the local poll booth, and finance/account-safety dialogue. Ultimate Ironman
+   receives an explanation instead of access to a bank.
 8. Prayer, burying bones, the Friends and Ignore lists, and player conduct.
-9. Magic, runes, and a successful Wind Strike on a chicken, which awards a
+9. Magic, five air and five mind runes for Wind Strike on a chicken, which awards a
    one-time Learning the Ropes completion scroll, jingle and Quest Point. After
    completion the Magic Instructor teaches Lumbridge Home Teleport. Players can
    talk to the Ironman tutor before casting it to depart for `(3222, 3218, 0)`.
@@ -55,7 +56,7 @@ The [historical interface transcript](https://rune-server.org/threads/tutorial-i
 informed the teaching style, but the text is newly written for SoloScape's
 implemented sequence rather than copied verbatim. It is not a claim of exact
 modern OSRS parity: current OSRS has revised control guidance, and SoloScape
-still teaches fishing before woodcutting and intentionally burns the first shrimp.
+still teaches fishing before woodcutting but no longer forces the first shrimp to burn.
 Tabs unlock as their lessons introduce them (Logout is available from the start);
 the native client hides icons for closed side panels. Login and gameframe
 changes reapply the current lesson, and departure restores all tabs and chat.
@@ -76,7 +77,10 @@ cannot reduce Hitpoints below one. These restrictions end on arrival in Lumbridg
 
 Wind Strike quest credit and the completion scroll are awarded at the chicken hit,
 while `varp.tutorial` remains at DEPART until a real Home Teleport successfully
-arrives in Lumbridge. Other teleports stay blocked; Home Teleport bypasses the
+arrives in Lumbridge. On departure the server tops up to at least 25 air and
+15 mind runes in the inventory and 25 coins in the bank, including for Skippy
+skip departures. It does not yet normalise the entire OSRS starter inventory;
+unrelated gathered items are preserved. Other teleports stay blocked; Home Teleport bypasses the
 island restriction only at that final stage. No dialogue choice teleports the player,
 and the Ironman tutor stays accessible before departure. Skipping with Skippy
 does not award quest credit. The full Learning the Ropes Quest Journal entry
@@ -98,8 +102,9 @@ dialogues and the fishing, chopping, mining, smelting and baking handlers, and
 checks login/resume, supply recovery, inventory-full recovery,
 successful versus incorrect processing events, equipment, passage arrival, XP
 limits, combat-style and hit-result gates, desktop/mobile tab handlers, the
-one-time Wind Strike quest reward, blocked teleports and the non-departing
-Ironman/Magic Instructor dialogue branches. Character creation is also checked in
+one-time Wind Strike quest reward, blocked teleports, the non-departing
+Ironman/Magic Instructor dialogue branches, Chef's bucket-of-water supplies,
+first-attempt shrimp success, initial bank coins and starter rune amounts. Character creation is also checked in
 an isolated in-memory SQLite database. Outputs stay under
 ignored `build/direct/tutorial-verification/`.
 
