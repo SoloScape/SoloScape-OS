@@ -3,6 +3,7 @@ package org.rsmod.content.areas.tutorial
 import dev.openrune.rscm.RSCM.asRSCM
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
+import org.rsmod.api.attr.AttributeKey
 import org.rsmod.api.invtx.invAdd
 import org.rsmod.api.player.midiJingle
 import org.rsmod.api.player.output.HintArrows
@@ -24,10 +25,22 @@ import org.rsmod.game.ui.Component
 import org.rsmod.map.CoordGrid
 
 public var Player.tutorialProgress: Int by intVarp("varp.tutorial")
-/** 0: undecided, 1: newcomer, 2: returning, 3: experienced; permanent server-side setting. */
-public var Player.tutorialFamiliarity: Int by intVarp("varp.tutorial_familiarity")
+
+// These new Tutorial Island preferences are saved as character attributes rather
+// than varps. The standalone Kotlin build does not repack SERVER cache definitions,
+// so custom intVarp delegates would fail on existing installations.
+private val tutorialFamiliarityAttr: AttributeKey<Int> = AttributeKey("tutorial_familiarity")
+private val tutorialQuestAwardedAttr: AttributeKey<Int> = AttributeKey("tutorial_quest_awarded")
+
+/** 0: undecided, 1: newcomer, 2: returning, 3: experienced; permanently saved. */
+public var Player.tutorialFamiliarity: Int
+    get() = attr[tutorialFamiliarityAttr] ?: 0
+    set(value) { attr[tutorialFamiliarityAttr] = value.coerceIn(0, 3) }
+
 /** Quest credit is independent of tutorial completion (Skippy skips the quest reward). */
-public var Player.tutorialQuestAwarded: Int by intVarp("varp.tutorial_quest_awarded")
+public var Player.tutorialQuestAwarded: Int
+    get() = attr[tutorialQuestAwardedAttr] ?: 0
+    set(value) { attr[tutorialQuestAwardedAttr] = value.coerceIn(0, 1) }
 private var Player.tutorialProgressBar: Int by intVarp("varp.tutorial_progress_overlay")
 private var Player.newTutorialAccount: Boolean by boolVarBit("varbit.new_player_account")
 private var Player.tutorialQuestPoints: Int by intVarp("varp.qp")
