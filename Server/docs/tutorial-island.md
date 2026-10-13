@@ -22,6 +22,13 @@ editor opens before the first Gielinor Guide lesson. Confirming the choice
 stores `tutorial_appearance_confirmed` as a permanent character attribute, so
 relogging does not repeatedly reopen it. Trying to speak to the Guide before
 confirmation returns to the editor instead of bypassing character setup.
+While appearance is unconfirmed, the server rejects world-viewport and minimap
+walking requests, including ctrl/telejump variants. The Escape/close-modal
+packet also cannot dismiss creation; it re-sends the authoritative main modal.
+Any displaced creator is reopened on the next post-tick, and unfinished movement
+routes are discarded. Only the appearance editor's **Confirm/Accept** button
+sets `tutorial_appearance_confirmed = 1` and unlocks movement. Normal mainland
+Makeover Mage visits remain closable and do not restrict walking.
 The rev-240 client supports the reusable Makeover Mage appearance panel
 (body type, skin colour and pronouns), not yet all of the newer official
 character creator's hair, clothing and palette selectors. Tutorial confirmation
