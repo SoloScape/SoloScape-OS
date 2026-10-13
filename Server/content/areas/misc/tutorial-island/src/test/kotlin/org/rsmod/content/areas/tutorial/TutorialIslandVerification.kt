@@ -29,6 +29,7 @@ import org.rsmod.api.player.events.interact.LocUEvents
 import org.rsmod.api.npc.events.NpcHitEvents
 import org.rsmod.api.player.events.PlayerHitpointsChangedEvent
 import org.rsmod.api.player.events.skilling.SkillingProcessingEvent
+import org.rsmod.api.player.hook.RestrictedAction
 import org.rsmod.api.player.hook.PlayerTeleportValidator
 import org.rsmod.api.player.hook.TeleportType
 import org.rsmod.api.player.input.ResumePauseButtonInput
@@ -90,6 +91,7 @@ import org.rsmod.game.map.Direction
 import org.rsmod.game.loc.BoundLocInfo
 import org.rsmod.game.loc.LocInfo
 import org.rsmod.game.loc.LocEntity
+import org.rsmod.game.movement.RouteRequestCoord
 import org.rsmod.game.queue.EngineQueueCache
 import org.rsmod.game.queue.WorldQueueList
 import org.rsmod.game.region.RegionListLarge
@@ -816,12 +818,36 @@ private class Fixture {
         check(player.ui.containsModal("interface.makeover_mage")) {
             "The first login should open the appearance-customisation interface."
         }
+        val creatorGuard = TutorialAppearanceRestrictionHook()
+        check(player.tutorialAppearancePending)
+        check(creatorGuard.restriction(player, RestrictedAction.Walk) != null) {
+            "Both viewport and minimap clicks must be denied before Accept."
+        }
+        check(creatorGuard.restriction(player, RestrictedAction.CloseModal) != null) {
+            "Closing the creation modal via Escape must be denied before Accept."
+        }
+        // Simulate another system closing the UI and an existing movement route.
+        // The post-tick hook restores the editor and cancels pending movement.
+        player.routeRequest = RouteRequestCoord(CoordGrid(3095, 3107), clientRequest = true)
+        player.routeDestination.add(CoordGrid(3095, 3107))
+        player.ifCloseModals(events)
+        check(!player.ui.containsModal("interface.makeover_mage"))
+        ticks.onPostTick(player)
+        check(player.ui.containsModal("interface.makeover_mage")) {
+            "An unconfirmed character must not bypass creation by closing a modal."
+        }
+        check(player.routeRequest == null && player.routeDestination.isEmpty()) {
+            "Unconfirmed characters must have their walking routes cleared."
+        }
         interaction {
             check(events.publish(ProtectedAccess(player, coroutine, context),
                 IfModalButton(ServerCacheManager.fromComponent("component.makeover_mage:confirm_button"),
                     0, null, IfButtonOp.Op1)))
         }
         check(player.attr[confirmedKey] == 1)
+        check(!player.tutorialAppearancePending)
+        check(creatorGuard.restriction(player, RestrictedAction.Walk) == null)
+        check(creatorGuard.restriction(player, RestrictedAction.CloseModal) == null)
         check(!player.ui.containsModal("interface.makeover_mage"))
         check(player.attr.toPersistentMap()["tutorial_appearance_confirmed"] == 1)
         events.publish(SessionStateEvent.Login(player))
