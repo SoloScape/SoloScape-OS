@@ -102,6 +102,7 @@ public fun main() {
         fixture.verifyPrecreatedCharacterLogin()
         fixture.verifyLoginAndResume()
         fixture.verifyInstructorDialogueAndRecovery()
+        fixture.verifyInstructorRecaps()
         fixture.verifyTrainingActions()
         fixture.verifySuccessfulProcessing()
         fixture.verifyTabsAndOverlay()
@@ -325,6 +326,88 @@ private class Fixture {
         talk("npc.newbie_account_instructor", listOf(2))
         check(player.tutorialStage == TutorialStage.LEAVE_BANK)
         check(player.invMap.getOrPut("inv.bank").count("obj.coins") == bankCoins)
+    }
+
+
+    fun verifyInstructorRecaps() {
+        data class Case(
+            val npc: String,
+            val stage: TutorialStage,
+            val choices: List<Int>,
+            val expected: String,
+        )
+        val recaps = listOf(
+            Case("npc.newbie_cook_instructor", TutorialStage.MUSIC, listOf(2),
+                "Combine a pot of flour"),
+            Case("npc.newbie_cook_instructor", TutorialStage.MUSIC, listOf(3),
+                "Ranges are better suited"),
+            Case("npc.newbie_quest_instructor", TutorialStage.DESCEND, listOf(2),
+                "quest symbols on the minimap"),
+            Case("npc.newbie_mining_instructor", TutorialStage.LEAVE_MINE, listOf(2),
+                "Grey holds tin"),
+            Case("npc.newbie_mining_instructor", TutorialStage.LEAVE_MINE, listOf(3),
+                "Smelt tin and copper"),
+            Case("npc.newbie_combat_instructor", TutorialStage.LEAVE_COMBAT, listOf(2),
+                "train Attack, Strength"),
+            Case("npc.newbie_combat_instructor", TutorialStage.LEAVE_COMBAT, listOf(3),
+                "Equip a bow and arrows"),
+            Case("npc.brother_noob", TutorialStage.LEAVE_CHURCH, listOf(2),
+                "Pray at an altar"),
+            Case("npc.brother_noob", TutorialStage.LEAVE_CHURCH, listOf(3),
+                "Ignore list helps block"),
+        )
+        for (case in recaps) {
+            player.coords = TutorialProgress.START
+            player.tutorialProgress = case.stage.code
+            packets.clear()
+            talk(case.npc, case.choices)
+            check(player.tutorialStage == case.stage) {
+                "${case.npc} replay unexpectedly advanced ${case.stage}"
+            }
+            check(packets.any { packetText(it)?.contains(case.expected) == true }) {
+                "${case.npc} did not provide its expected recap: ${case.expected}"
+            }
+        }
+        // Progress-sensitive reminders are not shortcuts through the lesson.
+        val reminders = listOf(
+            Case("npc.newbie_cook_instructor", TutorialStage.DOUGH, emptyList(),
+                "A good loaf begins with dough"),
+            Case("npc.newbie_quest_instructor", TutorialStage.JOURNAL, emptyList(),
+                "Haven't found the Quest Journal"),
+            Case("npc.newbie_mining_instructor", TutorialStage.PROSPECT_TIN, emptyList(),
+                "inspect the grey"),
+            Case("npc.newbie_combat_instructor", TutorialStage.EQUIP_DAGGER, emptyList(),
+                "Equip it and then"),
+            Case("npc.brother_noob", TutorialStage.PRAYER, emptyList(),
+                "Open the Prayer tab"),
+        )
+        for (case in reminders) {
+            player.inv.fillNulls()
+            player.coords = TutorialProgress.START
+            player.tutorialProgress = case.stage.code
+            packets.clear()
+            talk(case.npc, case.choices)
+            check(player.tutorialStage == case.stage)
+            check(packets.any { packetText(it)?.contains(case.expected) == true }) {
+                "${case.npc} missing in-progress reminder: ${case.expected}"
+            }
+        }
+        // Completed lessons offer a no-thanks branch without mutating progress or supplies.
+        for ((npc, stage) in listOf(
+            "npc.newbie_cook_instructor" to TutorialStage.MUSIC,
+            "npc.newbie_quest_instructor" to TutorialStage.DESCEND,
+            "npc.newbie_mining_instructor" to TutorialStage.LEAVE_MINE,
+            "npc.newbie_combat_instructor" to TutorialStage.LEAVE_COMBAT,
+            "npc.brother_noob" to TutorialStage.LEAVE_CHURCH,
+        )) {
+            player.coords = TutorialProgress.START
+            player.tutorialProgress = stage.code
+            val before = player.inv.count("obj.bronze_arrow")
+            talk(npc, listOf(1))
+            check(player.tutorialStage == stage)
+            check(player.inv.count("obj.bronze_arrow") == before)
+        }
+        println("PASS: instructor personality, optional recaps and stage-aware reminders")
     }
 
     fun verifySuccessfulProcessing() {
