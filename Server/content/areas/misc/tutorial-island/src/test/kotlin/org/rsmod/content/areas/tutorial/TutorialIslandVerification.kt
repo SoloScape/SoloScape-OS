@@ -375,7 +375,7 @@ private class Fixture {
             Case("npc.newbie_quest_instructor", TutorialStage.JOURNAL, emptyList(),
                 "Haven't found the Quest Journal"),
             Case("npc.newbie_mining_instructor", TutorialStage.PROSPECT_TIN, emptyList(),
-                "inspect the grey"),
+                "Need a pointer?"),
             Case("npc.newbie_combat_instructor", TutorialStage.EQUIP_DAGGER, emptyList(),
                 "Equip it and then"),
             Case("npc.brother_noob", TutorialStage.PRAYER, emptyList(),
