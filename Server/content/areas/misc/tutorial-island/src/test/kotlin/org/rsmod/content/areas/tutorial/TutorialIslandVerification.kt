@@ -300,10 +300,31 @@ private class Fixture {
         check(player.tutorialStage == TutorialStage.DOUGH)
         player.inv.fillNulls()
         player.tutorialProgress = TutorialStage.ACCOUNT.code
-        talk("npc.newbie_account_instructor", listOf(3))
+        packets.clear()
+        talk("npc.newbie_account_instructor")
+        check(player.tutorialStage == TutorialStage.ACCOUNT_MANAGEMENT)
+        check(packets.any { packetText(it)?.contains("Account Management tab") == true })
+        talk("npc.newbie_account_instructor")
+        check(player.tutorialStage == TutorialStage.ACCOUNT_MANAGEMENT)
+        // The Account Management tab must be opened; talking again cannot skip the lesson.
+        player.tutorialProgress = TutorialStage.ACCOUNT_RETURN.code
+        packets.clear()
+        talk("npc.newbie_account_instructor")
         check(player.tutorialStage == TutorialStage.LEAVE_BANK)
+        check(packets.any { packetText(it)?.contains("membership, Bonds") == true })
+        check(packets.any { packetText(it)?.contains("World Switcher") == true })
+        check(packets.any { packetText(it)?.contains("SoloScape does not") == true })
+        check(packets.any { packetText(it)?.contains("bank PIN") == true })
         check(player.inv.count("obj.coins") == 0)
-        check(player.invMap.getOrPut("inv.bank").count("obj.coins") == 25)
+        val bankCoins = player.invMap.getOrPut("inv.bank").count("obj.coins")
+        check(bankCoins == 25)
+        packets.clear()
+        talk("npc.newbie_account_instructor", listOf(1))
+        check(player.tutorialStage == TutorialStage.LEAVE_BANK)
+        check(packets.any { packetText(it)?.contains("Bonds") == true })
+        talk("npc.newbie_account_instructor", listOf(2))
+        check(player.tutorialStage == TutorialStage.LEAVE_BANK)
+        check(player.invMap.getOrPut("inv.bank").count("obj.coins") == bankCoins)
     }
 
     fun verifySuccessfulProcessing() {
@@ -419,6 +440,23 @@ private class Fixture {
             })
             result?.getOrThrow()
             check(player.tutorialStage == TutorialStage.GUIDE_RETURN)
+
+            // The Account tab itself, rather than a second NPC chat, advances this step.
+            player.tutorialProgress = TutorialStage.ACCOUNT_MANAGEMENT.code
+            progress.show(player)
+            val accountComponent = ServerCacheManager.fromComponent("component.$frame:stone8")
+            result = null
+            val accountClick: suspend () -> Unit = {
+                check(events.publish(ProtectedAccess(player, coroutine, context),
+                    IfOverlayButton(accountComponent, -1, null, IfButtonOp.Op1)))
+            }
+            accountClick.startCoroutine(object : Continuation<Unit> {
+                override val context = EmptyCoroutineContext
+                override fun resumeWith(result: Result<Unit>) { this@Fixture.result = result }
+            })
+            result?.getOrThrow()
+            check(player.tutorialStage == TutorialStage.ACCOUNT_RETURN)
+            check(player.ui.containsOverlay("interface.account"))
         }
     }
 
