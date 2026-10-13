@@ -123,9 +123,37 @@ island restriction only at that final stage. After a successful Home Teleport,
 the character shares a 30-minute cooldown across the standard and Ancient
 Home Teleport options currently implemented by this server. No dialogue choice teleports the player,
 and the Ironman tutor stays accessible before departure. Skipping with Skippy
-does not award quest credit. The full Learning the Ropes Quest Journal entry
-has not been registered with the server quest manager yet; this update covers
-the completion reward event and exit mechanics, not journal parity.
+does not award quest credit. The revision-240 cache does not contain the 2025 Learning the Ropes quest-list
+DB row. SoloScape now opens a live, stage-aware Learning the Ropes record in
+the native Quest Journal interface when the Quest tab lesson is first completed.
+The `::ropes` command can reopen that record where cheat commands are enabled.
+The quest awards one Quest Point on the successful Wind Strike impact and its
+journal records the completed state before Home Teleport departure. It does
+not yet appear as a selectable entry in the normal Quest List: full quest
+manager/list registration needs a newer cache or an explicit client DB-row patch.
+
+
+## October 2025 onboarding compatibility
+
+The revision-240 gamepack predates Jagex's dedicated familiarity-selection
+screen and new 2025 yellow entity/side-icon highlighting assets. The initial
+Gielinor Guide dialogue therefore remains the compatible three-choice fallback.
+Its response is now saved permanently in `varp.tutorial_familiarity`
+(1 = brand new, 2 = returning, 3 = experienced), and new/returning characters
+receive the Accept Aid default from the server's settings table. This does
+not implement Jagex's entire 2025 preferences preset or Adventure Paths.
+
+The older client already understands world/minimap hint-arrow packets. These
+now direct players to instructors and selected training targets, update with
+tutorial progress and disappear at completion. They do not replace the later
+official client's glowing NPC/loc outlines or pulsing side-tab icons. Newer
+client assets and an authenticated display test are needed for exact parity.
+
+The September 2026 Learning the Ropes walkthrough still teaches fishing and
+the Skills tab before woodcutting, firemaking and cooking, so the stage order
+and saved tutorial codes remain unchanged. See
+https://danielpgleason.com/osrs/reference/learning-the-ropes-734fc10d/
+for the contemporary route.
 
 ## Verification
 
