@@ -1,5 +1,6 @@
 package org.rsmod.content.areas.tutorial
 
+import dev.openrune.ServerCacheManager
 import dev.openrune.rscm.RSCM.asRSCM
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
@@ -143,13 +144,22 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
         if (player.onTutorial) {
             // Tutorial Island items are temporary. OSRS replaces them with a fixed
             // mainland starter kit, whether the player completes or skips training.
+            // Validate every starter item before destroying the tutorial inventory.
+            // OSRS cache item IDs are stable; hand-written RSCM aliases such as
+            // "obj.bucket" are not. A missing mapping must never strand a player
+            // halfway through the departure transaction.
+            for (item in STARTER_KIT) {
+                check(ServerCacheManager.getItem(item.id) != null) {
+                    "Missing Tutorial Island starter item definition: ${item.name} (${item.id})"
+                }
+            }
             val bank = player.invMap.getOrPut("inv.bank")
             player.inv.fillNulls()
             player.worn.fillNulls()
             bank.fillNulls()
-            for ((item, amount) in STARTER_KIT) {
-                check(player.invAdd(player.inv, item, amount).success) {
-                    "Unable to grant Tutorial Island starter item: $item"
+            for (item in STARTER_KIT) {
+                check(player.invAdd(player.inv, item.id, item.count).success) {
+                    "Unable to grant Tutorial Island starter item: ${item.name} (${item.id})"
                 }
             }
             check(player.invAdd(bank, "obj.coins", 25).success) {
@@ -249,25 +259,29 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
             TutorialStage.CAST to CoordGrid(3140, 3093),
         )
 
-        private val STARTER_KIT: List<Pair<String, Int>> = listOf(
-            "obj.bronze_axe" to 1,
-            "obj.bronze_pickaxe" to 1,
-            "obj.tinderbox" to 1,
-            "obj.net" to 1,
-            "obj.shrimp" to 2,
-            "obj.bronze_dagger" to 1,
-            "obj.bronze_sword" to 1,
-            "obj.wooden_shield" to 1,
-            "obj.shortbow" to 1,
-            "obj.bronze_arrow" to 25,
-            "obj.airrune" to 25,
-            "obj.mindrune" to 15,
-            "obj.bucket" to 1,
-            "obj.pot" to 1,
-            "obj.bread" to 1,
-            "obj.waterrune" to 6,
-            "obj.earthrune" to 4,
-            "obj.bodyrune" to 2,
+        private data class StarterItem(val name: String, val id: Int, val count: Int)
+
+        // OSRS unnoted item IDs, not gameval aliases. All 18 entries are needed
+        // for the canonical Tutorial Island mainland inventory.
+        private val STARTER_KIT: List<StarterItem> = listOf(
+            StarterItem("Bronze axe", 1351, 1),
+            StarterItem("Bronze pickaxe", 1265, 1),
+            StarterItem("Tinderbox", 590, 1),
+            StarterItem("Small fishing net", 303, 1),
+            StarterItem("Shrimps", 315, 2),
+            StarterItem("Bronze dagger", 1205, 1),
+            StarterItem("Bronze sword", 1277, 1),
+            StarterItem("Wooden shield", 1171, 1),
+            StarterItem("Shortbow", 841, 1),
+            StarterItem("Bronze arrows", 882, 25),
+            StarterItem("Air runes", 556, 25),
+            StarterItem("Mind runes", 558, 15),
+            StarterItem("Bucket", 1925, 1),
+            StarterItem("Pot", 1931, 1),
+            StarterItem("Bread", 2309, 1),
+            StarterItem("Water runes", 555, 6),
+            StarterItem("Earth runes", 557, 4),
+            StarterItem("Body runes", 559, 2),
         )
 
         public fun canDepartByHomeTeleport(player: Player): Boolean =
