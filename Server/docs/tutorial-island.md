@@ -30,8 +30,11 @@ The classic island uses its existing revision-240 NPCs and map objects. The
 6. Equipment, wielding a dagger, equipping sword/shield, a melee rat kill, then
    a ranged rat kill with a shortbow and arrows.
 7. Opening the bank (with 25 starter coins already deposited), reading
-   the local poll booth, and finance/account-safety dialogue. Ultimate Ironman
-   receives an explanation instead of access to a bank.
+   the local poll booth, then speaking to the Account Guide. Players open the
+   Account Management tab before a follow-up dialogue explains OSRS membership,
+   worlds, Bonds, inbox, name changes, links and account security. SoloScape-only
+   caveats distinguish unsupported OSRS store and account options. Ultimate
+   Ironman receives an explanation instead of access to a bank.
 8. Prayer, burying bones, the Friends and Ignore lists, and player conduct.
 9. Magic, five air and five mind runes for Wind Strike on a chicken, which awards a
    one-time Learning the Ropes completion scroll, jingle and Quest Point. After
@@ -40,7 +43,16 @@ The classic island uses its existing revision-240 NPCs and map objects. The
 
 The Guide opens with "Welcome to RuneScape!"; the remaining dialogue is authored
 for SoloScape. Adam on the island reuses the existing Ironman setup and armour
-dialogue. No external account details are requested.
+dialogue. No external account details are requested. The Account Guide draws
+on the [OSRS Account Guide transcript](https://oldschool.runescape.wiki/w/Transcript:Account_Guide)
+for its teaching topics rather than reproducing Jagex's NPC dialogue verbatim.
+The Account tab is a real tutorial lesson: opening stone8 advances
+ACCOUNT_MANAGEMENT (462) to ACCOUNT_RETURN (465), then talking to the Account
+Guide advances to LEAVE_BANK (470). The pre-existing ACCOUNT (460) and later
+stages retain their numeric progress codes to preserve saved characters.
+The Guide offers a recap on return visits without handing out additional coins.
+He describes OSRS features for context but does not imply that SoloScape
+sells memberships or Bonds, or implements OSRS inbox/name-change/store links.
 
 `varp.tutorial` saves the current step; `1000` means completed. The original
 tutorial overlay is attached to the full game HUD, with its native progress bar
@@ -99,7 +111,8 @@ python Server/tools/test-tutorial-island.py
 The standalone verification loads the actual local server cache, registers the
 tutorial alongside the existing Friends/Ignore handlers, runs all nine instructor
 dialogues and the fishing, chopping, mining, smelting and baking handlers, and
-checks login/resume, supply recovery, inventory-full recovery,
+checks login/resume, Account Management tab/recap and coin safety,
+supply recovery, inventory-full recovery,
 successful versus incorrect processing events, equipment, passage arrival, XP
 limits, combat-style and hit-result gates, desktop/mobile tab handlers, the
 one-time Wind Strike quest reward, blocked teleports, the non-departing
