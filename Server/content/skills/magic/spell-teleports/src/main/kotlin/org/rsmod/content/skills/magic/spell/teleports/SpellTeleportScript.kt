@@ -27,6 +27,7 @@ import org.rsmod.api.script.onOpHeld3
 import org.rsmod.api.script.onOpHeld4
 import org.rsmod.api.script.onPlayerQueueWithArgs
 import org.rsmod.api.spells.MagicSpellRegistry
+import org.rsmod.content.areas.tutorial.TutorialProgress
 import org.rsmod.content.quest.manager.QuestRequirements
 import org.rsmod.content.skills.construction.HouseAccess
 import org.rsmod.content.skills.construction.house.HouseStore
@@ -46,6 +47,7 @@ constructor(
     private val areaChecker: AreaChecker,
     private val houseAccess: HouseAccess,
     private val houseStore: HouseStore,
+    private val tutorialProgress: TutorialProgress,
 ) : PluginScript() {
     override fun ScriptContext.startup() {
         for (teleport in SpellTeleport.entries) {
@@ -93,7 +95,10 @@ constructor(
 
         val option = teleport.option(op)
         val house = if (teleport == SpellTeleport.TeleportToHouse) houseStore.state(player) else null
-        val destination = if (house != null) {
+        val destination = if (teleport == SpellTeleport.Home &&
+            TutorialProgress.canDepartByHomeTeleport(player)) {
+            TutorialProgress.LUMBRIDGE
+        } else if (house != null) {
             house.location.arrive.takeIf { house.owned }
         } else {
             teleport.destination(spell, option)
@@ -103,7 +108,7 @@ constructor(
             return
         }
 
-        if (!canTeleport()) {
+        if (!canTeleport(teleport)) {
             return
         }
 
@@ -248,9 +253,12 @@ constructor(
 
     private fun ProtectedAccess.processQueuedTeleport(task: PendingSpellTeleport) {
         val spell = task.teleport.resolveSpell() ?: return
-        if (!canTeleport()) {
+        if (!canTeleport(task.teleport)) {
             return
         }
+        val tutorialHomeExit = task.teleport == SpellTeleport.Home &&
+            TutorialProgress.canDepartByHomeTeleport(player) &&
+            CoordGrid(task.destination) == TutorialProgress.LUMBRIDGE
         if (task.houseInside) {
             houseAccess.enter(this, task.houseBuildMode)
         } else {
@@ -259,9 +267,17 @@ constructor(
         }
         task.teleport.style.endAnim?.let { anim(it) }
         statAdvance("stat.magic", spell.castXp)
+        if (tutorialHomeExit && player.coords == TutorialProgress.LUMBRIDGE) {
+            tutorialProgress.complete(player)
+            statRestore("stat.hitpoints")
+            statRestore("stat.prayer")
+        }
     }
 
-    private fun ProtectedAccess.canTeleport(): Boolean {
+    private fun ProtectedAccess.canTeleport(teleport: SpellTeleport? = null): Boolean {
+        if (teleport == SpellTeleport.Home && TutorialProgress.canDepartByHomeTeleport(player)) {
+            return true
+        }
         val denial =
             teleportValidator.validate(player, TeleportType.Standard, areaChecker)
         if (denial == null) {
