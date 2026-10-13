@@ -43,8 +43,18 @@ dialogue. No external account details are requested.
 tutorial overlay is attached to the full game HUD, with its native progress bar
 at the bottom centre. Instructions use the native titled message panel in the
 chat overlay, replacing the normal chat log between NPC conversations. Chat
-modals take precedence and reveal the instruction again when they close. Tabs
-unlock as their lessons introduce them (Logout is available from the start);
+modals take precedence and reveal the instruction again when they close. The
+non-NPC panels now use classic Tutorial Island-style titles and short explanations
+of what an interaction does, not just single-line objectives. Their instructions
+are kept within the native three-line, 40-character-per-line chatbox limit, and
+the standalone verification checks both title and text packets.
+
+The [historical interface transcript](https://rune-server.org/threads/tutorial-island-dialogue-interfaces.397139/)
+informed the teaching style, but the text is newly written for SoloScape's
+implemented sequence rather than copied verbatim. It is not a claim of exact
+modern OSRS parity: current OSRS has revised control guidance, and SoloScape
+still teaches fishing before woodcutting and intentionally burns the first shrimp.
+Tabs unlock as their lessons introduce them (Logout is available from the start);
 the native client hides icons for closed side panels. Login and gameframe
 changes reapply the current lesson, and departure restores all tabs and chat.
 Its native bar
