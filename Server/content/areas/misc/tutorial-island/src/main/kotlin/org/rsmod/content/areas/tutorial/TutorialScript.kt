@@ -33,6 +33,10 @@ import org.rsmod.api.script.onCommand
 import org.rsmod.api.script.advanced.onIfMoveSub
 import org.rsmod.api.script.onEvent
 import org.rsmod.api.script.onIfOverlayButton
+import org.rsmod.api.script.onIfModalPauseButton
+import org.rsmod.api.script.onIfOpen
+import org.rsmod.api.script.onIfClose
+import org.rsmod.api.player.ui.ifSetHide
 import org.rsmod.api.script.onOpLoc1
 import org.rsmod.api.script.onOpLoc2
 import org.rsmod.api.script.onOpLocU
@@ -100,6 +104,26 @@ public class TutorialScript @Inject constructor(
             }
         }
         onPlayerLogout { player.attr.remove(tutorialPassage) }
+        TutorialProgress.CHAT_INTERFACES.forEach { name ->
+            onIfOpen("interface.$name") {
+                if (player.onTutorial) player.ifSetHide("component.tutorial_overlay:hint_layer", true)
+            }
+            onIfClose("interface.$name") {
+                if (player.onTutorial) progress.show(player)
+            }
+        }
+        onIfModalPauseButton("component.tutorial_player_experience:content") { event ->
+            if (!player.tutorialFamiliarityPending || event.comsub !in 1..3) {
+                return@onIfModalPauseButton
+            }
+            player.tutorialFamiliarity = event.comsub
+            if (event.comsub in 1..2) {
+                SettingsConfigsRow.all().firstOrNull { it.settingId == 59 }
+                    ?.varValue?.let { VarPlayerIntMapSetter.set(player, it, 1) }
+            }
+            ifClose()
+            progress.show(player)
+        }
         onCommand("tutorial") {
             desc = "Show the current Tutorial Island instruction"
             cheat {
@@ -265,8 +289,8 @@ public class TutorialScript @Inject constructor(
     }
 
     private suspend fun ProtectedAccess.teach(npc: Npc, tutor: Tutor) {
-        if (tutor == Tutor.GUIDE && player.tutorialAppearancePending) {
-            player.ifOpenMainModal("interface.makeover_mage", eventBus)
+        if (tutor == Tutor.GUIDE && player.tutorialSetupPending) {
+            progress.ensureAppearanceCreation(player)
             return
         }
         startDialogue(npc) {
@@ -293,23 +317,6 @@ public class TutorialScript @Inject constructor(
             TutorialStage.GUIDE -> {
                 chatNpc(happy, "Welcome to RuneScape! I will help you learn the controls before " +
                     "the other instructors teach you how to survive and explore.")
-                // The original rev-240 cache lacks the October 2025 pre-game three-button
-                // familiarity screen. Keep the choice here as an accessible compatibility
-                // fallback, but persist it instead of discarding the player's answer.
-                if (player.tutorialFamiliarity == 0) {
-                    player.tutorialFamiliarity = choice3(
-                        "I'm brand new to RuneScape.", 1,
-                        "I've played before, but not recently.", 2,
-                        "I'm an experienced player.", 3,
-                    ).coerceIn(1, 3)
-                    // OSRS defaults Accept Aid to on for new and returning players.
-                    // Resolve the backing var from the cache's settings table instead
-                    // of guessing an interface-era-specific varbit ID.
-                    if (player.tutorialFamiliarity in 1..2) {
-                        SettingsConfigsRow.all().firstOrNull { it.settingId == 59 }
-                            ?.varValue?.let { VarPlayerIntMapSetter.set(player, it, 1) }
-                    }
-                }
                 if (player.tutorialFamiliarity == 1) {
                     chatNpc(happy, "Take your time. The instructions on screen explain your next task.")
                 } else {
@@ -705,17 +712,25 @@ public class TutorialScript @Inject constructor(
                 chatNpc(neutral, "Click Wind Strike in your spellbook, then click a chicken " +
                     "inside the pen. If a spell misses, try again. You can cast without a staff.")
             }
-            TutorialStage.DEPART -> {
+            TutorialStage.DEPART, TutorialStage.IRONMAN_TUTOR -> {
                 chatNpc(happy, "Congratulations! You have completed Learning the Ropes. " +
                     "Your final lesson is the Lumbridge Home Teleport spell.")
                 chatNpc(neutral, "Open your Magic tab and select Lumbridge Home Teleport. " +
                     "It needs no runes and will take you to the mainland.")
                 when (choice2("I'd like to be an Ironman.", 1,
                     "I'm ready to cast Home Teleport.", 2)) {
-                    1 -> chatNpc(neutral, "Speak to the Ironman tutor outside my building " +
-                        "before you leave. You can come back here once you've chosen your mode.")
-                    else -> chatNpc(happy, "Cast Lumbridge Home Teleport from your spellbook " +
-                        "when you are ready. You can remain on the island until then.")
+                    1 -> {
+                        player.tutorialProgress = TutorialStage.IRONMAN_TUTOR.code
+                        progress.show(player)
+                        chatNpc(neutral, "Speak to the Ironman tutor outside my building " +
+                            "before you leave. You can come back here once you've chosen your mode.")
+                    }
+                    else -> {
+                        player.tutorialProgress = TutorialStage.DEPART.code
+                        progress.show(player)
+                        chatNpc(happy, "Cast Lumbridge Home Teleport from your spellbook " +
+                            "when you are ready. You can remain on the island until then.")
+                    }
                 }
             }
             else -> reminder()

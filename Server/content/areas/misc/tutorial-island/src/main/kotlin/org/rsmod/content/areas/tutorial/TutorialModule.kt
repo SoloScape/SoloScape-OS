@@ -26,11 +26,19 @@ public val Player.tutorialAppearancePending: Boolean
     get() = tutorialStage == TutorialStage.GUIDE &&
         attr[appearanceConfirmed] != 1
 
+public val Player.tutorialFamiliarityPending: Boolean
+    get() = tutorialStage == TutorialStage.GUIDE && !tutorialAppearancePending &&
+        tutorialFamiliarity == 0
+
+public val Player.tutorialSetupPending: Boolean
+    get() = tutorialAppearancePending || tutorialFamiliarityPending
+
 public class TutorialAppearanceRestrictionHook @Inject constructor() : PlayerRestrictionHook {
     override fun restriction(player: Player, action: RestrictedAction): String? =
-        if (player.tutorialAppearancePending &&
+        if (player.tutorialSetupPending &&
             (action == RestrictedAction.Walk || action == RestrictedAction.CloseModal)) {
-            "Accept your character's appearance before continuing."
+            if (player.tutorialAppearancePending) "Accept your character's appearance before continuing."
+            else "Select your experience with Old School RuneScape before continuing."
         } else {
             null
         }
@@ -40,7 +48,7 @@ public class TutorialTickHook @Inject constructor(private val progress: Tutorial
     PlayerPostTickHook {
     override fun onPostTick(player: Player) {
         if (!player.onTutorial) return
-        if (player.tutorialAppearancePending) {
+        if (player.tutorialSetupPending) {
             // Also neutralise existing routes, including automatic approaches to NPCs
             // or objects, and restore the editor if another interface displaced it.
             player.routeRequest = null
@@ -57,6 +65,10 @@ public class TutorialTickHook @Inject constructor(private val progress: Tutorial
             }
         }
         when (player.tutorialStage) {
+            TutorialStage.IRONMAN_TUTOR -> if (player.gamemode != 0) {
+                player.tutorialProgress = TutorialStage.DEPART.code
+                progress.show(player)
+            }
             TutorialStage.EQUIP_SWORD -> if (player.worn.contains("obj.bronze_sword") &&
                 player.worn.contains("obj.wooden_shield"))
                 progress.advance(player, TutorialStage.EQUIP_SWORD)

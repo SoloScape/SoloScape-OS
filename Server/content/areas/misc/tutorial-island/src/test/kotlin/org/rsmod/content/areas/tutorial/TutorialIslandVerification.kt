@@ -50,6 +50,7 @@ import org.rsmod.api.player.protect.ProtectedAccessContextFactory
 import org.rsmod.api.player.stat.TutorialExperience
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.player.ui.IfModalButton
+import org.rsmod.api.player.ui.IfModalPauseButton
 import org.rsmod.api.player.ui.IfOverlayButton
 import org.rsmod.api.player.ui.IfMoveSub
 import org.rsmod.api.player.ui.ifOpenOverlay
@@ -117,6 +118,13 @@ import org.rsmod.routefinder.collision.CollisionFlagMap
 public fun main() {
     val cache = ServerCacheManager.init(240)
     try {
+        check(cache.data(12, 2584, 0, null) != null)
+        check(cache.data(12, 8558, 0, null) != null)
+        check(ServerCacheManager.fromComponent("component.tutorial_player_experience:universe")
+            .onLoad?.firstOrNull() == 8558)
+        val tutorialRow = org.rsmod.api.table.QuestRow.getRow("dbrow.quest_learningtheropes")
+        check(tutorialRow.id == 205 && tutorialRow.endstate == TutorialStage.DEPART.code)
+        println("PASS: native guide script, familiarity screen initialization and quest cache row")
         val fixture = Fixture()
         fixture.verifyPrecreatedCharacterLogin()
         fixture.verifyLoginAndResume()
@@ -165,6 +173,7 @@ private class Fixture {
         statMap.setBaseLevel("stat.hitpoints", 10)
         pendingSequence = EntitySeq.NULL
         pendingFaceAngle = EntityFaceAngle.NULL
+        tutorialFamiliarity = 1
     }
     val context: org.rsmod.api.player.protect.ProtectedAccessContext
     val script: TutorialScript
@@ -192,6 +201,8 @@ private class Fixture {
         with(MakeoverMageScript(DefaultGameRandom(42L))) { scripts.startup() }
         with(HairdresserScript()) { scripts.startup() }
         with(script) { scripts.startup() }
+        with(TutorialQuestScript(progress)) { scripts.startup() }
+        with(org.rsmod.content.quest.manager.QuestJournalScript()) { scripts.startup() }
         with(TutorialSkippyScript(NpcRepository(clock, npcRegistry, npcs), progress)) { scripts.startup() }
         context = ProtectedAccessContextFactory.empty().copy(
             getEventBus = { events }, getAlignment = { TextAlignment() },
@@ -209,8 +220,21 @@ private class Fixture {
         player.coords = TutorialProgress.START
         player.tutorialProgress = TutorialStage.GUIDE.code
         player.tutorialFamiliarity = 0
-        talk("npc.newbie_basics_instructor", listOf(2))
+        progress.ensureAppearanceCreation(player)
+        check(player.ui.containsModal("interface.tutorial_player_experience"))
+        check(player.ui.hasEvent(ServerCacheManager.fromComponent(
+            "component.tutorial_player_experience:content"), 2, IfEvent.PauseButton))
+        check(TutorialAppearanceRestrictionHook().restriction(player, RestrictedAction.Walk) != null)
+        fun selectFamiliarity(option: Int) = interaction {
+            check(events.publish(ProtectedAccess(player, coroutine, context),
+                IfModalPauseButton(ServerCacheManager.fromComponent(
+                    "component.tutorial_player_experience:content"), option)))
+        }
+        selectFamiliarity(2)
         check(player.tutorialFamiliarity == 2)
+        check(!player.ui.containsModal("interface.tutorial_player_experience"))
+        check(TutorialAppearanceRestrictionHook().restriction(player, RestrictedAction.Walk) == null)
+        talk("npc.newbie_basics_instructor")
         check(player.tutorialStage == TutorialStage.SETTINGS)
         player.tutorialProgress = TutorialStage.GUIDE.code
         talk("npc.newbie_basics_instructor", listOf(1))
@@ -219,7 +243,11 @@ private class Fixture {
         }
         player.tutorialFamiliarity = 0
         player.tutorialProgress = TutorialStage.GUIDE.code
-        talk("npc.newbie_basics_instructor", listOf(3))
+        progress.ensureAppearanceCreation(player)
+        selectFamiliarity(0)
+        check(player.tutorialFamiliarity == 0)
+        selectFamiliarity(3)
+        talk("npc.newbie_basics_instructor")
         check(player.tutorialFamiliarity == 3)
         // A source build doesn't repack the SERVER cache; new tutorial values
         // use persistent attributes and must survive character save/load.
@@ -238,6 +266,33 @@ private class Fixture {
         progress.openLearningRopesJournal(player)
         check(packets.any { packetText(it)?.contains("Learning the Ropes") == true })
         check(packets.any { packetText(it)?.contains("Current lesson") == true })
+        val tutorialQuest = org.rsmod.content.quest.manager.Quest.get("quest_learningtheropes")!!
+        check(tutorialQuest.visibleInJournal(player))
+        check(tutorialQuest.getQuestStage(player) == player.tutorialProgress)
+        check(tutorialQuest.maxSteps == TutorialStage.DEPART.code)
+        packets.clear()
+        interaction {
+            check(events.publish(ProtectedAccess(player, coroutine, context),
+                IfOverlayButton(ServerCacheManager.fromComponent("component.questlist:list"),
+                    tutorialQuest.id, null, IfButtonOp.Op1)))
+        }
+        check(player.ui.containsModal("interface.questjournal"))
+        check(packets.any { packetText(it)?.contains("Learning the Ropes") == true })
+        player.tutorialProgress = 590
+        progress.show(player)
+        check(player.tutorialStage == TutorialStage.DEPART)
+        check(player.tutorialProgress == 671)
+        check(tutorialQuest.isQuestCompleted(player))
+        talk("npc.newbie_magic_instructor", listOf(1))
+        check(player.tutorialStage == TutorialStage.IRONMAN_TUTOR)
+        check(!TutorialProgress.canDepartByHomeTeleport(player))
+        talk("npc.newbie_magic_instructor", listOf(2))
+        check(player.tutorialStage == TutorialStage.DEPART)
+        player.tutorialProgress = TutorialStage.IRONMAN_TUTOR.code
+        player.gamemode = 1
+        ticks.onPostTick(player)
+        check(player.tutorialStage == TutorialStage.DEPART)
+        player.gamemode = 0
         player.tutorialProgress = TutorialStage.COMPLETE.code
         player.tutorialQuestAwarded = 1
         packets.clear()
@@ -247,7 +302,8 @@ private class Fixture {
         packets.clear()
         progress.openLearningRopesJournal(player)
         check(packets.any { packetText(it)?.contains("credit was not awarded") == true })
-        println("PASS: persistent familiarity choice and native Learning the Ropes stage journal")
+        println("PASS: native familiarity screen, guarded selection, persistence, quest-list journal " +
+            "and migration to the native completion stage")
     }
 
     fun verifyLoginAndResume() {
@@ -595,7 +651,7 @@ private class Fixture {
             player.tutorialProgress = case.stage.code
             packets.clear()
             talk(case.npc, case.choices)
-            check(player.tutorialStage == case.stage) {
+            check(player.tutorialStage == case.stage.resumeStage) {
                 "${case.npc} replay unexpectedly advanced ${case.stage}"
             }
             val spoken = spokenDialogue()
@@ -622,7 +678,7 @@ private class Fixture {
             player.tutorialProgress = case.stage.code
             packets.clear()
             talk(case.npc, case.choices)
-            check(player.tutorialStage == case.stage)
+            check(player.tutorialStage == case.stage.resumeStage)
             val spoken = spokenDialogue()
             check(case.expected in spoken) {
                 "${case.npc} missing in-progress reminder: ${case.expected}; got: $spoken"
@@ -640,7 +696,7 @@ private class Fixture {
             player.tutorialProgress = stage.code
             val before = player.inv.count("obj.bronze_arrow")
             talk(npc, listOf(1))
-            check(player.tutorialStage == stage)
+            check(player.tutorialStage == stage.resumeStage)
             check(player.inv.count("obj.bronze_arrow") == before)
         }
         println("PASS: instructor personality, optional recaps and stage-aware reminders")
@@ -826,7 +882,7 @@ private class Fixture {
         check(TutorialProgress.canDepartByHomeTeleport(player))
         check(TutorialTeleportHook().validate(player, TeleportType.Standard, context.areaChecker) != null)
         talk("npc.newbie_magic_instructor", listOf(1))
-        check(player.tutorialStage == TutorialStage.DEPART &&
+        check(player.tutorialStage == TutorialStage.IRONMAN_TUTOR &&
             player.coords == CoordGrid(3140, 3095))
         talk("npc.newbie_magic_instructor", listOf(2))
         check(player.tutorialStage == TutorialStage.DEPART &&
@@ -927,27 +983,45 @@ private class Fixture {
             events.publish(SessionStateEvent.Login(player))
             check(player.ui.overlays.getComponent(overlay) == hud)
             check(gameframes.getValue(player.ui.topLevel.id).mappings.getValue(hud).parent == player.ui.topLevel.id)
-            check(player.ui.overlays[chat] == UserInterface("interface.messagebox_titled".asRSCM()))
+            check(player.ui.overlays[chat] != UserInterface("interface.messagebox_titled".asRSCM()))
             player.ifOpenSub("interface.chat_left", "component.chatbox:chatmodal", IfSubType.Modal, events)
             check(player.ui.containsModal("interface.chat_left"))
-            check(player.ui.containsOverlay("interface.messagebox_titled"))
+            check(!player.ui.containsOverlay("interface.messagebox_titled"))
             player.ifCloseChat(events)
             check(!player.ui.containsModal("interface.chat_left"))
-            check(player.ui.containsOverlay("interface.messagebox_titled"))
+            check(!player.ui.containsOverlay("interface.messagebox_titled"))
             for (stage in TutorialStage.entries.filter { it != TutorialStage.COMPLETE &&
                 !it.legacyOptional }) {
+                packets.clear()
                 player.tutorialProgress = stage.code
                 progress.show(player)
+                val expectedFlash = when (stage) {
+                    TutorialStage.SETTINGS -> 12
+                    TutorialStage.INVENTORY -> 4
+                    TutorialStage.STATS -> 2
+                    TutorialStage.JOURNAL -> 3
+                    TutorialStage.EQUIPMENT -> 5
+                    TutorialStage.ACCOUNT_MANAGEMENT -> 9
+                    TutorialStage.PRAYER -> 6
+                    TutorialStage.FRIENDS, TutorialStage.IGNORE -> 10
+                    TutorialStage.SPELLBOOK -> 7
+                    else -> 0
+                }
+                check(player.vars["varbit.flashside"] == expectedFlash)
                 for ((slot, name) in slots.withIndex()) {
                     check(player.ui.containsOverlay("interface.$name") == (stage.code >= unlocks[slot].code)) {
                         "$frame $stage: incorrect visibility for $name"
                     }
                 }
-                check(packets.any { packetText(it) == stage.lesson }) {
-                    "$frame $stage: missing tutorial instruction title"
-                }
-                check(packets.any { packetText(it) == stage.objective }) {
-                    "$frame $stage: missing tutorial instruction text"
+                if (stage.controlGuide != null) {
+                    check(packets.any { it is net.rsprot.protocol.game.outgoing.misc.player.RunClientScript &&
+                        it.id == 2584 && it.values == listOf(stage.controlGuide) }) {
+                        "$frame $stage: missing native control-guide script"
+                    }
+                } else {
+                    check(packets.any { packetText(it) == TutorialProgress.hintLines(stage.objective).first() }) {
+                        "$frame $stage: missing contextual control-guide text"
+                    }
                 }
             }
             // Restoring an earlier saved lesson closes later tabs again.

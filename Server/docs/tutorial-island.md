@@ -114,25 +114,26 @@ The Guide offers a recap on return visits without handing out additional coins.
 He describes OSRS features for context but does not imply that SoloScape
 sells memberships or Bonds, or implements OSRS inbox/name-change/store links.
 
-`varp.tutorial` saves the current step; `1000` means completed. The original
-tutorial overlay is attached to the full game HUD, with its native progress bar
-at the bottom centre. Instructions use the native titled message panel in the
-chat overlay, replacing the normal chat log between NPC conversations. Chat
-modals take precedence and reveal the instruction again when they close. The
-non-NPC panels now give only a concise, contextual action objective (maximum
-two wrapped lines of 40 characters) rather than reproducing instructor speeches.
-Objective wording now matches the action gates: running is optional rather
-than a required "run to the next guide" lesson, the furnace teaches bronze-bar
-smelting, equipment prompts state what to equip and the ranged objective names
-the giant rat. These remain concise authored instructions, not verbatim Jagex
-UI text. NPC conversations provide the explanations, character and optional recaps.
-The standalone verification checks the titled panel and the objective packets.
+`varp.tutorial` saves the current step; `1000` means departed. The tutorial
+overlay is attached to the game HUD, with its native progress bar at the bottom
+centre. Instructions use its native orange Control Guide; the tutorial no longer
+occupies the normal chat log with a titled message panel. The guide hides during
+character setup and NPC chat, and returns after chat closes. Required side tabs
+use the cache's `varbit.flashside`, clearing the highlight after the action.
+
+The native `tutorial_overlay_hint` clientscript (2584) supplies the actual Jagex
+desktop/mobile wording, colours and four-line layout for fishing, skills,
+woodcutting, firemaking, cooking, baking, mining, smelting, smithing, combat,
+transitions and Home Teleport. The server selects the existing lesson rather
+than copying those strings or rebuilding their interface. Other server-owned
+steps still use authored objectives in the same guide; their exact modern OSRS
+wording is unverified. Instructor objectives use hover names and location cues.
 
 The [historical interface transcript](https://rune-server.org/threads/tutorial-island-dialogue-interfaces.397139/)
 informed the teaching style, but the text is newly written for SoloScape's
-implemented sequence rather than copied verbatim. It is not a claim of exact
-modern OSRS parity: current OSRS has revised control guidance, and SoloScape
-still teaches fishing before woodcutting but no longer forces the first shrimp to burn.
+implemented sequence rather than copied verbatim. Historical chatbox text is
+not the reference for the modern Control Guide. Fishing precedes woodcutting,
+and the first cooked shrimp succeeds.
 
 Per the [25 October 2018 OSRS update history](https://oldschool.runescape.wiki/w/Tutorial_Island#Changes),
 Music, Emotes and prospecting are no longer required lessons; using Run is
@@ -175,22 +176,28 @@ island restriction only at that final stage. After a successful Home Teleport,
 the character shares a 30-minute cooldown across the standard and Ancient
 Home Teleport options currently implemented by this server. No dialogue choice teleports the player,
 and the Ironman tutor stays accessible before departure. Skipping with Skippy
-does not award quest credit. The revision-240 cache does not contain the 2025 Learning the Ropes quest-list
-DB row. SoloScape now opens a live, stage-aware Learning the Ropes record in
-the native Quest Journal interface when the Quest tab lesson is first completed.
-The `::ropes` command can reopen that record where cheat commands are enabled.
-The quest awards one Quest Point on the successful Wind Strike impact and its
-journal records the completed state before Home Teleport departure. It does
-not yet appear as a selectable entry in the normal Quest List: full quest
-manager/list registration needs a newer cache or an explicit client DB-row patch.
+does not award quest credit. The local cache contains `dbrow.quest_learningtheropes`
+(quest id 205, row 9643, completion stage 671). It is registered with the quest
+manager and becomes a selectable Quest List entry after meeting the Quest Guide.
+Its progress reads the existing tutorial varp directly, avoiding a second saved
+quest stage that could overwrite tutorial progress. Its journal remains authored
+and stage-aware, and `::ropes` also reopens it where cheat commands are enabled.
+Wind Strike awards one Quest Point once and advances to native completion stage
+671. Saves at the former departure stage 590 migrate to 671 without replaying
+rewards. Choosing Ironman at the Magic Instructor switches guidance to the
+Ironman tutor (local stage 672); selecting a mode or cancelling the choice returns
+Home Teleport guidance. The Node/Group Ironman tutorial route is not implemented.
 
 
 ## October 2025 onboarding compatibility
 
-The revision-240 gamepack predates Jagex's dedicated familiarity-selection
-screen and new 2025 yellow entity/side-icon highlighting assets. The initial
-Gielinor Guide dialogue therefore remains the compatible three-choice fallback.
-Its response is now saved permanently in the character attribute `tutorial_familiarity`
+The local cache already contains `interface.tutorial_player_experience` (929)
+and its native initialization script (8558). After accepting appearance, new
+characters use this screen's three buttons, official wording, frame and progress
+pips before meeting the Gielinor Guide. Selection uses the native pause-button
+protocol on content children 1..3; invalid or stale choices are rejected. Walking
+and Escape remain blocked until selection, and a displaced screen is restored.
+The response is saved permanently in the character attribute `tutorial_familiarity`
 (1 = brand new, 2 = returning, 3 = experienced), and new/returning characters
 receive the Accept Aid default from the server's settings table. This does
 not implement Jagex's entire 2025 preferences preset or Adventure Paths.
@@ -203,9 +210,17 @@ The older client already understands world/minimap hint-arrow packets. These
 now target each instructor's **live NPC slot**, so the overhead marker follows
 the Gielinor Guide and the other tutors even if they move from their spawn tiles.
 Non-NPC scenery targets still use fixed coordinate hints; all hints clear on
-completion. They do not replace the later
-official client's glowing NPC/loc outlines or pulsing side-tab icons. Newer
-client assets and an authenticated display test are needed for exact parity.
+completion. Native side-tab highlighting is driven by `flashside`; official
+enhanced-client NPC/loc outlines are not reproduced in the Java renderer.
+An authenticated display test is still needed to verify native guide layout,
+familiarity button rendering, highlights and journal selection end to end.
+
+References: [Jagex's 22 October 2025 update](https://secure.runescape.com/m=news/grid-master-rewards-poll--new-player-improvements?oldschool=1),
+[native guide script](https://github.com/Joshua-F/osrs-dumps/blob/master/script/%5Bclientscript%2Ctutorial_overlay_hint%5D.cs2),
+and [native familiarity interface](https://github.com/Joshua-F/osrs-dumps/blob/master/interface/tutorial_player_experience.if3).
+Runtime cache probes confirmed the screen's strings, pause-button components,
+quest row and native `flashside` varbit. This is not a claim of complete verbatim
+or visual parity for every server-owned message.
 
 The September 2026 Learning the Ropes walkthrough still teaches fishing and
 the Skills tab before woodcutting, firemaking and cooking, so the stage order
@@ -227,7 +242,7 @@ tutorial alongside the existing Friends/Ignore handlers, runs all nine instructo
 dialogues and the fishing, chopping, mining, smelting and baking handlers, and
 checks login/resume, Account Management tab/recap and coin safety,
 five instructors' replay menus and stage-specific reminders,
-short objective panel limits, optional step bypasses, legacy-save migration,
+native guide selections and fallback line limits, optional step bypasses, legacy-save migration,
 mining without prospecting, Music/Emotes and Run no longer gating progress,
 supply recovery, inventory-full recovery,
 successful versus incorrect processing events, equipment, passage arrival, XP
@@ -235,7 +250,7 @@ limits, combat-style and hit-result gates, desktop/mobile tab handlers, the
 one-time Wind Strike quest reward, blocked teleports, the non-departing
 Ironman/Magic Instructor dialogue branches, Chef's bucket-of-water supplies,
 first-attempt shrimp success on a normal fire, initial bank coins, exact mainland
-starter supplies, run energy and the standard no-Skippy default. Character creation is also checked in
+starter supplies, run energy and the configured Skippy behaviour. Character creation is also checked in
 an isolated in-memory SQLite database. Outputs stay under
 ignored `build/direct/tutorial-verification/`.
 

@@ -22,11 +22,6 @@ class QuestVisibilityScript : PluginScript() {
     private var Player.questPointsMax by intVarBit("varbit.qp_max")
     private var Player.questsTotalCount by intVarBit("varbit.quests_total_count")
 
-    private val availableIds: String by lazy {
-        val quests = Quest.all()
-        if (quests.isEmpty()) "" else quests.joinToString(",", ",", ",") { it.id.toString() }
-    }
-
     private val totalQuestPoints: Int by lazy { Quest.all().sumOf { it.questPoints } }
 
     private val totalQuests: Int by lazy {
@@ -35,10 +30,18 @@ class QuestVisibilityScript : PluginScript() {
 
     override fun ScriptContext.startup() {
         onPlayerLogin {
-            val script = "clientscript.quest_available_set".asRSCM(RSCMType.CLIENTSCRIPT)
-            player.runClientScript(script, availableIds)
+            refresh(player)
             player.questPointsMax = totalQuestPoints
             player.questsTotalCount = totalQuests
+        }
+    }
+
+    companion object {
+        fun refresh(player: Player) {
+            val quests = Quest.all().filter { it.visibleInJournal(player) }
+            val ids = quests.joinToString(",", ",", ",") { it.id.toString() }
+            player.runClientScript(
+                "clientscript.quest_available_set".asRSCM(RSCMType.CLIENTSCRIPT), ids)
         }
     }
 }

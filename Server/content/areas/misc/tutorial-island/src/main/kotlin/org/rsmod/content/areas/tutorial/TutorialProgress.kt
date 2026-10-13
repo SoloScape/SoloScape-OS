@@ -1,6 +1,7 @@
 package org.rsmod.content.areas.tutorial
 
 import dev.openrune.ServerCacheManager
+import dev.openrune.definition.type.widget.IfEvent
 import dev.openrune.rscm.RSCM.asRSCM
 import dev.openrune.rscm.RSCMType
 import jakarta.inject.Inject
@@ -18,10 +19,12 @@ import org.rsmod.api.player.ui.ifOpenMainModal
 import org.rsmod.api.player.ui.ifSetObj
 import org.rsmod.api.player.ui.ifSetHide
 import org.rsmod.api.player.ui.ifSetText
+import org.rsmod.api.player.ui.ifSetEvents
 import org.rsmod.api.player.vars.intVarp
 import org.rsmod.api.player.vars.boolVarBit
 import org.rsmod.api.player.vars.intVarBit
 import org.rsmod.content.quest.manager.Quest
+import org.rsmod.content.quest.manager.QuestVisibilityScript
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.NpcList
@@ -46,6 +49,7 @@ public var Player.tutorialQuestAwarded: Int
     get() = attr[tutorialQuestAwardedAttr] ?: 0
     set(value) { attr[tutorialQuestAwardedAttr] = value.coerceIn(0, 1) }
 private var Player.tutorialProgressBar: Int by intVarp("varp.tutorial_progress_overlay")
+private var Player.tutorialFlashingTab: Int by intVarBit("varbit.flashside")
 private var Player.newTutorialAccount: Boolean by boolVarBit("varbit.new_player_account")
 private var Player.tutorialQuestPoints: Int by intVarp("varp.qp")
 private var Player.tutorialQuestsCompleted: Int by intVarBit("varbit.quests_completed_count")
@@ -73,6 +77,11 @@ public class TutorialProgress @Inject constructor(
             !player.ui.containsModal("interface.makeover_mage") &&
             !player.ui.containsModal("interface.makeover")) {
             player.ifOpenMainModal("interface.makeover_mage", eventBus)
+        } else if (player.tutorialFamiliarityPending &&
+            !player.ui.containsModal("interface.tutorial_player_experience")) {
+            player.ifOpenMainModal("interface.tutorial_player_experience", eventBus)
+            player.ifSetEvents("component.tutorial_player_experience:content", 1..3,
+                IfEvent.PauseButton)
         }
     }
 
@@ -88,19 +97,23 @@ public class TutorialProgress @Inject constructor(
         return true
     }
 
-    /**
-     * Revision-240 has no Learning the Ropes DB row, but its native questjournal
-     * interface can display a live, stage-aware record for this mandatory quest.
-     * Opened by the first Quest tab lesson and the explicit tutorial journal command.
-     */
     public fun openLearningRopesJournal(player: Player) {
         if (player.tutorialProgress < TutorialStage.QUEST.code) return
+        val lines = journalLines(player)
+        player.ifOpenMain("interface.questjournal", eventBus)
+        player.runClientScript(5240)
+        player.ifSetText("component.questjournal:title", "<col=7f0000>Learning the Ropes</col>")
+        for (index in 1..20) {
+            player.ifSetText("component.questjournal:qj$index", lines.getOrNull(index - 1) ?: "")
+        }
+    }
+
+    public fun journalLines(player: Player): List<String> {
         val completed = player.tutorialProgress >= TutorialStage.DEPART.code &&
             (player.tutorialQuestAwarded == 1 || player.tutorialStage == TutorialStage.DEPART)
-        val title = "Learning the Ropes"
         val skipped = player.tutorialStage == TutorialStage.COMPLETE &&
             player.tutorialQuestAwarded != 1
-        val lines = when {
+        return when {
             skipped -> listOf(
                 "You skipped the Tutorial Island lessons.",
                 "Learning the Ropes quest credit was not awarded.",
@@ -118,12 +131,6 @@ public class TutorialProgress @Inject constructor(
             "Next step: ${player.tutorialStage?.objective ?: "Talk to the Quest Guide."}",
             "Cast Wind Strike on a chicken to finish the quest.",
             )
-        }
-        player.ifOpenMain("interface.questjournal", eventBus)
-        player.runClientScript(5240)
-        player.ifSetText("component.questjournal:title", "<col=7f0000>$title</col>")
-        for (index in 1..20) {
-            player.ifSetText("component.questjournal:qj$index", lines.getOrNull(index - 1) ?: "")
         }
     }
 
@@ -194,8 +201,21 @@ public class TutorialProgress @Inject constructor(
         // Old characters may have logged out at one of the removed mandatory lessons.
         // Move them forward without undoing completed work or requiring a reset.
         val stage = current.resumeStage
-        if (stage != current) player.tutorialProgress = stage.code
+        if (player.tutorialProgress != stage.code) player.tutorialProgress = stage.code
+        QuestVisibilityScript.refresh(player)
         player.tutorialProgressBar = stage.ordinal * 20 / TutorialStage.COMPLETE.ordinal
+        player.tutorialFlashingTab = when (stage) {
+            TutorialStage.SETTINGS -> 12
+            TutorialStage.INVENTORY -> 4
+            TutorialStage.STATS -> 2
+            TutorialStage.JOURNAL -> 3
+            TutorialStage.EQUIPMENT -> 5
+            TutorialStage.ACCOUNT_MANAGEMENT -> 9
+            TutorialStage.PRAYER -> 6
+            TutorialStage.FRIENDS, TutorialStage.IGNORE -> 10
+            TutorialStage.SPELLBOOK -> 7
+            else -> 0
+        }
         // Instructors move from their map spawn tiles. A coordinate marker remains
         // on the floor (as in the Guide's house), whereas a slot hint follows the
         // live NPC and displays over its head on both the world view and minimap.
@@ -225,16 +245,24 @@ public class TutorialProgress @Inject constructor(
         }
         if (player.ui.containsOverlay("interface.tutorial_overlay")) {
             syncTabs(player, stage)
-            if (!player.ui.containsOverlay("interface.messagebox_titled")) {
-                player.ifOpenOverlay("interface.messagebox_titled", "component.chatbox:chatoverlay", eventBus)
+            player.ifCloseOverlay("interface.messagebox_titled", eventBus)
+            if (player.tutorialSetupPending) {
+                player.ifSetHide("component.tutorial_overlay:hint_layer", true)
+            } else if (stage.controlGuide != null) {
+                player.runClientScript(2584, stage.controlGuide!!)
+            } else {
+                val lines = hintLines(stage.objective)
+                for (index in 1..4) {
+                    player.ifSetText("component.tutorial_overlay:hint_text_$index",
+                        lines.getOrNull(index - 2) ?: "")
+                }
+                player.ifSetHide("component.tutorial_overlay:hint_layer", false)
             }
-            player.ifSetText("component.messagebox_titled:title", stage.lesson)
-            player.ifSetText("component.messagebox_titled:text", stage.objective)
-            player.ifSetHide("component.messagebox_titled:continue", true)
-            // Instructions live in the chat overlay; the native top-left hints are separate.
-            player.ifSetHide("component.tutorial_overlay:hint_layer", true)
             player.ifSetHide("component.tutorial_overlay:progressbar_container", false)
             player.runClientScript(867, "component.tutorial_overlay:progressbar".asRSCM())
+            if (CHAT_INTERFACES.any { player.ui.containsModal("interface.$it") }) {
+                player.ifSetHide("component.tutorial_overlay:hint_layer", true)
+            }
         }
     }
 
@@ -256,6 +284,8 @@ public class TutorialProgress @Inject constructor(
     }
 
     public companion object {
+        public val CHAT_INTERFACES: List<String> =
+            listOf("chat_left", "chat_right", "chatmenu", "messagebox", "messagebox_titled", "objectbox")
         /** Instructor targets are NPC slot hints, not stationary spawn tile hints. */
         private val NPC_HINTS: Map<TutorialStage, String> = mapOf(
             TutorialStage.GUIDE to "npc.newbie_basics_instructor",
@@ -276,6 +306,7 @@ public class TutorialProgress @Inject constructor(
             TutorialStage.PRIEST_RETURN to "npc.brother_noob",
             TutorialStage.MAGIC to "npc.newbie_magic_instructor",
             TutorialStage.MAGIC_RETURN to "npc.newbie_magic_instructor",
+            TutorialStage.IRONMAN_TUTOR to "npc.ironman_tutor_1",
         )
 
         /** Fixed-location scenery objectives; instructor targets use NPC_HINTS instead. */
