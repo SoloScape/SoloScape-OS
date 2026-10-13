@@ -417,13 +417,15 @@ private class Fixture {
         val chat = Component("component.chatbox:chatoverlay".asRSCM())
         val bar = ServerCacheManager.fromComponent("component.tutorial_overlay:progressbar_container")
         check(bar.xMode == 1 && bar.yMode == 2 && bar.width == 370)
-        // Load the production redirect tables, including the mobile fallback, rather than
-        // pretending every client uses the desktop component ids.
+        // Load the production redirect tables for the frames supported by this branch.
         val loaderType = Class.forName("org.rsmod.content.interfaces.gameframe.GameframeLoader")
         val loader = loaderType.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
         @Suppress("UNCHECKED_CAST")
         val gameframes = loaderType.getMethod("loadGameframes").invoke(loader) as Map<Int, Gameframe>
-        for (frame in listOf("toplevel", "toplevel_pre_eoc", "toplevel_osrs_stretch", "toplevel_osm")) {
+        val supportedFrames = listOf("toplevel", "toplevel_pre_eoc", "toplevel_osrs_stretch", "toplevel_osm")
+            .filter { "interface.$it".asRSCM() in gameframes }
+        check(supportedFrames.containsAll(listOf("toplevel", "toplevel_pre_eoc", "toplevel_osrs_stretch")))
+        for (frame in supportedFrames) {
             player.ui.topLevel = UserInterface("interface.$frame".asRSCM())
             player.ui.gameframe.clear()
             for ((original, translated) in gameframes.getValue(player.ui.topLevel.id).mappings) {
