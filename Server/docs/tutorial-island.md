@@ -42,7 +42,17 @@ The classic island uses its existing revision-240 NPCs and map objects. The
    talk to the Ironman tutor before casting it to depart for `(3222, 3218, 0)`.
 
 The Guide opens with "Welcome to RuneScape!"; the remaining dialogue is authored
-for SoloScape. Adam on the island reuses the existing Ironman setup and armour
+for SoloScape. Lev, the Quest Guide, Dezzick, Vannaka and Brother Brace now have
+distinct introductory voices, milestone-specific hints and optional replay menus
+once their lessons are complete. In-progress reminders do not advance the lesson,
+and replay menus do not award extra supplies. The dialogue draws on the
+[OSRS Master Chef](https://oldschool.runescape.wiki/w/Transcript:Master_Chef),
+[Quest Guide](https://oldschool.runescape.wiki/w/Transcript:Quest_Guide) and
+[Brother Brace](https://oldschool.runescape.wiki/w/Transcript:Brother_Brace)
+transcripts and OSRS combat/mining teaching topics. It is rewritten, not copied
+as a word-for-word official transcript; SoloScape's existing mandatory lessons
+and level gates remain unchanged.
+Adam on the island reuses the existing Ironman setup and armour
 dialogue. No external account details are requested. The Account Guide draws
 on the [OSRS Account Guide transcript](https://oldschool.runescape.wiki/w/Transcript:Account_Guide)
 for its teaching topics rather than reproducing Jagex's NPC dialogue verbatim.
@@ -112,6 +122,7 @@ The standalone verification loads the actual local server cache, registers the
 tutorial alongside the existing Friends/Ignore handlers, runs all nine instructor
 dialogues and the fishing, chopping, mining, smelting and baking handlers, and
 checks login/resume, Account Management tab/recap and coin safety,
+five instructors' replay menus and stage-specific reminders,
 supply recovery, inventory-full recovery,
 successful versus incorrect processing events, equipment, passage arrival, XP
 limits, combat-style and hit-result gates, desktop/mobile tab handlers, the
