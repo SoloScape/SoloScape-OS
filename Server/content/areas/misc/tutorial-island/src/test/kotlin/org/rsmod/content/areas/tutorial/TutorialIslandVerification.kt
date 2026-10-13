@@ -17,6 +17,8 @@ import kotlin.coroutines.Continuation
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
 import org.rsmod.api.area.checker.AreaChecker
+import org.rsmod.api.attr.AttributeKey
+import org.rsmod.api.attr.AttributeMap
 import org.rsmod.api.game.process.player.PlayerFaceSquareProcessor
 import org.rsmod.api.inv.storage.PlayerItemStorage
 import org.rsmod.api.invtx.InvTransactionsScript
@@ -199,14 +201,17 @@ private class Fixture {
         player.tutorialProgress = TutorialStage.GUIDE.code
         talk("npc.newbie_basics_instructor", listOf(3))
         check(player.tutorialFamiliarity == 3)
-        // Both custom tutorial varps must be present in the RSCM registry as
-        // well as the server cache. A raw-cache definition alone is not enough.
-        for (varp in listOf("varp.tutorial_familiarity", "varp.tutorial_quest_awarded")) {
-            check(ServerCacheManager.getVarp(varp.asRSCM())!!.scope ==
-                dev.openrune.types.varp.VarpLifetime.Perm) {
-                "$varp is missing a permanent RSCM/cache varp definition"
-            }
-        }
+        // A source build doesn't repack the SERVER cache; new tutorial values
+        // use persistent attributes and must survive character save/load.
+        player.tutorialQuestAwarded = 1
+        val persisted = player.attr.toPersistentMap()
+        check(persisted["tutorial_familiarity"] == 3)
+        check(persisted["tutorial_quest_awarded"] == 1)
+        val reloaded = AttributeMap()
+        reloaded.putAllFromPersistence(persisted)
+        check(reloaded[AttributeKey<Int>("tutorial_familiarity")] == 3)
+        check(reloaded[AttributeKey<Int>("tutorial_quest_awarded")] == 1)
+        player.tutorialQuestAwarded = 0
 
         player.tutorialProgress = TutorialStage.QUEST_RETURN.code
         packets.clear()
