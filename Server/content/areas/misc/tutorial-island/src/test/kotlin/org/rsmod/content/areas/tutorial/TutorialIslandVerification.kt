@@ -102,6 +102,7 @@ public fun main() {
         val fixture = Fixture()
         fixture.verifyPrecreatedCharacterLogin()
         fixture.verifyLoginAndResume()
+        fixture.verifyFamiliarityAndLearningRopesJournal()
         fixture.verifyInstructorDialogueAndRecovery()
         fixture.verifyInstructorRecaps()
         fixture.verifyOptionalLessons()
@@ -180,6 +181,37 @@ private class Fixture {
         for (coords in listOf(TutorialProgress.START, TutorialProgress.LUMBRIDGE)) {
             collision.allocateIfAbsent(coords.x, coords.z, coords.level)
         }
+    }
+
+    fun verifyFamiliarityAndLearningRopesJournal() {
+        player.coords = TutorialProgress.START
+        player.tutorialProgress = TutorialStage.GUIDE.code
+        player.tutorialFamiliarity = 0
+        talk("npc.newbie_basics_instructor", listOf(2))
+        check(player.tutorialFamiliarity == 2)
+        check(player.tutorialStage == TutorialStage.SETTINGS)
+        player.tutorialProgress = TutorialStage.GUIDE.code
+        talk("npc.newbie_basics_instructor", listOf(1))
+        check(player.tutorialFamiliarity == 2) {
+            "Returning characters should retain their original familiarity choice."
+        }
+        player.tutorialFamiliarity = 0
+        player.tutorialProgress = TutorialStage.GUIDE.code
+        talk("npc.newbie_basics_instructor", listOf(3))
+        check(player.tutorialFamiliarity == 3)
+        check(ServerCacheManager.getVarp("varp.tutorial_familiarity".asRSCM())!!.scope ==
+            dev.openrune.types.varp.VarpLifetime.Perm)
+
+        player.tutorialProgress = TutorialStage.QUEST_RETURN.code
+        packets.clear()
+        progress.openLearningRopesJournal(player)
+        check(packets.any { packetText(it)?.contains("Learning the Ropes") == true })
+        check(packets.any { packetText(it)?.contains("Current lesson") == true })
+        player.tutorialProgress = TutorialStage.COMPLETE.code
+        packets.clear()
+        progress.openLearningRopesJournal(player)
+        check(packets.any { packetText(it)?.contains("Quest complete") == true })
+        println("PASS: persistent familiarity choice and native Learning the Ropes stage journal")
     }
 
     fun verifyLoginAndResume() {
