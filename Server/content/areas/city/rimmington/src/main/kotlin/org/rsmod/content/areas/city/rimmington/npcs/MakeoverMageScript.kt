@@ -42,6 +42,11 @@ class MakeoverMageScript @Inject constructor(private val random: GameRandom) : P
         // first login. Initialise the same preview vars normally supplied by
         // talking to the Makeover Mage; this is not a dialogue with the mage.
         onIfOpen(INTERFACE) {
+            // These components may be displayed without an NPC interaction
+            // during the initial Tutorial Island login. Explicitly enable
+            // their Op1 events; otherwise the client/server button gates can
+            // silently discard every click, including the required Accept.
+            player.enableMakeoverInput()
             if (player.vars["varp.tutorial"] == 10 &&
                 player.vars["varbit.new_player_account"] == 1 &&
                 player.attr[TUTORIAL_APPEARANCE_CONFIRMED] != 1) {
@@ -55,8 +60,6 @@ class MakeoverMageScript @Inject constructor(private val random: GameRandom) : P
                 VarPlayerIntMapSetter.set(player, "varp.if1", appearance.bodyType)
                 VarPlayerIntMapSetter.set(player, "varp.if2", colour)
                 VarPlayerIntMapSetter.set(player, "varp.if3", appearance.pronoun)
-                player.ifSetEvents("component.makeover_mage:colour",
-                    SKIN_COLOUR_ORDER.indices, IfEvent.Op1)
             }
         }
         for ((index, mage) in MAGES.withIndex()) {
@@ -107,6 +110,22 @@ class MakeoverMageScript @Inject constructor(private val random: GameRandom) : P
             val mage = MAGES[vars[VAR_MAGE]]
             startDialogue { afterMakeover(mage) }
         }
+    }
+
+    /**
+     * Enable the static controls independently of the normal Makeover Mage
+     * dialogue, since on Tutorial Island the modal is opened directly at login.
+     * A range starting at zero supports both if1 clicks and if3 comsub 0 clicks.
+     */
+    private fun org.rsmod.game.entity.Player.enableMakeoverInput() {
+        for (component in listOf(
+            "bodytype_a", "bodytype_b",
+            "he_him", "she_her", "they_them",
+            "apply_button", "confirm_button",
+        )) {
+            ifSetEvents("component.makeover_mage:$component", 0..0, IfEvent.Op1)
+        }
+        ifSetEvents("component.makeover_mage:colour", SKIN_COLOUR_ORDER.indices, IfEvent.Op1)
     }
 
     private suspend fun StandardNpcAccess.switchForm() {
@@ -241,7 +260,7 @@ class MakeoverMageScript @Inject constructor(private val random: GameRandom) : P
         vars["varp.if3"] = appearance.pronoun
 
         ifOpenMainModal(INTERFACE)
-        ifSetEvents("component.makeover_mage:colour", SKIN_COLOUR_ORDER.indices, IfEvent.Op1)
+        player.enableMakeoverInput()
     }
 
     private fun ProtectedAccess.selectBodyType(bodyType: Int) {
