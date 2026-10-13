@@ -217,7 +217,9 @@ public class TutorialScript @Inject constructor(
                     else -> Unit
                 }
             } else if (name == "npc.newbiechicken" && hit.type == HitType.Magic &&
-                hit.damage > 0 && player.tutorialStage == TutorialStage.CAST) {
+                hit.damage > 0 &&
+                hit.secondaryType()?.id == "obj.01_wind_strike".asRSCM(RSCMType.OBJ) &&
+                player.tutorialStage == TutorialStage.CAST) {
                 progress.finishWindStrike(player)
             }
         }
