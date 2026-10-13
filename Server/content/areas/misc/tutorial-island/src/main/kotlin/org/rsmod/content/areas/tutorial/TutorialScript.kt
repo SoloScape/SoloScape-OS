@@ -334,8 +334,8 @@ public class TutorialScript @Inject constructor(
     private suspend fun Dialogue.chef() {
         when (player.tutorialStage) {
             TutorialStage.CHEF -> {
-                chatNpc(happy, "Welcome to my kitchen! Cooking ranges prepare more than fish. " +
-                    "Let's bake bread. Mix flour and water to make bread dough, then use it on the range.")
+                chatNpc(happy, "Welcome to my kitchen! Let's bake bread. Take this pot of " +
+                    "flour and bucket of water. Mix them to make bread dough, then use the range.")
                 if (!supply("obj.pot_flour") || !supply("obj.bucket_water")) return
                 progress.advance(player, TutorialStage.CHEF)
             }
