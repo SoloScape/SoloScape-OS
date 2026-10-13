@@ -119,7 +119,9 @@ from Tutorial Island with the standard OSRS mainland starter kit, including
 tools, weapons, food and 25 banked coins. This applies to opt-in Skippy
 departures as well. Non-starter training supplies do not leave the island, and
 run energy is restored. Other teleports stay blocked; Home Teleport bypasses the
-island restriction only at that final stage. No dialogue choice teleports the player,
+island restriction only at that final stage. After a successful Home Teleport,
+the character shares a 30-minute cooldown across the standard and Ancient
+Home Teleport options currently implemented by this server. No dialogue choice teleports the player,
 and the Ironman tutor stays accessible before departure. Skipping with Skippy
 does not award quest credit. The full Learning the Ropes Quest Journal entry
 has not been registered with the server quest manager yet; this update covers
