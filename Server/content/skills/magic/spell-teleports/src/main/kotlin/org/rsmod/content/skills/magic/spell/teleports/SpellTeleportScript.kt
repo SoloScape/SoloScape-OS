@@ -263,7 +263,8 @@ constructor(
             houseAccess.enter(this, task.houseBuildMode)
         } else {
             houseAccess.clearSession(player)
-            telejump(CoordGrid(task.destination))
+            val type = if (tutorialHomeExit) TeleportType.Exempt else TeleportType.Standard
+            telejump(CoordGrid(task.destination), type)
         }
         task.teleport.style.endAnim?.let { anim(it) }
         statAdvance("stat.magic", spell.castXp)
