@@ -548,8 +548,9 @@ private class Fixture {
         player.coords = CoordGrid(3106, 9510)
         val rat = Npc("npc.newbiegiantrat", CoordGrid(3100, 9515))
         val chicken = Npc("npc.newbiechicken", CoordGrid(3140, 3095))
-        fun hit(type: HitType, damage: Int = 1): Hit = Hit(type,
-            Hitmark.fromPlayerSource(0, 0, null, damage, 0, player.slotId), player.uid.packed, null, null)
+        fun hit(type: HitType, damage: Int = 1, spell: String? = null): Hit = Hit(type,
+            Hitmark.fromPlayerSource(0, 0, null, damage, 0, player.slotId),
+            player.uid.packed, null, spell?.asRSCM(RSCMType.OBJ))
         player.tutorialProgress = TutorialStage.MELEE.code
         rat.hitpoints = 1
         events.publish(NpcHitEvents.AnyImpact(rat, hit(HitType.Melee)))
@@ -567,15 +568,21 @@ private class Fixture {
         player.tutorialProgress = TutorialStage.CAST.code
         val originalQuestPoints = player.vars["varp.qp"]
         val originalQuestCount = player.vars["varbit.quests_completed_count"]
-        events.publish(NpcHitEvents.AnyImpact(chicken, hit(HitType.Magic, 0)))
+        events.publish(NpcHitEvents.AnyImpact(chicken,
+            hit(HitType.Magic, 0, "obj.01_wind_strike")))
         check(player.tutorialStage == TutorialStage.CAST)
-        events.publish(NpcHitEvents.AnyImpact(chicken, hit(HitType.Magic)))
+        events.publish(NpcHitEvents.AnyImpact(chicken,
+            hit(HitType.Magic, 1, "obj.05_water_strike")))
+        check(player.tutorialStage == TutorialStage.CAST)
+        events.publish(NpcHitEvents.AnyImpact(chicken,
+            hit(HitType.Magic, 1, "obj.01_wind_strike")))
         check(player.tutorialStage == TutorialStage.DEPART)
         check(player.vars["varp.qp"] == originalQuestPoints + 1)
         check(player.vars["varbit.quests_completed_count"] == originalQuestCount + 1)
         check(player.ui.containsModal("interface.questscroll"))
         check(packets.any { packetText(it) == "You have completed Learning the Ropes!" })
-        events.publish(NpcHitEvents.AnyImpact(chicken, hit(HitType.Magic)))
+        events.publish(NpcHitEvents.AnyImpact(chicken,
+            hit(HitType.Magic, 1, "obj.01_wind_strike")))
         check(player.vars["varp.qp"] == originalQuestPoints + 1)
         check(player.vars["varbit.quests_completed_count"] == originalQuestCount + 1)
         player.statMap.setCurrentLevel("stat.hitpoints", 0)
