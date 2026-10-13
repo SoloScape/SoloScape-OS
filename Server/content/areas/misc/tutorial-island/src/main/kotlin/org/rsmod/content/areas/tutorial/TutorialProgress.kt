@@ -44,11 +44,12 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
 
     public fun advance(player: Player, expected: TutorialStage): Boolean {
         if (!TutorialStage.accepts(player.tutorialStage ?: return false, expected)) return false
-        if (expected.next == TutorialStage.COMPLETE) {
+        val next = expected.requiredNext
+        if (next == TutorialStage.COMPLETE) {
             complete(player)
             return true
         }
-        player.tutorialProgress = expected.next.code
+        player.tutorialProgress = next.code
         show(player)
         return true
     }
@@ -97,13 +98,17 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
     }
 
     public fun show(player: Player) {
-        val stage = player.tutorialStage ?: return
+        val current = player.tutorialStage ?: return
+        // Old characters may have logged out at one of the removed mandatory lessons.
+        // Move them forward without undoing completed work or requiring a reset.
+        val stage = current.resumeStage
+        if (stage != current) player.tutorialProgress = stage.code
         player.tutorialProgressBar = stage.ordinal * 20 / TutorialStage.COMPLETE.ordinal
         if (!player.onTutorial) {
             player.ifCloseOverlay("interface.tutorial_overlay", eventBus)
             player.ifCloseOverlay("interface.messagebox_titled", eventBus)
             syncTabs(player, stage)
-            player.mes(stage.instruction)
+            player.mes(stage.objective)
             return
         }
         if (player.ui.containsOverlay("interface.tutorial_overlay")) {
@@ -112,7 +117,7 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
                 player.ifOpenOverlay("interface.messagebox_titled", "component.chatbox:chatoverlay", eventBus)
             }
             player.ifSetText("component.messagebox_titled:title", stage.lesson)
-            player.ifSetText("component.messagebox_titled:text", stage.instruction)
+            player.ifSetText("component.messagebox_titled:text", stage.objective)
             player.ifSetHide("component.messagebox_titled:continue", true)
             // Instructions live in the chat overlay; the native top-left hints are separate.
             player.ifSetHide("component.tutorial_overlay:hint_layer", true)
@@ -159,8 +164,8 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
             Tab(9, "friends", TutorialStage.FRIENDS),
             Tab(10, "logout", TutorialStage.GUIDE),
             Tab(11, "settings_side", TutorialStage.SETTINGS),
-            Tab(12, "emote", TutorialStage.EMOTES),
-            Tab(13, "music", TutorialStage.MUSIC),
+            Tab(12, "emote", TutorialStage.LEAVE_KITCHEN),
+            Tab(13, "music", TutorialStage.LEAVE_KITCHEN),
         )
 
         public fun hintLines(text: String): List<String> {
