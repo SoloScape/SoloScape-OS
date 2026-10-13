@@ -88,14 +88,9 @@ public class TutorialScript @Inject constructor(
             if (player.onTutorial) {
                 progress.open(player)
                 enableTabButtons(player)
-                if (player.tutorialStage == TutorialStage.GUIDE &&
-                    player.vars["varbit.new_player_account"] == 1 &&
-                    player.attr[APPEARANCE_CONFIRMED] != 1) {
-                    // Revision-240 provides a working appearance editor through the
-                    // Makeover Mage interface. Show it on first login, not just at
-                    // the mage's shop; require confirmation before talking to the Guide.
-                    player.ifOpenMainModal("interface.makeover_mage", eventBus)
-                }
+                // The initial appearance editor is a mandatory modal; both
+                // world/minimap movement and Escape stay blocked until Accept.
+                progress.ensureAppearanceCreation(player)
             }
         }
         // Popout is moved last, after the HUD, chatbox and side panels are in the new frame.
