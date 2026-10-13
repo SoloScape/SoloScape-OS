@@ -100,6 +100,10 @@ public class TutorialScript @Inject constructor(
                 else player.mes("You have already left Tutorial Island.")
             }
         }
+        onCommand("ropes") {
+            desc = "Open your Learning the Ropes quest journal"
+            cheat { progress.openLearningRopesJournal(player) }
+        }
         val tutors = mapOf(
             "npc.newbie_basics_instructor" to Tutor.GUIDE,
             "npc.newbie_survival_instructor" to Tutor.SURVIVAL,
@@ -116,7 +120,10 @@ public class TutorialScript @Inject constructor(
         TOPLEVELS.forEach { frame ->
             TAB_STEPS.forEach { (tab, stage) ->
                 onIfOverlayButton("component.$frame:stone$tab") {
+                    val openingFirstQuestJournal = stage == TutorialStage.JOURNAL &&
+                        player.tutorialStage == TutorialStage.JOURNAL
                     progress.advance(player, stage)
+                    if (openingFirstQuestJournal) progress.openLearningRopesJournal(player)
                 }
             }
         }
