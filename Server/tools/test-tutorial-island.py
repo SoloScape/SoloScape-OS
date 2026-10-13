@@ -42,6 +42,8 @@ if "--source" in sys.argv[1:]:
     sources.append(server / "api/account/src/main/kotlin/org/rsmod/api/account/loader/request/AccountLoadResponse.kt")
     sources.append(server / ("content/areas/city/rimmington/src/main/kotlin/"
                              "org/rsmod/content/areas/city/rimmington/npcs/MakeoverMageScript.kt"))
+    sources.append(server / ("content/areas/city/falador/src/main/kotlin/"
+                             "org/rsmod/content/areas/city/falador/npcs/HairdresserScript.kt"))
 compiler_args = [
     "-jvm-target", "21",
     "-Xcontext-parameters", "-Xnested-type-aliases", "-Xskip-prerelease-check",

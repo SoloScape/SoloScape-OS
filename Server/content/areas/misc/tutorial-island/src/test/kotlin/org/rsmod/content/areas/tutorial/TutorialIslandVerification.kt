@@ -20,6 +20,15 @@ import kotlin.coroutines.startCoroutine
 import org.rsmod.api.area.checker.AreaChecker
 import org.rsmod.api.attr.AttributeKey
 import org.rsmod.api.attr.AttributeMap
+import org.rsmod.api.account.character.appearance.CharacterAppearancePersistence
+import org.rsmod.api.table.HairStylesRow
+import org.rsmod.api.table.FacialHairStylesRow
+import org.rsmod.api.table.TorsoStylesRow
+import org.rsmod.api.table.SleeveStylesRow
+import org.rsmod.api.table.LeggingStylesRow
+import org.rsmod.api.table.ShoeStylesRow
+import org.rsmod.api.table.HandStylesRow
+import org.rsmod.content.areas.city.falador.npcs.HairdresserScript
 import org.rsmod.api.game.process.player.PlayerFaceSquareProcessor
 import org.rsmod.api.inv.storage.PlayerItemStorage
 import org.rsmod.api.invtx.InvTransactionsScript
@@ -112,6 +121,7 @@ public fun main() {
         fixture.verifyPrecreatedCharacterLogin()
         fixture.verifyLoginAndResume()
         fixture.verifyAppearanceRelog()
+        fixture.verifyAppearanceCategories()
         fixture.verifyFamiliarityAndLearningRopesJournal()
         fixture.verifyInstructorDialogueAndRecovery()
         fixture.verifyInstructorRecaps()
@@ -180,6 +190,7 @@ private class Fixture {
         with(InvTransactionsScript(PlayerItemStorage(emptySet()))) { scripts.startup() }
         with(FriendsIgnoreScript(events)) { scripts.startup() }
         with(MakeoverMageScript(DefaultGameRandom(42L))) { scripts.startup() }
+        with(HairdresserScript()) { scripts.startup() }
         with(script) { scripts.startup() }
         with(TutorialSkippyScript(NpcRepository(clock, npcRegistry, npcs), progress)) { scripts.startup() }
         context = ProtectedAccessContextFactory.empty().copy(
@@ -325,6 +336,117 @@ private class Fixture {
         check(guard.restriction(player, RestrictedAction.Walk) == null)
         check(guard.restriction(player, RestrictedAction.CloseModal) == null)
         println("PASS: logout before Accept preserves mandatory creation; saved Accept unlocks relog")
+    }
+
+    fun verifyAppearanceCategories() {
+        val confirmedKey = AttributeKey<Int>("tutorial_appearance_confirmed")
+        player.attr.remove(confirmedKey)
+        player.tutorialProgress = TutorialStage.GUIDE.code
+        VarPlayerIntMapSetter.set(player, "varbit.new_player_account", 0)
+        events.publish(SessionStateEvent.Login(player))
+        val categories = listOf(
+            Triple(0, "makeover_hair_styles", 0),
+            Triple(1, "makeover_facial_hair_styles", 1),
+            Triple(3, "makeover_torso_styles", 2),
+            Triple(4, "makeover_sleeve_styles", 3),
+            Triple(5, "makeover_legging_styles", 5),
+            Triple(6, "makeover_shoe_styles", 6),
+            Triple(7, "makeover_hand_styles", 4),
+        )
+        for (body in 0..1) {
+            appearanceClick("makeover_mage:bodytype_${if (body == 0) "a" else "b"}")
+            for ((category, enumName, slot) in categories) {
+                val menu = "makeover_mage:burger_menu_frame"
+                check(player.ui.hasEvent(ServerCacheManager.fromComponent("component.$menu"),
+                    10 + category * 2, IfEvent.Op1))
+                appearanceClick(menu, 10 + category * 2)
+                check(player.ui.containsModal("interface.makeover"))
+                check(player.vars["varbit.makeover_interface_type"] == category)
+                check(player.vars["varbit.makeover_bodytype"] == body)
+                ticks.onPostTick(player)
+                check(player.ui.containsModal("interface.makeover")) {
+                    "Tutorial recovery must allow the style editor to remain open."
+                }
+                check(player.tutorialAppearancePending)
+                val styles = checkNotNull(ServerCacheManager.getEnum("enum.$enumName".asRSCM()))
+                val index = styles.values.keys.max()
+                val row = (styles.values.getValue(index) as Number).toInt() and 0xFFFF
+                val kits = when (slot) {
+                    0 -> HairStylesRow.getRow(row).let { it.playerKitIdTypeA to it.playerKitIdTypeB }
+                    1 -> FacialHairStylesRow.getRow(row).let { it.playerKitIdTypeA to it.playerKitIdTypeB }
+                    2 -> TorsoStylesRow.getRow(row).let { it.playerKitIdTypeA to it.playerKitIdTypeB }
+                    3 -> SleeveStylesRow.getRow(row).let { it.playerKitIdTypeA to it.playerKitIdTypeB }
+                    4 -> HandStylesRow.getRow(row).let { it.playerKitIdTypeA to it.playerKitIdTypeB }
+                    5 -> LeggingStylesRow.getRow(row).let { it.playerKitIdTypeA to it.playerKitIdTypeB }
+                    else -> ShoeStylesRow.getRow(row).let { it.playerKitIdTypeA to it.playerKitIdTypeB }
+                }
+                check(player.ui.hasEvent(ServerCacheManager.fromComponent("component.makeover:item_area"),
+                    index * 5, IfEvent.Op1))
+                appearanceClick("makeover:item_area", index * 5)
+                check(player.appearance.identKitSnapshot()[slot].toInt() ==
+                    if (body == 0) kits.first else kits.second)
+                val colourSlot = when (category) {
+                    0, 1 -> 0
+                    3, 4 -> 1
+                    5 -> 2
+                    6 -> 3
+                    else -> null
+                }
+                if (colourSlot != null) {
+                    appearanceClick("makeover:colours", 2)
+                    check(player.appearance.coloursSnapshot()[colourSlot].toInt() == 1)
+                }
+                val beforeInvalid = player.appearance.identKitSnapshot()
+                appearanceClick("makeover:item_area", -1)
+                appearanceClick("makeover:item_area", Int.MAX_VALUE)
+                check(player.appearance.identKitSnapshot() == beforeInvalid)
+                appearanceClick("makeover:select_and_close")
+                check(player.ui.containsModal("interface.makeover_mage"))
+                check(player.tutorialAppearancePending) { "Applying a style must not bypass final Accept." }
+                check(player.appearance.identKitSnapshot()[slot] == beforeInvalid[slot])
+            }
+        }
+        appearanceClick("makeover_mage:burger_menu_frame", 10)
+        val savedHair = player.appearance.identKitSnapshot()[0]
+        appearanceClick("makeover:item_area", 0)
+        appearanceClick("makeover:burger_menu_frame", 18)
+        check(player.appearance.identKitSnapshot()[0] == savedHair) {
+            "Switching categories must revert the previous category's unapplied preview."
+        }
+        check(player.vars["varbit.makeover_interface_type"] == 4) {
+            "The Sleeves menu entry must not open Torsos."
+        }
+        appearanceClick("makeover:burger_menu_frame", 14)
+        check(player.ui.containsModal("interface.makeover_mage"))
+        appearanceClick("makeover_mage:confirm_button")
+        check(!player.tutorialAppearancePending)
+        val restored = org.rsmod.game.entity.player.Appearance()
+        CharacterAppearancePersistence.restore(restored, CharacterAppearancePersistence.encode(player.appearance))
+        check(restored.identKitSnapshot() == player.appearance.identKitSnapshot())
+        check(restored.coloursSnapshot() == player.appearance.coloursSnapshot())
+        player.tutorialProgress = TutorialStage.COMPLETE.code
+        player.appearance.setIdentKit(1, org.rsmod.game.entity.player.Appearance.NO_IDENT_KIT)
+        interaction {
+            check(events.publish(ProtectedAccess(player, coroutine, context),
+                NpcEvents.Op5(Npc("npc.hairdresser", player.coords.translateX(1)))))
+        }
+        check(player.ui.containsModal("interface.makeover"))
+        appearanceClick("makeover:item_area", 0)
+        player.ifCloseModals(events)
+        check(player.appearance.identKitSnapshot()[1].toInt() == -1) {
+            "Cancelling a facial-hair preview must restore an empty identity-kit slot."
+        }
+        ticks.onPostTick(player)
+        check(!player.ui.containsModal("interface.makeover_mage"))
+        println("PASS: all seven appearance categories, both body types, style/colour selection and save")
+    }
+
+    private fun appearanceClick(component: String, comsub: Int = 0) {
+        interaction {
+            check(events.publish(ProtectedAccess(player, coroutine, context),
+                IfModalButton(ServerCacheManager.fromComponent("component.$component"),
+                    comsub, null, IfButtonOp.Op1)))
+        }
     }
 
     fun verifyPrecreatedCharacterLogin() {

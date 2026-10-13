@@ -70,7 +70,8 @@ public class TutorialProgress @Inject constructor(
     /** Reopens mandatory character creation if another UI displaced the editor. */
     public fun ensureAppearanceCreation(player: Player) {
         if (player.tutorialAppearancePending &&
-            !player.ui.containsModal("interface.makeover_mage")) {
+            !player.ui.containsModal("interface.makeover_mage") &&
+            !player.ui.containsModal("interface.makeover")) {
             player.ifOpenMainModal("interface.makeover_mage", eventBus)
         }
     }

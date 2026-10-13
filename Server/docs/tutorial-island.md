@@ -48,12 +48,18 @@ Any displaced creator is reopened on the next post-tick, and unfinished movement
 routes are discarded. Only the appearance editor's **Confirm/Accept** button
 sets `tutorial_appearance_confirmed = 1` and unlocks movement. Normal mainland
 Makeover Mage visits remain closable and do not restrict walking.
-The rev-240 client supports the reusable Makeover Mage appearance panel
-(body type, skin colour and pronouns), not yet all of the newer official
-character creator's hair, clothing and palette selectors. The server explicitly
-enables click events on both body-type models, pronoun choices, skin-colour
-swatches, Apply and Confirm whenever the editor opens. The input path also
-honours an explicit event mask for static IF3 component clicks, which can
+The rev-240 client uses the Makeover Mage panel for body type, skin colour and
+pronouns, and the reusable style panel for hair, facial hair, torsos, sleeves,
+bottoms, shoes and wristwear. Both panels' category menus route each native
+dropdown entry to the correct panel and enable its click events. Styles use the
+cache's ordered enums and body-type-specific identity kits; colour choices use
+the corresponding hair, top, bottom or shoe palette. Wristwear has no palette.
+Apply and close from a style panel saves that choice and returns an unconfirmed
+tutorial character to the body-type panel for final Confirm. Movement and Escape
+remain blocked throughout creation, including while a style panel is open.
+The server explicitly enables click events on both body-type models, pronoun
+choices, skin-colour swatches, Apply and Confirm whenever the editor opens. The
+input path also honours an explicit event mask for static IF3 component clicks, which can
 otherwise be rejected before reaching any gameplay script. Modal recovery
 restores these event permissions after a dismissed editor is reopened.
 Tutorial confirmation

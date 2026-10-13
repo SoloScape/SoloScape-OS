@@ -29,6 +29,7 @@ import org.rsmod.api.table.ShoeStylesRow
 import org.rsmod.api.table.SleeveStylesRow
 import org.rsmod.api.table.TorsoStylesRow
 import org.rsmod.game.entity.player.Appearance
+import org.rsmod.content.areas.city.falador.npcs.appearanceMenuCategory
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -47,19 +48,21 @@ class MakeoverMageScript @Inject constructor(private val random: GameRandom) : P
             // their Op1 events; otherwise the client/server button gates can
             // silently discard every click, including the required Accept.
             player.enableMakeoverInput()
-            if (player.vars["varp.tutorial"] == 10 &&
-                player.attr[TUTORIAL_APPEARANCE_CONFIRMED] != 1) {
-                val appearance = player.appearance
-                val colour = appearance.coloursSnapshot()[SKIN_COLOUR_SLOT].toInt()
-                // Player.vars exposes read-only indexing; all writes must go
-                // through the setter to preserve varp/varbit synchronization.
-                VarPlayerIntMapSetter.set(player, VAR_BODY_TYPE, appearance.bodyType)
-                VarPlayerIntMapSetter.set(player, VAR_COLOUR, colour)
-                VarPlayerIntMapSetter.set(player, VAR_PRONOUN, appearance.pronoun)
-                VarPlayerIntMapSetter.set(player, "varp.if1", appearance.bodyType)
-                VarPlayerIntMapSetter.set(player, "varp.if2", colour)
-                VarPlayerIntMapSetter.set(player, "varp.if3", appearance.pronoun)
-            }
+            val appearance = player.appearance
+            val colour = appearance.coloursSnapshot()[SKIN_COLOUR_SLOT].toInt()
+            VarPlayerIntMapSetter.set(player, VAR_BODY_TYPE, appearance.bodyType)
+            VarPlayerIntMapSetter.set(player, VAR_COLOUR, colour)
+            VarPlayerIntMapSetter.set(player, VAR_PRONOUN, appearance.pronoun)
+            VarPlayerIntMapSetter.set(player, "varp.if1", appearance.bodyType)
+            VarPlayerIntMapSetter.set(player, "varp.if2", colour)
+            VarPlayerIntMapSetter.set(player, "varp.if3", appearance.pronoun)
+        }
+        onIfModalButton("component.makeover_mage:burger_menu_frame") {
+            val category = appearanceMenuCategory(it.comsub) ?: return@onIfModalButton
+            applyMakeover()
+            vars["varbit.makeover_interface_type"] = category
+            vars["varbit.makeover_bodytype"] = player.appearance.bodyType
+            ifOpenMainModal(if (category == 2) INTERFACE else "interface.makeover")
         }
         for ((index, mage) in MAGES.withIndex()) {
             onOpNpc1(mage) {
@@ -124,6 +127,7 @@ class MakeoverMageScript @Inject constructor(private val random: GameRandom) : P
             ifSetEvents("component.makeover_mage:$component", 0..0, IfEvent.Op1)
         }
         ifSetEvents("component.makeover_mage:colour", SKIN_COLOUR_ORDER.indices, IfEvent.Op1)
+        ifSetEvents("component.makeover_mage:burger_menu_frame", 10..24, IfEvent.Op1)
     }
 
     private suspend fun StandardNpcAccess.switchForm() {
