@@ -38,6 +38,7 @@ import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.protect.ProtectedAccessContextFactory
 import org.rsmod.api.player.stat.TutorialExperience
 import org.rsmod.api.player.vars.VarPlayerIntMapSetter
+import org.rsmod.api.player.ui.IfModalButton
 import org.rsmod.api.player.ui.IfOverlayButton
 import org.rsmod.api.player.ui.IfMoveSub
 import org.rsmod.api.player.ui.ifOpenOverlay
@@ -46,6 +47,7 @@ import org.rsmod.api.player.ui.ifCloseChat
 import org.rsmod.api.player.ui.ifCloseModals
 import dev.openrune.types.aconverted.interf.IfButtonOp
 import dev.openrune.types.aconverted.interf.IfSubType
+import org.rsmod.api.random.DefaultGameRandom
 import org.rsmod.api.registry.controller.ControllerRegistry
 import org.rsmod.api.registry.loc.LocRegistry
 import org.rsmod.api.registry.loc.LocRegistryNormal
@@ -58,6 +60,7 @@ import org.rsmod.api.repo.loc.LocRepository
 import org.rsmod.api.repo.npc.NpcRepository
 import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.route.BoundValidator
+import org.rsmod.content.areas.city.rimmington.npcs.MakeoverMageScript
 import org.rsmod.content.generic.locs.passages.GenericPassageScript
 import org.rsmod.content.generic.locs.passages.StairNavigator
 import org.rsmod.content.interfaces.emotes.PlayEmote
@@ -172,6 +175,7 @@ private class Fixture {
         val scripts = ScriptContext(events, CheatCommandMap(), EngineQueueCache())
         with(InvTransactionsScript(PlayerItemStorage(emptySet()))) { scripts.startup() }
         with(FriendsIgnoreScript(events)) { scripts.startup() }
+        with(MakeoverMageScript(DefaultGameRandom(42L))) { scripts.startup() }
         with(script) { scripts.startup() }
         with(TutorialSkippyScript(NpcRepository(clock, npcRegistry, npcs), progress)) { scripts.startup() }
         context = ProtectedAccessContextFactory.empty().copy(
@@ -812,8 +816,14 @@ private class Fixture {
         check(player.ui.containsModal("interface.makeover_mage")) {
             "The first login should open the appearance-customisation interface."
         }
-        player.ifCloseModals(events)
-        player.attr[confirmedKey] = 1
+        interaction {
+            check(events.publish(ProtectedAccess(player, coroutine, context),
+                IfModalButton(ServerCacheManager.fromComponent("component.makeover_mage:confirm_button"),
+                    0, null, IfButtonOp.Op1)))
+        }
+        check(player.attr[confirmedKey] == 1)
+        check(!player.ui.containsModal("interface.makeover_mage"))
+        check(player.attr.toPersistentMap()["tutorial_appearance_confirmed"] == 1)
         events.publish(SessionStateEvent.Login(player))
         check(!player.ui.containsModal("interface.makeover_mage")) {
             "Confirmed appearance should not reopen on later logins."
