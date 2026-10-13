@@ -9,6 +9,7 @@ import jakarta.inject.Inject
 import org.rsmod.api.attr.AttributeKey
 import org.rsmod.api.invtx.add
 import org.rsmod.api.invtx.delete
+import org.rsmod.api.invtx.invAdd
 import org.rsmod.api.invtx.invTransaction
 import org.rsmod.api.invtx.select
 import org.rsmod.api.npc.events.NpcHitEvents
@@ -68,6 +69,13 @@ public class TutorialScript @Inject constructor(
         onEvent<SessionStateEvent.PrepareLogin> {
             if (player.tutorialProgress == 0 &&
                 (player.vars["varbit.new_player_account"] == 1 || player.coords == TutorialProgress.START)) {
+                val bank = player.invMap.getOrPut("inv.bank")
+                val missingCoins = (25 - bank.count("obj.coins")).coerceAtLeast(0)
+                if (missingCoins > 0) {
+                    check(player.invAdd(bank, "obj.coins", missingCoins).success) {
+                        "Unable to provide the new character's 25 starter bank coins."
+                    }
+                }
                 player.coords = TutorialProgress.START
                 player.tutorialProgress = TutorialStage.GUIDE.code
             }
@@ -188,7 +196,7 @@ public class TutorialScript @Inject constructor(
                 input == "obj.raw_shrimp" && output == "obj.burnt_shrimp" ->
                     progress.advance(player, TutorialStage.COOK_FIRST)
                 input == "obj.raw_shrimp" && output == "obj.shrimp" ->
-                    progress.advance(player, TutorialStage.COOK_RETRY)
+                    progress.cookedShrimp(player)
                 input == "obj.pot_flour" && output == "obj.bread_dough" ->
                     progress.advance(player, TutorialStage.DOUGH)
                 input == "obj.bronze_bar" && output == "obj.bronze_dagger" ->
@@ -328,13 +336,13 @@ public class TutorialScript @Inject constructor(
             TutorialStage.CHEF -> {
                 chatNpc(happy, "Welcome to my kitchen! Cooking ranges prepare more than fish. " +
                     "Let's bake bread. Mix flour and water to make bread dough, then use it on the range.")
-                if (!supply("obj.pot_flour") || !supply("obj.jug_water")) return
+                if (!supply("obj.pot_flour") || !supply("obj.bucket_water")) return
                 progress.advance(player, TutorialStage.CHEF)
             }
             TutorialStage.DOUGH, TutorialStage.BREAD -> {
                 if (!access.inv.contains("obj.bread_dough")) {
                     supply("obj.pot_flour")
-                    supply("obj.jug_water")
+                    supply("obj.bucket_water")
                 }
                 reminder()
             }
@@ -451,8 +459,8 @@ public class TutorialScript @Inject constructor(
                 "Ask a banker about your bank settings. Do not share a PIN or reuse your password.")
             else -> Unit
         }
-        chatNpc(happy, "Leave through the next door and find Brother Brace at the church.")
-        if (!supply("obj.coins", 25)) return
+        chatNpc(happy, "Your starter coins are already safe in your bank. " +
+            "Leave through the next door and find Brother Brace at the church.")
         progress.advance(player, TutorialStage.ACCOUNT)
     }
 
@@ -494,12 +502,12 @@ public class TutorialScript @Inject constructor(
             TutorialStage.MAGIC_RETURN -> {
                 chatNpc(neutral, "Each spell needs a Magic level and particular runes. Wind " +
                     "Strike uses one air rune and one mind rune. Take these runes and cast it on a chicken.")
-                if (!supply("obj.airrune", 10) || !supply("obj.mindrune", 10)) return
+                if (!supply("obj.airrune", 5) || !supply("obj.mindrune", 5)) return
                 progress.advance(player, TutorialStage.MAGIC_RETURN)
             }
             TutorialStage.CAST -> {
-                supply("obj.airrune", 10)
-                supply("obj.mindrune", 10)
+                supply("obj.airrune", 5)
+                supply("obj.mindrune", 5)
                 chatNpc(neutral, "Click Wind Strike in your spellbook, then click a chicken " +
                     "inside the pen. If a spell misses, try again. You can cast without a staff.")
             }
@@ -648,13 +656,10 @@ public class TutorialScript @Inject constructor(
         anim("seq.human_cooking")
         delay(3)
         resetAnim()
-        val first = player.tutorialStage == TutorialStage.COOK_FIRST
-        val output = if (first) "obj.burnt_shrimp" else "obj.shrimp"
-        if (!convert(listOf("obj.raw_shrimp"), output)) return
-        if (!first) statAdvance("stat.cooking", 30.0, rate = 1.0, globalRate = 1.0)
-        mes(if (first) "You accidentally burn the shrimp. Catch another and try again."
-            else "You successfully cook the shrimp.")
-        progress.advance(player, if (first) TutorialStage.COOK_FIRST else TutorialStage.COOK_RETRY)
+        if (!convert(listOf("obj.raw_shrimp"), "obj.shrimp")) return
+        statAdvance("stat.cooking", 30.0, rate = 1.0, globalRate = 1.0)
+        mes("You successfully cook the shrimp.")
+        progress.cookedShrimp(player)
     }
 
     private fun ProtectedAccess.convert(inputs: List<String>, output: String): Boolean {
