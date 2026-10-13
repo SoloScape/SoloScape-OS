@@ -1,0 +1,676 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { fileURLToPath } from "node:url";
+import { createServer } from "node:http";
+import { access, readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { displayTerrainProgressively } from "../browser/world-startup.mjs";
+
+test("first WebGL terrain render does not await optional materials", async () => {
+    let resolveMaterials;
+    const waitForMaterials=new Promise(resolve=>{resolveMaterials=resolve;});
+    const steps=[];
+    const scene={mapX:50,mapY:50};
+    let material;
+    const optionalWork=displayTerrainProgressively({
+        terrain:scene,
+        renderTerrain(value){assert.strictEqual(value,scene);steps.push("rendered");},
+        fetchMaterials(value){assert.strictEqual(value,scene);steps.push("requested");return waitForMaterials;},
+        applyMaterials(value,colors){assert.strictEqual(value,scene);material=colors;steps.push("recoloured");},
+        onMaterialError(error){throw error;},
+    });
+    assert.deepEqual(steps,["rendered"],"Render must happen before the first microtask/floor request");
+    await Promise.resolve();
+    assert.deepEqual(steps,["rendered","requested"]);
+    assert.equal(material,undefined);
+    resolveMaterials({underlays:new Map()});
+    await optionalWork;
+    assert.deepEqual(steps,["rendered","requested","recoloured"]);
+    assert.ok(material.underlays instanceof Map);
+});
+
+test("missing floor definitions do not clear a successfully rendered terrain",async()=>{
+    const steps=[];
+    await displayTerrainProgressively({
+        terrain:{},
+        renderTerrain(){steps.push("rendered");},
+        fetchMaterials(){throw new Error("Floor config 2:4 unavailable");},
+        applyMaterials(){throw new Error("Should not be called");},
+        onMaterialError(error){steps.push("fallback "+error.message);},
+    });
+    assert.deepEqual(steps,["rendered","fallback Floor config 2:4 unavailable"]);
+});
+
+test("late floor response for a previous region cannot overwrite a newer world",async()=>{
+    let resolve;
+    let current=true;
+    const steps=[];
+    const pending=new Promise(done=>{resolve=done;});
+    const work=displayTerrainProgressively({
+        terrain:{mapX:50},
+        renderTerrain(){steps.push("render 50");},
+        fetchMaterials(){return pending;},
+        applyMaterials(){steps.push("stale recolour");},
+        onMaterialError(){steps.push("stale failure");},
+        isCurrent(){return current;},
+    });
+    current=false;
+    resolve({rgb:1});
+    await work;
+    assert.deepEqual(steps,["render 50"]);
+});
+
+test("preview server serves all ESM dependencies of the world client", {timeout:15000}, async()=>{
+    const cwd=fileURLToPath(new URL("../",import.meta.url));
+    const lateName=`late-runtime-${process.pid}-${Date.now()}.mjs`;
+    const lateFile=join(cwd,"browser","tsps-runtime",lateName);
+    const child=spawn(process.execPath,["browser/dev-server.mjs"],{
+        cwd,
+        env:{...process.env,SOLOSCAPE_PREVIEW_PORT:"0"},
+        stdio:["ignore","pipe","pipe"],
+    });
+    let logs="",lateCreated=false;
+    try{
+        const port=await new Promise((resolve,reject)=>{
+            const timeout=setTimeout(()=>reject(new Error("Preview server did not start: "+logs)),6000);
+            const success=n=>{clearTimeout(timeout);resolve(n);};
+            const fail=error=>{clearTimeout(timeout);reject(error);};
+            child.stdout.on("data",chunk=>{
+                logs+=chunk.toString();
+                const match=logs.match(/http:\/\/localhost:(\d+)\//);
+                if(match)success(Number(match[1]));
+            });
+            child.stderr.on("data",chunk=>{logs+=chunk.toString();});
+            child.once("error",fail);
+            child.once("exit",code=>fail(new Error("Preview server exited "+code+": "+logs)));
+        });
+        const root=`http://127.0.0.1:${port}`;
+        const lateRoute=root+"/tsps-runtime/"+lateName;
+        assert.equal((await fetch(lateRoute)).status,404);
+        await writeFile(lateFile,"export const generatedAfterStartup = true;\n",{flag:"wx"});
+        lateCreated=true;
+        const lateResponse=await fetch(lateRoute);
+        assert.equal(lateResponse.status,200,"runtime generated after startup must be served without restart");
+        assert.match(lateResponse.headers.get("content-type")??"",/text\/javascript/);
+        assert.match(await lateResponse.text(),/generatedAfterStartup/);
+        assert.equal((await fetch(root+"/tsps-runtime/..%2fpackage.json")).status,404);
+        const html=await fetch(root+"/");
+        assert.equal(html.status,200);
+        const htmlText=await html.text();
+        assert.match(htmlText,/name="apple-mobile-web-app-capable" content="yes"/,
+            "iOS home screen must open in standalone app mode");
+        assert.match(htmlText,/name="apple-mobile-web-app-status-bar-style" content="black-translucent"/,
+            "iOS status bar must overlay game content, not reserve a black strip");
+        assert.match(htmlText,/name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/,
+            "mobile browser viewport extends behind iPhone safe areas");
+        assert.match(htmlText,/src="\/teavm\/title-client\.mjs"/,"homepage is TeaVM title client");
+        assert.match(htmlText,/id="osrs-title"/,"original 765x503 cache title canvas is mounted");
+        assert.match(htmlText,/id="title-mute"/,"authentic mute control is mounted");
+        assert.match(htmlText,/id="title-world-switch"/,"original world selector control is mounted");
+        assert.match(htmlText,/id="title-remember"/,"OpenOSRS login toggle is mounted");
+        assert.match(htmlText,/id="login-password"/,"title has native encrypted login fields");
+        assert.doesNotMatch(htmlText,/id="login-otp"/,"ordinary login has only username and password");
+        assert.match(htmlText,/id="world-canvas"/,"same-session cache-backed world is mounted");
+        assert.match(htmlText,/id="world-performance"/,"gameplay performance HUD is mounted");
+        for(const metric of ["fps","ram","tick","ms","draw","net","gl","act","plr","npc","up","scn"])
+            assert.match(htmlText,new RegExp('data-perf="'+metric+'"'),"missing performance metric "+metric);
+        assert.doesNotMatch(htmlText,/id="world-disconnect"|class="world-hud"/,
+            "game viewport has no top logout/status overlay");
+        assert.doesNotMatch(htmlText,/<header\b|<nav\b|class="development"|class="milestone"|href="\/legacy"/,
+            "the homepage contains only the client, with no site navigation or development chrome");
+        const clientCss=await (await fetch(root+"/teavm/title-client.css")).text();
+        assert.match(clientCss,/height:100dvh/,"game client occupies the viewport");
+        assert.match(clientCss,/#osrs-title\{[^}]*image-rendering:auto/,
+            "native title is composited smoothly from its Retina backing store");
+        assert.match(clientCss,/#world-performance-toggle/,"touch-safe PERF toggle styles are served");
+        assert.doesNotMatch(clientCss,/aspect-ratio:765\/503/,"gameplay must not retain desktop letterboxing");
+        assert.match(clientCss,/@media \(pointer:coarse\) and \(orientation:landscape\)/,
+            "mobile landscape has a dedicated game fit mode");
+        assert.match(clientCss,/\.in-game \.app\{padding:0 env\(safe-area-inset-right/,
+            "landscape game extends beneath the status bar while keeping notch-side padding");
+        assert.match(clientCss,/\.in-game \.screen\{width:100%;height:100%;aspect-ratio:auto/,
+            "game fills the available screen on desktop and mobile");
+        assert.match(clientCss,/#title-controls/,"original native fixed-position title hit targets");
+        const titleJs=await (await fetch(root+"/teavm/title-client.mjs")).text();
+        const titlePainter=await (await fetch(root+"/title-screen.mjs")).text();
+        assert.match(titlePainter,/titleCanvasBacking\(width,height,window.devicePixelRatio/,
+            "Retina canvas backing is used by the real mobile title");
+        assert.match(titleJs,/new NativeTitleScreen/,"homepage must use verified OpenOSRS-matched title renderer");
+        assert.match(titleJs,/worldBridge\.resize\?\.\(\)/,
+            "first authenticated frame reports post-layout game dimensions");
+        assert.doesNotMatch(clientCss,/\.development|\.legacy|\.milestone|\.top\{/,
+            "old site chrome styles are removed");
+        for(const removed of ["/legacy","/diagnostics","/teavm/lab","/app.mjs","/diagnostics-app.mjs"]){
+            const response=await fetch(root+removed);
+            assert.equal(response.status,404,"obsolete site route should be gone: "+removed);
+        }
+        // Regression: absent floor-materials.mjs used to leave the static
+        // loading spinner displayed forever because the import graph failed.
+        const modules=[
+            "/teavm/title-client.mjs","/title-login-session.mjs",
+            "/teavm-world.mjs",
+            "/native-js5.mjs","/terrain-world.mjs",
+            "/world-webgl.mjs","/floor-materials.mjs","/floor-lighting.mjs","/world-startup.mjs",
+            "/cache-reader.mjs","/model-codec.mjs","/object-definitions.mjs","/location-cache.mjs","/scenery-models.mjs",
+            "/texture-cache.mjs","/texture-mapper.mjs","/scene-planes.mjs",
+            "/model-composition.mjs","/scene-animation.mjs","/spot-effects.mjs",
+            "/login-crypto.mjs","/login-protocol.mjs","/login-pow.mjs","/native-login.mjs","/game-protocol.mjs",
+            "/player-sync.mjs","/player-models.mjs","/native-gameplay.mjs","/npc-sync.mjs","/npc-models.mjs","/npc-interactions.mjs","/npc-pointer.mjs","/native-menu.mjs","/native-interfaces.mjs","/interface-canvas.mjs",
+            "/interface-protocol.mjs","/server-interfaces.mjs","/native-scripts.mjs","/cs2-pure-ops.mjs","/cs2-widget-ops.mjs","/game-performance.mjs","/dialogue-models.mjs",
+            "/title-screen.mjs","/title-fire.mjs","/title-music.mjs","/title-music-worklet.mjs","/title-audio-cache.mjs",
+            "/title-audio-realtime-midi-synth.mjs","/title-audio-audio-context.mjs","/title-audio-vorbis-sample.mjs",
+        ];
+        for(const path of modules){
+            const response=await fetch(root+path);
+            assert.equal(response.status,200,path+" should be served");
+            assert.match(response.headers.get("content-type")??"",/text\/javascript/,path);
+            assert.ok((await response.text()).length>50,path);
+        }
+        const ping=await fetch(root+"/ping",{cache:"no-store"});
+        assert.equal(ping.status,204,"LAN latency probe must return without cache/body");
+        assert.match(ping.headers.get("cache-control")??"",/no-store/);
+        // Walk the actual module import graph, including the login-time dynamic
+        // world import, so adding a new dependency cannot silently create a 404.
+        const queue=["/teavm/title-client.mjs","/teavm-world.mjs"],checked=new Set();
+        while(queue.length){
+            const path=queue.shift();
+            if(checked.has(path))continue;
+            assert.ok(checked.size<256,"ES module import graph exceeds safe test bound");
+            checked.add(path);
+            const response=await fetch(root+path);
+            assert.equal(response.status,200,"Missing JS import dependency: "+path);
+            assert.match(response.headers.get("content-type")??"",/text\/javascript/,path);
+            const source=await response.text();
+            const importPattern=/\bfrom\s*["']([^"']+\.mjs)["']|\bimport\s*\(\s*["']([^"']+\.mjs)["']|\bimport\s*["']([^"']+\.mjs)["']/g;
+            for(const match of source.matchAll(importPattern)){
+                const specifier=match[1]??match[2]??match[3];
+                if(!specifier.startsWith("/")&&!specifier.startsWith("."))continue;
+                const imported=new URL(specifier,root+path).pathname;
+                if(!checked.has(imported))queue.push(imported);
+            }
+        }
+        assert.ok(checked.has("/cs2-pure-ops.mjs"),"new CS2 dependency must load");
+        assert.ok(checked.has("/cs2-widget-ops.mjs"),"new widget opcode dependency must load");
+        assert.ok(checked.has("/game-performance.mjs"),"performance HUD dependency must load");
+        // Only the game page is exposed. The TeaVM JavaScript module remains
+        // an internal dependency and no original gamepack bytes are served.
+        const titleAlias=await fetch(root+"/teavm");
+        assert.equal(titleAlias.status,200);
+        assert.match(await titleAlias.text(),/id="osrs-title"/);
+        for(const path of ["/teavm/probe.mjs","/teavm/model-viewer.mjs","/teavm/model-payload.mjs","/teavm/probe.css"]){
+            const response=await fetch(root+path);
+            assert.equal(response.status,404,path+" is not a public game page");
+        }
+        for(const url of ["/teavm/injected-client.oprs","/teavm/rasterizer2d.jar"]){
+            const gamepack=await fetch(root+url);
+            assert.equal(gamepack.status,404,"gamepack material must never be served directly");
+        }
+        const keys=await fetch(root+"/region-keys.json");
+        assert.equal(keys.status,200);assert.deepEqual(await keys.json(),{});
+        const login=await fetch(root+"/login-config.json");
+        assert.equal(login.status,200);assert.equal(login.headers.get("cache-control"),"no-store");
+        const loginConfig=await login.json();
+        assert.ok(loginConfig.unavailable||loginConfig.revision===240&&loginConfig.rsa.exponent);
+        const privateKey=await fetch(root+"/game.key");assert.equal(privateKey.status,404);
+        const missing=await fetch(root+"/missing-module.mjs");
+        assert.equal(missing.status,404);
+    } finally {
+        child.kill("SIGTERM");
+        if(child.exitCode===null&&child.signalCode===null)await once(child,"exit");
+        if(lateCreated)await rm(lateFile);
+    }
+});
+
+test("real WebGL shader renders RuneLite GPU colours, ordered alpha and releases resources",
+    {timeout:60000,skip:process.platform!=="linux"&&!process.env.CHROME_BIN},async()=>{
+    const chrome=process.env.CHROME_BIN||"/usr/bin/google-chrome";
+    await access(chrome);
+    const browserRoot=new URL("../browser/",import.meta.url);
+    let reportResult;
+    const browserResult=new Promise(resolve=>{reportResult=resolve;});
+    const clientCss=await readFile(new URL("../teavm-poc/site/title-client.css",import.meta.url),"utf8");
+    const html=`<!doctype html><html><head><style>${clientCss}</style></head><body><canvas id="scene" style="width:128px;height:128px"></canvas>
+<script type="module">
+try{
+    const {NativeTerrainViewport,GPU_SETTINGS}=await import("/world-webgl.mjs");
+    // Float HSL conversion oracle for the reference GPU's default brightness.
+    // The CPU palette truncates channels before gamma and is not its pixel oracle.
+    const gpuComponents=(hue,saturation,lightness)=>{
+        const h=hue/64+1/128,s=saturation/8+1/16,l=lightness/128;
+        const q=l<.5?l*(1+s):l+s-l*s,p=2*l-q;
+        const channel=t=>{
+            t=(t+1)%1;
+            const c=t<1/6?p+(q-p)*6*t:t<.5?q:t<2/3?p+(q-p)*(2/3-t)*6:p;
+            return Math.pow(c,.8);
+        };
+        return [channel(h+1/3),channel(h),channel(h-1/3)];
+    };
+    const gpuChannels=packed=>gpuComponents(packed>>10&63,packed>>7&7,packed&127);
+    const gpuColor=packed=>gpuChannels(packed).map(c=>Math.round(c*255)).reduce((rgb,c)=>rgb*256+c,0);
+    const viewport=new NativeTerrainViewport(document.getElementById("scene"));
+    if(!(viewport.gl instanceof WebGL2RenderingContext))throw new Error("WebGL 2 context required");
+    const terrain={side:64,heights:new Int32Array(4096),
+        underlays:new Uint16Array(4096).fill(1),overlays:new Int16Array(4096),
+        floorMaterials:{underlays:new Map([[0,{rgb:0xff0000,textureId:-1}]]),overlays:new Map()}};
+    viewport.setTerrain(terrain);
+    viewport.target=[0,0,0];viewport.pitch=1.3;viewport.yaw=0;viewport.distance=50;
+    viewport.render();
+    const gl=viewport.gl;
+    const pixel=new Uint8Array(4);
+    gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),
+        1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    const rgb=gpuColor(937);
+    const expected=[rgb>>>16&255,rgb>>>8&255,rgb&255,255];
+    if(expected.some((v,i)=>v!==pixel[i]))throw new Error("Pixel "+pixel+" expected "+expected);
+    // Asymmetric compass landmarks catch reflections in the actual GPU path.
+    // At yaw zero the camera is south of the map: north is up, east is right.
+    const landmarks=[[-8,8,2000],[8,8,12000],[-8,-8,30000],[8,-8,50000]],markers=[];
+    for(const [east,north,hsl] of landmarks){
+        for(const [dx,dz] of [[-3,-3],[3,-3],[-3,3],[3,-3],[3,3],[-3,3]])
+            markers.push(east+dx,.5,north+dz,hsl,0,0);
+    }
+    viewport.setScenery({vertices:new Float32Array(markers)});viewport.render();
+    for(const [east,north,hsl] of landmarks){
+        const depth=50+north*Math.cos(1.3)-.5*Math.sin(1.3);
+        const px=Math.floor(viewport.canvas.width*(.5+Math.sqrt(3)*east/depth/2));
+        const py=Math.floor(viewport.canvas.height*(.5+Math.sqrt(3)*(.5*Math.cos(1.3)+north*Math.sin(1.3))/depth/2));
+        gl.readPixels(px,py,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        const color=gpuColor(hsl),want=[color>>>16&255,color>>>8&255,color&255,255];
+        if(want.some((v,i)=>v!==pixel[i]))throw new Error("Mirrored compass landmark "+east+","+north+": "+pixel);
+    }
+    // A separate object buffer must draw above terrain, then survive recolouring
+    // and clear only when Travel resets the scene.
+    const object=new Float32Array([-8,.5,-8,2000,0,0, 8,.5,-8,2000,0,0,
+        -8,.5,8,2000,0,0, 8,.5,-8,2000,0,0, 8,.5,8,2000,0,0, -8,.5,8,2000,0,0]);
+    viewport.setScenery({vertices:object});
+    viewport.setTerrain(terrain,{resetCamera:false});viewport.render();
+    gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    const objectRgb=gpuColor(2000),objectExpected=[objectRgb>>>16&255,objectRgb>>>8&255,objectRgb&255,255];
+    if(objectExpected.some((v,i)=>v!==pixel[i]))throw new Error("Scenery pixel "+pixel+" expected "+objectExpected);
+    // Different vertex hues catch packed-HSL interpolation: the GPU default
+    // interpolates gamma-adjusted RGB with perspective correction instead.
+    const gradientPositions=[[-8,.5,-8],[8,.5,-8],[0,.5,8]],gradientColors=[2000,12000,50000];
+    const gradient=new Float32Array(gradientPositions.flatMap((p,i)=>[...p,gradientColors[i],0,0]));
+    const gradientMatrix=(await import("/world-webgl.mjs")).sceneCameraMatrix(viewport.target,0,1.3,50,1);
+    viewport.setScenery({vertices:gradient});viewport.render();
+    const clip=gradientPositions.map(p=>[0,1,2,3].map(row=>[...p,1].reduce((n,v,col)=>n+gradientMatrix[col*4+row]*v,0)));
+    const projected=clip.map(c=>[viewport.canvas.width*(.5+c[0]/c[3]/2),viewport.canvas.height*(.5+c[1]/c[3]/2)]);
+    const px=Math.floor(projected.reduce((n,p)=>n+p[0],0)/3),py=Math.floor(projected.reduce((n,p)=>n+p[1],0)/3);
+    const [a,b,c]=projected,x=px+.5,y=py+.5,denom=(b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1]);
+    const wa=((b[1]-c[1])*(x-c[0])+(c[0]-b[0])*(y-c[1]))/denom;
+    const wb=((c[1]-a[1])*(x-c[0])+(a[0]-c[0])*(y-c[1]))/denom;
+    const weights=[wa,wb,1-wa-wb].map((w,i)=>w/clip[i][3]),sum=weights.reduce((n,w)=>n+w,0);
+    const colors=gradientColors.map(gpuChannels);
+    const gradientWant=[0,1,2].map(k=>255*weights.reduce((n,w,i)=>n+w*colors[i][k],0)/sum);
+    gl.readPixels(px,py,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    if(gradientWant.some((v,i)=>Math.abs(v-pixel[i])>2))throw new Error("GPU RGB gradient incorrect: "+pixel+" expected "+gradientWant+" at "+[px,py]+" camera "+[viewport.yaw,viewport.pitch,viewport.distance]+" projected "+projected);
+    // Keep HSL interpolation within a single hue/saturation band, avoiding
+    // multisample coverage across a discontinuity in the 7-bit lightness.
+    const bandedColors=[2000,2010,2030];
+    viewport.setScenery({vertices:new Float32Array(gradientPositions.flatMap((p,i)=>[...p,bandedColors[i],0,0]))});
+    viewport.gpuSettings={...GPU_SETTINGS,smoothBanding:false};viewport.render();
+    gl.readPixels(px,py,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    const bandedHsl=Math.trunc(wa*bandedColors[0]+wb*bandedColors[1]+(1-wa-wb)*bandedColors[2]);
+    const bandedWant=gpuChannels(bandedHsl).map(v=>v*255);
+    if(bandedWant.some((v,i)=>Math.abs(v-pixel[i])>2))throw new Error("GPU banded HSL mode incorrect: "+pixel+" expected "+bandedWant);
+    viewport.gpuSettings=GPU_SETTINGS;
+    const texPixels=new Uint8Array(64*64*4);
+    for(let i=0;i<texPixels.length;i+=4)texPixels.set([128,64,32,255],i);
+    const textured=new Float32Array(object);
+    for(let i=0;i<textured.length;i+=6){textured[i+3]=64;textured[i+4]=(i/6)%2+.25;textured[i+5]=.25;}
+    const texturedScene={vertices:new Float32Array(),levelCounts:[0,0,0,0],
+        texturedBatches:[{level:1,texture:3,vertices:textured}],textures:new Map([[3,{size:64,pixels:texPixels}]])};
+    viewport.setScenery(texturedScene);viewport.render();
+    gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    if(expected.some((v,i)=>v!==pixel[i]))throw new Error("Upper texture leaked into ground view");
+    viewport.setSceneLevel(1);viewport.render();
+    gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    if([64,32,16,255].some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("Lit texture pixel "+pixel);
+    gl.bindTexture(gl.TEXTURE_2D,viewport.textures.get(3));
+    if(gl.getTexParameter(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER)!==gl.NEAREST_MIPMAP_LINEAR)
+        throw new Error("Default GPU mipmap filtering was not applied");
+    viewport.gpuSettings={...GPU_SETTINGS,anisotropicFilteringLevel:0};viewport.render();
+    gl.bindTexture(gl.TEXTURE_2D,viewport.textures.get(3));
+    if(gl.getTexParameter(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER)!==gl.NEAREST)
+        throw new Error("Disabling GPU mipmaps did not update existing textures");
+    viewport.gpuSettings=GPU_SETTINGS;viewport.render();
+    const oldTexture=viewport.textures.get(3),oldBuffer=viewport.sceneryBatches[0].buffer;
+    for(let i=3;i<texPixels.length;i+=4)texPixels[i]=128;
+    viewport.setScenery(texturedScene);viewport.render();
+    if(gl.isTexture(oldTexture)||gl.isBuffer(oldBuffer))throw new Error("Replacing texture scene leaked GPU resources");
+    gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    if(expected.some((v,i)=>v!==pixel[i]))throw new Error("Texture cutout obscured terrain");
+    // Overlapping alpha materials must blend far-to-near across owners and
+    // textures, preserve opaque depth, filter roofs and restore GL depth writes.
+    const planeAt=(height,hsl)=>{const v=object.slice();for(let i=0;i<v.length;i+=6){v[i+1]=height;v[i+3]=hsl;}return v;};
+    const alphaRgb=gpuColor(12000),alphaColor=[alphaRgb>>>16&255,alphaRgb>>>8&255,alphaRgb&255];
+    const backColor=[objectRgb>>>16&255,objectRgb>>>8&255,objectRgb&255];
+    const alpha=128,opacity=1-alpha/255;
+    viewport.setSceneLevel(0);
+    for(const reverse of [false,true]){
+        const batches=[{level:0,texture:-1,alpha,vertices:planeAt(.5,2000)},
+            {level:0,texture:-1,alpha,vertices:planeAt(1,12000)}];
+        viewport.setScenery({vertices:new Float32Array(),transparentBatches:reverse?batches.reverse():batches});
+        viewport.render();gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        const want=alphaColor.map((v,i)=>v*opacity+(backColor[i]*opacity+expected[i]*(1-opacity))*(1-opacity));
+        if(want.some((v,i)=>Math.abs(v-pixel[i])>2))throw new Error("Alpha order/opacity incorrect: "+pixel+" expected "+want);
+        if(!gl.getParameter(gl.DEPTH_WRITEMASK)||gl.isEnabled(gl.BLEND))throw new Error("Alpha pass leaked GL state");
+        viewport.setActors({vertices:planeAt(2,2000)});viewport.render();
+        gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        if(objectExpected.some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("Alpha leaked through opaque actor");
+        viewport.setActors(null);
+    }
+    // Force the active touch path. Put nearer faces first inside one alpha
+    // VBO: material-centroid sorting cannot correct this reversed face order.
+    viewport.touch=true;viewport.setTerrain(terrain,{resetCamera:false});
+    const sameMaterial=new Float32Array([...planeAt(1,12000),...planeAt(.5,2000)]);
+    viewport.setScenery({vertices:new Float32Array(),transparentBatches:[
+        {level:0,texture:-1,alpha,vertices:sameMaterial}]});
+    viewport.render();gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    const sortedWant=alphaColor.map((v,i)=>v*opacity+(backColor[i]*opacity+expected[i]*(1-opacity))*(1-opacity));
+    if(sortedWant.some((v,i)=>Math.abs(v-pixel[i])>2))throw new Error("Touch intra-material alpha order incorrect: "+pixel+" expected "+sortedWant);
+    if(!gl.getParameter(gl.DEPTH_WRITEMASK)||gl.isEnabled(gl.BLEND))throw new Error("Indexed alpha pass leaked GL state");
+    const orderedEbo=[...viewport.transparentIndexBuffers.values()][0].buffer;
+    viewport.render();
+    if([...viewport.transparentIndexBuffers.values()][0].buffer!==orderedEbo)throw new Error("Unchanged alpha frame replaced EBO");
+    viewport.setScenery(null);
+    if(gl.isBuffer(orderedEbo)||viewport.transparentIndexBuffers.size)throw new Error("Alpha unload leaked EBO");
+    viewport.touch=false;viewport.setTerrain(terrain,{resetCamera:false});
+    viewport.setScenery({vertices:new Float32Array(),transparentBatches:[
+        {level:0,texture:-1,alpha,vertices:planeAt(1,12000)}]});
+    const alphaBuffer=viewport.sceneryAlphaBatches[0].buffer;
+    viewport.setScenery({vertices:new Float32Array(),transparentBatches:[{level:1,texture:-1,alpha,vertices:planeAt(1,12000)}]});
+    if(gl.isBuffer(alphaBuffer))throw new Error("Alpha replacement leaked buffer");
+    viewport.render();gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    if(expected.some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("Upper alpha roof leaked");
+    const alphaTexture=new Uint8Array(64*64*4);
+    for(let i=0;i<alphaTexture.length;i+=4)alphaTexture.set([128,64,32,255],i);
+    const translucentTexture=planeAt(1,64);
+    const alphaActor={level:0,texture:7,alpha,vertices:translucentTexture};
+    viewport.setScenery({vertices:new Float32Array()});
+    viewport.setActors({vertices:new Float32Array(),transparentBatches:[alphaActor],
+        textures:new Map([[7,{size:64,pixels:alphaTexture}]]),npcPickMeshes:[{index:9,vertices:translucentTexture}]});
+    viewport.render();gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+    const textureWant=[128,64,32].map((v,i)=>v*64/127*opacity+expected[i]*(1-opacity));
+    if(textureWant.some((v,i)=>Math.abs(v-pixel[i])>2))throw new Error("Textured actor alpha incorrect: "+pixel);
+    if(viewport.actorPickMeshes[0]?.index!==9)throw new Error("Textured alpha NPC lost picking geometry");
+    const actorAlphaBuffer=viewport.actorAlphaBatches[0].buffer;
+    viewport.setActors(null);
+    if(gl.isBuffer(actorAlphaBuffer)||viewport.actorPickMeshes.length)throw new Error("Despawn retained alpha GPU/pick data");
+    // Separate instance translations must match CPU-translated legacy pixels
+    // for both shaders and the globally sorted indexed alpha pass.
+    const readFrame=()=>{
+        const pixels=new Uint8Array(viewport.canvas.width*viewport.canvas.height*4);
+        gl.readPixels(0,0,viewport.canvas.width,viewport.canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+        return pixels;
+    };
+    for(const kind of ["color","texture","alpha"]){
+        const base=planeAt(.5,kind==="color"?2000:64),offset=[2,.25,-1];
+        const shifted=base.slice();
+        for(let at=0;at<shifted.length;at+=6)for(let axis=0;axis<3;axis++)shifted[at+axis]+=offset[axis];
+        const mesh={vertices:kind==="color"?base:new Float32Array(),offset,
+            texturedBatches:kind==="texture"?[{vertices:base,texture:7,level:0}]:[],
+            transparentBatches:kind==="alpha"?[{vertices:base,texture:7,level:0,alpha}]:[]};
+        viewport.setActors({vertices:kind==="color"?shifted:new Float32Array(),
+            texturedBatches:kind==="texture"?[{vertices:shifted,texture:7,level:0}]:[],
+            transparentBatches:kind==="alpha"?[{vertices:shifted,texture:7,level:0,alpha}]:[]});
+        viewport.render();const oracle=readFrame();
+        viewport.setActorInstances({actors:[{key:"npc:9",index:9,mesh}]});viewport.render();
+        const actual=readFrame();
+        if(oracle.some((v,i)=>Math.abs(v-actual[i])>1))throw new Error("Retained "+kind+" actor pixels differ from translated geometry");
+        if(viewport.actorPickMeshes[0]?.offset!==offset)throw new Error("Retained actor lost picking transform");
+        const actorBuffer=(kind==="color"?viewport.actorColorBatches:kind==="texture"?viewport.actorBatches:viewport.actorAlphaBatches)[0].buffer;
+        viewport.setActors(null);
+        if(gl.isBuffer(actorBuffer))throw new Error("Retained actor despawn leaked GPU buffer");
+    }
+    const dynamic={batches:[{level:0,texture:-1,vertices:planeAt(1,2000)}],pickMeshes:[]};
+    viewport.setDynamicScenery(dynamic);viewport.render();
+    const dynamicBuffer=viewport.dynamicBatches[0].buffer;
+    viewport.setDynamicScenery(dynamic);
+    if(viewport.dynamicBatches[0].buffer!==dynamicBuffer)throw new Error("Unchanged animation frame was reuploaded");
+    viewport.setDynamicScenery(null);
+    if(gl.isBuffer(dynamicBuffer))throw new Error("Dynamic scene cleanup leaked buffer");
+    // Coplanar floor and wall details must win at every camera yaw and zoom,
+    // for both shaders and either submission order, while nearer walls occlude.
+    const detailRgb=gpuColor(12000),detailExpected=[detailRgb>>>16&255,detailRgb>>>8&255,detailRgb&255,255];
+    for(const wall of [false,true])for(const useTexture of [false,true])for(const reverse of [false,true]){
+        const positions=wall?[[-4,-3,0],[4,-3,0],[-4,5,0],[4,-3,0],[4,5,0],[-4,5,0]]:
+            [[-4,0,-4],[4,0,-4],[-4,0,4],[4,0,-4],[4,0,4],[-4,0,4]];
+        const base=new Float32Array(positions.flatMap(p=>[...p,2000+1/32,0,0]));
+        const detail=new Float32Array(positions.flatMap(p=>[...p,(useTexture?64:12000)+12/32,.25,.25]));
+        const opaque=new Uint8Array(64*64*4);for(let i=0;i<opaque.length;i+=4)opaque.set([128,64,32,255],i);
+        const combined=new Float32Array([...(reverse?detail:base),...(reverse?base:detail)]);
+        const texturedBase=new Float32Array(positions.flatMap(p=>[...p,64+1/32,.25,.25]));
+        const basePixels=new Uint8Array(64*64*4);for(let i=0;i<basePixels.length;i+=4)basePixels.set([0,0,255,255],i);
+        const batches=[{level:0,texture:4,vertices:texturedBase},{level:0,texture:3,vertices:detail}];
+        viewport.setScenery(useTexture?{vertices:new Float32Array(),texturedBatches:reverse?batches.reverse():batches,
+            textures:new Map([[3,{size:64,pixels:opaque}],[4,{size:64,pixels:basePixels}]])}:{vertices:combined});
+        for(const yaw of [-.6,0,.6,Math.PI])for(const distance of [6,12,24]){
+            viewport.target=[0,wall?1:0,0];viewport.pitch=wall?.3:1;viewport.yaw=yaw;viewport.distance=distance;
+            viewport.render();gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+            const want=useTexture?[64,32,16,255]:detailExpected;
+            if(want.some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("Coplanar detail flickered: "+[wall,useTexture,reverse,yaw,distance,pixel]);
+        }
+        const occluder=new Float32Array(base);
+        for(let i=0;i<occluder.length;i+=6){occluder[i+1]+=.1;occluder[i+2]-=.1;}
+        viewport.setActors({vertices:occluder});viewport.yaw=0;viewport.render();
+        gl.readPixels(Math.floor(viewport.canvas.width/2),Math.floor(viewport.canvas.height/2),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        if(objectExpected.some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("Priority detail leaked through nearer geometry");
+        viewport.setActors(null);
+    }
+    viewport.setScenery(texturedScene);
+    const sceneTexture=viewport.textures.get(3),sceneBuffer=viewport.sceneryBatches[0].buffer;
+    viewport.setTerrain(terrain);if(viewport.sceneryCount!==0)throw new Error("Travel retained obsolete scenery");
+    if(gl.isTexture(sceneTexture)||gl.isBuffer(sceneBuffer)||viewport.sceneryBatches.length)throw new Error("Travel retained texture resources");
+    // Both shader programs enforce the classic tile window, even though the
+    // outside marker is in the frustum and its cache region remains loaded.
+    viewport.target=[0,0,0];viewport.pitch=1.3;viewport.yaw=0;viewport.distance=70;
+    const {sceneCameraMatrix}=await import("/world-webgl.mjs");
+    const camera=sceneCameraMatrix(viewport.target,0,1.3,70,1);
+    const sample=(north)=>{
+        const p=[0,.5,north,1];
+        const c=[0,1,2,3].map(row=>p.reduce((n,v,col)=>n+camera[col*4+row]*v,0));
+        gl.readPixels(Math.floor(viewport.canvas.width*(.5+c[0]/c[3]/2)),
+            Math.floor(viewport.canvas.height*(.5+c[1]/c[3]/2)),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        return Array.from(pixel);
+    };
+    const marker=[];
+    for(const north of [0,12])for(const [x,z] of [[-2,-2],[2,-2],[-2,2],[2,-2],[2,2],[-2,2]])
+        marker.push(x,.5,north+z,2000,.25,.25);
+    const markerVertices=new Float32Array(marker);
+    for(const textured of [false,true]){
+        const pixels=new Uint8Array(64*64*4);for(let i=0;i<pixels.length;i+=4)pixels.set([255,0,0,255],i);
+        viewport.setScenery(textured?{vertices:new Float32Array(),levelCounts:[0,0,0,0],
+            texturedBatches:[{level:0,texture:9,vertices:markerVertices}],textures:new Map([[9,{size:64,pixels}]])}:
+            {vertices:markerVertices});
+        viewport.render();
+        const inside=sample(0),outside=sample(12),clear=[0,0,0,255];
+        if(inside.every((n,i)=>Math.abs(n-clear[i])<=1))throw new Error("Draw window hid nearby marker");
+        if(outside.some((n,i)=>Math.abs(n-clear[i])>1))throw new Error("Distant marker survived draw cutoff: "+outside);
+    }
+    // Cache textures retain raw RGB so GPU gamma is applied after sampling.
+    viewport.target=[0,0,0];viewport.pitch=1.3;viewport.yaw=0;viewport.distance=50;
+    viewport.setSceneLevel(0);viewport.setActors(null);
+    for(let i=3;i<texPixels.length;i+=4)texPixels[i]=255;
+    viewport.setScenery({vertices:new Float32Array(),texturedBatches:[{level:0,texture:10,vertices:textured}],
+        textures:new Map([[10,{size:64,pixels:texPixels,rawPixels:texPixels}]])});
+    for(const brightness of [.6,.8,1.2])for(const brightTextures of [false,true]){
+        viewport.gpuSettings={...GPU_SETTINGS,brightness,brightTextures};viewport.render();
+        gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        const mul=brightTextures?gpuChannels(64).map(v=>Math.pow(v,brightness/.8)):[64/127,64/127,64/127];
+        const want=[128,64,32].map((v,i)=>255*Math.pow(v/255,brightness)*mul[i]);
+        if(want.some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("GPU texture gamma/light mode incorrect: "+pixel+" expected "+want);
+    }
+    viewport.setScenery({vertices:object});
+    for(const mode of [1,2,3]){
+        viewport.gpuSettings={...GPU_SETTINGS,colorBlindMode:mode,colorBlindIntensity:0};viewport.render();
+        gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        if(objectExpected.some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("Zero colorblind intensity changed original color");
+        viewport.gpuSettings={...GPU_SETTINGS,colorBlindMode:mode,colorBlindIntensity:100};viewport.render();
+        gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        if(objectExpected.every((v,i)=>Math.abs(v-pixel[i])<=1))throw new Error("Colorblind correction did not run for mode "+mode);
+    }
+    viewport.gpuSettings=GPU_SETTINGS;
+    const tinted=object.slice();
+    for(let i=0;i<tinted.length;i+=6){tinted[i+4]=(12<<16)|(3<<8)|81;tinted[i+5]=64;}
+    viewport.setScenery({vertices:tinted});
+    for(const smoothBanding of [true,false]){
+        viewport.gpuSettings={...GPU_SETTINGS,smoothBanding};viewport.render();
+        gl.readPixels(viewport.canvas.width/2,viewport.canvas.height/2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+        // Packed HSL 2000 is (1,7,80). A half-strength tint targets (12,3,81).
+        const want=(smoothBanding?gpuComponents(6.5,5,80.5):gpuComponents(6,5,80)).map(v=>v*255);
+        if(want.some((v,i)=>Math.abs(v-pixel[i])>1))throw new Error("GPU fractional entity tint incorrect: "+pixel+" expected "+want);
+    }
+    viewport.gpuSettings=GPU_SETTINGS;
+    if(gl.getError()!==gl.NO_ERROR)throw new Error("WebGL error");
+    const palette=viewport.palette;
+    const sceneryBuffer=viewport.sceneryBuf;
+    viewport.dispose();
+    if(gl.isTexture(palette))throw new Error("Palette texture was not disposed");
+    if(gl.isBuffer(sceneryBuffer))throw new Error("Scenery buffer was not disposed");
+    // Exercise the server interface path in a real browser/2D canvas, using
+    // explicit synthetic widget definitions (no live cache/account needed).
+    const {NativeInterfaceCanvas}=await import("/interface-canvas.mjs");
+    const {ServerInterfaces}=await import("/server-interfaces.mjs");
+    const host=document.createElement("div"),canvas=document.createElement("canvas");
+    host.style="position:relative;width:128px;height:128px";canvas.style="width:128px;height:128px";
+    host.append(canvas);document.body.append(host);
+    const base=10*65536,root={uid:base,type:0,isIf3:true,parentUid:-1,
+        rawX:0,rawY:0,rawWidth:128,rawHeight:128},button={uid:base+1,type:3,isIf3:true,parentUid:base,
+        rawX:8,rawY:8,rawWidth:64,rawHeight:32,color:255,filled:true,flags:2,actions:["Confirm"]};
+    const view=new NativeInterfaceCanvas(canvas,{});
+    view.interfaces.load=async()=>({groupId:10,widgets:new Map([[base,root],[base+1,button]]),
+        roots:[root],children:new Map([[base,[button]]])});
+    const sent=[],interfaces=new ServerInterfaces({view,session:{sendGame:(...args)=>sent.push(args)}});
+    interfaces.handle({name:"IF_OPENTOP",payload:Uint8Array.of(138,0)});
+    interfaces.handle({name:"IF_SETCOLOUR",payload:Uint8Array.of(128,124,1,0,10,0)});
+    await interfaces.pending;
+    const ratio=Math.min(3,window.devicePixelRatio||1);
+    const color=view.canvas.getContext("2d").getImageData(Math.floor(12*ratio),Math.floor(12*ratio),1,1).data;
+    if([248,0,0,255].some((n,i)=>n!==color[i]))throw new Error("Server widget colour did not paint: "+color);
+    host.setPointerCapture=()=>{};host.releasePointerCapture=()=>{};interfaces.bindInput(host);
+    const bounds=canvas.getBoundingClientRect();
+    for(const type of ["pointerdown","pointerup"])canvas.dispatchEvent(new PointerEvent(type,
+        {bubbles:true,cancelable:true,pointerId:1,button:0,clientX:bounds.left+12,clientY:bounds.top+12}));
+    if(sent.length!==1||sent[0][0]!==1||sent[0][1].join()!=="0,10,0,1,255,255,255,255,1")
+        throw new Error("Interface click did not send native IF_BUTTONX");
+    // Dialogue heads inherit their parent's clipping, rather than the small
+    // model widget's nominal box. Exercise actual raster-to-canvas compositing.
+    const head={uid:base+2,groupId:10,type:6,isIf3:true,parentUid:base,rawX:32,rawY:32,
+        rawWidth:32,rawHeight:32,modelKind:"npc",modelId:0,modelZoom:796,sequenceId:-1};
+    const model={verticesCount:3,faceCount:1,verticesX:Int32Array.from([-64,64,0]),
+        verticesY:Int32Array.from([-64,-64,64]),verticesZ:Int32Array.from([0,0,0]),
+        indices1:Int32Array.of(0),indices2:Int32Array.of(1),indices3:Int32Array.of(2),faceColors:Uint16Array.of(2000)};
+    const headGroup={groupId:10,widgets:new Map([[base,root],[base+2,head]]),roots:[root],children:new Map([[base,[head]]])};
+    view.portraits={load:async()=>({model}),pose:async s=>s};
+    await view.showGroup(headGroup);
+    if(!view.canvas.getContext("2d").getImageData(Math.floor(48*ratio),Math.floor(90*ratio),1,1).data[3])
+        throw new Error("Chathead was clipped to nominal widget box");
+    let release;view.portraits.load=()=>new Promise(resolve=>release=resolve);
+    const lateHead=view.showGroup(headGroup);view.close();release({model});
+    await lateHead;
+    if(!canvas.hidden||view.active||view.assets.heads.size)throw new Error("Late portrait revived a closed dialogue");
+    interfaces.handle({name:"IF_RESYNC_V2",payload:Uint8Array.of(255,255,0,0)});
+    await interfaces.pending;
+    if(!canvas.hidden)throw new Error("Server resync did not close interface");
+    interfaces.close();host.remove();
+    // Title controls use accessible native fields while cache fonts paint the
+    // visible form. No development shell or terrain preview starts on boot.
+    const {NativeTitleScreen}=await import("/title-screen.mjs");
+    const screen=document.createElement("section");
+    screen.innerHTML='<canvas id="osrs-title"></canvas><div id="title-controls"><button id="title-new-account">New User</button><button id="title-login">Existing User</button><form id="login-form"><input id="login-username"><input id="login-password" type="password"><button id="login-submit">Login</button></form><button id="title-cancel">Cancel</button><p id="login-status"></p></div><button id="title-mute"></button>';
+    document.body.append(screen);
+    const title=new NativeTitleScreen({canvas:screen.querySelector("canvas"),stage:screen.querySelector("#title-controls"),
+        form:screen.querySelector("form"),status:screen.querySelector("p")});
+    const titleText=[];
+    title.assets.font=title.assets.small={measure:s=>s.length*5,draw(ctx,text){titleText.push(text);}};
+    title.showWelcome();
+    if(screen.querySelector("canvas").width!==765||screen.querySelector("canvas").height!==503)throw new Error("Title framebuffer must remain native 765 by 503 pixels");
+    const titleTransform=screen.querySelector("canvas").getContext("2d").getTransform();
+    if(titleTransform.a!==1||titleTransform.d!==1||titleTransform.e!==0||titleTransform.f!==0)throw new Error("Title rasterization introduced device or fractional scaling");
+    if(!screen.querySelector("form").hidden||screen.querySelector("#title-login").hidden)throw new Error("Welcome shows login form too early");
+    screen.querySelector("#title-new-account").click();
+    if(title.mode!=="welcome"||!screen.querySelector("form").hidden)throw new Error("New User must remain inactive");
+    screen.querySelector("#title-login").click();
+    if(screen.querySelector("form").hidden||screen.querySelector("p").textContent!=="Enter your username/email & password.")throw new Error("Existing User did not open OSRS login form");
+    for(const label of ["Welcome to RuneScape","New User","Existing User","Login:","Password:"])if(!titleText.includes(label))throw new Error("Missing OSRS title label: "+label);
+    if(titleText.includes("Code:")||screen.querySelector("#login-otp"))throw new Error("Authenticator field remains on ordinary login");
+    if(!screen.querySelector("form").noValidate||title.validateCredentials()||screen.querySelector("p").textContent!=="Please enter your username/email.")throw new Error("Missing login must use the title message instead of browser validation");
+    screen.querySelector("#login-username").value="Alice";
+    if(title.validateCredentials()||screen.querySelector("p").textContent!=="Please enter your password.")throw new Error("Missing password did not produce the title message");
+    screen.querySelector("#login-password").value="synthetic";if(!title.validateCredentials())throw new Error("Complete login was blocked");
+    const titleInput=screen.querySelector("#login-username");titleInput.value="Alice";titleInput.focus();titleInput.setSelectionRange(1,4);title.paint();
+    const titlePixels=screen.querySelector("canvas").getContext("2d").getImageData(0,0,screen.querySelector("canvas").width,screen.querySelector("canvas").height).data;
+    let highlighted=false;for(let i=0;i<titlePixels.length;i+=4)if(titlePixels[i]===49&&titlePixels[i+1]===106&&titlePixels[i+2]===197){highlighted=true;break;}
+    if(highlighted)throw new Error("Login text must not have a selection highlight");
+    titleInput.dispatchEvent(new Event("select"));if(titleInput.selectionStart!==titleInput.selectionEnd)throw new Error("Login text selection was not collapsed");
+    screen.querySelector("#login-password").value="synthetic";title.beginConnecting();screen.querySelector("#login-password").value="";title.paint();
+    if(screen.hidden||document.body.classList.contains("in-game")||!screen.querySelector("form").hidden)throw new Error("Connecting must retain title artwork and hide login controls");
+    if(titleText.includes("Loading - Please wait.")||!titleText.includes("Connecting to server...")||!titleText.includes("*********"))throw new Error("The connecting screen must show the pending login, not a post-auth loading badge");
+    title.enterGame();
+    if(!screen.hidden||!document.body.classList.contains("in-game"))throw new Error("Title remained over authenticated game");
+    const app=document.createElement("div");app.className="app";
+    app.innerHTML='<div class="screen"><div class="world-stage"><canvas id="world-canvas"></canvas></div></div>';
+    document.body.prepend(app);
+    for(const element of [app.firstChild,app.querySelector("#world-canvas")]){
+        const rect=element.getBoundingClientRect();
+        if(rect.x!==0||rect.y!==0||rect.width!==innerWidth||rect.height!==innerHeight)
+            throw new Error("Authenticated world does not fill browser viewport: "+JSON.stringify(rect));
+    }
+    app.remove();
+    title.showLogin("Disconnected");
+    if(screen.hidden||screen.querySelector("#login-password").value||document.body.classList.contains("in-game"))throw new Error("Disconnect did not restore clean login screen");
+    title.dispose();screen.remove();
+    document.body.dataset.result="webgl-hsl-pass";
+}catch(error){document.body.dataset.result="webgl-hsl-fail: "+error.message;}
+await fetch("/result?status="+encodeURIComponent(document.body.dataset.result));
+</script></body></html>`;
+    const server=createServer(async(req,res)=>{
+        try{
+            if(req.url.startsWith("/result?")){
+                reportResult(new URL(req.url,"http://localhost").searchParams.get("status"));
+                res.writeHead(200);res.end("received");
+            }else if(req.url==="/"){
+                res.writeHead(200,{"Content-Type":"text/html"});res.end(html);
+            }else if(/^\/(?:tsps-runtime\/)?[a-zA-Z][a-zA-Z0-9-]*\.mjs$/.test(req.url)){
+                res.writeHead(200,{"Content-Type":"text/javascript"});
+                res.end(await readFile(new URL(req.url.slice(1),browserRoot)));
+            }else{res.writeHead(404);res.end();}
+        }catch(error){res.writeHead(500);res.end(error.message);}
+    });
+    await new Promise((resolve,reject)=>{
+        server.once("error",reject);server.listen(0,"127.0.0.1",resolve);
+    });
+    const profile=await mkdtemp(join(tmpdir(),"soloscape-webgl-"));
+    let child;
+    try{
+        const url="http://127.0.0.1:"+server.address().port+"/";
+        child=spawn(chrome,["--headless","--no-sandbox","--disable-dev-shm-usage",
+            "--no-first-run","--no-default-browser-check","--disable-background-networking",
+            "--disable-component-update","--disable-sync","--disable-extensions",
+            "--use-angle=swiftshader","--enable-unsafe-swiftshader",
+            "--user-data-dir="+profile,url],{stdio:["ignore","ignore","pipe"]});
+        let errors="";
+        child.stderr.on("data",data=>errors+=data);
+        let timer;
+        const stopped=new Promise((_,reject)=>{
+            child.once("error",reject);
+            child.once("exit",(code,signal)=>reject(new Error("Chrome exited before result: "+
+                code+"/"+signal+" "+errors.slice(-2000))));
+            timer=setTimeout(()=>reject(new Error("No WebGL result: "+errors.slice(-2000))),40000);
+        });
+        const result=await Promise.race([browserResult,stopped]).finally(()=>clearTimeout(timer));
+        assert.equal(result,"webgl-hsl-pass");
+    }finally{
+        if(child&&child.exitCode===null&&child.signalCode===null){
+            child.kill("SIGKILL");await once(child,"exit");
+        }
+        await new Promise(resolve=>server.close(resolve));
+        // Chrome helpers may finish writing briefly after the parent exits.
+        // Retry ENOTEMPTY/EBUSY cleanup without hiding a persistent failure.
+        await rm(profile,{recursive:true,force:true,maxRetries:10,retryDelay:100});
+    }
+});

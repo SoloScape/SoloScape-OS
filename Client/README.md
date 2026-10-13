@@ -51,6 +51,14 @@ extension require separate SDKs and are excluded. Unit tests are not run by this
 
 ### Usage
 
+When launched through `Client/run.bat`, connections to the local SoloScape game
+server (loopback port `43594`) read the public RSA modulus from
+`Server/.data/client.key` at login. You do not need to paste it into the proxy
+target after restarting or replacing the server keys. Start the server first so
+the public key exists. Remote targets keep their configured modulus; the server
+private key is never read by this client feature. Restart RSProx once after
+installing this change to enable it in an existing session.
+
 In **New Session**, select an **Account** and **Client Type**, then press **Launch Session**.
 For OSRS, **Native** selects the Windows-native client and **RuneLite** selects RuneLite.
 For RS3, select **RuneScape 3**. OSRS also allows selecting a **Proxy Target**;
@@ -70,6 +78,11 @@ The screenshots below show an older GUI layout; use the named controls above in 
 
 After launching a client, a process will occur which will download the necessary
 files and patch them, so they can pass data through the proxy itself.
+For a SoloScape target configured with revision `240.2`, native launches use Lost City's
+archived `240.1` binary, also used by the default native launch. The archive does not
+contain a `240.2` binary. This selection leaves the target revision unchanged; other
+explicit revisions still request their exact archive version. Downloading and patching
+this binary does not establish login compatibility with a particular server or cache.
 On RuneLite, this can take tens of seconds as everything loads up. Caching
 mechanism is included on RuneLite that makes consecutive launches faster than
 the first one (or whenever the cache is invalidated).

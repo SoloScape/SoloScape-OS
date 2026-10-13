@@ -31,6 +31,12 @@ java -cp "<sqlite-driver.jar>;<slf4j-api.jar>" tools/scripts/DeleteAccount.java 
 
 ## Content progress
 
+Validate the compiled server's desktop/mobile orb selection after a server build:
+
+```powershell
+java -cp "build/direct/lib/*" tools/scripts/VerifyOrbInterfaces.java
+```
+
 ```powershell
 node tools/progress/content-progress.mjs
 ```

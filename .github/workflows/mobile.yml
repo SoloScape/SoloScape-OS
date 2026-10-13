@@ -1,0 +1,104 @@
+name: Mobile integration checks
+
+on:
+  push:
+    branches: [feature/mobile]
+    paths:
+      - 'Mobile/**'
+      - '.gitmodules'
+      - '.github/workflows/mobile.yml'
+  pull_request:
+    paths:
+      - 'Mobile/**'
+      - '.gitmodules'
+      - '.github/workflows/mobile.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  config-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (no upstream download needed for config tests)
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install gateway test dependency
+        run: npm install --prefix Mobile --ignore-scripts
+      - name: Audit mobile dependency security
+        run: npm audit --prefix Mobile --audit-level=high
+      - name: Run integration config tests
+        run: npm test --prefix Mobile
+      - name: Syntax check integration scripts
+        run: |
+          node --check Mobile/scripts/config.mjs
+          node --check Mobile/scripts/run-client.mjs
+          node --check Mobile/gateway/config.mjs
+          node --check Mobile/gateway/server.mjs
+          node --check Mobile/gateway/cli.mjs
+          node --check Mobile/gateway/js5-probe.mjs
+          node --check Mobile/gateway/probe-cli.mjs
+          node --check Mobile/gateway/game-probe.mjs
+          node --check Mobile/gateway/game-probe-cli.mjs
+          node --check Mobile/gateway/gateway-probe.mjs
+          node --check Mobile/gateway/gateway-probe-cli.mjs
+          node --check Mobile/gateway/js5-group.mjs
+          node --check Mobile/gateway/js5-cache.mjs
+          node --check Mobile/gateway/js5-cache-cli.mjs
+          node --check Mobile/gateway/js5-master-index.mjs
+          node --check Mobile/gateway/js5-reference-verify.mjs
+          node --check Mobile/gateway/js5-reference-cli.mjs
+          node --check Mobile/gateway/js5-reference-header.mjs
+          node --check Mobile/gateway/js5-asset-verify.mjs
+          node --check Mobile/gateway/js5-asset-cli.mjs
+          node --check Mobile/browser/dev-server.mjs
+          node --check Mobile/browser/native-js5.mjs
+          node --check Mobile/browser/tsps-cache-store.mjs
+          node --check Mobile/browser/sprite-preview.mjs
+          node --check Mobile/browser/terrain-world.mjs
+          node --check Mobile/browser/world-webgl.mjs
+          node --check Mobile/browser/floor-lighting.mjs
+          node --check Mobile/browser/floor-materials.mjs
+          node --check Mobile/browser/world-startup.mjs
+          node --check Mobile/browser/cache-reader.mjs
+          node --check Mobile/browser/location-cache.mjs
+          node --check Mobile/browser/object-definitions.mjs
+          node --check Mobile/browser/model-codec.mjs
+          node --check Mobile/browser/scenery-models.mjs
+          node --check Mobile/browser/region-keys.mjs
+          node --check Mobile/scripts/adapt-model-codec.mjs
+          node --check Mobile/browser/texture-cache.mjs
+          node --check Mobile/browser/texture-mapper.mjs
+          node --check Mobile/browser/scene-planes.mjs
+          node --check Mobile/scripts/adapt-texture-mapper.mjs
+          node --check Mobile/browser/login-crypto.mjs
+          node --check Mobile/browser/login-protocol.mjs
+          node --check Mobile/browser/login-pow.mjs
+          node --check Mobile/browser/native-login.mjs
+          node --check Mobile/browser/game-protocol.mjs
+          node --check Mobile/browser/native-gameplay.mjs
+          node --check Mobile/browser/native-interfaces.mjs
+          node --check Mobile/browser/interface-canvas.mjs
+          node --check Mobile/browser/interface-protocol.mjs
+          node --check Mobile/browser/server-interfaces.mjs
+          node --check Mobile/browser/native-scripts.mjs
+          node --check Mobile/browser/dialogue-models.mjs
+          node --check Mobile/scripts/adapt-title-runtime.mjs
+          for file in Mobile/browser/title*.mjs; do node --check "$file"; done
+          node --check Mobile/browser/player-protocol.mjs
+          node --check Mobile/browser/player-sync.mjs
+          node --check Mobile/browser/player-config.mjs
+          node --check Mobile/browser/player-colors.mjs
+          node --check Mobile/browser/player-models.mjs
+          node --check Mobile/browser/player-animation.mjs
+          node --check Mobile/scripts/native-login-config.mjs
+          node --check Mobile/scripts/adapt-player-config.mjs
+          node --check Mobile/scripts/generate-native-protocol.mjs
+          node --check Mobile/scripts/verify-native-login.mjs
+          node --check Mobile/scripts/verify-native-interfaces.mjs

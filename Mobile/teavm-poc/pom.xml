@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.soloscape</groupId><artifactId>openosrs-teavm-feasibility</artifactId><version>0.1.0</version>
+  <properties>
+    <maven.compiler.release>8</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <teavm.version>0.15.0</teavm.version>
+  </properties>
+  <dependencies>
+    <dependency><groupId>org.teavm</groupId><artifactId>teavm-classlib</artifactId><version>${teavm.version}</version></dependency>
+    <dependency><groupId>org.teavm</groupId><artifactId>teavm-jso</artifactId><version>${teavm.version}</version></dependency>
+    <!-- Original gamepack loaded locally; compiled output is never checked in. -->
+    <dependency><groupId>local.openosrs</groupId><artifactId>injected-client</artifactId>
+      <version>240</version><scope>system</scope>
+      <systemPath>${project.basedir}/target/gamepack/rasterizer2d.jar</systemPath>
+    </dependency>
+  </dependencies>
+  <build><plugins>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.13.0</version></plugin>
+    <plugin><groupId>org.teavm</groupId><artifactId>teavm-maven-plugin</artifactId><version>${teavm.version}</version>
+      <executions><execution><phase>process-classes</phase><goals><goal>compile</goal></goals>
+        <configuration><mainClass>RendererBridge</mainClass><targetType>JAVASCRIPT</targetType>
+          <jsModuleType>ES2015</jsModuleType><targetFileName>bridge.js</targetFileName>
+          <!-- TeaVM Maven 0.15 defaults to SIMPLE (debug-oriented) optimisation.
+               ADVANCED is the production JavaScript level (equivalent intent
+               to Gradle BALANCED; their enum names are not interchangeable). -->
+          <optimizationLevel>ADVANCED</optimizationLevel><incremental>false</incremental>
+          <sourceMapsGenerated>false</sourceMapsGenerated><minifying>true</minifying></configuration>
+      </execution></executions>
+    </plugin>
+  </plugins></build>
+</project>

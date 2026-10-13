@@ -12,7 +12,7 @@ set "result=1"
 goto finish
 
 :launch
-java %SOLOSCAPE_CLIENT_JAVA_OPTS% -cp "%CLIENT_LIB%\*" net.rsprox.gui.ProxyToolGuiKt %*
+java "-Dsoloscape.publicKeyFile=%~dp0..\Server\.data\client.key" %SOLOSCAPE_CLIENT_JAVA_OPTS% -cp "%CLIENT_LIB%\*" net.rsprox.gui.ProxyToolGuiKt %*
 set "result=%errorlevel%"
 goto finish
 

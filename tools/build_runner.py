@@ -11,7 +11,7 @@ import build as build_impl
 ROOT = Path(__file__).resolve().parents[1]
 LOG_FILE = ROOT / "build.log"
 TIMINGS_FILE = ROOT / ".build-tools" / "build-progress.json"
-COMPILE_RE = re.compile(r"^Compiling(?: client core| app layer)? \(?([0-9]+) files\)?$")
+COMPILE_RE = re.compile(r"^Compiling(?: client core| server core| app layer)? \(?([0-9]+) files\)?$")
 COMPILER_COMPAT_FLAGS = (
     "-Xannotation-default-target=param-property",
     "-Xconsistent-data-class-copy-visibility",
@@ -98,7 +98,7 @@ class FriendlyProgress(build_impl.Progress):
         PROGRESS_INSTANCES.append(self)
 
     def _timing_key(self, label):
-        if label.startswith("Compiling client core"):
+        if label.startswith(("Compiling client core", "Compiling server core")):
             return f"{self.project}:core"
         if label.startswith("Compiling app layer"):
             return f"{self.project}:app"

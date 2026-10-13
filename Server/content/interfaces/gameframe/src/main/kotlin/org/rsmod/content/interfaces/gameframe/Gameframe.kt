@@ -12,7 +12,9 @@ data class Gameframe(
     val resizable: Boolean,
     val isDefault: Boolean,
     val stoneArrangement: Boolean,
-)
+) {
+    val isMobile: Boolean get() = topLevel == "interface.toplevel_osm"
+}
 
 data class GameframeOverlay(val interf: String, val target: String)
 

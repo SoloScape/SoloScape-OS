@@ -16,6 +16,8 @@ constructor(private val eventBus: EventBus, private val protectedAccess: Protect
     PluginScript() {
     override fun ScriptContext.startup() {
         onIfOverlayButton("component.orbs:runbutton") { player.selectRunToggle() }
+        onIfOverlayButton("component.orbs_osm:runbutton") { player.selectRunToggle() }
+        onIfOverlayButton("component.orbs_osm_nomap:runbutton") { player.selectRunToggle() }
         onIfOverlayButton("component.settings_side:runmode") { player.selectRunToggle() }
         onPlayerQueue("queue.runmode_toggle") { toggleRun() }
     }

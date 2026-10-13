@@ -8,6 +8,7 @@ import org.rsmod.api.player.output.runClientScript
 import org.rsmod.api.player.output.soundSynth
 import org.rsmod.api.player.ui.ifCloseOverlay
 import org.rsmod.api.player.ui.ifOpenOverlay
+import org.rsmod.api.player.ui.orbsInterface
 import org.rsmod.api.player.vars.boolVarBit
 import org.rsmod.api.script.onIfOverlayButton
 import org.rsmod.api.script.onPlayerCoordsChanged
@@ -42,6 +43,8 @@ class WorldMapScript @Inject constructor(
         }
         onIfOverlayButton(worldMapOrb) { player.openMap(it.op) }
         onIfOverlayButton("component.orbs_nomap:worldmap") { player.openMap(it.op) }
+        onIfOverlayButton("component.orbs_osm:worldmap") { player.openMap(it.op) }
+        onIfOverlayButton("component.orbs_osm_nomap:worldmap") { player.openMap(it.op) }
 
         onIfOverlayButton(worldMapClose) { player.closeMap() }
         onPlayerCoordsChanged { player.runClientScript(1749, player.coords.packed) }
@@ -57,7 +60,11 @@ class WorldMapScript @Inject constructor(
             IfButtonOp.Op2 -> openMapOverlay()
             IfButtonOp.Op3 -> openFullscreen()
             IfButtonOp.Op4 -> {
-                this.ifOpenOverlay(if (orbsMinimized) "interface.orbs" else "interface.orbs_nomap", "component.toplevel_osrs_stretch:orbs", eventBus)
+                ifOpenOverlay(
+                    orbsInterface(!orbsMinimized),
+                    "component.toplevel_osrs_stretch:orbs",
+                    eventBus,
+                )
                 orbsMinimized = !orbsMinimized
             }
             else -> error("Invalid option on world map: $option")

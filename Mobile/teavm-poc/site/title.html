@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1a110d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SoloScape">
+<meta name="mobile-web-app-capable" content="yes">
+<title>SoloScape</title>
+<link rel="stylesheet" href="/teavm/title-client.css">
+</head>
+<body>
+<main class="app">
+  <div class="screen" id="screen">
+    <section id="title-screen" aria-label="RuneScape title screen">
+      <canvas id="osrs-title" width="765" height="503" aria-label="Revision-240 RuneScape title screen"></canvas>
+      <div id="title-controls">
+        <button id="title-new-account" class="title-button welcome-new" type="button" aria-disabled="true" hidden>New User</button>
+        <button id="title-login" class="title-button welcome-login" type="button" hidden>Existing User</button>
+        <form id="login-form" autocomplete="off" novalidate hidden>
+          <label class="sr-only" for="login-username">Username / Email</label>
+          <input id="login-username" name="login-entry" autocomplete="off" maxlength="320" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+          <label class="sr-only" for="login-password">Password</label>
+          <input id="login-password" name="secret-entry" type="password" autocomplete="off" maxlength="80" required>
+          <button id="title-remember" class="title-option" type="button" role="checkbox" aria-checked="false" aria-label="Remember username">Remember username</button>
+          <button id="title-hide-username" class="title-option" type="button" role="checkbox" aria-checked="false" aria-label="Hide username">Hide username</button>
+          <button id="title-login-help" class="title-help" type="button">Can't login? Click here.</button>
+          <button id="login-submit" class="title-button form-login" type="submit">Login</button>
+        </form>
+        <button id="title-cancel" class="title-button form-cancel" type="button" hidden>Cancel</button>
+        <button id="title-world-switch" class="title-world-switch" type="button" hidden>World 255 — Click to switch</button>
+        <button id="title-world-current" class="title-world-choice" type="button" hidden>World 255</button>
+        <button id="title-world-back" class="title-world-back" type="button" hidden>Cancel</button>
+        <button id="title-world-sort-0" class="title-world-sort" type="button" hidden>World</button>
+        <button id="title-world-sort-1" class="title-world-sort" type="button" hidden>Players</button>
+        <button id="title-world-sort-2" class="title-world-sort" type="button" hidden>Location</button>
+        <button id="title-world-sort-3" class="title-world-sort" type="button" hidden>Type</button>
+      </div>
+      <button id="title-mute" type="button" aria-label="Mute title music" aria-pressed="false" hidden></button>
+      <p id="client-status" class="sr-only" role="status" aria-live="polite"></p>
+    </section>
+    <div id="world-stage" class="world-stage" hidden>
+      <div id="world-input-surface">
+        <canvas id="world-canvas" width="765" height="503" aria-label="RuneScape world"></canvas>
+        <canvas id="server-interface-canvas" aria-label="Server game interfaces" hidden></canvas>
+      </div>
+      <canvas id="world-menu-canvas" aria-label="Choose Option" hidden></canvas>
+      <aside id="world-performance" aria-label="Game performance" hidden>
+        <button id="world-performance-toggle" type="button" aria-controls="world-performance-stats" aria-expanded="true">PERF <span aria-hidden="true">▾</span></button>
+        <div id="world-performance-stats">
+          <div><span>FPS</span><output data-perf="fps">—</output></div>
+          <div><span>RAM</span><output data-perf="ram" title="JavaScript heap unavailable on iOS Safari; N/A is expected">N/A</output></div>
+          <div><span>TICK</span><output data-perf="tick" title="PLAYER_INFO updates received / average interval">0</output></div>
+          <div><span>MS</span><output data-perf="ms" title="Average time between WebGL animation frames, not network ping">—</output></div>
+          <div><span>DRAW</span><output data-perf="draw" title="WebGL draw submission time on CPU, not GPU timing">—</output></div>
+          <div><span>ACT</span><output data-perf="act" title="Actor update elapsed time, including async waits; not CPU-only">—</output></div>
+          <div><span>PLR</span><output data-perf="plr" title="Player appearance, animation and effects (ms), including waits">—</output></div>
+          <div><span>NPC</span><output data-perf="npc" title="NPC model preparation and mesh assembly (ms), including waits">—</output></div>
+          <div><span>UP</span><output data-perf="up" title="WebGL actor buffer upload time (ms)">—</output></div>
+          <div><span>SCN</span><output data-perf="scn" title="Animated scenery and buffer updates (ms), including waits">—</output></div>
+          <div><span>GL</span><output data-perf="gl" title="Number of WebGL draw calls per frame; excessive calls are costly on mobile">—</output></div>
+          <div><span>NET</span><output data-perf="net" title="HTTPS round trip to the SoloScape LAN page server, not game server ping">—</output></div>
+        </div>
+      </aside>
+      <span id="world-status" class="sr-only" role="status" aria-live="polite"></span>
+      <div id="world-loading-overlay" class="world-overlay" role="status" aria-live="polite">
+        <span>Loading - Please wait.</span>
+      </div>
+    </div>
+  </div>
+</main>
+<script type="module" src="/teavm/title-client.mjs"></script>
+</body>
+</html>

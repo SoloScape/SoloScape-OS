@@ -176,10 +176,60 @@ def validate_server_runtime(jar):
                            "refusing to publish or reuse it. Run build.bat --rebuild.")
 
 
+SERVER_CACHE_FILES = tuple(
+    f"Server/.data/cache/{name}/main_file_cache.dat2" for name in ("LIVE", "SERVER")
+)
+LFS_POINTER_HEADER = b"version https://git-lfs.github.com/spec/v1"
+
+
+def unavailable_server_caches():
+    pending = []
+    for name in SERVER_CACHE_FILES:
+        file = ROOT / name
+        if not file.is_file():
+            pending.append(name)
+            continue
+        with file.open("rb") as stream:
+            header = stream.read(128)
+        if not header or header.startswith(LFS_POINTER_HEADER):
+            pending.append(name)
+    return pending
+
+
+def ensure_server_cache():
+    pending = unavailable_server_caches()
+    if not pending:
+        return
+    print("Restoring server cache data with Git LFS...", flush=True)
+    recovery = ('Install Git LFS and run git lfs install, then retry build.bat. '
+                'If downloading fails, restore the matching LIVE and SERVER cache data '
+                'or run git lfs pull --include="Server/.data/cache/**" --exclude="".')
+    commands = [
+        ["checkout", *pending],
+        ["pull", "--include=" + ",".join(pending), "--exclude="],
+    ]
+    for args in commands:
+        try:
+            result = subprocess.run(["git", "-C", str(ROOT), "lfs", *args],
+                                    capture_output=True, text=True)
+        except OSError as error:
+            raise RuntimeError("Cannot restore server cache data. " + recovery) from error
+        if result.returncode:
+            raise RuntimeError("Git LFS could not restore server cache data. " + recovery)
+        pending = unavailable_server_caches()
+        if not pending:
+            print("Server cache data restored.", flush=True)
+            return
+    raise RuntimeError("Server cache data is still missing, empty or a Git LFS pointer: "
+                       + ", ".join(pending) + ". " + recovery)
+
+
 def build_project(project_name, rebuild, home, compiler_lib):
     project = ROOT / project_name
     progress = Progress(project_name)
     progress.update(0, "Checking inputs")
+    if project_name == "Server":
+        ensure_server_cache()
     installed = project / ("build/install/rsprox/lib" if project_name == "Client"
                            else "server/app/build/install/app/lib")
     if not installed.is_dir():
@@ -269,25 +319,29 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
         "libraries": library_hashes,
     }
 
-    # Most client edits are in GUI/proxy/transcriber code, while the historical protocol
-    # revisions are large and comparatively stable. Build that closed dependency layer once
-    # and compile the small app layer against it. -Xfriend-paths preserves Kotlin `internal`
-    # access that previously worked because the whole client was one compiler invocation.
-    core_sources = []
+    # Cache each project's closed dependency layer separately from frequently edited code.
+    # Server content and the application entry layer depend on engine/API/cache/services,
+    # never the reverse. Friend paths preserve the previous Kotlin `internal` access.
     if project_name == "Client":
         core_roots = {"cache", "shared", "protocol"}
         core_modules = [module for module in modules
                         if module.relative_to(project).parts[0] in core_roots]
-        core_sources = sorted(file for module in core_modules
-                              for file in (module / "src/main").rglob("*.kt"))
+    else:
+        core_modules = [module for module in modules
+                        if module.relative_to(project).parts[0] != "content"
+                        and module.relative_to(project).as_posix() != "server/app"]
+    core_sources = sorted(file for module in core_modules
+                          for file in (module / "src/main").rglob("*.kt"))
     core_source_set = set(core_sources)
     app_sources = [file for file in sources if file not in core_source_set]
-    core_name = "soloscape-client-core.jar" if core_sources else None
+    core_name = f"soloscape-{project_name.lower()}-core.jar" if core_sources else None
+    core_module_name = f"{project_name}Core"
+    core_label = f"{project_name.lower()} core"
     core_code_key = None
     if core_sources:
         core_code_key = fingerprint({
             "common": common_inputs,
-            "module": "ClientCore",
+            "module": core_module_name,
             "sources": {file.relative_to(project).as_posix(): source_hashes[file]
                         for file in core_sources},
         })
@@ -331,7 +385,7 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
             and {file.name for file in runtime.iterdir()} == expected
             and all(valid_artifact(name) for name in expected)):
         if project_name == "Server":
-            validate_server_runtime(runtime / app_name)
+            validate_server_runtime(runtime / (core_name or app_name))
         flush_hash_cache()
         progress.finish("Up to date - compilation skipped")
         return
@@ -373,10 +427,10 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
         if (not rebuild and state.get("core_code_key") == core_code_key
                 and valid_artifact(core_name)):
             reuse_file(runtime / core_name, core_jar)
-            progress.update(0.12, f"Reusing client core ({len(core_sources)} files)")
+            progress.update(0.12, f"Reusing {core_label} ({len(core_sources)} files)")
         else:
-            compile_sources(core_sources, core_jar, "ClientCore", "compiler-core.args",
-                            label=f"Compiling client core ({len(core_sources)} files)")
+            compile_sources(core_sources, core_jar, core_module_name, "compiler-core.args",
+                            label=f"Compiling {core_label} ({len(core_sources)} files)")
 
     app_jar = stage / app_name
     if not rebuild and state.get("code_key") == code_key and valid_artifact(app_name):
@@ -391,7 +445,7 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
                               if core_jar is not None else f"Compiling {len(app_sources)} files")
         progress.update(0.75, "Compilation complete")
     if project_name == "Server":
-        validate_server_runtime(app_jar)
+        validate_server_runtime(core_jar or app_jar)
 
     for index, library in enumerate(libraries):
         if valid_artifact(library.name) and artifacts[library.name] == library_hashes[library.name]:

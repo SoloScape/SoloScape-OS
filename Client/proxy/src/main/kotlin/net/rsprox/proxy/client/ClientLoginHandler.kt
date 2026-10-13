@@ -15,6 +15,7 @@ import net.rsprot.crypto.cipher.NopStreamCipher
 import net.rsprot.crypto.cipher.StreamCipherPair
 import net.rsprot.crypto.rsa.decipherRsa
 import net.rsprot.crypto.xtea.xteaDecrypt
+import net.rsprox.proxy.rsa.LocalServerRsa
 import net.rsprox.proxy.attributes.SESSION_ENCODE_SEED
 import net.rsprox.proxy.attributes.STREAM_CIPHER_PAIR
 import net.rsprox.proxy.channel.addLastWithName
@@ -154,6 +155,8 @@ public class ClientLoginHandler(
             return
         }
         builder.js5MasterIndex(masterIndex)
+        val connection = getConnection(port)
+        val modulus = LocalServerRsa.resolve(serverChannel.remoteAddress(), connection.modulus)
 
         // The header^ will just naively be copied over
         val conditionalSize = if (javConfigVersion >= 232) 4 else 0
@@ -216,8 +219,6 @@ public class ClientLoginHandler(
         val encoded = ctx.alloc().buffer(msg.payload.readableBytes())
         encoded.writeBytes(msg.payload, msg.start, headerSize)
         decryptedRsaBuffer.readerIndex(rsaStart)
-        val connection = getConnection(port)
-        val modulus = connection.modulus
         val encrypted =
             try {
                 decryptedRsaBuffer.buffer.decipherRsa(
