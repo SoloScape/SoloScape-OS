@@ -24,7 +24,6 @@ private val appearanceConfirmed = AttributeKey<Int>("tutorial_appearance_confirm
 /** Only accepting character creation (not closing its UI) unlocks tutorial movement. */
 public val Player.tutorialAppearancePending: Boolean
     get() = tutorialStage == TutorialStage.GUIDE &&
-        vars["varbit.new_player_account"] == 1 &&
         attr[appearanceConfirmed] != 1
 
 public class TutorialAppearanceRestrictionHook @Inject constructor() : PlayerRestrictionHook {

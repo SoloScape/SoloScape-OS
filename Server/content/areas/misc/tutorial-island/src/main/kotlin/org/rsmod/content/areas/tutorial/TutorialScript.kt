@@ -60,7 +60,6 @@ import org.rsmod.plugin.scripts.ScriptContext
 public data class TutorialPassage(public val stage: TutorialStage, public val destination: CoordGrid)
 
 public val tutorialPassage: AttributeKey<TutorialPassage> = AttributeKey()
-private val APPEARANCE_CONFIRMED = AttributeKey<Int>("tutorial_appearance_confirmed")
 
 public class TutorialScript @Inject constructor(
     private val progress: TutorialProgress,
@@ -266,9 +265,7 @@ public class TutorialScript @Inject constructor(
     }
 
     private suspend fun ProtectedAccess.teach(npc: Npc, tutor: Tutor) {
-        if (tutor == Tutor.GUIDE && player.tutorialStage == TutorialStage.GUIDE &&
-            player.vars["varbit.new_player_account"] == 1 &&
-            player.attr[APPEARANCE_CONFIRMED] != 1) {
+        if (tutor == Tutor.GUIDE && player.tutorialAppearancePending) {
             player.ifOpenMainModal("interface.makeover_mage", eventBus)
             return
         }

@@ -111,6 +111,7 @@ public fun main() {
         val fixture = Fixture()
         fixture.verifyPrecreatedCharacterLogin()
         fixture.verifyLoginAndResume()
+        fixture.verifyAppearanceRelog()
         fixture.verifyFamiliarityAndLearningRopesJournal()
         fixture.verifyInstructorDialogueAndRecovery()
         fixture.verifyInstructorRecaps()
@@ -276,6 +277,54 @@ private class Fixture {
             dev.openrune.types.varp.VarpLifetime.Perm)
         check(!progress.advance(player, TutorialStage.GUIDE))
         check(player.tutorialStage == TutorialStage.SMITH)
+    }
+
+    fun verifyAppearanceRelog() {
+        val confirmedKey = AttributeKey<Int>("tutorial_appearance_confirmed")
+        player.coords = TutorialProgress.START
+        player.tutorialProgress = TutorialStage.GUIDE.code
+        player.attr.remove(confirmedKey)
+        VarPlayerIntMapSetter.set(player, "varbit.new_player_account", 1)
+        events.publish(SessionStateEvent.Login(player))
+        check(player.ui.containsModal("interface.makeover_mage"))
+        events.publish(SessionStateEvent.Logout(player))
+        val savedAttrs = player.attr.toPersistentMap()
+        player.ifCloseModals(events)
+        player.attr.clear()
+        player.attr.putAllFromPersistence(savedAttrs)
+        VarPlayerIntMapSetter.set(player, "varbit.new_player_account", 0)
+        events.publish(SessionStateEvent.PrepareLogin(player))
+        events.publish(SessionStateEvent.Login(player))
+        check(player.ui.containsModal("interface.makeover_mage")) {
+            "Logging out before Accept must reopen character creation on returning login."
+        }
+        val guard = TutorialAppearanceRestrictionHook()
+        check(player.tutorialAppearancePending)
+        check(guard.restriction(player, RestrictedAction.Walk) != null)
+        check(guard.restriction(player, RestrictedAction.CloseModal) != null)
+        player.ifCloseModals(events)
+        talk("npc.newbie_basics_instructor")
+        check(player.tutorialStage == TutorialStage.GUIDE)
+        check(player.ui.containsModal("interface.makeover_mage"))
+        interaction {
+            check(events.publish(ProtectedAccess(player, coroutine, context),
+                IfModalButton(ServerCacheManager.fromComponent("component.makeover_mage:confirm_button"),
+                    0, null, IfButtonOp.Op1)))
+        }
+        check(player.attr[confirmedKey] == 1)
+        check(!player.tutorialAppearancePending)
+        check(!player.ui.containsModal("interface.makeover_mage"))
+        events.publish(SessionStateEvent.Logout(player))
+        val confirmedAttrs = player.attr.toPersistentMap()
+        player.attr.clear()
+        player.attr.putAllFromPersistence(confirmedAttrs)
+        events.publish(SessionStateEvent.PrepareLogin(player))
+        events.publish(SessionStateEvent.Login(player))
+        check(!player.tutorialAppearancePending)
+        check(!player.ui.containsModal("interface.makeover_mage"))
+        check(guard.restriction(player, RestrictedAction.Walk) == null)
+        check(guard.restriction(player, RestrictedAction.CloseModal) == null)
+        println("PASS: logout before Accept preserves mandatory creation; saved Accept unlocks relog")
     }
 
     fun verifyPrecreatedCharacterLogin() {
@@ -810,8 +859,7 @@ private class Fixture {
         }) { "Gielinor Guide marker must be an NPC-slot hint rather than a floor tile." }
         npcs.remove(455)
 
-        // Only a genuinely new character that has not confirmed their appearance
-        // receives the appearance editor. Existing/tutorial-resume accounts do not.
+        // Unconfirmed characters at the Guide must finish creation before continuing.
         VarPlayerIntMapSetter.set(player, "varbit.new_player_account", 1)
         val confirmedKey = org.rsmod.api.attr.AttributeKey<Int>("tutorial_appearance_confirmed")
         player.attr.remove(confirmedKey)

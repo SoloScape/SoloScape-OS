@@ -48,7 +48,6 @@ class MakeoverMageScript @Inject constructor(private val random: GameRandom) : P
             // silently discard every click, including the required Accept.
             player.enableMakeoverInput()
             if (player.vars["varp.tutorial"] == 10 &&
-                player.vars["varbit.new_player_account"] == 1 &&
                 player.attr[TUTORIAL_APPEARANCE_CONFIRMED] != 1) {
                 val appearance = player.appearance
                 val colour = appearance.coloursSnapshot()[SKIN_COLOUR_SLOT].toInt()
@@ -101,7 +100,6 @@ class MakeoverMageScript @Inject constructor(private val random: GameRandom) : P
             applyMakeover()
             ifClose()
             if (player.vars["varp.tutorial"] == 10 &&
-                player.vars["varbit.new_player_account"] == 1 &&
                 player.attr[TUTORIAL_APPEARANCE_CONFIRMED] != 1) {
                 player.attr[TUTORIAL_APPEARANCE_CONFIRMED] = 1
                 mes("Your appearance has been saved. Talk to the Gielinor Guide to begin.")

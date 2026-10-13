@@ -39,6 +39,8 @@ editor opens before the first Gielinor Guide lesson. Confirming the choice
 stores `tutorial_appearance_confirmed` as a permanent character attribute, so
 relogging does not repeatedly reopen it. Trying to speak to the Guide before
 confirmation returns to the editor instead of bypassing character setup.
+Logging out before Accept reopens creation on the next login. The saved Guide
+stage and confirmation attribute enforce this independently of first-login status.
 While appearance is unconfirmed, the server rejects world-viewport and minimap
 walking requests, including ctrl/telejump variants. The Escape/close-modal
 packet also cannot dismiss creation; it re-sends the authoritative main modal.
