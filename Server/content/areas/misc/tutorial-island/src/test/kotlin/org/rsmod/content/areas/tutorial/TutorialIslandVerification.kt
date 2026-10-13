@@ -746,6 +746,13 @@ private class Fixture {
 
     fun verifySkippy() {
         collision.allocateIfAbsent(3097, 3108, 0)
+        System.clearProperty("soloscape.tutorial.skip")
+        events.publish(GameLifecycle.Startup)
+        check(npcs.none { it.id == TutorialSkippyScript.NPC.asRSCM() }) {
+            "Normal OSRS Tutorial Island must not spawn Skippy."
+        }
+        // Skippy remains available only to explicitly opted-in private/development worlds.
+        System.setProperty("soloscape.tutorial.skip", "true")
         events.publish(GameLifecycle.Startup)
         val skippy = npcs.first { it.id == TutorialSkippyScript.NPC.asRSCM() }
         check(skippy.type.name == "Skippy")
@@ -789,8 +796,9 @@ private class Fixture {
             events.publish(SessionStateEvent.PrepareLogin(player))
             check(player.coords == TutorialProgress.LUMBRIDGE && player.tutorialStage == TutorialStage.COMPLETE)
         }
-        println("PASS: Skippy spawn/south facing, exact prompt, No leaves progress intact, " +
-            "Yes completes tutorial/account and teleports from early/middle/final lessons")
+        System.clearProperty("soloscape.tutorial.skip")
+        println("PASS: Skippy disabled for standard tutorial; opt-in skip preserves progress safety, " +
+            "Yes/No choices and starter rewards")
     }
 
     fun verifyCombat() {
