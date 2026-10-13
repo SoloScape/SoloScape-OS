@@ -1198,3 +1198,11 @@ isServerOnly = true
 id = "varp.farming_clock"
 scope = "Perm"
 transmit = "Never"
+
+# New player experience selection: 0=unselected, 1=new, 2=returning, 3=experienced.
+# Stored permanently so onboarding choice survives reconnects and mainland travel.
+[[varp]]
+isServerOnly = true
+id = "varp.tutorial_familiarity"
+scope = "Perm"
+transmit = "Never"
