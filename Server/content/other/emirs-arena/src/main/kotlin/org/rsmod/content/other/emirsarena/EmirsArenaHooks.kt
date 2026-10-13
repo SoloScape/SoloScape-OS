@@ -123,6 +123,9 @@ constructor(private val manager: DuelManager, private val areaChecker: AreaCheck
         }
         val rules = duel.rules
         return when (action) {
+            // Arena duel rules do not forbid closing modal interfaces. The
+            // tutorial character-creation hook owns that separate restriction.
+            RestrictedAction.CloseModal -> null
             RestrictedAction.Walk ->
                 when {
                     duel.stage == DuelStage.Countdown -> "The duel hasn't started yet!"
