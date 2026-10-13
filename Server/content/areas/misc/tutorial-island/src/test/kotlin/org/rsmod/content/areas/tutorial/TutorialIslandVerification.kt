@@ -3,6 +3,7 @@
 package org.rsmod.content.areas.tutorial
 
 import dev.openrune.ServerCacheManager
+import dev.openrune.definition.type.widget.IfEvent
 import dev.openrune.rscm.RSCM.asRSCM
 import dev.openrune.rscm.RSCMType
 import dev.openrune.types.InventoryServerType
@@ -818,6 +819,20 @@ private class Fixture {
         check(player.ui.containsModal("interface.makeover_mage")) {
             "The first login should open the appearance-customisation interface."
         }
+        // A rendered editor is not enough: with no Op1 event masks, real
+        // mouse clicks never reach the event bus and even Accept is inert.
+        val creationButtons = listOf(
+            "bodytype_a", "bodytype_b", "he_him", "she_her", "they_them",
+            "apply_button", "confirm_button",
+        )
+        for (button in creationButtons) {
+            val type = ServerCacheManager.fromComponent("component.makeover_mage:$button")
+            check(player.ui.hasEvent(type, 0, IfEvent.Op1)) {
+                "Creation button $button is visible but has no enabled Op1 click."
+            }
+        }
+        check(player.ui.hasEvent(ServerCacheManager.fromComponent(
+            "component.makeover_mage:colour"), 0, IfEvent.Op1))
         val creatorGuard = TutorialAppearanceRestrictionHook()
         check(player.tutorialAppearancePending)
         check(creatorGuard.restriction(player, RestrictedAction.Walk) != null) {
@@ -835,6 +850,11 @@ private class Fixture {
         ticks.onPostTick(player)
         check(player.ui.containsModal("interface.makeover_mage")) {
             "An unconfirmed character must not bypass creation by closing a modal."
+        }
+        // The second open must repopulate the event masks cleared on modal close.
+        for (button in creationButtons) {
+            check(player.ui.hasEvent(ServerCacheManager.fromComponent(
+                "component.makeover_mage:$button"), 0, IfEvent.Op1))
         }
         check(player.routeRequest == null && player.routeDestination.isEmpty()) {
             "Unconfirmed characters must have their walking routes cleared."
