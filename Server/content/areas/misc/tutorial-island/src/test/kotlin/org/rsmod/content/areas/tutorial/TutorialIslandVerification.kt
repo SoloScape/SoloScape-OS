@@ -373,9 +373,9 @@ private class Fixture {
         locItemAction("loc.newbiefire", "obj.raw_shrimp", CoordGrid(3100, 3100))
         check(player.tutorialStage == TutorialStage.SURVIVAL_FINISH)
         check(player.inv.count("obj.shrimp") == 1 && !player.inv.contains("obj.burnt_shrimp"))
-        player.inv[0] = InvObj("obj.raw_shrimp", 1)
+        player.inv[1] = InvObj("obj.raw_shrimp", 1)
         player.tutorialProgress = TutorialStage.COOK_RETRY.code
-        locItemAction("loc.newbiefire", "obj.raw_shrimp", CoordGrid(3100, 3100))
+        locItemAction("loc.newbiefire", "obj.raw_shrimp", CoordGrid(3100, 3100), slot = 1)
         check(player.tutorialStage == TutorialStage.SURVIVAL_FINISH)
         check(player.inv.count("obj.shrimp") == 2)
     }
@@ -648,13 +648,13 @@ private class Fixture {
         }
     }
 
-    private fun locItemAction(symbol: String, item: String, coords: CoordGrid) {
+    private fun locItemAction(symbol: String, item: String, coords: CoordGrid, slot: Int = 0) {
         val type = checkNotNull(ServerCacheManager.getObject(symbol.asRSCM()))
         val objType = checkNotNull(ServerCacheManager.getItem(item.asRSCM()))
         val loc = BoundLocInfo(LocInfo(2, coords, LocEntity(type.id, 10, 0)), type)
         interaction {
             check(events.publish(ProtectedAccess(player, coroutine, context),
-                LocUEvents.Op(loc, loc, type, objType, 0)))
+                LocUEvents.Op(loc, loc, type, objType, slot)))
         }
     }
 
