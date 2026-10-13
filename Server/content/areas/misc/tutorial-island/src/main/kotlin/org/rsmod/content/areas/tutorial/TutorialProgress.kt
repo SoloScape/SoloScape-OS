@@ -14,6 +14,7 @@ import org.rsmod.api.player.output.runClientScript
 import org.rsmod.api.player.ui.ifCloseOverlay
 import org.rsmod.api.player.ui.ifOpenOverlay
 import org.rsmod.api.player.ui.ifOpenMain
+import org.rsmod.api.player.ui.ifOpenMainModal
 import org.rsmod.api.player.ui.ifSetObj
 import org.rsmod.api.player.ui.ifSetHide
 import org.rsmod.api.player.ui.ifSetText
@@ -64,6 +65,14 @@ public class TutorialProgress @Inject constructor(
         player.ifOpenOverlay("interface.tutorial_overlay",
             "component.toplevel_osrs_stretch:overlay_hud", eventBus)
         show(player)
+    }
+
+    /** Reopens mandatory character creation if another UI displaced the editor. */
+    public fun ensureAppearanceCreation(player: Player) {
+        if (player.tutorialAppearancePending &&
+            !player.ui.containsModal("interface.makeover_mage")) {
+            player.ifOpenMainModal("interface.makeover_mage", eventBus)
+        }
     }
 
     public fun advance(player: Player, expected: TutorialStage): Boolean {
