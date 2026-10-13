@@ -1,5 +1,6 @@
 """Compile and run the Tutorial Island verification against the local server build and cache."""
 from pathlib import Path
+import os
 import subprocess
 import sys
 import sqlite3
@@ -39,17 +40,25 @@ sources = [source]
 if "--source" in sys.argv[1:]:
     sources += list((server / "content/areas/misc/tutorial-island/src/main/kotlin").rglob("*.kt"))
     sources.append(server / "api/account/src/main/kotlin/org/rsmod/api/account/loader/request/AccountLoadResponse.kt")
+compiler_args = [
+    "-jvm-target", "21",
+    "-Xcontext-parameters", "-Xnested-type-aliases", "-Xskip-prerelease-check",
+    "-Xallow-unstable-dependencies",
+    "-no-stdlib", "-no-reflect", "-classpath", classpath,
+    "-d", str(output / "tests.jar"), *map(str, sources),
+]
+argfile = output / "compiler.args"
+argfile.write_text("\n".join('"' + arg.replace("\\", "/").replace('"', '\\"') + '"'
+                             for arg in compiler_args) + "\n", encoding="utf-8")
 compile_result = subprocess.run([java, "-Xmx1g", "-cp", str(build.compiler() / "*"),
-                "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler", "-jvm-target", "21",
-                "-Xcontext-parameters", "-Xnested-type-aliases", "-Xskip-prerelease-check",
-                "-Xallow-unstable-dependencies",
-                "-no-stdlib", "-no-reflect", "-classpath", classpath,
-                "-d", str(output / "tests.jar"), *map(str, sources)], capture_output=True, text=True)
+                "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler", "@" + str(argfile)],
+                capture_output=True, text=True)
 (output / "compile.log").write_text(compile_result.stdout + compile_result.stderr, encoding="utf-8")
 if compile_result.returncode:
     print((compile_result.stdout + compile_result.stderr)[-6000:])
     raise SystemExit(compile_result.returncode)
-test_result = subprocess.run([java, "-Xmx2g", "-cp", str(output / "tests.jar") + ";" + classpath,
+test_classpath = os.pathsep.join((str(output / "tests.jar"), str(runtime / "*")))
+test_result = subprocess.run([java, "-Xmx2g", "-cp", test_classpath,
                 "org.rsmod.content.areas.tutorial.TutorialIslandVerificationKt"],
                cwd=server, capture_output=True, text=True)
 (output / "test.log").write_text(test_result.stdout + test_result.stderr, encoding="utf-8")
