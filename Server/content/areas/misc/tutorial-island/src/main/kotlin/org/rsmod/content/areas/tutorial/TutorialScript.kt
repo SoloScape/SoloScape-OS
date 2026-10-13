@@ -275,10 +275,20 @@ public class TutorialScript @Inject constructor(
             TutorialStage.GUIDE -> {
                 chatNpc(happy, "Welcome to RuneScape! I will help you learn the controls before " +
                     "the other instructors teach you how to survive and explore.")
-                when (choice3("I'm new to this.", 1, "I've played before.", 2,
-                    "I know my way around.", 3)) {
-                    1 -> chatNpc(happy, "Take your time. The instructions on screen explain your next task.")
-                    else -> chatNpc(happy, "You will still practise each lesson before leaving the island.")
+                // The original rev-240 cache lacks the October 2025 pre-game three-button
+                // familiarity screen. Keep the choice here as an accessible compatibility
+                // fallback, but persist it instead of discarding the player's answer.
+                if (player.tutorialFamiliarity == 0) {
+                    player.tutorialFamiliarity = choice3(
+                        "I'm brand new to RuneScape.", 1,
+                        "I've played before, but not recently.", 2,
+                        "I'm an experienced player.", 3,
+                    ).coerceIn(1, 3)
+                }
+                if (player.tutorialFamiliarity == 1) {
+                    chatNpc(happy, "Take your time. The instructions on screen explain your next task.")
+                } else {
+                    chatNpc(happy, "Welcome back! You'll still practise each lesson before leaving the island.")
                 }
                 chatNpc(neutral, "Click a nearby tile to walk. Drag the camera with the middle " +
                     "mouse button, or use the arrow keys. On mobile, drag to rotate and tap to walk.")
