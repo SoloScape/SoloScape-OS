@@ -28,6 +28,7 @@ import org.rsmod.content.interfaces.settings.scripts.varValue
 import org.rsmod.api.player.stat.hitpoints
 import org.rsmod.api.player.stat.statAdd
 import org.rsmod.api.player.ui.ifSetEvents
+import org.rsmod.api.player.ui.ifOpenMainModal
 import org.rsmod.api.script.onCommand
 import org.rsmod.api.script.advanced.onIfMoveSub
 import org.rsmod.api.script.onEvent
@@ -59,6 +60,7 @@ import org.rsmod.plugin.scripts.ScriptContext
 public data class TutorialPassage(public val stage: TutorialStage, public val destination: CoordGrid)
 
 public val tutorialPassage: AttributeKey<TutorialPassage> = AttributeKey()
+private val APPEARANCE_CONFIRMED = AttributeKey<Int>("tutorial_appearance_confirmed")
 
 public class TutorialScript @Inject constructor(
     private val progress: TutorialProgress,
@@ -86,6 +88,14 @@ public class TutorialScript @Inject constructor(
             if (player.onTutorial) {
                 progress.open(player)
                 enableTabButtons(player)
+                if (player.tutorialStage == TutorialStage.GUIDE &&
+                    player.vars["varbit.new_player_account"] == 1 &&
+                    player.attr[APPEARANCE_CONFIRMED] != 1) {
+                    // Revision-240 provides a working appearance editor through the
+                    // Makeover Mage interface. Show it on first login, not just at
+                    // the mage's shop; require confirmation before talking to the Guide.
+                    player.ifOpenMainModal("interface.makeover_mage", eventBus)
+                }
             }
         }
         // Popout is moved last, after the HUD, chatbox and side panels are in the new frame.
@@ -261,6 +271,12 @@ public class TutorialScript @Inject constructor(
     }
 
     private suspend fun ProtectedAccess.teach(npc: Npc, tutor: Tutor) {
+        if (tutor == Tutor.GUIDE && player.tutorialStage == TutorialStage.GUIDE &&
+            player.vars["varbit.new_player_account"] == 1 &&
+            player.attr[APPEARANCE_CONFIRMED] != 1) {
+            player.ifOpenMainModal("interface.makeover_mage", eventBus)
+            return
+        }
         startDialogue(npc) {
             if (!player.onTutorial) {
                 chatNpc(happy, "You have finished your training. Enjoy your adventures in SoloScape!")
