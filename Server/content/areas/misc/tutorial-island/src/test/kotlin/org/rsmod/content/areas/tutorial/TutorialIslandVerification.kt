@@ -208,9 +208,14 @@ private class Fixture {
         check(packets.any { packetText(it)?.contains("Learning the Ropes") == true })
         check(packets.any { packetText(it)?.contains("Current lesson") == true })
         player.tutorialProgress = TutorialStage.COMPLETE.code
+        player.tutorialQuestAwarded = 1
         packets.clear()
         progress.openLearningRopesJournal(player)
         check(packets.any { packetText(it)?.contains("Quest complete") == true })
+        player.tutorialQuestAwarded = 0
+        packets.clear()
+        progress.openLearningRopesJournal(player)
+        check(packets.any { packetText(it)?.contains("credit was not awarded") == true })
         println("PASS: persistent familiarity choice and native Learning the Ropes stage journal")
     }
 
@@ -796,6 +801,7 @@ private class Fixture {
         for (stage in listOf(TutorialStage.GUIDE, TutorialStage.SMITH, TutorialStage.DEPART)) {
             player.coords = TutorialProgress.START
             player.tutorialProgress = stage.code
+            player.tutorialQuestAwarded = 0
             VarPlayerIntMapSetter.set(player, "varbit.new_player_account", 1)
             progress.open(player)
             val pending = TutorialPassage(TutorialStage.LEAVE_START, CoordGrid(3098, 3107))
@@ -816,6 +822,7 @@ private class Fixture {
             }
             check(player.vars["varp.qp"] == questPointsBeforeSkip)
             check(player.vars["varbit.quests_completed_count"] == questsBeforeSkip)
+            check(player.tutorialQuestAwarded == 0)
             check(player.coords == TutorialProgress.LUMBRIDGE && player.tutorialStage == TutorialStage.COMPLETE)
             check(player.inv.count("obj.bronze_arrow") == 25)
             check(player.inv.count("obj.airrune") == 25)
@@ -869,6 +876,7 @@ private class Fixture {
         check(player.tutorialStage == TutorialStage.DEPART)
         check(player.vars["varp.qp"] == originalQuestPoints + 1)
         check(player.vars["varbit.quests_completed_count"] == originalQuestCount + 1)
+        check(player.tutorialQuestAwarded == 1)
         check(player.ui.containsModal("interface.questscroll"))
         check(packets.any { packetText(it) == "You have completed Learning the Ropes!" })
         events.publish(NpcHitEvents.AnyImpact(chicken,
