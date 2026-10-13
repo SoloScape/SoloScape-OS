@@ -3,14 +3,19 @@ package org.rsmod.content.areas.tutorial
 import dev.openrune.rscm.RSCM.asRSCM
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
+import org.rsmod.api.player.midiJingle
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.output.runClientScript
 import org.rsmod.api.player.ui.ifCloseOverlay
 import org.rsmod.api.player.ui.ifOpenOverlay
+import org.rsmod.api.player.ui.ifOpenMain
+import org.rsmod.api.player.ui.ifSetObj
 import org.rsmod.api.player.ui.ifSetHide
 import org.rsmod.api.player.ui.ifSetText
 import org.rsmod.api.player.vars.intVarp
 import org.rsmod.api.player.vars.boolVarBit
+import org.rsmod.api.player.vars.intVarBit
+import org.rsmod.content.quest.manager.Quest
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
 import org.rsmod.game.ui.Component
@@ -19,6 +24,8 @@ import org.rsmod.map.CoordGrid
 public var Player.tutorialProgress: Int by intVarp("varp.tutorial")
 private var Player.tutorialProgressBar: Int by intVarp("varp.tutorial_progress_overlay")
 private var Player.newTutorialAccount: Boolean by boolVarBit("varbit.new_player_account")
+private var Player.tutorialQuestPoints: Int by intVarp("varp.qp")
+private var Player.tutorialQuestsCompleted: Int by intVarBit("varbit.quests_completed_count")
 
 public val Player.tutorialStage: TutorialStage?
     get() = TutorialStage.fromCode(tutorialProgress)
@@ -42,6 +49,24 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
         }
         player.tutorialProgress = expected.next.code
         show(player)
+        return true
+    }
+
+    public fun finishWindStrike(player: Player): Boolean {
+        if (!advance(player, TutorialStage.CAST)) return false
+        player.tutorialQuestPoints++
+        player.tutorialQuestsCompleted++
+        player.midiJingle(Quest.QUEST_COMPLETE_3_JINGLE)
+        player.ifOpenMain("interface.questscroll", eventBus)
+        player.ifSetText("component.questscroll:quest_title",
+            "You have completed Learning the Ropes!")
+        player.ifSetText("component.questscroll:quest_reward1", "1 Quest Point")
+        player.ifSetObj("component.questscroll:quest_model", "obj.airrune", 10)
+        val rewards = listOf("Access to the mainland", "Lumbridge Home Teleport")
+        for (index in 0 until 6) {
+            player.ifSetText("component.questscroll:quest_reward${index + 2}",
+                rewards.getOrNull(index) ?: "")
+        }
         return true
     }
 
@@ -95,6 +120,9 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
     }
 
     public companion object {
+        public fun canDepartByHomeTeleport(player: Player): Boolean =
+            player.tutorialStage == TutorialStage.DEPART && onIsland(player.coords)
+
         public val START: CoordGrid = CoordGrid(3094, 3107)
         public val LUMBRIDGE: CoordGrid = CoordGrid(3222, 3218)
 
