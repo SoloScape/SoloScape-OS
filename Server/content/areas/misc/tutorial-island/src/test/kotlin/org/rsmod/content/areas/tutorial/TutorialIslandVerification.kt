@@ -607,10 +607,39 @@ private class Fixture {
         player.coords = TutorialProgress.LUMBRIDGE
         check(!TutorialProgress.canDepartByHomeTeleport(player))
         player.coords = CoordGrid(3140, 3095)
+        player.inv[0] = InvObj("obj.logs", 1)
+        player.worn[0] = InvObj("obj.bronze_dagger", 1)
+        player.invMap.getOrPut("inv.bank")[1] = InvObj("obj.logs", 1)
         progress.complete(player)
         player.coords = TutorialProgress.LUMBRIDGE
-        check(player.inv.count("obj.airrune") >= 25 && player.inv.count("obj.mindrune") >= 15)
+        val starterKit = mapOf(
+            "obj.bronze_axe" to 1,
+            "obj.bronze_pickaxe" to 1,
+            "obj.tinderbox" to 1,
+            "obj.net" to 1,
+            "obj.shrimp" to 2,
+            "obj.bronze_dagger" to 1,
+            "obj.bronze_sword" to 1,
+            "obj.wooden_shield" to 1,
+            "obj.shortbow" to 1,
+            "obj.bronze_arrow" to 25,
+            "obj.airrune" to 25,
+            "obj.mindrune" to 15,
+            "obj.bucket" to 1,
+            "obj.pot" to 1,
+            "obj.bread" to 1,
+            "obj.waterrune" to 6,
+            "obj.earthrune" to 4,
+            "obj.bodyrune" to 2,
+        )
+        for ((item, amount) in starterKit) {
+            check(player.inv.count(item) == amount) { "Wrong mainland starter quantity for $item" }
+        }
+        check(player.inv.count("obj.logs") == 0)
+        check(player.worn.isEmpty())
         check(player.invMap.getOrPut("inv.bank").count("obj.coins") == 25)
+        check(player.invMap.getOrPut("inv.bank").count("obj.logs") == 0)
+        check(player.runEnergy == 10000)
         val airBefore = player.inv.count("obj.airrune")
         val mindBefore = player.inv.count("obj.mindrune")
         progress.complete(player)
@@ -749,6 +778,10 @@ private class Fixture {
             check(player.vars["varp.qp"] == questPointsBeforeSkip)
             check(player.vars["varbit.quests_completed_count"] == questsBeforeSkip)
             check(player.coords == TutorialProgress.LUMBRIDGE && player.tutorialStage == TutorialStage.COMPLETE)
+            check(player.inv.count("obj.bronze_arrow") == 25)
+            check(player.inv.count("obj.airrune") == 25)
+            check(player.inv.count("obj.mindrune") == 15)
+            check(player.runEnergy == 10000)
             check(player.vars["varbit.new_player_account"] == 0 && player.attr[tutorialPassage] == null)
             check(!player.ui.containsOverlay("interface.tutorial_overlay"))
             check(!player.ui.containsOverlay("interface.messagebox_titled"))
