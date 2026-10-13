@@ -396,12 +396,23 @@ private class Fixture {
         check(TutorialExperience.limit(120, "stat.hitpoints", 11540, 100.0) == 0.0)
         check(TutorialExperience.limit(0, "stat.cooking", 1700, 400.0) == 400.0)
         check(TutorialExperience.limit(1000, "stat.cooking", 1700, 400.0) == 400.0)
+        player.coords = CoordGrid(3140, 3095)
+        player.tutorialProgress = TutorialStage.CAST.code
+        check(!TutorialProgress.canDepartByHomeTeleport(player))
         player.tutorialProgress = TutorialStage.DEPART.code
+        check(TutorialProgress.canDepartByHomeTeleport(player))
         check(TutorialTeleportHook().validate(player, TeleportType.Standard, context.areaChecker) != null)
-        talk("npc.newbie_magic_instructor", listOf(2))
-        check(player.tutorialStage == TutorialStage.DEPART)
         talk("npc.newbie_magic_instructor", listOf(1))
-        check(player.tutorialStage == TutorialStage.COMPLETE && player.coords == TutorialProgress.LUMBRIDGE)
+        check(player.tutorialStage == TutorialStage.DEPART &&
+            player.coords == CoordGrid(3140, 3095))
+        talk("npc.newbie_magic_instructor", listOf(2))
+        check(player.tutorialStage == TutorialStage.DEPART &&
+            player.coords == CoordGrid(3140, 3095))
+        player.coords = CoordGrid(3083, 9498)
+        check(!TutorialProgress.canDepartByHomeTeleport(player))
+        player.coords = CoordGrid(3140, 3095)
+        progress.complete(player)
+        player.coords = TutorialProgress.LUMBRIDGE
         check(!player.ui.containsOverlay("interface.tutorial_overlay"))
         check(!player.ui.containsOverlay("interface.messagebox_titled"))
         check(player.ui.containsOverlay("interface.magic_spellbook"))
@@ -554,10 +565,19 @@ private class Fixture {
         events.publish(NpcHitEvents.AnyImpact(rat, hit(HitType.Ranged)))
         check(player.tutorialStage == TutorialStage.LEAVE_COMBAT)
         player.tutorialProgress = TutorialStage.CAST.code
+        val originalQuestPoints = player.vars["varp.qp"]
+        val originalQuestCount = player.vars["varbit.quests_completed_count"]
         events.publish(NpcHitEvents.AnyImpact(chicken, hit(HitType.Magic, 0)))
         check(player.tutorialStage == TutorialStage.CAST)
         events.publish(NpcHitEvents.AnyImpact(chicken, hit(HitType.Magic)))
         check(player.tutorialStage == TutorialStage.DEPART)
+        check(player.vars["varp.qp"] == originalQuestPoints + 1)
+        check(player.vars["varbit.quests_completed_count"] == originalQuestCount + 1)
+        check(player.ui.containsModal("interface.questscroll"))
+        check(packets.any { packetText(it) == "You have completed Learning the Ropes!" })
+        events.publish(NpcHitEvents.AnyImpact(chicken, hit(HitType.Magic)))
+        check(player.vars["varp.qp"] == originalQuestPoints + 1)
+        check(player.vars["varbit.quests_completed_count"] == originalQuestCount + 1)
         player.statMap.setCurrentLevel("stat.hitpoints", 0)
         events.publish(PlayerHitpointsChangedEvent(player, 1, 0, 10, hit(HitType.Melee)))
         check(player.statMap.getCurrentLevel("stat.hitpoints").toInt() == 1)
