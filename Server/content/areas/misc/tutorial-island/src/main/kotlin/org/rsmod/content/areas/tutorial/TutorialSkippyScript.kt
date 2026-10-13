@@ -55,7 +55,7 @@ public class TutorialSkippyScript @Inject constructor(
                 !TutorialProgress.onIsland(player.coords)) return@onOpNpc1
             // The first appearance-editor screen is mandatory. Skippy must
             // never become another route around its Accept button.
-            if (player.tutorialAppearancePending) {
+            if (player.tutorialDisplayNamePending || player.tutorialAppearancePending) {
                 progress.ensureAppearanceCreation(player)
                 return@onOpNpc1
             }
@@ -80,7 +80,8 @@ public class TutorialSkippyScript @Inject constructor(
                                 return@startDialogue
                             }
                             // Revalidate before granting rewards and using an exempt teleport.
-                            if (!player.onTutorial || player.tutorialAppearancePending ||
+                            if (!player.onTutorial || player.tutorialDisplayNamePending ||
+                                player.tutorialAppearancePending ||
                                 !TutorialProgress.onIsland(player.coords)) return@startDialogue
                             chatNpc(happy, "All right! Good luck out there, adventurer.")
                             access.ifCloseChat()

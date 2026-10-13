@@ -34,8 +34,23 @@ The dialogue is adapted from the
 and the location description is corroborated by the
 [OSRS Tutorial Island reference](https://oldschool.runescape.wiki/w/Tutorial_Island).
 
-When a new character first logs into Tutorial Island, the existing appearance
-editor opens before the first Gielinor Guide lesson. Confirming the choice
+New characters are created with no display name. On first login, the native
+`tutorial_displayname` window opens before appearance creation, using the cache's
+name input and stone buttons. **Look up name** checks the shared display-name
+format policy, case-insensitive uniqueness and active name reservations. **Set name**
+checks availability again and saves the name atomically for the account's unnamed
+character before opening appearance creation. Login usernames are no longer
+automatically assigned as display names, including in development realms with the
+legacy `auto_assign_display_names` setting enabled. Existing chosen names remain intact.
+Movement and Escape cannot bypass this screen; logging out without choosing a name
+reopens it. A saved name goes straight to the next unfinished setup step on relog.
+The native layout and input behaviour follow the
+[cache interface](https://github.com/Joshua-F/osrs-dumps/blob/master/interface/tutorial_displayname.if3)
+and its native `tutorial_displayname_*` scripts. Authenticated client visual verification
+is still required for fixed, resizable and mobile gameframes.
+
+After a display name is chosen, the existing appearance editor opens before the
+first Gielinor Guide lesson. Confirming the choice
 stores `tutorial_appearance_confirmed` as a permanent character attribute, so
 relogging does not repeatedly reopen it. Trying to speak to the Guide before
 confirmation returns to the editor instead of bypassing character setup.
@@ -260,7 +275,8 @@ python Server/tools/test-tutorial-island.py
 The standalone verification loads the actual local server cache, registers the
 tutorial alongside the existing Friends/Ignore handlers, runs all nine instructor
 dialogues and the fishing, chopping, mining, smelting and baking handlers, and
-checks login/resume, Account Management tab/recap and coin safety,
+checks login/resume, native name selection before appearance, invalid/reserved names,
+competing name claims, ownership, saved names, Account Management tab/recap and coin safety,
 five instructors' replay menus and stage-specific reminders,
 native guide selections and fallback line limits, optional step bypasses, legacy-save migration,
 mining without prospecting, Music/Emotes and Run no longer gating progress,

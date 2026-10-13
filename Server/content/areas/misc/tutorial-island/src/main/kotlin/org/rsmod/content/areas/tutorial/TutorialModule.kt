@@ -21,6 +21,9 @@ public class TutorialModule : PluginModule() {
 
 private val appearanceConfirmed = AttributeKey<Int>("tutorial_appearance_confirmed")
 
+public val Player.tutorialDisplayNamePending: Boolean
+    get() = onTutorial && displayName.isBlank()
+
 /** Only accepting character creation (not closing its UI) unlocks tutorial movement. */
 public val Player.tutorialAppearancePending: Boolean
     get() = tutorialStage == TutorialStage.GUIDE &&
@@ -31,13 +34,14 @@ public val Player.tutorialFamiliarityPending: Boolean
         tutorialFamiliarity == 0
 
 public val Player.tutorialSetupPending: Boolean
-    get() = tutorialAppearancePending || tutorialFamiliarityPending
+    get() = tutorialDisplayNamePending || tutorialAppearancePending || tutorialFamiliarityPending
 
 public class TutorialAppearanceRestrictionHook @Inject constructor() : PlayerRestrictionHook {
     override fun restriction(player: Player, action: RestrictedAction): String? =
         if (player.tutorialSetupPending &&
             (action == RestrictedAction.Walk || action == RestrictedAction.CloseModal)) {
-            if (player.tutorialAppearancePending) "Accept your character's appearance before continuing."
+            if (player.tutorialDisplayNamePending) "Choose your display name before continuing."
+            else if (player.tutorialAppearancePending) "Accept your character's appearance before continuing."
             else "Select your experience with Old School RuneScape before continuing."
         } else {
             null

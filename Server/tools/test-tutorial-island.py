@@ -23,10 +23,10 @@ with sqlite3.connect(":memory:") as database:
     sql = (server / "central-sqlite/central-common/src/main/resources/sql/game/character/"
                     "characters_insert_display_name_from_account.sql").read_text(encoding="utf-8")
     database.execute(sql, (1, 1))
-    assert database.execute("SELECT x, z, level FROM account_characters ORDER BY rowid").fetchall() == [
-        (3222, 3218, 0), (3094, 3107, 0)
+    assert database.execute("SELECT display_name, x, z, level FROM account_characters ORDER BY rowid").fetchall() == [
+        ('existing_fixture', 3222, 3218, 0), (None, 3094, 3107, 0)
     ]
-print("PASS: new-character SQL spawn and existing-character preservation", flush=True)
+print("PASS: unnamed new-character SQL spawn and existing-character preservation", flush=True)
 runtime = server / "build/direct/lib"
 if not (runtime / "soloscape-server.jar").is_file():
     raise SystemExit("Build the server first: python tools/build.py Server")
@@ -40,6 +40,8 @@ sources = [source]
 if "--source" in sys.argv[1:]:
     sources += list((server / "content/areas/misc/tutorial-island/src/main/kotlin").rglob("*.kt"))
     sources.append(server / "api/account/src/main/kotlin/org/rsmod/api/account/loader/request/AccountLoadResponse.kt")
+    sources.append(server / ("api/net/src/main/kotlin/org/rsmod/api/net/rsprot/handlers/"
+                             "ResumePStringDialogHandler.kt"))
     sources.append(server / ("content/areas/city/rimmington/src/main/kotlin/"
                              "org/rsmod/content/areas/city/rimmington/npcs/MakeoverMageScript.kt"))
     sources.append(server / ("content/areas/city/falador/src/main/kotlin/"

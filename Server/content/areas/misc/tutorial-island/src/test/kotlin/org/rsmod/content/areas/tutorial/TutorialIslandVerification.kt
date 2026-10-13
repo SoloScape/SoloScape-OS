@@ -122,9 +122,13 @@ public fun main() {
         check(cache.data(12, 8558, 0, null) != null)
         check(ServerCacheManager.fromComponent("component.tutorial_player_experience:universe")
             .onLoad?.firstOrNull() == 8558)
+        check(ServerCacheManager.fromComponent("component.tutorial_displayname:universe")
+            .onLoad?.firstOrNull() == 2573)
+        listOf(1675, 4139, 4144).forEach { check(cache.data(12, it, 0, null) != null) }
         val tutorialRow = org.rsmod.api.table.QuestRow.getRow("dbrow.quest_learningtheropes")
         check(tutorialRow.id == 205 && tutorialRow.endstate == TutorialStage.DEPART.code)
         println("PASS: native guide script, familiarity screen initialization and quest cache row")
+        Fixture().verifyDisplayNameSelection()
         val fixture = Fixture()
         fixture.verifyPrecreatedCharacterLogin()
         fixture.verifyLoginAndResume()
@@ -162,6 +166,7 @@ private class Fixture {
             override fun write(message: Any) { packets.add(message) }
         }
         uuid = 123
+        displayName = "TutorFixture"
         slotId = 1
         assignUid()
         coords = TutorialProgress.START
@@ -213,6 +218,106 @@ private class Fixture {
         )
         for (coords in listOf(TutorialProgress.START, TutorialProgress.LUMBRIDGE)) {
             collision.allocateIfAbsent(coords.x, coords.z, coords.level)
+        }
+    }
+
+    fun verifyDisplayNameSelection() {
+        val path = java.nio.file.Files.createTempFile("tutorial-name-verification-", ".db")
+        val provider = jakarta.inject.Provider {
+            org.rsmod.api.db.DatabaseConfig("jdbc:sqlite:$path")
+        }
+        val database = org.rsmod.api.db.jdbc.GameDatabase(provider)
+        database.connect(org.rsmod.api.db.jdbc.GameConnection(provider))
+        try {
+            database.withTransactionBlocking { connection ->
+                connection.prepareStatement("INSERT INTO accounts(id,account_name,password_hash) " +
+                    "VALUES (1,'fixture_login','fixture'),(2,'other_login','fixture')").use {
+                    it.executeUpdate()
+                }
+                connection.prepareStatement("INSERT INTO account_characters(id,account_id) " +
+                    "VALUES (1,1),(2,2)").use { it.executeUpdate() }
+                connection.prepareStatement("INSERT INTO display_name_holds(held_name,release_at) " +
+                    "VALUES ('HeldName',9223372036854775807)").use { it.executeUpdate() }
+            }
+            val names = org.rsmod.api.account.character.main.InitialDisplayNameRepository(database)
+            val scripts = ScriptContext(events, CheatCommandMap(), EngineQueueCache())
+            with(TutorialDisplayNameScript(names, progress, events)) { scripts.startup() }
+            player.characterId = 1
+            player.accountId = 1
+            player.displayName = ""
+            player.tutorialProgress = TutorialStage.GUIDE.code
+            events.publish(SessionStateEvent.Login(player))
+            check(player.ui.containsModal("interface.tutorial_displayname"))
+            check(!player.ui.containsModal("interface.makeover_mage"))
+            check(TutorialAppearanceRestrictionHook().restriction(player, RestrictedAction.Walk)
+                == "Choose your display name before continuing.")
+            check(TutorialAppearanceRestrictionHook().restriction(player, RestrictedAction.CloseModal)
+                != null)
+            listOf("name", "look_up_name", "set_name").forEach {
+                check(player.ui.hasEvent(ServerCacheManager.fromComponent(
+                    "component.tutorial_displayname:$it"), 0, IfEvent.Op1))
+            }
+            fun lookup(name: String) {
+                org.rsmod.api.net.rsprot.handlers.ResumePStringDialogHandler(events).handle(
+                    player, net.rsprot.protocol.game.incoming.resumed.ResumePStringDialog(name))
+            }
+            fun accept() = interaction {
+                check(events.publish(ProtectedAccess(player, coroutine, context),
+                    IfModalButton(ServerCacheManager.fromComponent(
+                        "component.tutorial_displayname:set_name"), -1, null, IfButtonOp.Op1)))
+            }
+            for (invalid in listOf("", "ThirteenChars", "ModTester", "bad@name", "heldname")) {
+                lookup(invalid)
+                accept()
+                check(player.displayName.isBlank())
+            }
+            check(!names.claim(1, 2, "WrongOwner"))
+            lookup("TakenLater")
+            check(names.claim(2, 2, "takenlater"))
+            accept()
+            check(player.displayName.isBlank())
+            player.ifCloseModals(events)
+            ticks.onPostTick(player)
+            check(player.ui.containsModal("interface.tutorial_displayname"))
+            lookup("FreshName")
+            interaction {
+                check(events.publish(ProtectedAccess(player, coroutine, context),
+                    IfModalButton(ServerCacheManager.fromComponent(
+                        "component.tutorial_displayname:name"), -1, null, IfButtonOp.Op1)))
+            }
+            interaction {
+                check(events.publish(ProtectedAccess(player, coroutine, context),
+                    IfModalButton(ServerCacheManager.fromComponent(
+                        "component.tutorial_displayname:look_up_name"), -1, null, IfButtonOp.Op1)))
+            }
+            accept()
+            check(player.displayName == "FreshName")
+            check(player.vars["varbit.has_displayname_transmitter"] == 1)
+            check(player.ui.containsModal("interface.makeover_mage"))
+            check(!player.tutorialDisplayNamePending)
+            check(!names.available("freshname"))
+            check(!names.claim(1, 1, "RenameDenied"))
+            database.withTransactionBlocking { connection ->
+                connection.prepareStatement("SELECT display_name FROM account_characters WHERE id=1")
+                    .use { statement ->
+                        statement.executeQuery().use {
+                            check(it.next() && it.getString(1) == "FreshName")
+                        }
+                    }
+            }
+            lookup("InjectedName")
+            check(player.displayName == "FreshName")
+            player.ifCloseModals(events)
+            events.publish(SessionStateEvent.Login(player))
+            check(player.ui.containsModal("interface.makeover_mage"))
+            check(!player.ui.containsModal("interface.tutorial_displayname"))
+            println("PASS: native first-login display name, invalid/held names, competing claim, " +
+                "ownership, mandatory setup, persistence and return to appearance")
+        } finally {
+            database.close()
+            java.nio.file.Files.deleteIfExists(path)
+            java.nio.file.Files.deleteIfExists(java.nio.file.Path.of("$path-wal"))
+            java.nio.file.Files.deleteIfExists(java.nio.file.Path.of("$path-shm"))
         }
     }
 

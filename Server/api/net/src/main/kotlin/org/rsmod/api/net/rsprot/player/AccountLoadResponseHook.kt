@@ -312,9 +312,6 @@ class AccountLoadResponseHook(
 
         coords = CoordGrid(3094, 3107)
         xpRate = config.baseXpRate
-        if (config.autoAssignDisplayNames) {
-            displayName = username.toDisplayName()
-        }
         if (config.devMode) {
             modLevel = Rights.ADMINISTRATOR
         }
@@ -539,13 +536,6 @@ class AccountLoadResponseHook(
         private val logger = InlineLogger()
 
         private var Player.newAccount by boolVarBit("varbit.new_player_account")
-
-        // TODO: Decide how to deal with email login usernames.
-        private fun String.toDisplayName(): String {
-            return trim().split(Regex(" +")).joinToString(" ") { word ->
-                word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-            }
-        }
 
         @Suppress("konsist.avoid usage of stdlib Random in functions")
         private fun randomInt(): Int = java.util.concurrent.ThreadLocalRandom.current().nextInt()
