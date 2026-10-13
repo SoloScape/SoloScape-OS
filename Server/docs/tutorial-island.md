@@ -10,12 +10,29 @@ character with no saved login or logout history receives new-character startup,
 even when the loader did not create its account in that request. Characters with
 saved login history retain their position and tutorial progress.
 
-In standard OSRS-parity mode, Skippy does **not** spawn: the tutorial cannot be
-skipped. Private/development servers may opt into the former custom shortcut with
-`SOLOSCAPE_TUTORIAL_SKIP=true` or JVM property `-Dsoloscape.tutorial.skip=true`.
-When enabled, Skippy (`npc.tutorial_skip`) stands at `(3097, 3108, 0)`,
-facing south without wandering. Yes gives the same mainland starter supplies
-as normal completion and teleports to Lumbridge; No leaves progress unchanged.
+SoloScape spawns Skippy (`npc.tutorial_skip`) in the Gielinor Guide's
+starting building by default, beside the exit door at `(3097, 3108, 0)`,
+facing south without wandering. OSRS reference pages confirm that his
+event-only Tutorial Island appearance is in the Guide's building / by its
+door, but do not specify the exact game tile; `(3097, 3108, 0)` is
+SoloScape's local map placement, not a verified Jagex spawn coordinate.
+Normal OSRS does **not** enable permanent tutorial skipping, but the
+SoloScape-specific shortcut is intentionally enabled at the player's request.
+To force the complete tutorial, set `SOLOSCAPE_TUTORIAL_SKIP=false` or
+`-Dsoloscape.tutorial.skip=false` (the JVM setting takes precedence).
+
+After the appearance editor's mandatory **Accept**, Skippy offers options
+to go straight to the mainland, ask who he is, decide later, or remain
+on the island. The skip choice describes the consequences and asks for
+a second explicit confirmation. Accepting gives the same mainland starter
+inventory and bank coins as normal completion and teleports to Lumbridge,
+but does **not** award the Learning the Ropes Quest Point. All other
+answers leave the player's tutorial progress untouched; Skippy cannot be
+used to bypass the character-creation Accept screen.
+The dialogue is adapted from the
+[OSRS Skippy transcript](https://oldschool.runescape.wiki/w/Transcript:Skippy),
+and the location description is corroborated by the
+[OSRS Tutorial Island reference](https://oldschool.runescape.wiki/w/Tutorial_Island).
 
 When a new character first logs into Tutorial Island, the existing appearance
 editor opens before the first Gielinor Guide lesson. Confirming the choice
