@@ -32,8 +32,10 @@ The classic island uses its existing revision-240 NPCs and map objects. The
    and the starter coins. Ultimate Ironman receives an explanation instead of
    access to a bank.
 8. Prayer, burying bones, the Friends and Ignore lists, and player conduct.
-9. Magic, runes, a successful offensive spell on a chicken, and an explicit choice
-   to stay or depart for Lumbridge `(3222, 3218, 0)`.
+9. Magic, runes, and a successful Wind Strike on a chicken, which awards a
+   one-time Learning the Ropes completion scroll, jingle and Quest Point. After
+   completion the Magic Instructor teaches Lumbridge Home Teleport. Players can
+   talk to the Ironman tutor before casting it to depart for `(3222, 3218, 0)`.
 
 The Guide opens with "Welcome to RuneScape!"; the remaining dialogue is authored
 for SoloScape. Adam on the island reuses the existing Ironman setup and armour
@@ -58,7 +60,7 @@ Tabs unlock as their lessons introduce them (Logout is available from the start)
 the native client hides icons for closed side panels. Login and gameframe
 changes reapply the current lesson, and departure restores all tabs and chat.
 Its native bar
-uses the cache's 0â€“20 scale, as shown by the
+uses the cache's 0–20 scale, as shown by the
 [original progress-bar clientscript](https://raw.githubusercontent.com/Joshua-F/osrs-dumps/master/script/%5Bproc%2Ctutorial_progressbar_set%5D.cs2).
 Use `::tutorial` to repeat the current instruction. Tutor reminders replace missing
 tools and materials without advancing the lesson or repeatedly adding supplies
@@ -70,7 +72,16 @@ rocks, so initial clicks identify the ore before mining. This island has one
 church door, which also serves as the exit. Ladder destinations use the existing
 collision-aware stair navigator. Ordinary teleports remain blocked until departure.
 Experience stops at level 3 (174 XP), Hitpoints XP is withheld, and tutorial combat
-cannot reduce Hitpoints below one. These restrictions end upon completion.
+cannot reduce Hitpoints below one. These restrictions end on arrival in Lumbridge.
+
+Wind Strike quest credit and the completion scroll are awarded at the chicken hit,
+while `varp.tutorial` remains at DEPART until a real Home Teleport successfully
+arrives in Lumbridge. Other teleports stay blocked; Home Teleport bypasses the
+island restriction only at that final stage. No dialogue choice teleports the player,
+and the Ironman tutor stays accessible before departure. Skipping with Skippy
+does not award quest credit. The full Learning the Ropes Quest Journal entry
+has not been registered with the server quest manager yet; this update covers
+the completion reward event and exit mechanics, not journal parity.
 
 ## Verification
 
@@ -86,8 +97,9 @@ tutorial alongside the existing Friends/Ignore handlers, runs all nine instructo
 dialogues and the fishing, chopping, mining, smelting and baking handlers, and
 checks login/resume, supply recovery, inventory-full recovery,
 successful versus incorrect processing events, equipment, passage arrival, XP
-limits, combat-style and hit-result gates, desktop/mobile tab handlers, teleport
-restrictions, and both departure choices. Character creation is also checked in
+limits, combat-style and hit-result gates, desktop/mobile tab handlers, the
+one-time Wind Strike quest reward, blocked teleports and the non-departing
+Ironman/Magic Instructor dialogue branches. Character creation is also checked in
 an isolated in-memory SQLite database. Outputs stay under
 ignored `build/direct/tutorial-verification/`.
 
@@ -96,5 +108,8 @@ verification, manually create a disposable character and follow every step in th
 original client, including all gates/ladders, fishing/fire/cooking, the smithing
 menu, melee and ranged kills, banking, emotes, Friends/Ignore, and Wind Strike.
 Log out and back in during survival, mining and magic; verify that progress and
-position resume. Check fixed, resizable and mobile gameframes and the final
-Lumbridge arrival. Authentication remains manual.
+position resume. After Wind Strike, close the quest completion scroll, talk to the
+Ironman tutor and return to Terrova, then cast the actual Lumbridge Home Teleport
+from the Magic tab. Verify the spell animation, continued teleport restrictions
+and final arrival. Check fixed, resizable and mobile gameframes. Authentication
+remains manual.
