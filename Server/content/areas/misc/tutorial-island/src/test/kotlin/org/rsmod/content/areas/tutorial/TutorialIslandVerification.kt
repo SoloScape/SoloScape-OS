@@ -43,6 +43,7 @@ import org.rsmod.api.player.ui.IfMoveSub
 import org.rsmod.api.player.ui.ifOpenOverlay
 import org.rsmod.api.player.ui.ifOpenSub
 import org.rsmod.api.player.ui.ifCloseChat
+import org.rsmod.api.player.ui.ifCloseModals
 import dev.openrune.types.aconverted.interf.IfButtonOp
 import dev.openrune.types.aconverted.interf.IfSubType
 import org.rsmod.api.registry.controller.ControllerRegistry
@@ -245,6 +246,10 @@ private class Fixture {
         check(TutorialStage.SETTINGS.lesson == "Player controls")
         check(TutorialStage.INVENTORY.instruction.contains("backpack"))
         check(TutorialStage.CAST.instruction.contains("Wind Strike"))
+        check(TutorialStage.SMELT.instruction.contains("bronze bar"))
+        check(TutorialStage.EQUIP_SWORD.lesson == "Combat equipment")
+        check(TutorialStage.LEAVE_KITCHEN.lesson == "Moving on")
+        check(TutorialStage.RANGED.instruction.contains("giant rat"))
         player.tutorialProgress = 0
         player.coords = CoordGrid(3222, 3218)
         events.publish(SessionStateEvent.PrepareLogin(player))
@@ -783,8 +788,39 @@ private class Fixture {
         check(player.tutorialStage == TutorialStage.PRIEST_RETURN)
         check(player.ui.containsOverlay("interface.ignore"))
         check(!player.ui.containsOverlay("interface.friends"))
-        println("PASS: tutorial tab unlocks/resume, HUD progress placement, chat instructions, " +
-            "RuneScape greeting, frame changes and Ignore selection")
+        // The Guide can walk away from the original (3094, 3107) spawn tile.
+        // A live NPC hint must follow its slot rather than remain on the floor.
+        val liveGuide = Npc("npc.newbie_basics_instructor", CoordGrid(3097, 3108))
+        liveGuide.slotId = 455
+        npcs[455] = liveGuide
+        player.coords = TutorialProgress.START
+        player.tutorialProgress = TutorialStage.GUIDE.code
+        packets.clear()
+        progress.show(player)
+        check(packets.any {
+            it is net.rsprot.protocol.game.outgoing.misc.client.HintArrow &&
+                it.toString().contains("NpcHintArrow")
+        }) { "Gielinor Guide marker must be an NPC-slot hint rather than a floor tile." }
+        npcs.remove(455)
+
+        // Only a genuinely new character that has not confirmed their appearance
+        // receives the appearance editor. Existing/tutorial-resume accounts do not.
+        VarPlayerIntMapSetter.set(player, "varbit.new_player_account", 1)
+        val confirmedKey = org.rsmod.api.attr.AttributeKey<Int>("tutorial_appearance_confirmed")
+        player.attr.remove(confirmedKey)
+        events.publish(SessionStateEvent.Login(player))
+        check(player.ui.containsModal("interface.makeover_mage")) {
+            "The first login should open the appearance-customisation interface."
+        }
+        player.ifCloseModals(events)
+        player.attr[confirmedKey] = 1
+        events.publish(SessionStateEvent.Login(player))
+        check(!player.ui.containsModal("interface.makeover_mage")) {
+            "Confirmed appearance should not reopen on later logins."
+        }
+        VarPlayerIntMapSetter.set(player, "varbit.new_player_account", 0)
+        println("PASS: native NPC-slot hints follow the Guide, first-login appearance editor, " +
+            "tutorial tab unlocks, HUD and contextual non-NPC instructions")
     }
 
     // Dialogues can be split across chat packets and contain client line-break markup.
