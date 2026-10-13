@@ -83,13 +83,22 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
 
     public fun complete(player: Player) {
         if (player.onTutorial) {
+            // Tutorial Island items are temporary. OSRS replaces them with a fixed
+            // mainland starter kit, whether the player completes or skips training.
             val bank = player.invMap.getOrPut("inv.bank")
-            val missingCoins = (25 - bank.count("obj.coins")).coerceAtLeast(0)
-            if (missingCoins > 0) player.invAdd(bank, "obj.coins", missingCoins)
-            for ((rune, amount) in listOf("obj.airrune" to 25, "obj.mindrune" to 15)) {
-                val missing = (amount - player.inv.count(rune)).coerceAtLeast(0)
-                if (missing > 0) player.invAdd(player.inv, rune, missing)
+            player.inv.fillNulls()
+            player.worn.fillNulls()
+            bank.fillNulls()
+            for ((item, amount) in STARTER_KIT) {
+                check(player.invAdd(player.inv, item, amount).success) {
+                    "Unable to grant Tutorial Island starter item: $item"
+                }
             }
+            check(player.invAdd(bank, "obj.coins", 25).success) {
+                "Unable to grant Tutorial Island starter bank coins."
+            }
+            // Run energy is restored on arrival on the mainland.
+            player.runEnergy = 10000
         }
         player.tutorialProgress = TutorialStage.COMPLETE.code
         player.newTutorialAccount = false
@@ -144,6 +153,27 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
     }
 
     public companion object {
+        private val STARTER_KIT: List<Pair<String, Int>> = listOf(
+            "obj.bronze_axe" to 1,
+            "obj.bronze_pickaxe" to 1,
+            "obj.tinderbox" to 1,
+            "obj.net" to 1,
+            "obj.shrimp" to 2,
+            "obj.bronze_dagger" to 1,
+            "obj.bronze_sword" to 1,
+            "obj.wooden_shield" to 1,
+            "obj.shortbow" to 1,
+            "obj.bronze_arrow" to 25,
+            "obj.airrune" to 25,
+            "obj.mindrune" to 15,
+            "obj.bucket" to 1,
+            "obj.pot" to 1,
+            "obj.bread" to 1,
+            "obj.waterrune" to 6,
+            "obj.earthrune" to 4,
+            "obj.bodyrune" to 2,
+        )
+
         public fun canDepartByHomeTeleport(player: Player): Boolean =
             player.tutorialStage == TutorialStage.DEPART && onIsland(player.coords)
 
