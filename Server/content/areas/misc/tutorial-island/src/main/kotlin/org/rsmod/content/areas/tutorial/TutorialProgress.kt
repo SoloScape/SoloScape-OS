@@ -3,6 +3,7 @@ package org.rsmod.content.areas.tutorial
 import dev.openrune.rscm.RSCM.asRSCM
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
+import org.rsmod.api.invtx.invAdd
 import org.rsmod.api.player.midiJingle
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.output.runClientScript
@@ -80,6 +81,15 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
     }
 
     public fun complete(player: Player) {
+        if (player.onTutorial) {
+            val bank = player.invMap.getOrPut("inv.bank")
+            val missingCoins = (25 - bank.count("obj.coins")).coerceAtLeast(0)
+            if (missingCoins > 0) player.invAdd(bank, "obj.coins", missingCoins)
+            for ((rune, amount) in listOf("obj.airrune" to 25, "obj.mindrune" to 15)) {
+                val missing = (amount - player.inv.count(rune)).coerceAtLeast(0)
+                if (missing > 0) player.invAdd(player.inv, rune, missing)
+            }
+        }
         player.tutorialProgress = TutorialStage.COMPLETE.code
         player.newTutorialAccount = false
         player.attr.remove(tutorialPassage)
