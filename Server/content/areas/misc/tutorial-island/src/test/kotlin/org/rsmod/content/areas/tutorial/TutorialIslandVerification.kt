@@ -199,6 +199,9 @@ private class Fixture {
         VarPlayerIntMapSetter.set(player, "varbit.new_player_account", 1)
         events.publish(SessionStateEvent.PrepareLogin(player))
         check(player.coords == TutorialProgress.START && player.tutorialStage == TutorialStage.GUIDE)
+        check(player.invMap.getOrPut("inv.bank").count("obj.coins") == 25)
+        events.publish(SessionStateEvent.PrepareLogin(player))
+        check(player.invMap.getOrPut("inv.bank").count("obj.coins") == 25)
         VarPlayerIntMapSetter.set(player, "varbit.new_player_account", 0)
         player.tutorialProgress = TutorialStage.SMITH.code
         player.coords = CoordGrid(3083, 9498)
@@ -275,9 +278,9 @@ private class Fixture {
         player.inv.fillNulls()
         player.tutorialProgress = TutorialStage.CAST.code
         talk("npc.newbie_magic_instructor")
-        check(player.inv.count("obj.airrune") == 10 && player.inv.count("obj.mindrune") == 10)
+        check(player.inv.count("obj.airrune") == 5 && player.inv.count("obj.mindrune") == 5)
         talk("npc.newbie_magic_instructor")
-        check(player.inv.count("obj.airrune") == 10)
+        check(player.inv.count("obj.airrune") == 5 && player.inv.count("obj.mindrune") == 5)
         player.inv.fillNulls()
         for (slot in player.inv.indices) player.inv[slot] = InvObj("obj.bread", 1)
         player.tutorialProgress = TutorialStage.CHEF.code
@@ -286,6 +289,20 @@ private class Fixture {
         player.inv.fillNulls()
         talk("npc.newbie_cook_instructor")
         check(player.tutorialStage == TutorialStage.DOUGH)
+        check(player.inv.count("obj.pot_flour") == 1)
+        check(player.inv.count("obj.bucket_water") == 1)
+        check(!player.inv.contains("obj.jug_water"))
+        player.inv.fillNulls()
+        talk("npc.newbie_cook_instructor")
+        check(player.inv.count("obj.pot_flour") == 1 &&
+            player.inv.count("obj.bucket_water") == 1)
+        check(player.tutorialStage == TutorialStage.DOUGH)
+        player.inv.fillNulls()
+        player.tutorialProgress = TutorialStage.ACCOUNT.code
+        talk("npc.newbie_account_instructor", listOf(3))
+        check(player.tutorialStage == TutorialStage.LEAVE_BANK)
+        check(player.inv.count("obj.coins") == 0)
+        check(player.invMap.getOrPut("inv.bank").count("obj.coins") == 25)
     }
 
     fun verifySuccessfulProcessing() {
@@ -295,6 +312,9 @@ private class Fixture {
         check(player.tutorialStage == TutorialStage.FIRE)
         events.publish(SkillingProcessingEvent(player, "stat.firemaking", "obj.logs", "loc.fire"))
         check(player.tutorialStage == TutorialStage.COOK_FIRST)
+        events.publish(SkillingProcessingEvent(player, "stat.cooking", "obj.raw_shrimp", "obj.shrimp"))
+        check(player.tutorialStage == TutorialStage.SURVIVAL_FINISH)
+        player.tutorialProgress = TutorialStage.COOK_FIRST.code
         events.publish(SkillingProcessingEvent(player, "stat.cooking", "obj.raw_shrimp", "obj.burnt_shrimp"))
         check(player.tutorialStage == TutorialStage.COOK_RETRY)
         events.publish(SkillingProcessingEvent(player, "stat.cooking", "obj.raw_shrimp", "obj.burnt_shrimp"))
@@ -413,6 +433,13 @@ private class Fixture {
         player.coords = CoordGrid(3140, 3095)
         progress.complete(player)
         player.coords = TutorialProgress.LUMBRIDGE
+        check(player.inv.count("obj.airrune") >= 25 && player.inv.count("obj.mindrune") >= 15)
+        check(player.invMap.getOrPut("inv.bank").count("obj.coins") == 25)
+        val airBefore = player.inv.count("obj.airrune")
+        val mindBefore = player.inv.count("obj.mindrune")
+        progress.complete(player)
+        check(player.inv.count("obj.airrune") == airBefore &&
+            player.inv.count("obj.mindrune") == mindBefore)
         check(!player.ui.containsOverlay("interface.tutorial_overlay"))
         check(!player.ui.containsOverlay("interface.messagebox_titled"))
         check(player.ui.containsOverlay("interface.magic_spellbook"))
