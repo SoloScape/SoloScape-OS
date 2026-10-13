@@ -8,6 +8,7 @@ import dev.openrune.types.ItemServerType
 import dev.openrune.types.aconverted.interf.IfButtonOp
 import jakarta.inject.Inject
 import org.rsmod.api.area.checker.AreaChecker
+import org.rsmod.api.attr.AttributeKey
 import org.rsmod.api.area.checker.wildernessLevel
 import org.rsmod.api.combat.commons.magic.MagicSpell
 import org.rsmod.api.combat.manager.MagicRuneManager
@@ -33,6 +34,7 @@ import org.rsmod.content.skills.construction.HouseAccess
 import org.rsmod.content.skills.construction.house.HouseStore
 import org.rsmod.content.skills.construction.houseTeleportBuildMode
 import org.rsmod.content.skills.construction.houseTeleportOutside
+import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.isType
 import org.rsmod.map.CoordGrid
 import org.rsmod.plugin.scripts.PluginScript
@@ -91,6 +93,18 @@ constructor(
 
         if (!teleport.canCast(this)) {
             return
+        }
+
+        if (teleport == SpellTeleport.Home) {
+            val lastCast = player.attr[HomeTeleportLastCastAt]
+            val remaining = if (lastCast == null) 0L
+                else (lastCast + HomeTeleportCooldownMillis - System.currentTimeMillis())
+                    .coerceAtLeast(0L)
+            if (remaining > 0L) {
+                val minutes = (remaining + 59_999L) / 60_000L
+                mes("You can cast Home Teleport again in $minutes minute(s).")
+                return
+            }
         }
 
         val option = teleport.option(op)
@@ -267,6 +281,10 @@ constructor(
             telejump(CoordGrid(task.destination), type)
         }
         task.teleport.style.endAnim?.let { anim(it) }
+        if (task.teleport == SpellTeleport.Home && player.coords == CoordGrid(task.destination)) {
+            // Start the timer only after a successful arrival, never on a cancelled cast.
+            player.attr[HomeTeleportLastCastAt] = System.currentTimeMillis()
+        }
         statAdvance("stat.magic", spell.castXp)
         if (tutorialHomeExit && player.coords == TutorialProgress.LUMBRIDGE) {
             tutorialProgress.complete(player)
@@ -734,6 +752,8 @@ constructor(
     private companion object {
         private const val Banana = "obj.banana"
         private const val HouseTeleportTablet = "obj.poh_tablet_teleporttohouse"
+        private val HomeTeleportLastCastAt = AttributeKey<Long>("home_teleport_last_cast_at")
+        private const val HomeTeleportCooldownMillis: Long = 30L * 60L * 1000L
         private const val TeleportQueue = "queue.spell_teleport"
         private const val TeleportSound = "synth.teleport_all"
         private const val TeleportDelay = 4
