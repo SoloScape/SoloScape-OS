@@ -103,6 +103,7 @@ public fun main() {
         fixture.verifyLoginAndResume()
         fixture.verifyInstructorDialogueAndRecovery()
         fixture.verifyInstructorRecaps()
+        fixture.verifyOptionalLessons()
         fixture.verifyTrainingActions()
         fixture.verifySuccessfulProcessing()
         fixture.verifyTabsAndOverlay()
@@ -435,10 +436,39 @@ private class Fixture {
         player.tutorialProgress = TutorialStage.LEAVE_KITCHEN.code
         events.publish(PlayEmote(player, ServerCacheManager.getAnim("seq.emote_yes".asRSCM())!!))
         check(player.tutorialStage == TutorialStage.LEAVE_KITCHEN)
-        player.vars["varp.option_run"] = 1
+        VarPlayerIntMapSetter.set(player, "varp.option_run", 1)
         ticks.onPostTick(player)
         check(player.tutorialStage == TutorialStage.LEAVE_KITCHEN)
-        player.vars["varp.option_run"] = 0
+        VarPlayerIntMapSetter.set(player, "varp.option_run", 0)
+    }
+
+    fun verifyOptionalLessons() {
+        check(TutorialStage.BREAD.requiredNext == TutorialStage.LEAVE_KITCHEN)
+        check(TutorialStage.MINER.requiredNext == TutorialStage.MINE_TIN)
+        check(TutorialStage.entries.count { it.legacyOptional } == 5)
+        player.coords = TutorialProgress.START
+        for ((before, after) in listOf(
+            TutorialStage.MUSIC to TutorialStage.LEAVE_KITCHEN,
+            TutorialStage.EMOTES to TutorialStage.LEAVE_KITCHEN,
+            TutorialStage.RUN to TutorialStage.LEAVE_KITCHEN,
+            TutorialStage.PROSPECT_TIN to TutorialStage.MINE_TIN,
+            TutorialStage.PROSPECT_COPPER to TutorialStage.MINE_TIN,
+        )) {
+            // Old persisted progress codes are still recognised and migrate on show/resume.
+            player.tutorialProgress = before.code
+            progress.show(player)
+            check(player.tutorialStage == after) { "$before was not migrated to $after" }
+        }
+        player.tutorialProgress = TutorialStage.BREAD.code
+        check(progress.advance(player, TutorialStage.BREAD))
+        check(player.tutorialStage == TutorialStage.LEAVE_KITCHEN)
+        check(!progress.advance(player, TutorialStage.MUSIC))
+        check(!progress.advance(player, TutorialStage.RUN))
+        player.tutorialProgress = TutorialStage.MINER.code
+        check(progress.advance(player, TutorialStage.MINER))
+        check(player.tutorialStage == TutorialStage.MINE_TIN)
+        check(!progress.advance(player, TutorialStage.PROSPECT_TIN))
+        println("PASS: optional tutorials skipped, old progress migrated without resets")
     }
 
     fun verifyTrainingActions() {
