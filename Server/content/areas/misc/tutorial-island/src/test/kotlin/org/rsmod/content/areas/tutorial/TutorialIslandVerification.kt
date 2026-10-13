@@ -367,8 +367,12 @@ private class Fixture {
             check(player.tutorialStage == case.stage) {
                 "${case.npc} replay unexpectedly advanced ${case.stage}"
             }
-            check(packets.any { packetText(it)?.contains(case.expected) == true }) {
-                "${case.npc} did not provide its expected recap: ${case.expected}"
+            val spoken = packets.mapNotNull(::packetText)
+                .joinToString(" ")
+                .replace(Regex("<br\\s*/?>"), " ")
+                .replace(Regex("\\s+"), " ")
+            check(case.expected in spoken) {
+                "${case.npc} did not provide its expected recap: ${case.expected}; got: $spoken"
             }
         }
         // Progress-sensitive reminders are not shortcuts through the lesson.
