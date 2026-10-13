@@ -52,6 +52,15 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
         return true
     }
 
+    public fun cookedShrimp(player: Player): Boolean {
+        if (player.tutorialStage !in listOf(TutorialStage.COOK_FIRST, TutorialStage.COOK_RETRY)) {
+            return false
+        }
+        player.tutorialProgress = TutorialStage.SURVIVAL_FINISH.code
+        show(player)
+        return true
+    }
+
     public fun finishWindStrike(player: Player): Boolean {
         if (!advance(player, TutorialStage.CAST)) return false
         player.tutorialQuestPoints++
