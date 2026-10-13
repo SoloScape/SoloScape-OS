@@ -95,7 +95,7 @@ constructor(
             return
         }
 
-        if (teleport == SpellTeleport.Home) {
+        if (teleport == SpellTeleport.Home || teleport == SpellTeleport.EdgevilleHome) {
             val lastCast = player.attr[HomeTeleportLastCastAt]
             val remaining = if (lastCast == null) 0L
                 else (lastCast + HomeTeleportCooldownMillis - System.currentTimeMillis())
@@ -281,7 +281,8 @@ constructor(
             telejump(CoordGrid(task.destination), type)
         }
         task.teleport.style.endAnim?.let { anim(it) }
-        if (task.teleport == SpellTeleport.Home && player.coords == CoordGrid(task.destination)) {
+        if ((task.teleport == SpellTeleport.Home || task.teleport == SpellTeleport.EdgevilleHome) &&
+            player.coords == CoordGrid(task.destination)) {
             // Start the timer only after a successful arrival, never on a cancelled cast.
             player.attr[HomeTeleportLastCastAt] = System.currentTimeMillis()
         }
