@@ -22,6 +22,7 @@ import org.rsmod.api.invtx.InvTransactionsScript
 import org.rsmod.api.player.dialogue.align.TextAlignment
 import org.rsmod.api.player.events.interact.NpcEvents
 import org.rsmod.api.player.events.interact.LocEvents
+import org.rsmod.api.player.events.interact.LocUEvents
 import org.rsmod.api.npc.events.NpcHitEvents
 import org.rsmod.api.player.events.PlayerHitpointsChangedEvent
 import org.rsmod.api.player.events.skilling.SkillingProcessingEvent
@@ -366,6 +367,17 @@ private class Fixture {
         player.tutorialProgress = TutorialStage.BREAD.code
         locAction("loc.newbierange", CoordGrid(3075, 3081))
         check(player.tutorialStage == TutorialStage.MUSIC && player.inv.count("obj.bread") == 1)
+        player.inv.fillNulls()
+        player.inv[0] = InvObj("obj.raw_shrimp", 1)
+        player.tutorialProgress = TutorialStage.COOK_FIRST.code
+        locItemAction("loc.newbiefire", "obj.raw_shrimp", CoordGrid(3100, 3100))
+        check(player.tutorialStage == TutorialStage.SURVIVAL_FINISH)
+        check(player.inv.count("obj.shrimp") == 1 && !player.inv.contains("obj.burnt_shrimp"))
+        player.inv[0] = InvObj("obj.raw_shrimp", 1)
+        player.tutorialProgress = TutorialStage.COOK_RETRY.code
+        locItemAction("loc.newbiefire", "obj.raw_shrimp", CoordGrid(3100, 3100))
+        check(player.tutorialStage == TutorialStage.SURVIVAL_FINISH)
+        check(player.inv.count("obj.shrimp") == 2)
     }
 
     fun verifyPendingPassageAndEquipment() {
@@ -633,6 +645,16 @@ private class Fixture {
         val loc = BoundLocInfo(LocInfo(2, coords, LocEntity(type.id, 10, 0)), type)
         interaction {
             check(events.publish(ProtectedAccess(player, coroutine, context), LocEvents.Op1(loc, loc, type)))
+        }
+    }
+
+    private fun locItemAction(symbol: String, item: String, coords: CoordGrid) {
+        val type = checkNotNull(ServerCacheManager.getObject(symbol.asRSCM()))
+        val objType = checkNotNull(ServerCacheManager.getItem(item.asRSCM()))
+        val loc = BoundLocInfo(LocInfo(2, coords, LocEntity(type.id, 10, 0)), type)
+        interaction {
+            check(events.publish(ProtectedAccess(player, coroutine, context),
+                LocUEvents.Op(loc, loc, type, objType, 0)))
         }
     }
 
