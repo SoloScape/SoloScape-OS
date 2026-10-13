@@ -26,6 +26,8 @@ import org.rsmod.map.CoordGrid
 public var Player.tutorialProgress: Int by intVarp("varp.tutorial")
 /** 0: undecided, 1: newcomer, 2: returning, 3: experienced; permanent server-side setting. */
 public var Player.tutorialFamiliarity: Int by intVarp("varp.tutorial_familiarity")
+/** Quest credit is independent of tutorial completion (Skippy skips the quest reward). */
+public var Player.tutorialQuestAwarded: Int by intVarp("varp.tutorial_quest_awarded")
 private var Player.tutorialProgressBar: Int by intVarp("varp.tutorial_progress_overlay")
 private var Player.newTutorialAccount: Boolean by boolVarBit("varbit.new_player_account")
 private var Player.tutorialQuestPoints: Int by intVarp("varp.qp")
@@ -64,7 +66,8 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
      */
     public fun openLearningRopesJournal(player: Player) {
         if (player.tutorialProgress < TutorialStage.QUEST.code) return
-        val completed = player.tutorialProgress >= TutorialStage.DEPART.code
+        val completed = player.tutorialProgress >= TutorialStage.DEPART.code &&
+            (player.tutorialQuestAwarded == 1 || player.tutorialStage == TutorialStage.DEPART)
         val title = "Learning the Ropes"
         val lines = if (completed) listOf(
             "<col=008000>Quest complete!</col>",
@@ -99,6 +102,7 @@ public class TutorialProgress @Inject constructor(private val eventBus: EventBus
         if (!advance(player, TutorialStage.CAST)) return false
         player.tutorialQuestPoints++
         player.tutorialQuestsCompleted++
+        player.tutorialQuestAwarded = 1
         player.midiJingle(Quest.QUEST_COMPLETE_3_JINGLE)
         player.ifOpenMain("interface.questscroll", eventBus)
         player.ifSetText("component.questscroll:quest_title",
