@@ -11,6 +11,7 @@ import org.rsmod.api.attr.AttributeKey
 import org.rsmod.api.npc.access.StandardNpcAccess
 import org.rsmod.api.player.dialogue.Dialogue
 import org.rsmod.api.player.protect.ProtectedAccess
+import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.random.GameRandom
 import org.rsmod.api.script.onAiTimer
 import org.rsmod.api.script.onIfModalButton
@@ -45,13 +46,15 @@ class MakeoverMageScript @Inject constructor(private val random: GameRandom) : P
                 player.vars["varbit.new_player_account"] == 1 &&
                 player.attr[TUTORIAL_APPEARANCE_CONFIRMED] != 1) {
                 val appearance = player.appearance
-                player.vars[VAR_BODY_TYPE] = appearance.bodyType
-                player.vars[VAR_COLOUR] =
-                    appearance.coloursSnapshot()[SKIN_COLOUR_SLOT].toInt()
-                player.vars[VAR_PRONOUN] = appearance.pronoun
-                player.vars["varp.if1"] = appearance.bodyType
-                player.vars["varp.if2"] = player.vars[VAR_COLOUR]
-                player.vars["varp.if3"] = appearance.pronoun
+                val colour = appearance.coloursSnapshot()[SKIN_COLOUR_SLOT].toInt()
+                // Player.vars exposes read-only indexing; all writes must go
+                // through the setter to preserve varp/varbit synchronization.
+                VarPlayerIntMapSetter.set(player, VAR_BODY_TYPE, appearance.bodyType)
+                VarPlayerIntMapSetter.set(player, VAR_COLOUR, colour)
+                VarPlayerIntMapSetter.set(player, VAR_PRONOUN, appearance.pronoun)
+                VarPlayerIntMapSetter.set(player, "varp.if1", appearance.bodyType)
+                VarPlayerIntMapSetter.set(player, "varp.if2", colour)
+                VarPlayerIntMapSetter.set(player, "varp.if3", appearance.pronoun)
                 player.ifSetEvents("component.makeover_mage:colour",
                     SKIN_COLOUR_ORDER.indices, IfEvent.Op1)
             }
