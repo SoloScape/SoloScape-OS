@@ -8,6 +8,7 @@ import java.nio.file.Path
 import java.util.Properties
 import kotlin.random.Random
 import org.rsmod.api.net.rsprot.BotSessions
+import org.rsmod.api.player.isInPvnCombat
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.protect.ProtectedAccessLauncher
 import org.rsmod.api.player.protect.clearPendingAction
@@ -72,6 +73,12 @@ private class WorldBot(
     var pauseUntil = 0
     var nextAmbientAt = Int.MAX_VALUE
     var friendIdentity: Int? = null
+    var fleeLastHit = -1
+    var fleeing = false
+    var fleeThreats = ArrayList<CoordGrid>()
+    var fleeTarget: CoordGrid? = null
+    var fleeLastOrder = 0
+    var fleeFailedOrders = 0
     val protectedTimeout = BotProgressTimeout()
     val blockedTasks = mutableMapOf<String, Int>()
 }
@@ -137,6 +144,22 @@ class BotPopulation @Inject constructor(
     fun players(): List<Player> = bots.keys.toList()
     fun isBot(player: Player): Boolean = player in bots
     fun isPvpBot(player: Player): Boolean = bots[player]?.mode?.isPvp == true
+
+    /** NPC hit impacts (including blocked hits) preempt noncombat tasks immediately. */
+    fun onNpcAttack(player: Player, attacker: CoordGrid?, cycle: Int) {
+        val bot = bots[player] ?: return
+        if (!BotFleePlanner.shouldInterrupt(bot.mode, bot.task.kind) || player.hitpoints <= 0) {
+            return
+        }
+        val known = attacker ?: player.coords
+        bot.fleeThreats.removeAll { it == known }
+        bot.fleeThreats.add(known)
+        if (bot.fleeThreats.size > 4) bot.fleeThreats.removeAt(0)
+        bot.fleeLastHit = cycle
+        bot.fleeTarget = null
+        bot.nextThink = cycle
+        bot.status = "attacked by NPC: escaping"
+    }
 
     /**
      * Only the specific player offered a Wilderness team can accept or reject it.
@@ -531,6 +554,9 @@ class BotPopulation @Inject constructor(
                 pvp(bot)
                 continue
             }
+            // Emergency escape outranks skilling actions, pause timers, protection delays,
+            // menus and normal task decisions. Never resume working in active NPC combat.
+            if (bot.fleeLastHit >= 0 && flee(bot, cycle)) continue
             if (cycle < bot.nextThink) continue
             bot.nextThink = cycle + 3
             if (player.hitpoints <= 0) {
@@ -574,6 +600,77 @@ class BotPopulation @Inject constructor(
         }
         updateDebugMap()
         updateDiagnostics(cycle)
+    }
+
+    /**
+     * Once an NPC hits a noncombat bot, stop harvesting immediately and run to a
+     * reachable tile away from the aggressor. Do not jump through blocked objects or
+     * ignore native movement delays and freezes. Retry if chased, and choose a new
+     * activity rather than walking straight back to the same dangerous location.
+     */
+    private fun flee(bot: WorldBot, cycle: Int): Boolean {
+        val player = bot.player
+        if (player.hitpoints <= 0) return true
+        if (!bot.fleeing) {
+            bot.fleeing = true
+            bot.pauseUntil = 0
+            player.clearPendingAction(events)
+            actions.release(player)
+            bot.fleeLastOrder = cycle - 20
+            bot.fleeTarget = null
+            bot.fleeFailedOrders = 0
+        }
+
+        val inCombat = player.isInPvnCombat()
+        if (BotFleePlanner.safeToResume(cycle, bot.fleeLastHit, inCombat,
+                player.coords, bot.fleeThreats) ||
+            // After combat ends, don't trap a bot forever if a safe tile is
+            // unreachable behind a fence or locked gate.
+            (cycle - bot.fleeLastHit >= 120 && !inCombat)
+        ) {
+            bot.blockedTasks[bot.task.id] = cycle + BotFleePlanner.RETREAT_COOLDOWN
+            bot.returnReason = "Escaped NPC attack near ${bot.task.id}"
+            bot.fleeLastHit = -1
+            bot.fleeing = false
+            bot.fleeThreats.clear()
+            bot.fleeTarget = null
+            bot.fleeFailedOrders = 0
+            bot.needsPlan = true
+            chooseTask(bot)
+            bot.nextThink = cycle + 3
+            return true
+        }
+
+        if (player.isDelayed || player.isAccessProtected || player.isFrozen) {
+            bot.status = "escaping NPC: waiting for movement"
+            return true
+        }
+        // Low HP takes priority, but never restart the original skilling action.
+        if (eat(player)) {
+            bot.status = "escaping NPC: eating"
+            return true
+        }
+        if (cycle - bot.fleeLastOrder < 6 && player.routeRequest != null) {
+            bot.status = "running from NPC"
+            return true
+        }
+        if (cycle - bot.fleeLastOrder < 4) return true
+
+        val occupied = registry.playerList.filter { it !== player }.map { it.coords }.toSet()
+        val destination = BotFleePlanner.destination(
+            player.coords, bot.fleeThreats, occupied, actions::canWalk
+        )
+        if (destination != null && actions.walk(player, destination)) {
+            bot.fleeTarget = destination
+            bot.fleeLastOrder = cycle
+            bot.fleeFailedOrders = 0
+            bot.status = "running from NPC to ${destination.x},${destination.z}"
+        } else {
+            bot.fleeFailedOrders++
+            bot.fleeLastOrder = cycle
+            bot.status = "escaping NPC: searching for safe route"
+        }
+        return true
     }
 
     /** Stagger arrivals and retire one settled character at a time. No PvP squad churn. */
@@ -665,6 +762,10 @@ class BotPopulation @Inject constructor(
                 "personality" to bot.personality.summary, "friendIdentity" to bot.friendIdentity,
                 "pauseUntil" to bot.pauseUntil, "nextPauseAt" to bot.nextPauseAt,
                 "sessionEndAt" to bot.sessionEndAt,
+                "fleeing" to bot.fleeing, "fleeLastHit" to bot.fleeLastHit,
+                "fleeThreats" to bot.fleeThreats.map { "${it.x},${it.z}" },
+                "fleeTarget" to bot.fleeTarget?.toString(),
+                "fleeFailedOrders" to bot.fleeFailedOrders,
                 "selection" to actions.selectionTrace(player))
         }
         debugger.snapshot(cycle, rows)?.let(debugMap::diagnostics)
@@ -919,7 +1020,8 @@ class BotPopulation @Inject constructor(
     fun describe(): List<String> = bots.values.map {
         "${it.player.displayName} ${it.mode} ${pvpCombat.description(it.player)}: ${it.status} " +
             "(${it.player.coords.x},${it.player.coords.z},${it.player.coords.level}) " +
-            "[${it.personality.summary}; friend=${it.friendIdentity ?: "none"}]"
+            "[${it.personality.summary}; friend=${it.friendIdentity ?: "none"}" +
+            "${if (it.fleeing) "; FLEEING" else ""}]"
     }
 
     fun removeAll() {
