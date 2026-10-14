@@ -476,7 +476,7 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
                 delta_jar.unlink()
             try:
                 extra_classpath = ([core_jar] if core_jar is not None else []) + [old_app_jar]
-                friend_paths = os.pathsep.join(str(path) for path in extra_classpath)
+                friend_paths = ",".join(str(path) for path in extra_classpath)
                 compile_sources(changed_app_sources, delta_jar, project_name,
                                 "compiler-incremental.args",
                                 extra_classpath=extra_classpath,
