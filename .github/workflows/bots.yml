@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "Server/content/other/bots/**"
+      - "Server/api/death/**"
+      - "Server/api/death-plugin/**"
       - "Server/content/other/xp-rates/**"
       - "Server/content/other/castle-wars/**"
       - "Server/content/other/grand-exchange/**"
@@ -72,6 +74,7 @@ jobs:
               "Server/content/other/bots/src/test/kotlin",
               "Server/content/other/xp-rates/src/main/kotlin",
               "Server/api/death/src/main/kotlin",
+              "Server/api/death-plugin/src/main/kotlin",
               "Server/content/other/grand-exchange/src/main/kotlin",
               "Server/content/other/castle-wars/src/main/kotlin"
           )
@@ -84,7 +87,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $runtimeClasspath = ($testJar, $classpath, (Resolve-Path "Server/content/other/bots/src/main/resources").Path, (Resolve-Path "Server/content/other/grand-exchange/src/main/resources").Path) -join [IO.Path]::PathSeparator
           Set-Location Server
-          foreach ($check in @("BotActionsCheck", "BotPlannerCheck", "BotHumanityCheck", "BotXpRateCheck", "BotFleeCheck", "BotCrowdingCheck", "BotMovementCheck", "BotSkillingCheck", "BotDebuggerCheck", "BotPortCheckKt", "BotPvpCheck")) {
+          foreach ($check in @("BotActionsCheck", "BotPlannerCheck", "BotHumanityCheck", "BotXpRateCheck", "BotFleeCheck", "BotCrowdingCheck", "BotMovementCheck", "BotGravestoneCheck", "BotSkillingCheck", "BotDebuggerCheck", "BotPortCheckKt", "BotPvpCheck")) {
           $runArgs = @("-cp", $runtimeClasspath, "org.rsmod.content.other.bots.$check")
           $runArgFile = Join-Path $testDir "run.args"
           $runArgs | ForEach-Object { '"' + $_.Replace('\', '/').Replace('"', '\"') + '"' } | Set-Content -Encoding utf8NoBOM $runArgFile
