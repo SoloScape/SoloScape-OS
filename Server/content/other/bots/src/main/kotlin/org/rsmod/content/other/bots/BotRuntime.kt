@@ -326,6 +326,7 @@ class BotPopulation @Inject constructor(
             try {
                 if (mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
                     BotAppearance.assign(player.appearance, identity)
+                    supplies.setOutfitIdentity(player, identity)
                 }
                 initializeLevels(player, mode, initial)
                 if (mode.isPvp) {
