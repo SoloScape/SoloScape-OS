@@ -116,9 +116,14 @@ public class PlayerGravestones @Inject constructor(
     }
 
     /** Returns claimed count, 0 if too far away, no room, or another player's grave. */
-    public fun reclaim(player: Player, fromOffice: Boolean = false): Int {
+    public fun reclaim(
+        player: Player,
+        fromOffice: Boolean = false,
+        markerCoords: CoordGrid? = null,
+    ): Int {
         val grave = grave(player) ?: return 0
         if (fromOffice != grave.office) return 0
+        if (markerCoords != null && markerCoords != grave.coords) return 0
         if (!fromOffice && (player.coords.level != grave.coords.level ||
             player.coords.chebyshevDistance(grave.coords) > 3)) return 0
         val free = player.inv.indices.filter { player.inv[it] == null }
@@ -171,6 +176,7 @@ public class PlayerGravestones @Inject constructor(
         data.setProperty("coords", "${grave.coords.x},${grave.coords.z},${grave.coords.level}")
         data.setProperty("remaining", grave.remaining.toString())
         data.setProperty("office", grave.office.toString())
+        data.setProperty("item.count", grave.items.size.toString())
         grave.items.forEachIndexed { index, item ->
             val symbol = RSCM.getReverseMapping(RSCMType.OBJ, item.id)
             data.setProperty("item.$index", "$symbol,${item.count},${item.vars}")
@@ -194,7 +200,9 @@ public class PlayerGravestones @Inject constructor(
         val owner = data.getProperty("owner") ?: error("Missing grave owner")
         val coords = data.getProperty("coords")!!.split(',').map(String::toInt)
         require(coords.size == 3)
-        val items = (0 until 200).mapNotNull { index ->
+        val itemCount = data.getProperty("item.count")?.toIntOrNull()?.coerceIn(0, 50000)
+            ?: (0 until 200).count { data.getProperty("item.$it") != null }
+        val items = (0 until itemCount).mapNotNull { index ->
             val triple = data.getProperty("item.$index")?.split(',') ?: return@mapNotNull null
             if (triple.size != 3) return@mapNotNull null
             InvObj(triple[0], triple[1].toInt(), triple[2].toInt())
