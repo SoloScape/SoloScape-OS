@@ -27,9 +27,11 @@ class BotProfileStore(private val directory: Path = Path.of(".data", "bots")) {
             player.statMap.setCurrentLevel(skill, level.toByte())
         }
         val bank = player.invMap.getOrPut("inv.bank")
-        restore(player.inv, data, "inv")
-        restore(bank, data, "bank")
-        restore(player.worn, data, "worn")
+        // v2 snapshots include deliberately empty inventories, so clear seeded defaults first.
+        val snapshot = data.getProperty("snapshot.version") == "2"
+        restore(player.inv, data, "inv", snapshot)
+        restore(bank, data, "bank", snapshot)
+        restore(player.worn, data, "worn", snapshot)
         player.appearance.combatLevel = PlayerSkillXP.calculateCombatLevel(player)
         player.rebuildAppearance()
         return data.getProperty("task")
@@ -38,6 +40,7 @@ class BotProfileStore(private val directory: Path = Path.of(".data", "bots")) {
     fun save(player: Player, task: String?) {
         Files.createDirectories(directory)
         val data = Properties()
+        data.setProperty("snapshot.version", "2")
         for (skill in BotSkills.all) data.setProperty(skill, player.statMap.getFineXP(skill).toString())
         task?.let { data.setProperty("task", it) }
         val bank = player.invMap.getOrPut("inv.bank")
@@ -71,7 +74,8 @@ class BotProfileStore(private val directory: Path = Path.of(".data", "bots")) {
         }
     }
 
-    private fun restore(inv: Inventory, data: Properties, prefix: String) {
+    private fun restore(inv: Inventory, data: Properties, prefix: String, snapshot: Boolean) {
+        if (snapshot) for (slot in inv.indices) inv[slot] = null
         for (slot in inv.indices) {
             val parts = data.getProperty("$prefix.$slot")?.split(',') ?: continue
             if (parts.size != 3) continue
