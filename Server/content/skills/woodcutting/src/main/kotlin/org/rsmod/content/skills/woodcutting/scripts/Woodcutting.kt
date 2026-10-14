@@ -53,6 +53,7 @@ constructor(
     private val harvest: WoodcuttingHarvest,
     private val invisibleLvls: InvisibleLevels,
     private val mapClock: MapClock,
+    private val forestry: ForestryEventManager,
 ) : PluginScript() {
     override fun ScriptContext.startup() {
         onOpContentLoc1("content.tree") { attempt(it.loc, it.type) }
@@ -129,6 +130,7 @@ constructor(
         }
 
         var cutLogs = false
+        val wasSkillingRoll = actionDelay == mapClock
         val despawn: Boolean
 
         if (actionDelay < mapClock) {
@@ -151,6 +153,10 @@ constructor(
             cutLogs = with(harvest) {
                 harvest(tree, type.treeLogs, type.treeXp, axe)
             }
+        }
+
+        if (wasSkillingRoll) {
+            forestry.onChop(player, tree.coords, type, despawn && cutLogs)
         }
 
         if (despawn && cutLogs) {
