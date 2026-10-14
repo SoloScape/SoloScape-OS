@@ -96,8 +96,13 @@ Members upgrade to lumberjack clothing at 44 Woodcutting, and prospector or angl
 clothing at 40 Mining or Fishing. Beginners and F2P bots use simple work clothes;
 cooks wear chef hats and white aprons, smiths and crafters wear brown aprons, and
 runecrafters wear robes with wizard hats or matching rune tiaras. Individual styles
-vary cape use and headwear. Fishing, cooking and smithing outfits normally omit capes.
-Members with 99 in their current task skill wear its skillcape. Outfits refresh at
+vary cape use and headwear, except woodcutters: **every Woodcutting bot wears the
+Forestry kit backpack** (`obj.forestry_kit`) in the back slot, including F2P and level-99
+characters. The kit overrides ordinary capes and the Woodcutting skillcape while
+woodcutting; the previously worn cape is banked and available for other activities.
+The native equipment handler equips a kit on spawn and at bank resupply, reusing
+one from the bank when possible. Fishing, cooking and smithing outfits normally omit capes.
+Other members with 99 in their current task skill wear its skillcape. Outfits refresh at
 bank resupply after job or level changes, reusing stored clothing. Saved armour is
 banked instead of covering the new outfit. Farming and thieving tasks are not yet
 part of this bot catalogue.
