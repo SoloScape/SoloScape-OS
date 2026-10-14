@@ -26,6 +26,9 @@ public object BotTaskPlanner {
         members: Boolean,
     ): Boolean {
         if (task.members && !members) return false
+        // Current native production actions make steel bars and steel daggers.
+        if (task.kind == BotTaskKind.Smelting && (levels["smithing"] ?: 1) < 30) return false
+        if (task.kind == BotTaskKind.Smithing && (levels["smithing"] ?: 1) < 30) return false
         val level = task.skill?.let { levels[it] ?: 1 } ?: 1
         if (level !in task.minimumLevel..task.maximumLevel) return false
         if (task.requiredLevels.any { (skill, minimum) -> (levels[skill] ?: 1) < minimum }) return false
@@ -45,11 +48,13 @@ public object BotTaskPlanner {
         members: Boolean,
         occupancy: Map<String, Int>,
         random: Random,
+        taskBias: Map<String, Double> = emptyMap(),
     ): BotTaskDefinition? {
         val candidates = tasks.filter { available(it, levels, members) && it.weight > 0 }
         if (candidates.isEmpty()) return null
         // Preserve source task weights while distributing crowds across locations.
-        val weights = candidates.map { it.weight.toDouble() / (1 + (occupancy[it.id] ?: 0).coerceAtLeast(0)) }
+        val weights = candidates.map { it.weight.toDouble() * (taskBias[it.id] ?: 1.0) /
+            (1 + (occupancy[it.id] ?: 0).coerceAtLeast(0)) }
         var roll = random.nextDouble() * weights.sum()
         for ((index, task) in candidates.withIndex()) {
             roll -= weights[index]

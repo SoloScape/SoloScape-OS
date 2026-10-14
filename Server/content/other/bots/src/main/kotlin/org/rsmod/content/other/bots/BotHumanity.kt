@@ -27,8 +27,7 @@ internal object BotHumanity {
         val random = Random(identity * 7919 + 17)
         return BotPersonality(
             identity = identity,
-            focus = listOf(BotTaskKind.Woodcutting, BotTaskKind.Fishing,
-                BotTaskKind.Mining, BotTaskKind.Cooking, BotTaskKind.Crafting).random(random),
+            focus = BotRoutinePlanner.expandedKinds.toList().random(random),
             preferredArea = listOf("Draynor", "Varrock", "Falador", "AlKharid",
                 "Catherby", "Lumbridge", "Barbarian").random(random),
             patience = random.nextInt(15, 96),
@@ -64,6 +63,7 @@ internal object BotHumanity {
         random: Random,
         current: BotTaskDefinition? = null,
         friend: BotTaskDefinition? = null,
+        taskBias: Map<String, Double> = emptyMap(),
     ): BotTaskDefinition? {
         val available = tasks.filter { it.weight > 0 }
         if (available.isEmpty()) return null
@@ -75,19 +75,10 @@ internal object BotHumanity {
             // Friends deliberately pick the same spots often, but never override eligibility.
             val company = if (task.id == friend?.id) 4.0 else 1.0
             val exploration = if (task.id != current?.id) 0.75 + personality.curiosity / 150.0 else 1.0
-            val followOn = when (current?.kind) {
-                BotTaskKind.Fishing -> BotTaskKind.Cooking
-                BotTaskKind.Cooking -> BotTaskKind.Fishing
-                BotTaskKind.Mining -> BotTaskKind.Smelting
-                BotTaskKind.Smelting -> BotTaskKind.Smithing
-                else -> null
-            }
-            val routine = if (task.kind == followOn &&
-                task.start == current?.start) 2.25 else 1.0
             val safety = if (task.kind == BotTaskKind.Combat)
                 (1.20 - personality.cautious / 100.0).coerceAtLeast(0.2) else 1.0
             task.weight.toDouble() * preference * home * repeat * company * exploration *
-                routine * safety /
+                safety * (taskBias[task.id] ?: 1.0) /
                 (1.0 + (occupancy[task.id] ?: 0).coerceAtLeast(0))
         }
         var roll = random.nextDouble() * weighted.sum()

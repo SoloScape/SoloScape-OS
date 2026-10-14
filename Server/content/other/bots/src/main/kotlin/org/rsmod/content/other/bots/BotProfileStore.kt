@@ -37,12 +37,20 @@ class BotProfileStore(private val directory: Path = Path.of(".data", "bots")) {
         return data.getProperty("task")
     }
 
-    fun save(player: Player, task: String?) {
+    fun loadGoal(player: Player): BotTrainingGoal? {
+        val file = path(player.username)
+        if (!Files.isRegularFile(file)) return null
+        val data = Properties().apply { Files.newInputStream(file).use { load(it) } }
+        return BotTrainingGoal.parse(data.getProperty("goal"))
+    }
+
+    fun save(player: Player, task: String?, goal: BotTrainingGoal? = null) {
         Files.createDirectories(directory)
         val data = Properties()
         data.setProperty("snapshot.version", "2")
         for (skill in BotSkills.all) data.setProperty(skill, player.statMap.getFineXP(skill).toString())
         task?.let { data.setProperty("task", it) }
+        goal?.let { data.setProperty("goal", it.toString()) }
         val bank = player.invMap.getOrPut("inv.bank")
         capture(player.inv, data, "inv")
         capture(bank, data, "bank")

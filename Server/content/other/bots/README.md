@@ -204,7 +204,8 @@ human.population.enabled=true
 human.population.stagger-startup=false
 ```
 
-`human.routines.expanded` adds supported cooking, smelting, smithing, crafting and spinning
+`human.routines.expanded` adds supported cooking, smelting, smithing, crafting, spinning,
+shearing, tanning and runecrafting
 jobs to ordinary skillers after their initial job. The planner still validates levels,
 materials and task restrictions. Set it to `false` to keep the initial three gathering jobs.
 `human.behaviour.enabled=false` disables preferences, ambient speech and idle breaks.
@@ -213,8 +214,39 @@ counts remain controlled by the existing per-mode properties. All changes are se
 no external text-generation service is required, and bots remain simulated characters;
 make this clear in any public server description.
 
+### Goals, materials and travel
+
+Both skilling and progressive characters keep a training goal such as `woodcutting:60`.
+The goal favors their specialization and survives bank trips, supply detours and logout.
+Goals advance when reached; old profiles without a goal acquire one automatically.
+Task scoring combines the goal, personality, crowding, approximate distance to the bank
+and the length of the task route. A distant reachable task remains possible, but nearby
+work is preferred. Reachability, membership and native level restrictions still apply.
+
+After fishing, supplied cooking jobs receive a follow-on preference. Cooking selects an
+actual, level-eligible fish from the inventory or bank, preferring the recent catch over
+starter stock. The same planning preference links mining to steel smelting, smelting to
+steel dagger smithing, shearing to spinning, and tanning to crafting. Production consumes
+real bank/inventory items through normal interactions; a steel batch requires an iron ore
+and two coal, and steel jobs require 30 Smithing. Partial batches are allowed. Native
+menus select the steel recipe for smelting.
+
+Running out of carried materials triggers banking even when more remain in the bank.
+Failed replenishment temporarily excludes that task and selects another supplied,
+eligible activity, retaining the training goal. If no reachable supplied task exists,
+the bot waits in `Planning` and retries after 100 cycles rather than resuming an old job.
+Lost gathering tools can fall back to the best owned, usable lower tier. New ordinary
+bot starter stocks include the six basic talismans; existing profiles are restored
+without adding them. Personalities now include all eleven supported skilling roles.
+Agility, thieving, farming and other activities outside the catalogue remain future work.
+
+`BotRoutineCheck` covers goal persistence, progression, travel preference, role diversity,
+recent-catch cooking, native recipe levels, batch materials and a supply fallback using
+the installed cache. Live acceptance should also observe repeated production/bank loops,
+an exhausted supply being abandoned, and the same goal after a server restart.
+
 `::botinfo` now includes each bot's personality and friend ID. `::botdebug on` captures
-the personality, friend ID, session expiry and pause timings, so intentional pauses can be
+the personality, training goal, friend ID, session expiry and pause timings, so intentional pauses can be
 distinguished from blocked pathfinding. Live acceptance should cover: two bots with distinct
 styles at one skilling spot; chat greetings answered by at most one nearby bot; varied
 working/banking times; changes of jobs after banking; logout/rejoin with identical skills,

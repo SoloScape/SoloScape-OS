@@ -41,7 +41,7 @@ enum class BotMode {
     }
 }
 
-private enum class BotPhase { Outbound, Working, Returning, Banking, Changing, RecoveringGrave, GraveBanking }
+private enum class BotPhase { Planning, Outbound, Working, Returning, Banking, Changing, RecoveringGrave, GraveBanking }
 
 private class WorldBot(
     val player: Player,
@@ -59,6 +59,7 @@ private class WorldBot(
     var startedAt = 0
     var expiresAt = 0
     var milestone = 99
+    var goal: BotTrainingGoal? = null
     var nextThink = 0
     var previousCoords = player.coords
     var previousXP = 0L
@@ -370,6 +371,9 @@ class BotPopulation @Inject constructor(
                     profiles.load(player) else null
                 val task = SourceBotCatalog.tasks.firstOrNull { it.id == restoredTask } ?: initial
                 val bot = WorldBot(player, mode, task, identity, patrol = patrol, hotspot = hotspot)
+                if (mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
+                    bot.goal = profiles.loadGoal(player)
+                }
                 val now = player.currentMapClock
                 bot.onlineSince = now
                 bot.sessionEndAt = now + BotHumanity.sessionCycles(bot.personality, random)
@@ -385,7 +389,7 @@ class BotPopulation @Inject constructor(
                     }
                 }
                 bots[player] = bot
-                if (mode == BotMode.Progressive) {
+                if (mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
                     chooseTask(bot)
                 } else {
                     setTask(bot, task)
@@ -508,23 +512,23 @@ class BotPopulation @Inject constructor(
         bot.returnReason = null
     }
 
-    private fun chooseTask(bot: WorldBot) {
+    private fun chooseTask(bot: WorldBot): Boolean {
         val player = bot.player
         val occupancy = bots.values.filter { it !== bot }.groupingBy { it.task.id }.eachCount()
         bot.blockedTasks.entries.removeAll { it.value <= player.currentMapClock }
-        val expandedKinds = setOf(BotTaskKind.Mining, BotTaskKind.Fishing,
-            BotTaskKind.Woodcutting, BotTaskKind.Cooking, BotTaskKind.Smelting,
-            BotTaskKind.Smithing, BotTaskKind.Crafting, BotTaskKind.Spinning)
-        val basicKinds = setOf(BotTaskKind.Mining, BotTaskKind.Fishing, BotTaskKind.Woodcutting)
         val availableKinds = if (configured.getProperty("human.routines.expanded", "true")
-            .toBoolean()) expandedKinds else basicKinds
+            .toBoolean()) BotRoutinePlanner.expandedKinds else BotRoutinePlanner.basicKinds
         val levels = BotSkills.levels(player)
-        val candidates = SourceBotCatalog.tasks.filter {
-            (if (bot.mode == BotMode.Skilling) {
-                it.kind in availableKinds && BotTaskPlanner.available(it, levels, player.members)
-            } else it.kind !in setOf(BotTaskKind.Trade, BotTaskKind.DropParty)) &&
-                supplies.canSupply(player, it) && it.id !in bot.blockedTasks
+        val eligible = SourceBotCatalog.tasks.filter {
+            (if (bot.mode == BotMode.Skilling) it.kind in availableKinds
+                else it.kind !in setOf(BotTaskKind.Trade, BotTaskKind.DropParty)) &&
+                BotTaskPlanner.available(it, levels, player.members)
         }
+        bot.goal = BotRoutinePlanner.goal(bot.goal, bot.personality.focus, eligible, levels)
+        val candidates = eligible.filter { supplies.canSupply(player, it) && it.id !in bot.blockedTasks }
+        val taskBias = candidates.associate { task -> task.id to
+            BotRoutinePlanner.weight(task, player.coords, bot.goal) *
+                supplies.routineWeight(player, bot.task, task) }
         val friendTask = bots.values.firstOrNull { it.identity == bot.friendIdentity }?.task
         val remaining = candidates.toMutableList()
         // Task selection used to accept an empty path to a remote start. That leaves
@@ -535,12 +539,8 @@ class BotPopulation @Inject constructor(
                 BotHumanity.chooseTask(remaining.filter {
                     bot.mode != BotMode.Progressive ||
                         BotTaskPlanner.available(it, levels, player.members)
-                }, occupancy, bot.personality, random, bot.task, friendTask)
-            } else if (bot.mode == BotMode.Skilling) {
-                BotTaskPlanner.selectBalanced(remaining.filter { it.id != bot.task.id },
-                    occupancy, random)
-                    ?: BotTaskPlanner.selectBalanced(remaining, occupancy, random)
-            } else BotTaskPlanner.select(remaining, levels, player.members, occupancy, random)
+                }, occupancy, bot.personality, random, bot.task, friendTask, taskBias)
+            } else BotTaskPlanner.select(remaining, levels, player.members, occupancy, random, taskBias)
             if (next == null) return@repeat
             val atStart = player.coords.level == next.start.level &&
                 player.coords.chebyshevDistance(next.start) <= 2
@@ -553,14 +553,17 @@ class BotPopulation @Inject constructor(
                 bot.pathOrigin = player.coords
                 bot.waypoint = 0
                 bot.phase = if (atStart) BotPhase.Banking else BotPhase.Changing
-                return
+                return true
             }
             // Avoid choosing the same unreachable task every subsequent think tick.
             bot.blockedTasks[next.id] = player.currentMapClock + 600
             remaining.remove(next)
         }
         bot.status = "no reachable task route; retrying from current position"
+        bot.needsPlan = true
+        bot.phase = BotPhase.Planning
         bot.nextThink = player.currentMapClock + 100
+        return false
     }
 
     fun tick(cycle: Int) {
@@ -603,7 +606,7 @@ class BotPopulation @Inject constructor(
                 bot.status = "cancelled stalled protected action"
                 continue
             }
-            if (menus.tick(player)) continue
+            if (menus.tick(player, supplies.recipe(bot.task))) continue
             if (player.isDelayed || player.isAccessProtected) continue
             if (cycle % 100 < 3 && bot.mode == BotMode.Progressive) save(bot)
             if (eat(player)) continue
@@ -946,6 +949,7 @@ class BotPopulation @Inject constructor(
                 "resourceWaits" to bot.resourceWaits, "stallChecks" to bot.stalled,
                 "recoveries" to bot.recoveries, "returnReason" to bot.returnReason,
                 "personality" to bot.personality.summary, "friendIdentity" to bot.friendIdentity,
+                "goal" to bot.goal?.toString(),
                 "pauseUntil" to bot.pauseUntil, "nextPauseAt" to bot.nextPauseAt,
                 "sessionEndAt" to bot.sessionEndAt,
                 "fleeing" to bot.fleeing, "fleeLastHit" to bot.fleeLastHit,
@@ -1022,18 +1026,22 @@ class BotPopulation @Inject constructor(
     private fun think(bot: WorldBot, cycle: Int) {
         val player = bot.player
         when (bot.phase) {
+            BotPhase.Planning -> {
+                chooseTask(bot)
+                return
+            }
             BotPhase.Changing, BotPhase.Outbound, BotPhase.Returning -> walkRoute(bot)
             BotPhase.RecoveringGrave, BotPhase.GraveBanking -> Unit
             BotPhase.Banking -> {
-                val keep = supplies.requirements(bot.task, BotSkills.levels(player) +
-                    ("members" to if (player.members) 1 else 0)).keys
+                supplies.rememberGathered(player, bot.task)
+                val keep = supplies.requirements(player, bot.task).keys
                     .filter { item -> listOf("axe", "rod", "net", "hammer", "needle", "talisman")
                         .any { item.contains(it, ignoreCase = true) } || item.equals("Coins", true) }
                     .toSet()
                 if (!actions.bank(player, keep)) return
                 if (bot.mode in setOf(BotMode.Progressive, BotMode.Skilling) && bot.needsPlan) {
-                    if (bot.mode == BotMode.Progressive) save(bot)
-                    chooseTask(bot)
+                    save(bot)
+                    if (!chooseTask(bot)) return
                     if (bot.phase == BotPhase.Changing) return
                 }
                 if (supplies.replenish(player, bot.task, actions)) {
@@ -1042,24 +1050,32 @@ class BotPopulation @Inject constructor(
                     bot.pathOrigin = bot.task.start
                     bot.waypoint = 0
                 } else {
-                    bot.status = "supplies exhausted"
+                    // Bank any partial withdrawal next tick, then plan another supplied job.
+                    // Keep the training goal while taking this material-gathering detour.
+                    bot.blockedTasks[bot.task.id] = cycle + 600
+                    bot.needsPlan = true
+                    bot.status = "supplies exhausted; replanning"
                     bot.nextThink = cycle + 50
                 }
             }
             BotPhase.Working -> {
                 val level = bot.task.skill?.let { BotSkills.levels(player)[it] ?: 1 } ?: 1
                 val gathering = bot.task.kind in setOf(BotTaskKind.Mining, BotTaskKind.Fishing,
-                    BotTaskKind.Woodcutting, BotTaskKind.Shearing, BotTaskKind.Combat, BotTaskKind.MoneyMaking)
+                    BotTaskKind.Woodcutting, BotTaskKind.Shearing, BotTaskKind.Combat, BotTaskKind.MoneyMaking) ||
+                    (bot.task.kind == BotTaskKind.Runecrafting && bot.task.id.contains("Essence", true))
                 val full = gathering && player.inv.indices.none { player.inv[it] == null }
                 if (cycle >= bot.expiresAt || full || bot.resourceWaits >= 10 ||
                     (bot.mode == BotMode.Progressive && level >= bot.milestone) ||
-                    !supplies.canSupply(player, bot.task)
+                    !supplies.hasWorkingSupplies(player, bot.task) ||
+                    (bot.goal?.let { (BotSkills.levels(player)[it.skill] ?: 1) >= it.level } == true)
                 ) {
                     bot.returnReason = when {
                         full -> "Inventory full"
                         bot.resourceWaits >= 10 -> "Ten resource-selection failures"
                         cycle >= bot.expiresAt -> "Activity timer expired"
                         bot.mode == BotMode.Progressive && level >= bot.milestone -> "Training milestone reached"
+                        bot.goal?.let { (BotSkills.levels(player)[it.skill] ?: 1) >= it.level } == true ->
+                            "Training goal reached"
                         else -> "Required supplies unavailable"
                     }
                     player.clearPendingAction(events)
@@ -1292,7 +1308,7 @@ class BotPopulation @Inject constructor(
     }
 
     private fun save(bot: WorldBot) {
-        try { profiles.save(bot.player, bot.task.id) }
+        try { profiles.save(bot.player, bot.task.id, bot.goal) }
         catch (error: Exception) { logger.error(error) { "Could not save bot ${bot.player.username}" } }
     }
 

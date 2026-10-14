@@ -14,6 +14,7 @@ import org.rsmod.api.invtx.invAdd
 import org.rsmod.api.invtx.invTransfer
 import org.rsmod.api.player.worn.HeldEquipOp
 import org.rsmod.api.player.worn.WornUnequipOp
+import org.rsmod.api.table.cooking.CookingFoodsRow
 import org.rsmod.content.skills.mining.configs.MiningRocks
 import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.treeLevelReq
 import org.rsmod.game.entity.Player
@@ -34,12 +35,17 @@ class BotSupplies @Inject constructor(
 
     private val seeded = Collections.newSetFromMap(WeakHashMap<Player, Boolean>())
     private val outfitStyles = WeakHashMap<Player, Int>()
+    private val recentCatch = WeakHashMap<Player, String>()
 
     /** Identity may be absent on test players; set it explicitly only on world-bot spawn. */
     fun setOutfitIdentity(player: Player, identity: Int) {
         outfitStyles[player] = Random(identity * 31 + 14).nextInt(12)
     }
     private val random = Random.Default
+    private val fishRecipes by lazy {
+        CookingFoodsRow.all().filter { it.input.name.startsWith("Raw ", true) &&
+            it.category.equals("fish", true) }
+    }
     private val combatLoadouts = listOf(
         CombatLoadout(1, 1, items = listOf(
             "Steel sword", "Steel full helm", "Steel platebody", "Steel platelegs",
@@ -131,6 +137,77 @@ class BotSupplies @Inject constructor(
         return result
     }
 
+    /** Read actual possessions; planning never creates or purchases missing materials. */
+    fun stock(player: Player): Map<String, Int> =
+        listOf(player.inv, player.worn, player.invMap.getOrPut("inv.bank"))
+            .flatMap { it.objs.filterNotNull() }.groupBy { getInvObj(it).name.lowercase() }
+            .mapValues { (_, items) -> items.sumOf { it.count.toLong() }.coerceAtMost(Int.MAX_VALUE.toLong()).toInt() }
+
+    private fun cookingInput(player: Player): String? {
+        val recipes = fishRecipes.filter { row -> row.statReq.all {
+            player.statMap.getBaseLevel(it.t0.internalName).toInt() >= it.t1
+        } }
+        // Finish carried fish before withdrawing another batch from the bank.
+        recipes.filter { count(player.inv, it.input.name) > 0 }
+            .maxByOrNull { count(player.inv, it.input.name) }?.input?.name?.let { return it }
+        val stock = stock(player)
+        return recipes.firstOrNull { it.input.name == recentCatch[player] &&
+                (stock[it.input.name.lowercase()] ?: 0) > 0 }?.input?.name
+            ?: recipes.filter { (stock[it.input.name.lowercase()] ?: 0) > 0 }
+                .maxByOrNull { stock[it.input.name.lowercase()] ?: 0 }?.input?.name
+    }
+
+    fun rememberGathered(player: Player, task: BotTaskDefinition) {
+        if (task.kind != BotTaskKind.Fishing) return
+        player.inv.objs.filterNotNull().map(::getInvObj)
+            .firstOrNull { it.name.startsWith("Raw ", true) }?.let { recentCatch[player] = it.name }
+    }
+
+    fun requirements(player: Player, task: BotTaskDefinition): Map<String, Int> =
+        requirements(task, levels(player)).toMutableMap().apply {
+            if (task.kind in setOf(BotTaskKind.Mining, BotTaskKind.Woodcutting)) {
+                val preferred = BotSkillingLoadouts.tool(task.kind, levels(player))
+                val tools = BotSkillingLoadouts.tools.takeWhile { it != preferred } + preferred
+                val suffix = if (task.kind == BotTaskKind.Mining) "pickaxe" else " axe"
+                val bank = player.invMap.getOrPut("inv.bank")
+                val owned = tools.lastOrNull { tool -> tool.endsWith(suffix, true) &&
+                    count(player.inv, tool) + count(player.worn, tool) + count(bank, tool) > 0 }
+                if (owned != null) {
+                    keys.removeAll { it.endsWith("axe", true) }
+                    put(owned, 1)
+                }
+            }
+            if (task.kind == BotTaskKind.Cooking) {
+                keys.removeAll { it.startsWith("Raw ", true) }
+                put(cookingInput(player) ?: rawFood(levels(player)["cooking"] ?: 1), 28)
+            }
+            // Coins are needed only for paid actions, not gathering or free production.
+            if (task.kind !in setOf(BotTaskKind.Tanning, BotTaskKind.Shop) &&
+                task.requiredItems.keys.none { it.equals("Coins", true) }) {
+                keys.removeAll { it.equals("Coins", true) }
+            }
+        }
+
+    fun recipe(task: BotTaskDefinition): String? =
+        if (task.kind == BotTaskKind.Smelting) "Steel bar" else null
+
+    private fun minimum(task: BotTaskDefinition, item: String): Int = when {
+        task.kind == BotTaskKind.Smelting && item.equals("Coal", true) -> 2
+        else -> 1
+    }
+
+    fun hasWorkingSupplies(player: Player, task: BotTaskDefinition): Boolean =
+        requirements(player, task).keys.all {
+            count(player.inv, it) + count(player.worn, it) >= minimum(task, it)
+        }
+
+    fun routineWeight(player: Player, previous: BotTaskDefinition, next: BotTaskDefinition): Double {
+        val production = next.kind in setOf(BotTaskKind.Cooking, BotTaskKind.Smelting,
+            BotTaskKind.Smithing, BotTaskKind.Spinning, BotTaskKind.Tanning, BotTaskKind.Crafting)
+        return if (production && canSupply(player, next) &&
+            BotRoutinePlanner.followOn(previous.kind, next.kind)) 6.0 else 1.0
+    }
+
     fun seed(player: Player, task: BotTaskDefinition?, progressive: Boolean) {
         if (!seeded.add(player)) return
         val levels = levels(player)
@@ -154,6 +231,8 @@ class BotSupplies @Inject constructor(
                 "Iron ore" to 5000, "Coal" to 10000, "Steel bar" to 5000,
                 "Flax" to 5000, "Wool" to 5000, "Cowhide" to 5000,
                 "Leather" to 5000, "Rune essence" to 5000,
+                "Air talisman" to 1, "Mind talisman" to 1, "Water talisman" to 1,
+                "Earth talisman" to 1, "Fire talisman" to 1, "Body talisman" to 1,
             )
             for ((item, count) in stock) add(player, bank, item, count)
             if (task != null) {
@@ -212,7 +291,7 @@ class BotSupplies @Inject constructor(
         val bank = player.invMap.getOrPut("inv.bank")
         val dressed = task.kind == BotTaskKind.Combat || equipOutfit(player, task)
         if (task.kind != BotTaskKind.Combat) {
-            val required = requirements(task, levels(player)).keys
+            val required = requirements(player, task).keys
             for (pos in listOf(Wearpos.LeftHand, Wearpos.RightHand)) {
                 val obj = player.worn[pos.slot] ?: continue
                 if (pos == Wearpos.RightHand && required.any {
@@ -222,7 +301,7 @@ class BotSupplies @Inject constructor(
             }
         }
         var supplied = true
-        for ((item, count) in requirements(task, levels(player))) {
+        for ((item, count) in requirements(player, task)) {
             val inInventory = count(player.inv, item) + count(player.worn, item)
             if (inInventory >= count) continue
             val available = count(bank, item)
@@ -236,13 +315,13 @@ class BotSupplies @Inject constructor(
             if (amount > 0 && !actions.withdraw(player, item, amount)) supplied = false
         }
         equipRequired(player, task)
-        return dressed && supplied && canSupply(player, task)
+        return dressed && supplied && hasWorkingSupplies(player, task)
     }
 
     fun canSupply(player: Player, task: BotTaskDefinition): Boolean {
         val bank = player.invMap.getOrPut("inv.bank")
-        return requirements(task, levels(player)).keys.all {
-            count(player.inv, it) + count(player.worn, it) + count(bank, it) > 0
+        return requirements(player, task).keys.all {
+            count(player.inv, it) + count(player.worn, it) + count(bank, it) >= minimum(task, it)
         }
     }
 
@@ -250,9 +329,8 @@ class BotSupplies @Inject constructor(
         radius: Int = 12): Boolean =
         when (task.kind) {
             BotTaskKind.Cooking -> {
-                val raw = player.inv.objs.filterNotNull().map(::getInvObj)
-                    .firstOrNull { it.name.startsWith("Raw ", true) }
-                raw != null && actions.useItemOnLoc(player, raw.name, task.targets)
+                val raw = cookingInput(player)
+                raw != null && actions.useItemOnLoc(player, raw, task.targets)
             }
             BotTaskKind.Smelting -> actions.operate(player, task.targets, "Smelt")
             BotTaskKind.Smithing -> actions.useItemOnLoc(player, "Steel bar", task.targets)
@@ -335,7 +413,7 @@ class BotSupplies @Inject constructor(
     }
 
     private fun equipRequired(player: Player, task: BotTaskDefinition) {
-        val required = requirements(task, levels(player)).keys
+        val required = requirements(player, task).keys
         for (slot in player.inv.indices) {
             val obj = player.inv[slot] ?: continue
             val type = getInvObj(obj)
