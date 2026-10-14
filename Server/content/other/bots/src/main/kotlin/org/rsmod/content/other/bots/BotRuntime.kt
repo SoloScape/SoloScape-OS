@@ -827,7 +827,7 @@ class BotPopulation @Inject constructor(
                 bot.waypoint = 0
                 bot.graveRouteFailureAt = -1
                 bot.status = "found route to own gravestone"
-            } else if (cycle - bot.graveRouteFailureAt >= 200 &&
+            } else if (BotGraveRecoveryPolicy.shouldUseOffice(bot.graveRouteFailureAt, cycle) &&
                 graves.moveUnreachableGraveToOffice(player)) {
                 bot.status = "unreachable gravestone secured at Death's Office"
                 bot.graveRouteFailureAt = -1
