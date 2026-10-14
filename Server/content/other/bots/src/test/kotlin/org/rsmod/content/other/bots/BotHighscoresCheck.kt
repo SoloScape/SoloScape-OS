@@ -6,6 +6,7 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.nio.file.Files
 import org.rsmod.game.entity.Player
 import org.rsmod.game.stat.PlayerSkillXPTable
 import dev.openrune.ServerCacheManager
@@ -52,7 +53,8 @@ object BotHighscoresCheck {
                 statMap.setBaseLevel(skill, level.toByte())
             }
         }
-        val page = BotHighscores()
+        val location = Files.createTempDirectory("highscores-test-").resolve("snapshot.json")
+        val page = BotHighscores(location)
         page.capture(listOf(human, bot)) { it === bot }
         val port = ServerSocket(0).use { it.localPort }
         page.startHttp(port)
@@ -87,6 +89,27 @@ object BotHighscoresCheck {
         } finally {
             page.stop()
         }
-        println("BotHighscoresCheck OK: skill rankings, player/bot separation, offline entries, live HTTP")
+        check(Files.isRegularFile(location)) { "Highscores must persist after shutdown" }
+        val saved = ObjectMapper().readTree(location.toFile())
+        check(saved.path("entries").size() == 2)
+        val restored = BotHighscores(location)
+        val port2 = ServerSocket(0).use { it.localPort }
+        restored.startHttp(port2)
+        try {
+            val client = HttpClient.newHttpClient()
+            val response = client.send(
+                HttpRequest.newBuilder(URI("http://127.0.0.1:$port2/highscores.json")).build(),
+                HttpResponse.BodyHandlers.ofString(),
+            )
+            val rows = ObjectMapper().readTree(response.body()).path("entries")
+            check(rows.size() == 2 && rows.all { !it.path("online").asBoolean() }) {
+                "After a restart, saved characters must remain ranked but show offline"
+            }
+        } finally {
+            restored.stop()
+            Files.deleteIfExists(location)
+            Files.deleteIfExists(location.parent)
+        }
+        println("BotHighscoresCheck OK: skill rankings, player/bot separation, offline persistence, live HTTP")
     }
 }
