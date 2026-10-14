@@ -121,6 +121,7 @@ constructor(
         option: String,
         radius: Int = 12,
         exclusive: Boolean = false,
+        eligibleLoc: (ObjectServerType) -> Boolean = { true },
     ): Boolean {
         if (busy(player)) return false
         release(player)
@@ -158,6 +159,7 @@ constructor(
             val key = loc.coords to loc.id
             if (exclusive && !gatheringTargets.available(player, key)) continue
             val type = ServerCacheManager.getObject(loc.id) ?: continue
+            if (!eligibleLoc(type)) continue
             val op = InteractionOp.entries.firstOrNull {
                 type.actions.getOpOrNull(it.slot - 1).equals(option, ignoreCase = true)
             } ?: continue

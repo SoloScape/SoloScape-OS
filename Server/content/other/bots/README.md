@@ -36,6 +36,27 @@ Wilderness and both clan populations. The default is `standard`.
 Population changes use the properties file; the spawn/removal commands are removed.
 Existing skilling, trading, progression and Castle Wars controllers remain separate.
 
+## Skilling equipment and gathering
+
+Skilling bots wear varied armour, wizard clothing or leather clothing and leave the
+shield slot empty. Woodcutters and miners wield the highest ordinary axe or pickaxe
+allowed by their skill level, Attack level and world membership, up to Dragon.
+Tool tiers are stocked at initialization; bank resupply updates the tool after a
+task change or level increase. Saved progressive profiles also have old swords and
+shields moved into their bank when initialized for skilling.
+
+Gathering selects reachable, unreserved resources and checks tree/rock level
+requirements. Temporary resource depletion causes a retry after ten game cycles,
+without a bank trip. Pending interactions still receive movement/XP stall checks,
+so a blocked interaction cannot bypass recovery indefinitely. Full inventories,
+task expiry, progression milestones and missing supplies still trigger banking.
+`::botinfo` shows whether a bot is working, waiting for a resource or recovering.
+
+The cache-backed `BotSkillingCheck` covers tool tiers, case-insensitive supply
+requirements, native equipment transactions, saved shield removal and mining
+level eligibility. Confirm harvesting animations, inventory/XP gains and bank
+returns in a live game after restarting the rebuilt server.
+
 ## Wilderness squads
 
 Wilderness PKers have a 25% chance to start a squad instead of spawning alone. Squad

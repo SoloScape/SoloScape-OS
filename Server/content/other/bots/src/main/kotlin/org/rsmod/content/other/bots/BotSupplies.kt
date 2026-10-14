@@ -1,7 +1,11 @@
 package org.rsmod.content.other.bots
 
 import dev.openrune.ServerCacheManager
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
 import dev.openrune.types.ItemServerType
+import dev.openrune.types.ObjectServerType
+import dev.openrune.util.Wearpos
 import jakarta.inject.Inject
 import java.util.Collections
 import java.util.WeakHashMap
@@ -9,11 +13,17 @@ import kotlin.random.Random
 import org.rsmod.api.invtx.invAdd
 import org.rsmod.api.invtx.invTransfer
 import org.rsmod.api.player.worn.HeldEquipOp
+import org.rsmod.api.player.worn.WornUnequipOp
+import org.rsmod.content.skills.mining.configs.MiningRocks
+import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.treeLevelReq
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.Inventory
 import org.rsmod.game.type.getInvObj
 
-class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
+class BotSupplies @Inject constructor(
+    private val equipment: HeldEquipOp,
+    private val unequip: WornUnequipOp,
+) {
     private data class CombatLoadout(
         val attack: Int,
         val defence: Int,
@@ -59,10 +69,14 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
     )
 
     fun requirements(task: BotTaskDefinition, levels: Map<String, Int>): Map<String, Int> {
-        val result = task.requiredItems.toMutableMap()
+        val result = java.util.TreeMap<String, Int>(String.CASE_INSENSITIVE_ORDER).apply {
+            putAll(task.requiredItems)
+        }
         when (task.kind) {
-            BotTaskKind.Woodcutting -> result.putIfAbsent("Bronze axe", 1)
-            BotTaskKind.Mining -> result.putIfAbsent("Bronze pickaxe", 1)
+            BotTaskKind.Woodcutting, BotTaskKind.Mining -> {
+                result.keys.removeAll { it.endsWith("axe", true) }
+                result[BotSkillingLoadouts.tool(task.kind, levels)] = 1
+            }
             BotTaskKind.Fishing -> when (task.option.lowercase()) {
                 "lure" -> {
                     result.putIfAbsent("Fly fishing rod", 1)
@@ -118,8 +132,10 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
             for (item in listOf("Bronze axe", "Bronze pickaxe", "Small fishing net", "Shears")) {
                 add(player, bank, item, 1)
             }
-            add(player, player.inv, "Bronze sword", 1)
-            add(player, player.inv, "Wooden shield", 1)
+            if (task?.kind == BotTaskKind.Combat) {
+                add(player, player.inv, "Bronze sword", 1)
+                add(player, player.inv, "Wooden shield", 1)
+            }
             add(player, bank, "Coins", 1000)
         } else {
             val stock = linkedMapOf(
@@ -140,9 +156,25 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
             }
             if (task?.kind == BotTaskKind.Combat) {
                 seedCombatEquipment(player)
-            } else {
-                add(player, player.inv, "Steel sword", 1)
-                add(player, player.inv, "Steel kiteshield", 1)
+            }
+        }
+        if (task != null && task.kind != BotTaskKind.Combat) {
+            storeHands(player, bank)
+            for (slot in player.inv.indices) {
+                val obj = player.inv[slot] ?: continue
+                val type = getInvObj(obj)
+                if (type.wearpos1 !in setOf(Wearpos.LeftHand.slot, Wearpos.RightHand.slot)) continue
+                val transaction = player.invTransfer(player.inv, slot, obj.count, bank,
+                    strict = true, autoCommit = false)
+                if (transaction.success) transaction.commitAll()
+            }
+            for (item in BotSkillingLoadouts.outfit(
+                player.statMap.getBaseLevel("stat.defence").toInt(), random.nextInt(3),
+            )) add(player, player.inv, item, 1)
+        }
+        for (tool in BotSkillingLoadouts.tools) {
+            if (count(bank, tool) + count(player.inv, tool) + count(player.worn, tool) == 0) {
+                add(player, bank, tool, 1)
             }
         }
         for (slot in player.inv.indices) {
@@ -171,6 +203,16 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
 
     fun replenish(player: Player, task: BotTaskDefinition, actions: BotActions): Boolean {
         val bank = player.invMap.getOrPut("inv.bank")
+        if (task.kind != BotTaskKind.Combat) {
+            val required = requirements(task, levels(player)).keys
+            for (pos in listOf(Wearpos.LeftHand, Wearpos.RightHand)) {
+                val obj = player.worn[pos.slot] ?: continue
+                if (pos == Wearpos.RightHand && required.any {
+                    getInvObj(obj).name.equals(it, true)
+                }) continue
+                storeHand(player, bank, pos)
+            }
+        }
         var supplied = true
         for ((item, count) in requirements(task, levels(player))) {
             val inInventory = count(player.inv, item) + count(player.worn, item)
@@ -220,8 +262,31 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
                             actions.useItemOnLoc(player, talisman.name, setOf("Mysterious ruins")))
                 }
             }
-            else -> actions.operate(player, task.targets, task.option)
+            else -> actions.operate(player, task.targets, task.option,
+                exclusive = task.kind in setOf(
+                    BotTaskKind.Mining, BotTaskKind.Fishing, BotTaskKind.Woodcutting,
+                ), eligibleLoc = { canGather(player, task.kind, it) })
         }
+
+    internal fun canGather(player: Player, kind: BotTaskKind, type: ObjectServerType): Boolean =
+        when (kind) {
+            BotTaskKind.Mining -> MiningRocks.forLoc(type)?.let {
+                player.statMap.getCurrentLevel("stat.mining").toInt() >= it.level
+            } ?: false
+            BotTaskKind.Woodcutting ->
+                player.statMap.getCurrentLevel("stat.woodcutting").toInt() >= type.treeLevelReq
+            else -> true
+        }
+
+    private fun storeHands(player: Player, bank: Inventory) {
+        for (pos in listOf(Wearpos.LeftHand, Wearpos.RightHand)) storeHand(player, bank, pos)
+    }
+
+    private fun storeHand(player: Player, bank: Inventory, pos: Wearpos) {
+        if (player.worn[pos.slot] != null) {
+            unequip.unequip(player, pos.slot, player.worn, bank)
+        }
+    }
 
     private fun seedCombatEquipment(player: Player) {
         val attack = player.statMap.getBaseLevel("stat.attack").toInt()
@@ -267,7 +332,8 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
         inv.objs.filterNotNull().filter { getInvObj(it).name.equals(name, true) }.sumOf { it.count }
 
     private fun resolve(name: String): ItemServerType? =
-        ServerCacheManager.getItemTypes().firstOrNull {
+        if (name.startsWith("obj.")) ServerCacheManager.getItem(name.asRSCM(RSCMType.OBJ))
+        else ServerCacheManager.getItemTypes().firstOrNull {
             it.certtemplate == 0 && it.name.equals(name, true)
         }
 
@@ -275,6 +341,10 @@ class BotSupplies @Inject constructor(private val equipment: HeldEquipOp) {
         mapOf(
             "cooking" to player.statMap.getBaseLevel("stat.cooking").toInt(),
             "smithing" to player.statMap.getBaseLevel("stat.smithing").toInt(),
+            "woodcutting" to player.statMap.getBaseLevel("stat.woodcutting").toInt(),
+            "mining" to player.statMap.getBaseLevel("stat.mining").toInt(),
+            "attack" to player.statMap.getBaseLevel("stat.attack").toInt(),
+            "members" to if (player.members) 1 else 0,
         )
 
     private fun rawFood(cooking: Int): String = if (cooking >= 40) "Raw lobster" else "Raw shrimps"

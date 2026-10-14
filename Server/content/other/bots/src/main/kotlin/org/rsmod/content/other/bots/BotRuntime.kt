@@ -60,7 +60,6 @@ private class WorldBot(
     var recoveries = 0
     var status = "starting"
     var needsPlan = true
-    var resourceWaits = 0
 }
 
 private class PendingWildernessSquad(
@@ -401,7 +400,6 @@ class BotPopulation @Inject constructor(
             BotTaskPlanner.nextMilestone(it, BotSkills.levels(bot.player)[it] ?: 1)
         } ?: 99
         bot.stalled = 0
-        bot.resourceWaits = 0
         bot.status = "walking to ${task.id}"
     }
 
@@ -536,9 +534,10 @@ class BotPopulation @Inject constructor(
         when (bot.phase) {
             BotPhase.Changing, BotPhase.Outbound, BotPhase.Returning -> walkRoute(bot)
             BotPhase.Banking -> {
-                val keep = supplies.requirements(bot.task, BotSkills.levels(player)).keys
-                    .filter { it.contains("axe") || it.contains("rod") || it.contains("net") ||
-                        it.contains("hammer") || it.contains("needle") || it.contains("talisman") }
+                val keep = supplies.requirements(bot.task, BotSkills.levels(player) +
+                    ("members" to if (player.members) 1 else 0)).keys
+                    .filter { item -> listOf("axe", "rod", "net", "hammer", "needle", "talisman")
+                        .any { item.contains(it, ignoreCase = true) } }
                     .toSet()
                 if (!actions.bank(player, keep)) return
                 if (bot.mode in setOf(BotMode.Progressive, BotMode.Skilling) && bot.needsPlan) {
@@ -560,7 +559,7 @@ class BotPopulation @Inject constructor(
                 val gathering = bot.task.kind in setOf(BotTaskKind.Mining, BotTaskKind.Fishing,
                     BotTaskKind.Woodcutting, BotTaskKind.Shearing, BotTaskKind.Combat, BotTaskKind.MoneyMaking)
                 val full = gathering && player.inv.indices.none { player.inv[it] == null }
-                if (cycle >= bot.expiresAt || full || bot.resourceWaits >= 10 ||
+                if (cycle >= bot.expiresAt || full ||
                     (bot.mode == BotMode.Progressive && level >= bot.milestone) ||
                     !supplies.canSupply(player, bot.task)
                 ) {
@@ -573,21 +572,22 @@ class BotPopulation @Inject constructor(
                     bot.status = "returning to bank"
                     return
                 }
-                if (player.interaction != null || player.routeRequest != null) return
+                if (player.interaction != null || player.routeRequest != null) {
+                    watchStall(bot)
+                    return
+                }
                 if (bot.task.kind == BotTaskKind.Combat &&
                     actions.pickup(player, 6, bot.task.ignoredLoot)) return
                 if (!supplies.perform(player, bot.task, actions)) {
                     val exclusive = bot.task.kind in setOf(
                         BotTaskKind.Mining, BotTaskKind.Fishing, BotTaskKind.Woodcutting,
                     )
-                    if (!actions.operate(player, bot.task.targets, bot.task.option,
-                            exclusive = exclusive) && exclusive) {
-                        bot.resourceWaits++
+                    if (exclusive) {
                         bot.status = "waiting for a free resource at ${bot.task.id}"
+                        bot.nextThink = cycle + 10
                         return
                     }
                 }
-                bot.resourceWaits = 0
                 bot.status = "working ${bot.task.id}"
             }
         }
