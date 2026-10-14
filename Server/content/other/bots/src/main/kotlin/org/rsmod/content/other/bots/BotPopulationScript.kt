@@ -4,10 +4,12 @@ import dev.or2.central.account.Rights
 import jakarta.inject.Inject
 import java.util.IdentityHashMap
 import org.rsmod.api.game.process.GameLifecycle
+import org.rsmod.api.player.events.PlayerHitEvents
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.script.onCommand
 import org.rsmod.api.script.onEvent
 import org.rsmod.game.MapClock
+import org.rsmod.game.entity.NpcList
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.player.PublicMessage
 import org.rsmod.plugin.scripts.PluginScript
@@ -19,12 +21,19 @@ class BotPopulationScript @Inject constructor(
     private val social: BotSocial,
     private val clock: MapClock,
     private val registry: org.rsmod.api.registry.player.PlayerRegistry,
+    private val npcs: NpcList,
 ) : PluginScript() {
     private val heard = IdentityHashMap<Player, PublicMessage>()
 
     override fun ScriptContext.startup() {
         onEvent<GameLifecycle.Startup> { population.startup() }
         onEvent<GameLifecycle.StartCycle> { population.tick(clock.cycle) }
+        // A blocked NPC hit (0 damage) is still an attack: flee before a lethal hit.
+        onEvent<PlayerHitEvents.Impact> {
+            if (hit.isFromNpc) {
+                population.onNpcAttack(player, hit.resolveNpcSource(npcs)?.coords, clock.cycle)
+            }
+        }
         onEvent<GameLifecycle.LateCycle> {
             for (player in registry.playerList) {
                 if (population.isBot(player)) continue
