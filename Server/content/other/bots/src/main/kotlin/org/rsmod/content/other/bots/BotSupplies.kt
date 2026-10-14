@@ -121,6 +121,7 @@ class BotSupplies @Inject constructor(
             BotTaskKind.Shop -> result["Coins"] = 1000
             else -> Unit
         }
+        result.putIfAbsent("Coins", 100)
         return result
     }
 
@@ -238,7 +239,8 @@ class BotSupplies @Inject constructor(
         }
     }
 
-    fun perform(player: Player, task: BotTaskDefinition, actions: BotActions): Boolean =
+    fun perform(player: Player, task: BotTaskDefinition, actions: BotActions,
+        radius: Int = 12): Boolean =
         when (task.kind) {
             BotTaskKind.Cooking -> {
                 val raw = player.inv.objs.filterNotNull().map(::getInvObj)
@@ -262,10 +264,11 @@ class BotSupplies @Inject constructor(
                             actions.useItemOnLoc(player, talisman.name, setOf("Mysterious ruins")))
                 }
             }
-            else -> actions.operate(player, gatheringNames(task), task.option,
+            else -> actions.operate(player, gatheringNames(task), task.option, radius = radius,
                 exclusive = task.kind in setOf(
                     BotTaskKind.Mining, BotTaskKind.Fishing, BotTaskKind.Woodcutting,
-                ), sharedLoc = { sharedTree(task.kind, it.name) },
+                ), sharedNpc = task.kind == BotTaskKind.Fishing,
+                sharedLoc = { sharedTree(task.kind, it.name) },
                 eligibleLoc = { canGather(player, task.kind, it) })
         }
 
@@ -276,6 +279,9 @@ class BotSupplies @Inject constructor(
     internal fun gatheringNames(task: BotTaskDefinition): Set<String> =
         if (task.kind == BotTaskKind.Woodcutting) {
             task.targets + task.targets.filterNot { it.endsWith("tree", true) }.map { "$it tree" }
+        } else if (task.kind == BotTaskKind.Fishing &&
+            task.targets.any { it.equals("fishing spot", true) }) {
+            task.targets + "Rod Fishing spot"
         } else task.targets
 
     internal fun canGather(player: Player, kind: BotTaskKind, type: ObjectServerType): Boolean =
@@ -339,10 +345,14 @@ class BotSupplies @Inject constructor(
     }
 
     private fun count(inv: Inventory, name: String): Int =
-        inv.objs.filterNotNull().filter { getInvObj(it).name.equals(name, true) }.sumOf { it.count }
+        inv.objs.filterNotNull().filter {
+            if (name.equals("Coins", true)) it.id == "obj.coins".asRSCM(RSCMType.OBJ)
+            else getInvObj(it).name.equals(name, true)
+        }.sumOf { it.count }
 
     private fun resolve(name: String): ItemServerType? =
-        if (name.startsWith("obj.")) ServerCacheManager.getItem(name.asRSCM(RSCMType.OBJ))
+        if (name.equals("Coins", true)) ServerCacheManager.getItem("obj.coins".asRSCM(RSCMType.OBJ))
+        else if (name.startsWith("obj.")) ServerCacheManager.getItem(name.asRSCM(RSCMType.OBJ))
         else ServerCacheManager.getItemTypes().firstOrNull {
             it.certtemplate == 0 && it.name.equals(name, true)
         }

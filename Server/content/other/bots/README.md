@@ -49,20 +49,36 @@ Gathering selects reachable resources and checks tree/rock level requirements.
 Woodcutting task names also match the cache's `Oak tree`, `Willow tree`, `Yew tree`
 and other tree-name suffixes, rather than searching only for the bare species.
 Oaks, willows, yews and magic trees allow multiple woodcutters, each reserving a
-separate standing tile. Other resources retain exclusive ownership. If the first
-approach tile is occupied, bots try other reachable tiles accepted by the native
+separate standing tile. Fishing spots also allow multiple bots, with a separate
+reachable standing tile for each. Net tasks accept the cache's `Small Net` option;
+rod tasks also match `Rod Fishing spot`. Other resources retain exclusive ownership.
+If the first approach tile is occupied, bots try other reachable tiles accepted by the native
 location interaction strategy. Temporary depletion causes a retry after ten game
-cycles; ten failed attempts trigger a bank return and a new task selection.
+cycles, widening the local search from 12 to 30 tiles; ten failed attempts trigger
+a bank return and a new task selection.
 Pending interactions still receive movement/XP stall checks,
 so a blocked interaction cannot bypass recovery indefinitely. Full inventories,
 task expiry, progression milestones and missing supplies still trigger banking.
 `::botinfo` shows whether a bot is working, waiting for a resource or recovering.
+
+Gate and other explicit crossing waypoints require exact arrival on both sides;
+ordinary waypoints retain their two-tile tolerance and destination spread. Al Kharid
+crossings use the native `Pay-toll(10gp)` action, and bots retain a 100-coin travel
+reserve when banking. Blocked walking links can be replanned through road points
+using native collision checks. Repeated movement failures exclude the failed task
+for 1,000 game cycles before another activity is selected. An unavailable route to
+a bank is never treated as arrival. Protected actions with no movement or XP for
+200 cycles (120 seconds) are cancelled once the player is no longer delayed, so
+an unhandled dialogue or modal cannot suppress the bot controller indefinitely.
 
 The cache-backed `BotSkillingCheck` covers tool tiers, case-insensitive supply
 requirements, native equipment transactions, saved shield removal and mining
 level eligibility, shared-tree species and cache-backed targets for every
 woodcutting task. `BotActionsCheck` covers separate standing tiles, occupied
 approaches, rotated footprints, exhausted capacity and unreachable trees.
+`BotMovementCheck` covers exact gate endpoints, collision-aware detours and the
+protected-action timeout, including movement/XP resets. Fishing names, options
+and the toll-gate operation are also checked against the installed cache.
 Confirm harvesting animations, inventory/XP gains and bank
 returns in a live game after restarting the rebuilt server.
 

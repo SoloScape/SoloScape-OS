@@ -1,10 +1,15 @@
 package org.rsmod.content.other.bots
 
 import dev.openrune.ServerCacheManager
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
 import dev.openrune.util.Wearpos
 import org.rsmod.api.inv.storage.PlayerItemStorage
 import org.rsmod.api.invtx.InvTransactionsScript
+import org.rsmod.api.invtx.invTakeFee
 import org.rsmod.api.player.hook.PlayerRestrictions
+import org.rsmod.api.player.interact.LocInteractions
+import org.rsmod.api.route.BoundValidator
 import org.rsmod.api.player.worn.HeldEquipOp
 import org.rsmod.api.player.worn.WornUnequipOp
 import org.rsmod.api.table.mining.MiningRocksRow
@@ -12,6 +17,11 @@ import org.rsmod.events.EventBus
 import org.rsmod.game.cheat.CheatCommandMap
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.InvObj
+import org.rsmod.game.loc.BoundLocInfo
+import org.rsmod.game.loc.LocEntity
+import org.rsmod.game.loc.LocInfo
+import org.rsmod.map.CoordGrid
+import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.game.queue.EngineQueueCache
 import org.rsmod.game.type.getInvObj
 import org.rsmod.plugin.scripts.ScriptContext
@@ -55,10 +65,34 @@ object BotSkillingCheck {
         )) {
             val levels = mapOf("woodcutting" to skill, "mining" to skill,
                 "attack" to attack, "members" to members)
-            check(supplies.requirements(woodcutting, levels).keys.single() == "$expected axe")
-            check(supplies.requirements(mining, levels).keys.single() == "$expected pickaxe")
+            check(supplies.requirements(woodcutting, levels).keys.filter { it != "Coins" }
+                .single() == "$expected axe")
+            check(supplies.requirements(mining, levels).keys.filter { it != "Coins" }
+                .single() == "$expected pickaxe")
         }
-        check(supplies.requirements(fishing, emptyMap()).size == 1)
+        check(supplies.requirements(fishing, emptyMap()).size == 2)
+        check(supplies.requirements(fishing, emptyMap())["Coins"] == 100)
+        val spots = ServerCacheManager.getNpcs().values
+        check(spots.any { it.actions.getOpOrNull(0).equals("Small Net", true) })
+        for (task in SourceBotCatalog.tasks.filter { it.kind == BotTaskKind.Fishing }) {
+            check(spots.filter { BotActions.named(it.name, supplies.gatheringNames(task)) }
+                .any { npc -> (0..4).any {
+                BotActions.matchesOption(npc.actions.getOpOrNull(it), task.option)
+            } }) { "${task.id} has no matching fishing option in the installed cache" }
+        }
+        val crossing = checkNotNull(BotRoutes.traversal(
+            org.rsmod.map.CoordGrid(3268, 3228, 0), org.rsmod.map.CoordGrid(3267, 3228, 0)))
+        for (target in crossing.targets) {
+            val gate = checkNotNull(ServerCacheManager.getObject(target.asRSCM()))
+            val loc = BoundLocInfo(LocInfo(1, CoordGrid(3268, 3228, 0),
+                LocEntity(gate.id, 0, 0)), gate)
+            val interactions = LocInteractions(BoundValidator(CollisionFlagMap()), events)
+            val visible = interactions.multiLoc(loc, gate, Player().vars)
+                ?.let { ServerCacheManager.getObject(it.id) } ?: gate
+            check((0..4).any { visible.actions.getOpOrNull(it).equals(crossing.option, true) }) {
+                "$target visible gate does not offer ${crossing.option}"
+            }
+        }
         val lowLevel = Player().apply {
             statMap.setCurrentLevel("stat.mining", 1)
         }
@@ -87,6 +121,10 @@ object BotSkillingCheck {
                     inv[1] = InvObj("obj.bronze_sword")
                 }
                 supplies.seed(player, task, progressive = identity % 2 == 0)
+                val coins = player.inv.objs.filterNotNull()
+                    .single { it.id == "obj.coins".asRSCM(RSCMType.OBJ) }
+                check(coins.count >= 100)
+                check(player.invTakeFee(10)) { "Bot travel coins must pay a native toll" }
                 check(player.worn[Wearpos.LeftHand.slot] == null)
                 check(player.worn[Wearpos.Torso.slot] != null) {
                     "${task.id} outfit missing torso: inv=${player.inv.objs.filterNotNull().map { getInvObj(it).name }} worn=${player.worn.objs.filterNotNull().map { getInvObj(it).name }}"

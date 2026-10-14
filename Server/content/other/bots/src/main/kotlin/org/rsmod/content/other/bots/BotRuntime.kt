@@ -49,6 +49,7 @@ private class WorldBot(
 ) {
     var phase = BotPhase.Outbound
     var path = task.route
+    var pathOrigin = task.start
     var waypoint = 0
     var startedAt = 0
     var expiresAt = 0
@@ -62,6 +63,8 @@ private class WorldBot(
     var needsPlan = true
     var resourceWaits = 0
     var returnReason: String? = null
+    val protectedTimeout = BotProgressTimeout()
+    val blockedTasks = mutableMapOf<String, Int>()
 }
 
 private class PendingWildernessSquad(
@@ -404,6 +407,7 @@ class BotPopulation @Inject constructor(
         actions.release(bot.player)
         bot.task = task
         bot.path = task.route
+        bot.pathOrigin = task.start
         bot.waypoint = 0
         bot.phase = BotPhase.Outbound
         bot.startedAt = bot.player.currentMapClock
@@ -412,6 +416,7 @@ class BotPopulation @Inject constructor(
             BotTaskPlanner.nextMilestone(it, BotSkills.levels(bot.player)[it] ?: 1)
         } ?: 99
         bot.stalled = 0
+        bot.recoveries = 0
         bot.status = "walking to ${task.id}"
         bot.resourceWaits = 0
         bot.returnReason = null
@@ -420,13 +425,14 @@ class BotPopulation @Inject constructor(
     private fun chooseTask(bot: WorldBot) {
         val player = bot.player
         val occupancy = bots.values.filter { it !== bot }.groupingBy { it.task.id }.eachCount()
+        bot.blockedTasks.entries.removeAll { it.value <= player.currentMapClock }
         val candidates = SourceBotCatalog.tasks.filter {
             (if (bot.mode == BotMode.Skilling) {
                 it.kind in setOf(BotTaskKind.Mining, BotTaskKind.Fishing, BotTaskKind.Woodcutting) &&
                     (it.skill?.let { skill -> BotSkills.levels(player)[skill] ?: 1 } ?: 1) >=
                         it.minimumLevel && (!it.members || player.members)
             } else it.kind !in setOf(BotTaskKind.Trade, BotTaskKind.DropParty)) &&
-                supplies.canSupply(player, it)
+                supplies.canSupply(player, it) && it.id !in bot.blockedTasks
         }
         val next = if (bot.mode == BotMode.Skilling) {
             BotTaskPlanner.selectBalanced(candidates.filter { it.id != bot.task.id }, occupancy, random)
@@ -441,8 +447,10 @@ class BotPopulation @Inject constructor(
         setTask(bot, next)
         bot.needsPlan = false
         bot.path = BotRoutes.path(player.coords, next.start)
+        bot.pathOrigin = player.coords
         bot.waypoint = 0
-        bot.phase = if (bot.path.isEmpty()) BotPhase.Banking else BotPhase.Changing
+        bot.phase = if (player.coords.level == next.start.level &&
+            player.coords.chebyshevDistance(next.start) <= 2) BotPhase.Banking else BotPhase.Changing
     }
 
     fun tick(cycle: Int) {
@@ -462,6 +470,18 @@ class BotPopulation @Inject constructor(
             bot.nextThink = cycle + 3
             if (player.hitpoints <= 0) {
                 actions.release(player)
+                continue
+            }
+            val totalXp = BotSkills.all.sumOf { player.statMap.getFineXP(it).toLong() }
+            val timedOut = bot.protectedTimeout.expired(cycle, player.coords, totalXp,
+                player.isDelayed || player.isAccessProtected)
+            if (timedOut && !player.isDelayed) {
+                player.clearPendingAction(events)
+                actions.release(player)
+                bot.protectedTimeout.expired(cycle, player.coords, totalXp, false)
+                bot.stalled = 0
+                bot.returnReason = "Protected action made no movement or XP progress for 120 seconds"
+                bot.status = "cancelled stalled protected action"
                 continue
             }
             if (menus.tick(player)) continue
@@ -573,7 +593,7 @@ class BotPopulation @Inject constructor(
                 val keep = supplies.requirements(bot.task, BotSkills.levels(player) +
                     ("members" to if (player.members) 1 else 0)).keys
                     .filter { item -> listOf("axe", "rod", "net", "hammer", "needle", "talisman")
-                        .any { item.contains(it, ignoreCase = true) } }
+                        .any { item.contains(it, ignoreCase = true) } || item.equals("Coins", true) }
                     .toSet()
                 if (!actions.bank(player, keep)) return
                 if (bot.mode in setOf(BotMode.Progressive, BotMode.Skilling) && bot.needsPlan) {
@@ -584,6 +604,7 @@ class BotPopulation @Inject constructor(
                 if (supplies.replenish(player, bot.task, actions)) {
                     bot.phase = BotPhase.Outbound
                     bot.path = bot.task.route
+                    bot.pathOrigin = bot.task.start
                     bot.waypoint = 0
                 } else {
                     bot.status = "supplies exhausted"
@@ -609,6 +630,7 @@ class BotPopulation @Inject constructor(
                     player.clearPendingAction(events)
                     actions.release(player)
                     bot.path = bot.task.route.asReversed() + bot.task.start
+                    bot.pathOrigin = player.coords
                     bot.waypoint = 0
                     bot.phase = BotPhase.Returning
                     bot.needsPlan = true
@@ -621,7 +643,8 @@ class BotPopulation @Inject constructor(
                 }
                 if (bot.task.kind == BotTaskKind.Combat &&
                     actions.pickup(player, 6, bot.task.ignoredLoot)) return
-                if (!supplies.perform(player, bot.task, actions)) {
+                if (!supplies.perform(player, bot.task, actions,
+                    radius = (12 + bot.resourceWaits * 2).coerceAtMost(32))) {
                     val exclusive = bot.task.kind in setOf(
                         BotTaskKind.Mining, BotTaskKind.Fishing, BotTaskKind.Woodcutting,
                     )
@@ -641,13 +664,32 @@ class BotPopulation @Inject constructor(
 
     private fun walkRoute(bot: WorldBot) {
         val player = bot.player
+        if (bot.path.isEmpty() && bot.phase == BotPhase.Changing) {
+            if (player.coords.level != bot.task.start.level ||
+                player.coords.chebyshevDistance(bot.task.start) > 2) {
+                recover(bot)
+                return
+            }
+        }
         while (bot.waypoint < bot.path.size) {
             val target = bot.path[bot.waypoint]
-            if (player.coords.level == target.level && player.coords.chebyshevDistance(target) <= 2) {
+            if (BotRoutes.reached(bot.pathOrigin, bot.path, bot.waypoint, player.coords)) {
                 bot.waypoint++
                 continue
             }
             if (player.routeRequest != null && bot.stalled < 3) return
+            val previous = bot.path.getOrNull(bot.waypoint - 1) ?: bot.pathOrigin
+            val transition = BotRoutes.traversal(previous, target)
+            if (transition != null && player.coords == previous) {
+                if (actions.canWalk(player.coords, target)) {
+                    actions.walk(player, target)
+                    return
+                }
+                if (transition.item != null) {
+                    actions.useItemOnLoc(player, transition.item, transition.targets)
+                } else actions.operate(player, transition.targets, transition.option, radius = 2)
+                return
+            }
             if (player.coords.level != target.level || player.coords.chebyshevDistance(target) > 64) {
                 val transition = BotRoutes.traversal(player.coords, target)
                 if (transition != null) {
@@ -659,9 +701,22 @@ class BotPopulation @Inject constructor(
                 if (bot.stalled >= 5) recover(bot)
                 return
             }
-            if (bot.stalled >= 3 && actions.operate(player, setOf("Door", "Gate"), "Open", 2)) return
-            actions.walk(player, target,
-                spread = bot.mode in setOf(BotMode.Skilling, BotMode.Progressive))
+            val walked = actions.walk(player, target,
+                spread = bot.mode in setOf(BotMode.Skilling, BotMode.Progressive) &&
+                    !BotRoutes.exactWaypoint(bot.pathOrigin, bot.path, bot.waypoint))
+            if (!walked && bot.stalled == 3) {
+                val detour = BotRoutes.path(player.coords, target, actions::canWalk)
+                if (detour.isNotEmpty()) {
+                    bot.path = detour + bot.path.drop(bot.waypoint + 1)
+                    bot.pathOrigin = player.coords
+                    bot.waypoint = 0
+                    bot.status = "rerouting around blocked waypoint"
+                    return
+                }
+            }
+            if (!walked && bot.stalled in setOf(3, 9)) {
+                actions.operate(player, setOf("Door", "Gate"), "Open", 2)
+            }
             return
         }
         when (bot.phase) {
@@ -669,6 +724,7 @@ class BotPopulation @Inject constructor(
             BotPhase.Changing -> {
                 bot.phase = BotPhase.Banking
                 bot.path = bot.task.route
+                bot.pathOrigin = bot.task.start
                 bot.waypoint = 0
             }
             else -> bot.phase = BotPhase.Working
@@ -689,8 +745,8 @@ class BotPopulation @Inject constructor(
         val player = bot.player
         bot.returnReason = "Movement or XP stalled (${bot.stalled} checks)"
         actions.release(player)
+        player.clearPendingAction(events)
         if (bot.recoveries++ < 2) {
-            player.clearPendingAction(events)
             val destination = if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
                 actions.spawnPoint(bot.task.start) ?: return
             } else bot.task.start
@@ -700,9 +756,12 @@ class BotPopulation @Inject constructor(
             bot.stalled = 0
             bot.status = "recovering at bank"
         } else {
-            bot.status = "stalled: ${bot.task.id}"
-            bot.nextThink = player.currentMapClock + 100
             bot.recoveries = 0
+            if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
+                bot.blockedTasks[bot.task.id] = player.currentMapClock + 1000
+                chooseTask(bot)
+            } else bot.status = "stalled: ${bot.task.id}"
+            bot.nextThink = player.currentMapClock + 100
         }
     }
 

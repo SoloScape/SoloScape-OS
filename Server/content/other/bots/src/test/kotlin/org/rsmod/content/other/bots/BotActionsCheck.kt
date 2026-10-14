@@ -20,6 +20,11 @@ object BotActionsCheck {
         check(BotActions.named("  Oak  ", setOf("oak", "Tree")))
         check(!BotActions.named("Willow", setOf("Tree")))
         check(!BotActions.named("Bank deposit box", setOf("Bank booth", "Bank chest")))
+        check(BotActions.matchesOption("Small Net", "net"))
+        check(BotActions.matchesOption("NET", "net"))
+        check(!BotActions.matchesOption("Big Net", "net"))
+        check(!BotActions.matchesOption(null, "net"))
+        check(!BotActions.matchesOption("Bait", "net"))
         val zones = BotActions.zones(origin, 12).toSet()
         check(ZoneKey.from(CoordGrid(3211, 3203, 0)) in zones)
         check(ZoneKey.from(CoordGrid(3235, 3227, 0)) in zones)
@@ -27,7 +32,28 @@ object BotActionsCheck {
         check(BotActions.zones(CoordGrid(0, 0, 0), 12).all { it.x >= 0 && it.z >= 0 })
         check(BotActions.zones(origin, 0).single() == ZoneKey.from(origin))
         for (angle in 0..3) checkSharedApproaches(angle)
+        checkSharedFishingApproaches()
         println("Bot interaction proximity, matching and shared-tree approach checks passed.")
+    }
+
+    private fun checkSharedFishingApproaches() {
+        val collision = CollisionFlagMap()
+        for (x in 0..40 step 8) for (z in 0..40 step 8) collision.allocateIfAbsent(x, z, 0)
+        val routes = RouteFinding(collision)
+        val source = CoordGrid(16, 20, 0)
+        val target = CoordGrid(20, 20, 0)
+        collision.add(20, 20, 0, CollisionFlag.BLOCK_WALK)
+        val occupied = mutableSetOf<CoordGrid>()
+        repeat(4) {
+            val tile = checkNotNull(BotActions.npcGatheringDestination(routes, source, target, 1, occupied))
+            check(occupied.add(tile)) { "Fishing bots must select separate standing tiles" }
+        }
+        check(BotActions.npcGatheringDestination(routes, source, target, 1, occupied) == null)
+        val released = occupied.first()
+        occupied.remove(released)
+        check(BotActions.npcGatheringDestination(routes, source, target, 1, occupied) == released)
+        for (z in 0..47) collision.add(18, z, 0, CollisionFlag.BLOCK_WALK)
+        check(BotActions.npcGatheringDestination(routes, source, target, 1, emptySet()) == null)
     }
 
     private fun checkSharedApproaches(angle: Int) {
