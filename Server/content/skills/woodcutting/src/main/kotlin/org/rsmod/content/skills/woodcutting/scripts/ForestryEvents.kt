@@ -19,18 +19,26 @@ import org.rsmod.api.repo.npc.NpcRepository
 import org.rsmod.api.repo.obj.ObjRepository
 import org.rsmod.api.repo.player.PlayerRepository
 import org.rsmod.api.stats.xpmod.XpModifiers
+import org.rsmod.api.npc.heal
 import org.rsmod.api.script.onCommand
 import org.rsmod.api.script.onEvent
 import org.rsmod.api.script.onOpLoc1
 import org.rsmod.api.script.onOpNpc1
 import org.rsmod.api.script.onOpNpc2
 import org.rsmod.api.script.onOpNpc3
+import org.rsmod.api.script.onOpNpc4
+import org.rsmod.api.script.onOpNpc5
 import org.rsmod.game.MapClock
 import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.treeLevelReq
 import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.treeXp
+import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.axeWoodcuttingAnim
+import dev.openrune.rscm.RSCM
+import dev.openrune.rscm.RSCMType
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.Player
+import org.rsmod.game.entity.player.SessionStateEvent
 import org.rsmod.game.inv.InvObj
+import org.rsmod.game.interact.InteractionLocOp
 import org.rsmod.game.loc.BoundLocInfo
 import org.rsmod.game.loc.LocAngle
 import org.rsmod.game.loc.LocInfo
@@ -38,6 +46,7 @@ import org.rsmod.game.loc.LocShape
 import org.rsmod.game.type.getInvObj
 import org.rsmod.map.CoordGrid
 import org.rsmod.map.zone.ZoneKey
+import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -45,8 +54,7 @@ import org.rsmod.plugin.scripts.ScriptContext
  * Forestry activity is world-shared, not an independent roll per player.
  * Everything here is short-lived. Only earned XP/items are persistent.
  *
- * Native game-cache objects and NPCs are resolved by their display names instead of synthetic
- * IDs. This prevents a mismatched cache revision from silently spawning unrelated objects.
+ * Native assets use gameval symbols; display names include tags and unrelated variants.
  */
 @Singleton
 class ForestryEventManager @Inject constructor(
@@ -56,7 +64,9 @@ class ForestryEventManager @Inject constructor(
     private val npcs: NpcRepository,
     private val objects: ObjRepository,
     private val xpMods: XpModifiers,
+    flags: CollisionFlagMap,
 ) {
+    private val placement = ForestryPlacement(flags)
     private data class TreeRoll(
         val origin: CoordGrid,
         val type: ForestryEventType,
@@ -70,6 +80,7 @@ class ForestryEventManager @Inject constructor(
         val start: Int,
         val finish: Int,
         val eligibleAtStart: Set<Player>,
+        val accessFrom: CoordGrid,
     ) {
         val locs = mutableMapOf<LocInfo, String>()
         val npcs = mutableMapOf<Npc, String>()
@@ -89,8 +100,10 @@ class ForestryEventManager @Inject constructor(
         var foxHits = 0
         var trapActive = false
         var hiveProgress = 0
-        var guardedNest = Random.nextInt(4)
-        var infusedRoot = Random.nextInt(6)
+        var emptyNest = Random.nextInt(4)
+        var infusedRoot = -1
+        var rootPhase = -1
+        var ritualHealed = false
         var rainbowsSpawned = 0
         var nextRainbow = start
         var rainbowWarning = false
@@ -176,7 +189,8 @@ class ForestryEventManager @Inject constructor(
         if (nearby.none { ForestryRations.hasKit(it) }) return
         if (Random.nextInt(100) >= ForestryRules.spawnPercent(roll.level, nearby.size)) return
         val eligible = nearby.filter { history[it]?.eligible(origin, clock.cycle) == true }.toSet()
-        val event = Event(roll.type, origin, clock.cycle, clock.cycle + roll.type.ticks, eligible)
+        val event = Event(roll.type, origin, clock.cycle, clock.cycle + roll.type.ticks,
+            eligible, nearby.first().coords)
         prepare(event)
         if (!playable(event)) {
             discard(event)
@@ -190,16 +204,18 @@ class ForestryEventManager @Inject constructor(
      * Developer-only event entry point, used by the ::forestry command in live-client tests.
      * Does not affect normal spawn chances or allow overlapping events.
      */
-    fun debugSpawn(player: Player, type: ForestryEventType): Boolean {
-        if (active.any { forestryNear(it.origin, player.coords, 30) }) return false
-        val event = Event(type, player.coords, clock.cycle, clock.cycle + type.ticks, setOf(player))
+    fun debugSpawn(player: Player, type: ForestryEventType): String? {
+        if (active.any { forestryNear(it.origin, player.coords, 30) })
+            return "A Forestry event is already active nearby. Wait for it to finish."
+        val event = Event(type, player.coords, clock.cycle, clock.cycle + type.ticks,
+            setOf(player), player.coords)
         prepare(event)
         if (!playable(event)) {
             discard(event)
-            return false
+            return "Cannot spawn ${type.title}: required assets or reachable space are unavailable."
         }
         active.add(event)
-        return true
+        return null
     }
 
     /** A partial asset match should not create an unfinishable event. */
@@ -207,113 +223,158 @@ class ForestryEventManager @Inject constructor(
         val locRoles = e.locs.values
         val npcRoles = e.npcs.values
         return when (e.type) {
-            ForestryEventType.ROOTS -> locRoles.count { it.startsWith("root:") } >= 2
+            ForestryEventType.ROOTS -> locRoles.count { it.startsWith("root:") } == 6 &&
+                ForestryAssets.loc(ForestryAssets.INFUSED_ROOT) != null
             ForestryEventType.SAPLING -> "sapling" in locRoles &&
-                locRoles.any { it.startsWith("ingredient:") }
-            ForestryEventType.ENT -> npcRoles.any { it.startsWith("ent:") }
-            ForestryEventType.FLOWERS -> npcRoles.count { it.startsWith("bush:") } >= 2
+                locRoles.count { it.startsWith("ingredient:") } == 5
+            ForestryEventType.ENT -> npcRoles.count { it.startsWith("ent:") } == 5
+            ForestryEventType.FLOWERS -> npcRoles.count { it.startsWith("bush:") } == 8
             ForestryEventType.LEPRECHAUN -> "bank" in npcRoles && locRoles.any { it.startsWith("rainbow:") }
-            ForestryEventType.HIVE -> "hive" in npcRoles
-            ForestryEventType.FOX -> "trap" in npcRoles
-            ForestryEventType.RITUAL -> npcRoles.count { it.startsWith("circle:") } == 5
+            ForestryEventType.HIVE -> "hive" in npcRoles && "keeper" in npcRoles
+            ForestryEventType.FOX -> "trap" in npcRoles && "fox" in npcRoles
+            ForestryEventType.RITUAL -> "dryad" in npcRoles &&
+                npcRoles.count { it.startsWith("circle:") } == 5
             ForestryEventType.PHEASANT -> "forester" in npcRoles &&
-                locRoles.any { it.startsWith("nest:") }
+                locRoles.count { it.startsWith("nest:") } == 4 &&
+                npcRoles.count { it.startsWith("pheasant:") } == 3
         }
     }
 
     private fun discard(e: Event) {
-        for (npc in e.npcs.keys.toList()) npcs.del(npc, Int.MAX_VALUE)
-        for (loc in e.locs.keys.toList()) locs.del(loc, Int.MAX_VALUE)
+        for (npc in e.npcs.keys.toList()) if (npc.isSlotAssigned) npcs.del(npc, Int.MAX_VALUE)
+        for (loc in e.locs.keys.toList()) if (locs.findExact(loc.coords, loc.shape)?.id == loc.id)
+            locs.del(loc, Int.MAX_VALUE)
         e.npcs.clear()
         e.locs.clear()
     }
 
     private fun prepare(e: Event) {
         when (e.type) {
-            ForestryEventType.ROOTS -> repeat(6) { spawnLoc(e, "root:" + it, it, "Tree roots") }
-            ForestryEventType.SAPLING -> {
-                spawnLoc(e, "sapling", 0, "Struggling sapling")
-                listOf("Droppings", "Green leaves", "Rotting leaves", "Splintered bark",
-                    "Wild mushrooms").forEachIndexed { i, label -> spawnLoc(e, "ingredient:" + i, i + 1, label) }
+            ForestryEventType.ROOTS -> repeat(6) {
+                spawnLoc(e, "root:" + it, it, ForestryAssets.ROOT)
             }
-            ForestryEventType.ENT -> repeat(5) { spawnNpc(e, "ent:" + it, it, "Entling") }
+            ForestryEventType.SAPLING -> {
+                spawnLoc(e, "sapling", 0, ForestryAssets.SAPLING)
+                ForestryAssets.ingredients.forEachIndexed { i, symbol ->
+                    spawnLoc(e, "ingredient:" + i, i + 1, symbol)
+                }
+            }
+            ForestryEventType.ENT -> repeat(5) {
+                spawnNpc(e, "ent:" + it, it, ForestryAssets.ENTLING)
+            }
             ForestryEventType.FLOWERS -> {
-                val variants = ServerCacheManager.getNpcs().values
-                    .filter { normalized(it.name).startsWith("flowering bush") }
-                    .distinctBy { it.id }.sortedBy { it.id }
                 repeat(8) { i ->
-                    val type = variants.getOrNull(i) ?: npcType("Flowering bush")
-                    if (type != null) spawnNpcType(e, "bush:" + i, i, type)
+                    spawnNpc(e, "bush:" + i, i, ForestryAssets.bushes[i])
                 }
             }
             ForestryEventType.LEPRECHAUN -> {
-                spawnNpc(e, "bank", 0, "Woodcutting Leprechaun")
+                spawnNpc(e, "bank", 0, ForestryAssets.LEPRECHAUN)
                 spawnNextRainbow(e)
             }
             ForestryEventType.HIVE -> {
-                spawnNpc(e, "keeper", 0, "Bee keeper")
-                spawnNpc(e, "hive", 1, "Unfinished beehive")
+                spawnNpc(e, "keeper", 0, ForestryAssets.KEEPER)
+                spawnNpc(e, "hive", 1, ForestryAssets.HIVE)
             }
             ForestryEventType.FOX -> {
-                spawnNpc(e, "fox", 0, "Frightened Fox")
-                repeat(3) { spawnNpc(e, "poacher", it + 1, "Poacher") }
+                spawnNpc(e, "fox", 0, ForestryAssets.FOX)
+                repeat(3) { spawnNpc(e, "poacher", it + 1, ForestryAssets.POACHER) }
                 spawnTrap(e)
             }
             ForestryEventType.RITUAL -> {
-                spawnNpc(e, "dryad", 0, "Dryad")
+                spawnNpc(e, "dryad", 0, ForestryAssets.DRYAD)
+                e.npcs.entries.firstOrNull { it.value == "dryad" }?.key?.let {
+                    it.baseHitpointsLvl = 100
+                    it.hitpoints = 1
+                    it.heal(3, showHitsplat = true)
+                }
                 rotateCircles(e)
             }
             ForestryEventType.PHEASANT -> {
-                spawnNpc(e, "forester", 0, "Freaky Forester")
-                repeat(4) { spawnLoc(e, "nest:" + it, it + 1, "Pheasant nest") }
-                repeat(3) { spawnNpc(e, "pheasant", it + 5, "Pheasant") }
+                spawnNpc(e, "forester", 0, ForestryAssets.FORESTER)
+                repeat(4) { spawnLoc(e, "nest:" + it, it + 1, ForestryAssets.NEST) }
+                arrangePheasants(e)
             }
         }
     }
 
-    private fun normalized(name: String): String =
-        name.lowercase().replace("-", " ").replace("_", " ").trim()
-
-    private fun locType(label: String) = ServerCacheManager.getObjects().values.firstOrNull {
-        normalized(it.name) == normalized(label) ||
-            (normalized(it.name).contains(normalized(label)) && it.name.length < label.length + 12)
-    }
-    private fun npcType(label: String) = ServerCacheManager.getNpcs().values.firstOrNull {
-        normalized(it.name) == normalized(label)
-    }
-
-    private fun tile(e: Event, slot: Int): CoordGrid {
-        val dx = listOf(-3, -2, 0, 2, 3, 3, 2, 0, -2, -3, -4, 4, 1, -1, 4, -4)
-        val dz = listOf(0, 2, 3, 2, 0, -2, -3, -3, -2, 0, 3, -3, 4, -4, 1, -1)
-        val i = slot % dx.size
-        return e.origin.translate(dx[i], dz[i])
+    private fun tile(e: Event, slot: Int, width: Int = 1, length: Int = 1): CoordGrid? {
+        val occupied = e.locs.keys.flatMap { loc ->
+            val type = ServerCacheManager.getObject(loc.id) ?: return@flatMap emptyList()
+            (0 until type.width).flatMap { x -> (0 until type.length).map { z ->
+                loc.coords.translate(x, z)
+            } }
+        }.toSet() + e.npcs.keys.flatMap { npc ->
+            (0 until npc.size).flatMap { x -> (0 until npc.size).map { z ->
+                npc.coords.translate(x, z)
+            } }
+        }
+        return placement.candidates(e.origin, slot, e.type == ForestryEventType.ROOTS)
+            .firstOrNull { at ->
+                at != e.accessFrom && placement.clear(at, width, length) &&
+                    (0 until width).all { x -> (0 until length).all { z ->
+                        val coords = at.translate(x, z)
+                        coords !in occupied && locs.findAll(coords).none { it.layer == 2 }
+                    } } && placement.reachable(e.accessFrom, at)
+            }
     }
 
     private fun spawnLoc(e: Event, role: String, slot: Int, label: String) {
-        val type = locType(label) ?: return
-        val at = tile(e, slot)
-        val placed = locs.add(at, type, (e.finish - clock.cycle).coerceAtLeast(1),
+        val type = ForestryAssets.loc(label) ?: return
+        val at = tile(e, slot, type.width, type.length) ?: return
+        val placed = locs.add(at, type.internalName, (e.finish - clock.cycle).coerceAtLeast(1),
             LocAngle.West, LocShape.CentrepieceStraight)
         if (locs.findExact(at, type) != null) e.locs[placed] = role
     }
 
     private fun spawnNpc(e: Event, role: String, slot: Int, label: String) {
-        val type = npcType(label) ?: return
+        val type = ForestryAssets.npc(label) ?: return
         spawnNpcType(e, role, slot, type)
     }
 
     private fun spawnNpcType(e: Event, role: String, slot: Int, type: dev.openrune.types.NpcServerType) {
-        val entity = Npc(type, tile(e, slot))
+        val at = tile(e, slot, type.size, type.size) ?: return
+        val entity = Npc(type, at)
         entity.mode = NpcMode.None
         npcs.add(entity, (e.finish - clock.cycle).coerceAtLeast(1))
         e.npcs[entity] = role
+        if (role.startsWith("ent:")) {
+            val index = role.substringAfter(":").toInt()
+            entity.say(ForestryRules.entRequests[e.entStyles[index]])
+        }
+    }
+
+    private fun replaceLoc(e: Event, role: String, symbol: String) {
+        val old = e.locs.entries.firstOrNull { it.value == role }?.key ?: return
+        val type = ForestryAssets.loc(symbol) ?: return
+        if (old.id == type.id) return
+        if (locs.findExact(old.coords, old.shape)?.id != old.id) return
+        val replacement = locs.add(old.coords, type.internalName,
+            (e.finish - clock.cycle).coerceAtLeast(1), old.angle, old.shape)
+        if (locs.findExact(old.coords, type) != null) {
+            e.locs.remove(old)
+            e.locs[replacement] = role
+            if (role.startsWith("root:")) {
+                for (player in e.contributions.keys) {
+                    val interaction = player.interaction as? InteractionLocOp ?: continue
+                    if (interaction.target.coords != old.coords || interaction.target.id != old.id)
+                        continue
+                    player.interaction = InteractionLocOp(interaction.op,
+                        BoundLocInfo(replacement, type), interaction.hasOpTrigger,
+                        interaction.hasApTrigger, interaction.apRange)
+                }
+            }
+        }
     }
 
     /** Rainbows are non-interactive scenery: spawn them serially and reward standing on a tile. */
     private fun spawnNextRainbow(e: Event) {
         if (e.rainbowsSpawned >= 6) return
+        for (old in e.locs.filterValues { it.startsWith("rainbow:") }.keys.toList()) {
+            locs.del(old, Int.MAX_VALUE)
+            e.locs.remove(old)
+        }
         val index = e.rainbowsSpawned
-        spawnLoc(e, "rainbow:" + index, index + 1, "End of Rainbow")
+        spawnLoc(e, "rainbow:" + index, index + 1, ForestryAssets.RAINBOW)
         if (e.locs.values.contains("rainbow:" + index)) {
             e.rainbowsSpawned++
         }
@@ -343,7 +404,7 @@ class ForestryEventManager @Inject constructor(
 
     private fun spawnTrap(e: Event) {
         if (e.phase >= 15) return
-        spawnNpc(e, "trap", 6 + (e.phase % 6), "Fox trap")
+        spawnNpc(e, "trap", 6 + (e.phase % 6), ForestryAssets.TRAP)
         e.trapActive = e.npcs.values.contains("trap")
         e.lastPhase = clock.cycle
     }
@@ -358,6 +419,7 @@ class ForestryEventManager @Inject constructor(
     }
 
     private fun rotateCircles(e: Event) {
+        e.ritualHealed = false
         val colour = Random.nextInt(4)
         val shape = Random.nextInt(4)
         e.circles.clear()
@@ -372,17 +434,50 @@ class ForestryEventManager @Inject constructor(
             npcs.del(npc, Int.MAX_VALUE)
             e.npcs.remove(npc)
         }
-        val variants = ServerCacheManager.getNpcs().values
-            .filter {
-                it.internalName.startsWith("npc.gathering_event_enchanted_ritual_") ||
-                    normalized(it.name).startsWith("ritual circle")
-            }
-            .sortedBy { it.id }.distinctBy { it.id }
         for (i in e.circles.indices) {
             val (colourIndex, shapeIndex) = e.circles[i]
-            val type = variants.getOrNull(shapeIndex * 4 + colourIndex)
-                ?: npcType("Ritual circle") ?: continue
+            val type = ForestryAssets.npc(ForestryAssets.circles[shapeIndex * 4 + colourIndex])
+                ?: continue
             spawnNpcType(e, "circle:" + i, i + 1, type)
+        }
+    }
+
+    private fun arrangePheasants(e: Event) {
+        for (npc in e.npcs.filterValues { it.startsWith("pheasant:") }.keys.toList()) {
+            if (npc.isSlotAssigned) npcs.del(npc, Int.MAX_VALUE)
+            e.npcs.remove(npc)
+        }
+        val type = ForestryAssets.npc(ForestryAssets.PHEASANT) ?: return
+        for (i in 0..3) {
+            replaceLoc(e, "nest:$i", if (i == e.emptyNest) ForestryAssets.EMPTY_NEST
+                else ForestryAssets.NEST)
+            if (i == e.emptyNest) continue
+            val at = e.locs.entries.firstOrNull { it.value == "nest:$i" }?.key?.coords ?: continue
+            val bird = Npc(type, at)
+            bird.mode = NpcMode.None
+            npcs.add(bird, (e.finish - clock.cycle).coerceAtLeast(1))
+            e.npcs[bird] = "pheasant:$i"
+        }
+    }
+
+    private fun collectRitual(e: Event) {
+        val circle = e.npcs.entries.firstOrNull { it.value == "circle:${e.circleAnswer}" }
+            ?.key ?: return
+        for (player in players.findAll(ZoneKey.from(e.origin), zoneRadius = 4)) {
+            if (player.coords != circle.coords) continue
+            val c = contribution(e, player)
+            if (c.lastRound == e.phase) continue
+            c.lastRound = e.phase
+            c.actions++
+            player.statAdvance("stat.woodcutting", (if (c.eligible)
+                ForestryRules.ritualXp(player.woodcuttingLvl) else 1.0) *
+                xpMods.get(player, "stat.woodcutting"))
+            give(player, "obj.forestry_currency", c.takeBark(2 + player.woodcuttingLvl / 25))
+            if (!e.ritualHealed) {
+                e.npcs.entries.firstOrNull { it.value == "dryad" }?.key?.heal(12, true)
+                e.ritualHealed = true
+            }
+            player.mes("You correctly identify the unique ritual circle.")
         }
     }
 
@@ -402,9 +497,26 @@ class ForestryEventManager @Inject constructor(
                 }
             }
             ForestryEventType.ROOTS -> {
-                if (now - e.start >= 30 && (now - e.start - 30) % 20 == 0) {
-                    e.infusedRoot = Random.nextInt(6)
+                val phase = ForestryRules.infusedPhase(now - e.start)
+                if (phase >= 0 && phase != e.rootPhase) {
+                    if (e.infusedRoot >= 0) replaceLoc(e, "root:${e.infusedRoot}", ForestryAssets.ROOT)
+                    e.rootPhase = phase
+                    e.infusedRoot = if (e.infusedRoot < 0) Random.nextInt(6)
+                        else (e.infusedRoot + Random.nextInt(1, 6)) % 6
+                    replaceLoc(e, "root:${e.infusedRoot}", ForestryAssets.INFUSED_ROOT)
                 }
+            }
+            ForestryEventType.ENT -> if (now - e.lastPhase >= 10) {
+                e.lastPhase = now
+                for ((npc, role) in e.npcs) {
+                    if (!role.startsWith("ent:")) continue
+                    val i = role.substringAfter(":").toInt()
+                    if (e.entPrunes[i].containsAll(ForestryRules.entOptions[e.entStyles[i]])) continue
+                    npc.say(ForestryRules.entRequests[e.entStyles[i]])
+                    val at = tile(e, i + e.phase, npc.size, npc.size) ?: continue
+                    placement.path(npc.coords, at)?.let { npc.walk(it) }
+                }
+                e.phase++
             }
             ForestryEventType.FOX -> {
                 if (now - e.lastPhase >= 12) {
@@ -424,15 +536,36 @@ class ForestryEventManager @Inject constructor(
                 e.partnerB = (e.partnerA + Random.nextInt(1, 8)) % 8
                 e.contributions.values.forEach { it.pollen = -1 }
             }
-            ForestryEventType.RITUAL -> if (now - e.lastPhase >= 25) {
-                e.phase++
-                e.lastPhase = now
-                if (e.phase < 8) rotateCircles(e)
-                else e.completed = true
+            ForestryEventType.RITUAL -> {
+                collectRitual(e)
+                if (now - e.lastPhase >= 25) {
+                    e.phase++
+                    e.lastPhase = now
+                    if (e.phase < 8) rotateCircles(e)
+                    else e.completed = true
+                }
             }
             ForestryEventType.PHEASANT -> if (now - e.lastPhase >= 12) {
                 e.lastPhase = now
-                e.guardedNest = Random.nextInt(4)
+                val landing = e.locs.entries.firstOrNull { it.value == "nest:${e.emptyNest}" }
+                    ?.key?.coords
+                if (landing != null) {
+                    for (player in players.findAll(ZoneKey.from(e.origin), zoneRadius = 4)) {
+                        if (!forestryNear(player.coords, landing, 1)) continue
+                        player.delay(3)
+                        val c = e.contributions[player]
+                        if (c != null && ForestrySupplies.deliverEgg(player)) {
+                            c.eggNest = -1
+                            player.mes("The returning pheasant stuns you and steals its egg!")
+                        } else player.mes("The returning pheasant stuns you!")
+                    }
+                }
+                e.phase++
+                if (e.phase >= 8) e.completed = true
+                else {
+                    e.emptyNest = (e.emptyNest + Random.nextInt(1, 4)) % 4
+                    arrangePheasants(e)
+                }
             }
             else -> Unit
         }
@@ -440,10 +573,14 @@ class ForestryEventManager @Inject constructor(
 
     private fun finish(e: Event) {
         cooldowns[e.origin] = clock.cycle + Random.nextInt(67, 201)
+        for (player in e.contributions.keys) {
+            if (e.type == ForestryEventType.SAPLING) ForestrySupplies.remove(player, ForestryAssets.mulch)
+            if (e.type == ForestryEventType.PHEASANT) ForestrySupplies.remove(player, listOf(ForestryAssets.EGG))
+        }
         if (e.type == ForestryEventType.LEPRECHAUN) {
             // Depositing and collecting rainbows give no completion XP/bark.
             // The luck attribute survives this cleanup and is spent only while chopping.
-            if (clock.cycle < e.finish) discard(e)
+            discard(e)
             return
         }
         val success = when (e.type) {
@@ -455,35 +592,36 @@ class ForestryEventManager @Inject constructor(
             .filter { forestryNear(it.coords, e.origin, 30) }.toSet()
         for ((player, c) in e.contributions) {
             if (player !in onlineNearby || !c.eligible || c.actions == 0) continue
-            if (success) {
+            if (success && e.type != ForestryEventType.PHEASANT) {
                 give(player, "obj.forestry_currency", c.takeBark(25 + c.actions * 2))
                 when (e.type) {
                     ForestryEventType.SAPLING -> giveLeaves(player)
                     ForestryEventType.ENT -> {
                         giveLeaves(player)
-                        if (c.entlings.isNotEmpty() &&
-                            Random.nextInt(5) < e.entPrunes.count { it.isNotEmpty() })
-                            give(player, ordinaryBirdNest(Random.nextInt(3)), 1)
+                        val pruned = e.entPrunes.indices.count {
+                            e.entPrunes[it].containsAll(ForestryRules.entOptions[e.entStyles[it]])
+                        }
+                        if (Random.nextInt(5) < pruned)
+                            objects.add(ordinaryBirdNest(Random.nextInt(3)), player.coords, 300, player, 1)
                     }
                     ForestryEventType.HIVE -> if (c.hives.size >= e.phase && Random.nextInt(3) != 0)
                         giveNamed(player, "Sturdy beehive parts")
                     ForestryEventType.FOX -> if (Random.nextInt(30) == 0) giveNamed(player, "Fox whistle")
                     ForestryEventType.RITUAL -> if (Random.nextInt(30) == 0) giveNamed(player, "Petal garland")
-                    ForestryEventType.PHEASANT -> if (Random.nextBoolean()) giveNamed(player, "Pheasant tail feathers")
                     else -> Unit
                 }
             }
-            if (success) {
+            if (success && e.type != ForestryEventType.PHEASANT) {
                 // Bonus is proportional to completed actions and the visible Woodcutting level.
-                val bonus = (player.woodcuttingLvl + 1) * c.actions.coerceAtMost(15) * 0.6
-                player.statAdvance("stat.woodcutting", bonus)
+                val bonus = if (e.type == ForestryEventType.RITUAL)
+                    ForestryRules.ritualBonus(player.woodcuttingLvl, c.actions)
+                    else (player.woodcuttingLvl + 1) * c.actions.coerceAtMost(15) * 0.6
+                player.statAdvance("stat.woodcutting", bonus * xpMods.get(player, "stat.woodcutting"))
             }
             player.mes(if (success) "The " + e.type.title + " event has ended."
                 else "The " + e.type.title + " event was unsuccessful.")
         }
-        // Cancel live entities for objectives completed before their original lifetime.
-        if (clock.cycle < e.finish) discard(e)
-        // Otherwise the repository's normal duration lifecycle has already removed them.
+        discard(e)
     }
 
     private fun giveLeaves(player: Player) {
@@ -524,6 +662,8 @@ class ForestryEventManager @Inject constructor(
 
     private fun contribution(e: Event, player: Player): ForestryContribution =
         e.contributions.getOrPut(player) {
+            if (e.type == ForestryEventType.SAPLING) ForestrySupplies.remove(player, ForestryAssets.mulch)
+            if (e.type == ForestryEventType.PHEASANT) ForestrySupplies.remove(player, listOf(ForestryAssets.EGG))
             val eligible = player in e.eligibleAtStart && player !in e.excluded
             if (!eligible) player.mes("You were not chopping nearby when this event began, so full rewards are unavailable.")
             ForestryContribution(eligible)
@@ -531,7 +671,7 @@ class ForestryEventManager @Inject constructor(
 
     private fun ProtectedAccess.reward(c: ForestryContribution, xp: Double, skill: String = "stat.woodcutting") {
         c.actions++
-        statAdvance(skill, if (c.eligible) xp else 1.0)
+        statAdvance(skill, (if (c.eligible) xp else 1.0) * xpMods.get(player, skill))
         give(player, "obj.forestry_currency", c.takeBark(2 + player.woodcuttingLvl / 25))
     }
 
@@ -541,54 +681,50 @@ class ForestryEventManager @Inject constructor(
         } ?: return
         val role = e.locs.entries.first { it.key.coords == target.coords && it.key.id == target.id }.value
         val c = contribution(e, player)
+        if (role.startsWith("root:") && e.type == ForestryEventType.ROOTS) {
+            chopRoot(e, c, role)
+            return
+        }
         if (!c.ready(clock.cycle)) return
         when {
-            role.startsWith("root:") && e.type == ForestryEventType.ROOTS -> {
-                if (Woodcutting.findAxeForSpecialResource(player) == null) {
-                    mes("You need an axe to chop down the roots.")
-                    return
-                }
-                val elapsed = clock.cycle - e.start
-                val infused = elapsed >= 30 && (elapsed - 30) % 20 < 5 &&
-                    role.substringAfter(":").toInt() == e.infusedRoot
-                reward(c, (if (infused) 42 else 15) + player.woodcuttingLvl * 1.5)
-                if (infused) give(player, "obj.forestry_currency", c.takeBark(8))
-                mes(if (infused) "You cut an anima-infused root." else "You cut a tree root.")
-            }
             role.startsWith("ingredient:") && e.type == ForestryEventType.SAPLING -> {
-                if (c.ingredients.size == 3) {
+                if (c.ingredients.size == 3 &&
+                    ForestrySupplies.has(player, ForestryAssets.mulch.last())) {
                     mes("Add the mulch to the sapling before gathering more ingredients.")
                 } else {
-                    c.ingredients.add(role.substringAfter(":").toInt())
-                    mes("You gather an ingredient for your mulch (" + c.ingredients.size + "/3).")
+                    if (ForestrySupplies.gather(player, c, role.substringAfter(":").toInt()))
+                        mes("You gather an ingredient for your mulch (" + c.ingredients.size + "/3).")
+                    else mes("You need a free inventory slot to collect mulch.")
                 }
             }
             role == "sapling" && e.type == ForestryEventType.SAPLING -> {
-                if (c.ingredients.size != 3) {
+                if (c.ingredients.size != 3 || !ForestrySupplies.has(player, ForestryAssets.mulch.last())) {
                     mes("You need to gather three ingredients for mulch.")
                 } else {
                     val nutrition = ForestryRules.mulchNutrition(e.recipe, c.ingredients)
                     e.growth += nutrition
+                    ForestrySupplies.remove(player, ForestryAssets.mulch)
                     c.ingredients.clear()
                     reward(c, nutrition * (1 + player.woodcuttingLvl / 30.0))
                     statAdvance("stat.farming", if (c.eligible) nutrition.toDouble() else 1.0)
                     mes("Your mulch has " + nutrition + "% nutritional value.")
-                    if (e.growth >= 400) e.completed = true
+                    if (e.growth >= 400) {
+                        replaceLoc(e, "sapling", ForestryAssets.THRIVING_SAPLING)
+                        e.completed = true
+                    }
                 }
             }
-            role == "hive" && e.type == ForestryEventType.HIVE -> {
-                buildHive(e, c)
-            }
-            role.startsWith("circle:") && e.type == ForestryEventType.RITUAL -> {
-                selectCircle(e, c, role)
-            }
             role.startsWith("nest:") && e.type == ForestryEventType.PHEASANT -> {
-                if (c.egg) {
+                val nest = role.substringAfter(":").toInt()
+                if (ForestrySupplies.has(player, ForestryAssets.EGG)) {
                     mes("You can only carry one pheasant egg at a time.")
-                } else if (role.substringAfter(":").toInt() == e.guardedNest) {
+                } else if (nest != e.emptyNest) {
                     mes("A pheasant guards this nest! Try a different nest.")
+                    player.delay(3)
+                } else if (!ForestrySupplies.takeEgg(player)) {
+                    mes("You need a free inventory slot to take an egg.")
                 } else {
-                    c.egg = true
+                    c.eggNest = nest
                     c.nextAction = clock.cycle + 2
                     c.lastRound = clock.cycle
                     if (c.eligible && Random.nextInt(ForestryRules.goldenEggDenominator(player.woodcuttingLvl)) == 0)
@@ -597,6 +733,27 @@ class ForestryEventManager @Inject constructor(
                 }
             }
         }
+    }
+
+    private fun ProtectedAccess.chopRoot(e: Event, c: ForestryContribution, role: String) {
+        val root = e.locs.entries.firstOrNull { it.value == role }?.key ?: return
+        if (clock.cycle >= e.finish || e.completed) return
+        val axe = Woodcutting.findAxeForSpecialResource(player)
+        if (axe == null) {
+            mes("You need an axe to chop down the roots.")
+            resetAnim()
+            return
+        }
+        if (c.ready(clock.cycle)) {
+            anim(WoodcuttingAxes.animation(getInvObj(axe).internalName) ?: RSCM.getReverseMapping(
+                RSCMType.SEQ, WoodcuttingAxes.effectiveType(axe).axeWoodcuttingAnim.id))
+            val infused = root.id == ForestryAssets.loc(ForestryAssets.INFUSED_ROOT)?.id
+            reward(c, (if (infused) 42 else 15) + player.woodcuttingLvl * 1.5)
+            if (infused) give(player, "obj.forestry_currency", c.takeBark(8))
+            mes(if (infused) "You cut an anima-infused root." else "You cut a tree root.")
+        }
+        val type = ServerCacheManager.getObject(root.id) ?: return
+        opLoc1(BoundLocInfo(root, type))
     }
 
     private fun ProtectedAccess.buildHive(e: Event, c: ForestryContribution) {
@@ -621,16 +778,6 @@ class ForestryEventManager @Inject constructor(
                 }
     }
 
-    private fun ProtectedAccess.selectCircle(e: Event, c: ForestryContribution, role: String) {
-                val number = role.substringAfter(":").toInt()
-                if (c.lastRound == e.phase) return
-                c.lastRound = e.phase
-                if (number == e.circleAnswer) {
-                    reward(c, 18.0 + player.woodcuttingLvl * 1.2)
-                    mes("You correctly identify the unique ritual circle.")
-                } else mes("That circle is not the unique shape and colour.")
-    }
-
     fun ProtectedAccess.interactNpc(target: Npc, option: Int) {
         val e = active.firstOrNull { target in it.npcs } ?: return
         val role = e.npcs[target] ?: return
@@ -638,28 +785,30 @@ class ForestryEventManager @Inject constructor(
         if (!c.ready(clock.cycle)) return
         when {
             role == "hive" && e.type == ForestryEventType.HIVE -> buildHive(e, c)
-            role.startsWith("circle:") && e.type == ForestryEventType.RITUAL -> selectCircle(e, c, role)
             role.startsWith("ent:") && e.type == ForestryEventType.ENT -> {
                 val i = role.substringAfter(":").toInt()
-                val requests = listOf(setOf(2), setOf(1, 3), setOf(2, 3), setOf(1))
-                val wanted = requests[e.entStyles[i]]
-                mes("This entling needs pruning " +
-                    when (e.entStyles[i]) {
-                        0 -> "on its left."
-                        1 -> "on both sides."
-                        2 -> "on its right and back."
-                        else -> "at the back."
-                    })
-                if (option !in wanted) {
+                val wanted = ForestryRules.entOptions[e.entStyles[i]]
+                target.say(ForestryRules.entRequests[e.entStyles[i]])
+                if (option == 1) {
+                    mes("Choose Prune-top, Prune-back or Prune-sides to match the entling's request.")
+                } else if (option !in wanted) {
                     mes("The entling does not like that haircut.")
+                    player.delay(3)
                 } else if (e.entPrunes[i].add(option)) {
                     reward(c, 10.0 + player.woodcuttingLvl)
                     statAdvance("stat.fletching", if (c.eligible) 9.0 else 1.0)
                     if (e.entPrunes[i].containsAll(wanted)) {
                         c.entlings.add(i)
+                        ForestryAssets.npc(ForestryAssets.PRUNED_ENTLING)?.let {
+                            target.transmog(it, (e.finish - clock.cycle).coerceAtLeast(1))
+                        }
+                        target.abortRoute()
+                        target.say("That's perfect!")
                         mes("The entling is happy with its haircut.")
                     }
-                    if (e.entPrunes.indices.all { e.entPrunes[it].containsAll(requests[e.entStyles[it]]) })
+                    if (e.entPrunes.indices.all {
+                        e.entPrunes[it].containsAll(ForestryRules.entOptions[e.entStyles[it]])
+                    })
                         e.completed = true
                 } else mes("You have already pruned that part.")
             }
@@ -706,14 +855,13 @@ class ForestryEventManager @Inject constructor(
                 mes("You disarm the fox trap.")
             }
             role == "forester" && e.type == ForestryEventType.PHEASANT -> {
-                if (!c.egg) mes("Bring me an egg from an unguarded pheasant nest.")
-                else if (clock.cycle - c.lastRound > 16) {
-                    c.egg = false
-                    mes("The pheasant caught you with its egg!")
-                } else {
-                    c.egg = false
+                if (c.eggNest < 0 || !ForestrySupplies.deliverEgg(player))
+                    mes("Bring me an egg from an unguarded pheasant nest.")
+                else {
+                    c.eggNest = -1
                     reward(c, 14.0 + player.woodcuttingLvl)
                     statAdvance("stat.thieving", if (c.eligible) 20.0 else 1.0)
+                    if (c.eligible) giveNamed(player, "Pheasant tail feathers")
                     mes("You deliver the pheasant egg.")
                 }
             }
@@ -727,23 +875,29 @@ class ForestryEventManager @Inject constructor(
     }
 
     /** Event interaction hooks are installed only for real cache-backed definitions. */
-    fun eventLocNames(): List<String> {
-        val labels = listOf("Tree roots", "Struggling sapling", "Droppings", "Green leaves",
-            "Rotting leaves", "Splintered bark", "Wild mushrooms",
-            "Unfinished beehive", "Ritual circle", "Pheasant nest")
-        return labels.mapNotNull { locType(it)?.internalName }.distinct()
+    fun eventLocNames(): List<String> = ForestryAssets.locNames.mapNotNull {
+        ForestryAssets.loc(it)?.internalName
     }
-    fun eventNpcNames(): List<String> {
-        val labels = listOf("Entling", "Flowering bush", "Woodcutting Leprechaun", "Bee keeper",
-            "Frightened Fox", "Poacher", "Fox trap", "Dryad", "Freaky Forester", "Pheasant",
-            "Ritual circle")
-        val specials = ServerCacheManager.getNpcs().values.filter {
-            normalized(it.name).startsWith("flowering bush") ||
-                it.internalName.startsWith("npc.gathering_event_enchanted_ritual_") ||
-                normalized(it.name).startsWith("ritual circle") ||
-                normalized(it.name) == "unfinished beehive"
-        }.map { it.internalName }
-        return (labels.mapNotNull { npcType(it)?.internalName } + specials).distinct()
+    fun eventNpcNames(): List<String> = ForestryAssets.npcNames.mapNotNull {
+        ForestryAssets.npc(it)?.internalName
+    }
+
+    fun onLogout(player: Player) {
+        ForestrySupplies.remove(player, ForestryAssets.mulch + ForestryAssets.EGG)
+        for (e in active) {
+            e.contributions.remove(player)
+            e.excluded.add(player)
+        }
+    }
+
+    fun shutdown() {
+        for (e in active) {
+            for (player in e.contributions.keys)
+                ForestrySupplies.remove(player, ForestryAssets.mulch + ForestryAssets.EGG)
+            discard(e)
+        }
+        active.clear()
+        scheduled.clear()
     }
 }
 
@@ -752,6 +906,7 @@ class ForestryEventScript @Inject constructor(
 ) : PluginScript() {
     override fun ScriptContext.startup() {
         onEvent<GameLifecycle.LateCycle> { events.tick() }
+        onEvent<SessionStateEvent.Logout> { events.onLogout(player) }
         onCommand("forestry") {
             desc = "Spawn a Forestry event for developer testing"
             invalidArgs = "Usage: ::forestry ROOTS|SAPLING|ENT|FLOWERS|LEPRECHAUN|HIVE|FOX|RITUAL|PHEASANT"
@@ -761,8 +916,7 @@ class ForestryEventScript @Inject constructor(
                 }
                 when {
                     type == null -> player.mes("Usage: ::forestry ROOTS|SAPLING|ENT|FLOWERS|LEPRECHAUN|HIVE|FOX|RITUAL|PHEASANT")
-                    events.debugSpawn(player, type) -> player.mes("Spawned " + type.title + ".")
-                    else -> player.mes("An event is already nearby or this cache lacks the required Forestry assets.")
+                    else -> player.mes(events.debugSpawn(player, type) ?: "Spawned " + type.title + ".")
                 }
             }
         }
@@ -773,6 +927,12 @@ class ForestryEventScript @Inject constructor(
             onOpNpc1(npc) { with(events) { interactNpc(it.npc, 1) } }
             onOpNpc2(npc) { with(events) { interactNpc(it.npc, 2) } }
             onOpNpc3(npc) { with(events) { interactNpc(it.npc, 3) } }
+            onOpNpc4(npc) { with(events) { interactNpc(it.npc, 4) } }
+            onOpNpc5(npc) { with(events) { interactNpc(it.npc, 5) } }
         }
+    }
+
+    override fun ScriptContext.shutdown() {
+        events.shutdown()
     }
 }

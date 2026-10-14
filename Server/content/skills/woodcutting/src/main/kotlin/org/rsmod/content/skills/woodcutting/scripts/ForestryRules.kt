@@ -45,7 +45,7 @@ internal class ForestryContribution(val eligible: Boolean) {
     var lastRound = -1
     var pollen = -1
     val ingredients = mutableListOf<Int>()
-    var egg = false
+    var eggNest = -1
     val hives = mutableSetOf<Int>()
     val entlings = mutableSetOf<Int>()
     var completed = false
@@ -64,6 +64,12 @@ internal class ForestryContribution(val eligible: Boolean) {
 }
 
 internal object ForestryRules {
+    val entRequests = listOf("Short on top!", "A leafy mullet!",
+        "Short back and sides!", "Breezy at the back!")
+    val entOptions = listOf(setOf(3), setOf(3, 5), setOf(4, 5), setOf(4))
+    fun infusedPhase(elapsed: Int): Int = if (elapsed < 30) -1 else (elapsed - 30) / 18
+    fun ritualXp(level: Int): Double = 2.0 * level + 60
+    fun ritualBonus(level: Int, steps: Int): Double = 2.0 * steps * level + 55
     // Jagex does not publish the final tree-specific spawn odds. These are SoloScape tuning.
     fun spawnPercent(level: Int, choppers: Int): Int =
         ((10 + level / 3) * (1.0 + (choppers.coerceIn(1, 10) - 1) / 9.0)).toInt().coerceAtMost(90)
