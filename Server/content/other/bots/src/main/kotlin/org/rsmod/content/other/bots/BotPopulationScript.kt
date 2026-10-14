@@ -31,7 +31,8 @@ class BotPopulationScript @Inject constructor(
                 val message = player.publicMessage ?: continue
                 if (heard.put(player, message) !== message && message.clanType == null) {
                     if (!population.hearPlayerTeamReply(player, message.text, clock.cycle)) {
-                        social.hear(player, message.text, population.players(), clock.cycle)
+                        social.hear(player, message.text,
+                            population.players().filterNot(population::isPvpBot), clock.cycle)
                     }
                 }
             }
