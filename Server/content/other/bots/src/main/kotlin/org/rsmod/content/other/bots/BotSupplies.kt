@@ -362,8 +362,8 @@ class BotSupplies @Inject constructor(
     internal fun equipOutfit(player: Player, task: BotTaskDefinition): Boolean {
         val bank = player.invMap.getOrPut("inv.bank")
         val style = outfitStyles.getOrPut(player) {
-            // Stable during the session but varied from player to player.
-            random.nextInt(12)
+            // The bot ID survives simulated logouts, so its wardrobe preference does too.
+            Random(player.userId.toInt()).nextInt(12)
         }
         val outfit = BotSkillingLoadouts.outfit(task, levels(player), style).map {
             resolve(it) ?: return false
