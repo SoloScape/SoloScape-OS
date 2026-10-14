@@ -112,6 +112,7 @@ class ForestryEventManager @Inject constructor(
         val choices = ForestryEventType.entries.toList()
         val selected = choices[Random.nextInt(choices.size)]
         scheduled[tree] = TreeRoll(tree, selected, type.treeLevelReq, cycle + Random.nextInt(67, 201), cycle)
+        if (fallen) attemptSpawn(tree)
     }
 
     private fun canSpawnAt(type: ObjectServerType, tree: CoordGrid): Boolean {
@@ -158,7 +159,6 @@ class ForestryEventManager @Inject constructor(
         prepare(event)
         if (event.locs.isEmpty() && event.npcs.isEmpty()) return
         active.add(event)
-        cooldowns[origin] = clock.cycle + Random.nextInt(67, 201)
         nearby.forEach { it.mes("A Forestry event has appeared: " + event.type.title + "!") }
     }
 
@@ -276,9 +276,8 @@ class ForestryEventManager @Inject constructor(
         }
         val variants = ServerCacheManager.getNpcs().values
             .filter {
-                (it.internalName.startsWith("npc.gathering_event_enchanted_ritual_") ||
-                    normalized(it.name).startsWith("ritual circle")) &&
-                    it.internalName.lastOrNull()?.isDigit() == true
+                it.internalName.startsWith("npc.gathering_event_enchanted_ritual_") ||
+                    normalized(it.name).startsWith("ritual circle")
             }
             .sortedBy { it.id }.distinctBy { it.id }
         for (i in e.circles.indices) {
@@ -324,6 +323,7 @@ class ForestryEventManager @Inject constructor(
     }
 
     private fun finish(e: Event) {
+        cooldowns[e.origin] = clock.cycle + Random.nextInt(67, 201)
         val success = when (e.type) {
             ForestryEventType.SAPLING -> e.growth >= 400
             ForestryEventType.FOX -> e.foxHits < 3
