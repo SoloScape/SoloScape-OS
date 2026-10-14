@@ -12,6 +12,7 @@ import org.rsmod.game.MapClock
 import org.rsmod.game.entity.NpcList
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.player.PublicMessage
+import org.rsmod.game.entity.player.SessionStateEvent
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -22,11 +23,16 @@ class BotPopulationScript @Inject constructor(
     private val clock: MapClock,
     private val registry: org.rsmod.api.registry.player.PlayerRegistry,
     private val npcs: NpcList,
+    private val highscores: BotHighscores,
 ) : PluginScript() {
     private val heard = IdentityHashMap<Player, PublicMessage>()
 
     override fun ScriptContext.startup() {
-        onEvent<GameLifecycle.Startup> { population.startup() }
+        onEvent<GameLifecycle.Startup> {
+            highscores.start()
+            population.startup()
+            highscores.capture(registry.playerList.filterNotNull(), population::isBot)
+        }
         onEvent<GameLifecycle.StartCycle> { population.tick(clock.cycle) }
         // A blocked NPC hit (0 damage) is still an attack: flee before a lethal hit.
         onEvent<PlayerHitEvents.Impact> {
@@ -35,6 +41,11 @@ class BotPopulationScript @Inject constructor(
             }
         }
         onEvent<GameLifecycle.LateCycle> {
+            // Refresh online player and bot XP every ~30 seconds, without reading mutable
+            // Player state from an HTTP worker thread.
+            if (clock.cycle % 50 == 0) {
+                highscores.capture(registry.playerList.filterNotNull(), population::isBot)
+            }
             for (player in registry.playerList) {
                 if (population.isBot(player)) continue
                 val message = player.publicMessage ?: continue
@@ -47,7 +58,16 @@ class BotPopulationScript @Inject constructor(
             }
             heard.keys.removeIf { !it.isSlotAssigned }
         }
-        onEvent<GameLifecycle.Shutdown> { population.removeAll() }
+        onEvent<SessionStateEvent.Delete> {
+            // Registry.Del fires while stat data still exists. Bots may already have been
+            // removed from the population map, so preserve their known worldbot_ identity.
+            highscores.departing(player, population.isBot(player) ||
+                player.username.startsWith("worldbot_"))
+        }
+        onEvent<GameLifecycle.Shutdown> {
+            population.removeAll()
+            highscores.stop()
+        }
         onCommand("botinfo") {
             desc = "Show bot population and activity"
             requiredRights = Rights.ADMINISTRATOR
@@ -93,5 +113,8 @@ class BotPopulationScript @Inject constructor(
         }
     }
 
-    override fun ScriptContext.shutdown() { population.removeAll() }
+    override fun ScriptContext.shutdown() {
+        population.removeAll()
+        highscores.stop()
+    }
 }
