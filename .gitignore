@@ -1,6 +1,7 @@
 /.build-tools/
 /build.log
 /tools/__pycache__/
+**/.gradle/
 
 # Leftover compiler/package outputs from the removed Maven build.
 /Client/**/target/
