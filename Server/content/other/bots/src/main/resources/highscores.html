@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#111a20">
+<title>SoloScape | Highscores</title>
+<style>
+:root{color-scheme:dark;--bg:#10171c;--surface:#192329;--light:#233139;--line:#334148;--text:#f3f0e8;--muted:#a2b5b6;--gold:#e7ba6a;--accent:#69b9a3}
+*{box-sizing:border-box}body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:radial-gradient(circle at 50% -230px,#31483e,transparent 600px),var(--bg);color:var(--text);margin:0;min-height:100vh}
+header,main,footer{max-width:1120px;margin:auto;padding:0 22px}
+header{padding-top:40px;padding-bottom:24px}.eyebrow{text-transform:uppercase;letter-spacing:.22em;color:var(--accent);font-size:11px;font-weight:800}
+h1{font-family:Georgia,serif;letter-spacing:.015em;color:var(--gold);font-weight:600;font-size:clamp(36px,6vw,58px);margin:5px 0}
+.lead{color:var(--muted);margin:3px 0 0;line-height:1.6}.stats{display:flex;gap:24px;flex-wrap:wrap;margin:30px 0 0}
+.stat strong{display:block;font-size:23px;font-variant-numeric:tabular-nums}.stat small{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:13px;overflow:hidden;box-shadow:0 16px 35px #0003}
+.controls{padding:18px;display:grid;grid-template-columns:minmax(180px,2fr) minmax(135px,1fr) minmax(150px,1fr);gap:12px;border-bottom:1px solid var(--line)}
+label{font-size:12px;font-weight:700;color:var(--muted);display:block;margin-bottom:7px}
+input,select{background:#111b21;border:1px solid #45605d;color:var(--text);border-radius:7px;padding:11px 12px;font:inherit;width:100%;min-height:44px}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:620px}th,td{text-align:left;padding:15px 18px;border-bottom:1px solid #2c393e}th{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:750}
+td{font-variant-numeric:tabular-nums}tbody tr:hover{background:#213036}
+.rank{color:var(--gold);font-weight:750;width:75px}.username{font-weight:750;cursor:pointer;border:0;background:transparent;color:var(--text);padding:0;font:inherit;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:4px}
+.username:hover,.username:focus{text-decoration-color:var(--gold)}
+.tag{display:inline-block;color:#87ceb9;border:1px solid #4b8170;padding:2px 7px;border-radius:20px;font-size:10px;letter-spacing:.04em;margin-left:9px;font-weight:750}
+.offline{color:#94a6aa;border-color:#56686a}.type{color:var(--muted);font-size:13px}.number{text-align:right}.gold{color:var(--gold)}
+.pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 18px;color:var(--muted);font-size:13px}
+button.nav{padding:8px 16px;background:#263c3b;border:1px solid #45615c;border-radius:7px;color:var(--text);cursor:pointer}button.nav:disabled{opacity:.35;cursor:default}
+.empty{padding:36px;text-align:center;color:var(--muted)}
+#profile{margin-top:24px;padding:24px}#profile[hidden]{display:none}
+.profileHead{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap}
+h2{font-family:Georgia,serif;font-size:29px;font-weight:500;color:var(--gold);margin:0 0 8px}
+.skillsGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-top:24px}
+.skill{background:#111b21;border:1px solid #2e4648;border-radius:8px;padding:12px}
+.skill strong{display:block}.skill .meta{color:var(--muted);font-size:12px;margin-top:5px}
+.bar{height:3px;background:#2a3b3a;margin-top:12px;border-radius:8px;overflow:hidden}.bar span{display:block;background:var(--gold);height:100%}
+a{color:var(--accent)}footer{padding-top:25px;padding-bottom:40px;color:var(--muted);font-size:12px;line-height:1.7}
+@media(max-width:720px){header{padding-top:26px}.controls{grid-template-columns:1fr}.stats{gap:20px}.stats .stat{min-width:90px}.pagination{font-size:12px}th,td{padding:12px}.skillsGrid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}}
+</style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">SoloScape • Hall of Fame</div>
+  <h1>Highscores</h1>
+  <p class="lead">Real adventurers and simulated world characters, ranked side by side.<br>Choose a skill, search by name or explore a player's full stats.</p>
+  <div class="stats">
+    <div class="stat"><strong id="total">—</strong><small>Characters ranked</small></div>
+    <div class="stat"><strong id="players">—</strong><small>Real players</small></div>
+    <div class="stat"><strong id="bots">—</strong><small>World bots</small></div>
+    <div class="stat"><strong id="online">—</strong><small>Online now</small></div>
+  </div>
+</header>
+<main>
+  <section class="panel" aria-label="Highscores rankings">
+    <div class="controls">
+      <div><label for="search">Find an adventurer</label><input id="search" type="search" placeholder="Search player or bot name" autocomplete="off"></div>
+      <div><label for="skill">Leaderboard</label><select id="skill"><option value="overall">Overall</option></select></div>
+      <div><label for="type">Character type</label><select id="type"><option value="all">All characters</option><option value="players">Real players</option><option value="bots">Bots</option></select></div>
+    </div>
+    <div class="scroll"><table><thead><tr><th>Rank</th><th>Adventurer</th><th>Type</th><th class="number">Level</th><th class="number">XP</th></tr></thead><tbody id="rows"></tbody></table></div>
+    <div id="empty" class="empty" hidden>No characters match your filters.</div>
+    <div class="pagination"><span id="pageInfo">Loading highscores…</span><div><button class="nav" id="prev" type="button">Previous</button> <button class="nav" id="next" type="button">Next</button></div></div>
+  </section>
+  <section id="profile" class="panel" hidden aria-label="Character profile">
+    <div class="profileHead"><div><div class="eyebrow" id="profileType"></div><h2 id="profileName"></h2><p class="lead" id="profileStats"></p></div><button type="button" class="nav" id="closeProfile">Close profile</button></div>
+    <div class="skillsGrid" id="skillCards"></div>
+  </section>
+</main>
+<footer><p id="updated">Waiting for server…</p><p>Online statuses and progress refresh roughly every 30 seconds. Offline characters appear after their first recorded login. Bots are identified as simulated characters.</p><p>JSON feed: <a href="/highscores.json">highscores.json</a></p></footer>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+let data={entries:[],skills:[]},page=0,selectedId=null;
+const pageSize=25;
+const fmt=n=>Number(n||0).toLocaleString("en-GB");
+const title=s=>s.replace(/(^|\s)\S/g,m=>m.toUpperCase());
+function order(rows,skill){
+  return rows.slice().sort((a,b)=>{
+    const ap=skill==="overall"?a.totalXp:(a.skills?.[skill]?.xp||0);
+    const bp=skill==="overall"?b.totalXp:(b.skills?.[skill]?.xp||0);
+    const al=skill==="overall"?a.totalLevel:(a.skills?.[skill]?.level||1);
+    const bl=skill==="overall"?b.totalLevel:(b.skills?.[skill]?.level||1);
+    return bp-ap||bl-al||a.name.localeCompare(b.name)||a.id.localeCompare(b.id);
+  });
+}
+function draw(){
+ const skill=$("skill").value,kind=$("type").value,search=$("search").value.toLowerCase().trim();
+ const ranking=order(data.entries,skill);
+ const rankById=new Map(ranking.map((e,i)=>[e.id,i+1]));
+ const filtered=ranking.filter(e=>(kind==="all"||(kind==="bots"?e.bot:!e.bot))&&e.name.toLowerCase().includes(search));
+ page=Math.min(page,Math.max(0,Math.ceil(filtered.length/pageSize)-1));
+ const rows=$("rows");rows.replaceChildren();
+ for(const e of filtered.slice(page*pageSize,(page+1)*pageSize)){
+   const tr=document.createElement("tr");
+   function cell(text,cls){const td=document.createElement("td");td.textContent=text;if(cls)td.className=cls;tr.append(td);return td}
+   cell("#"+rankById.get(e.id),"rank");
+   const name=cell("");const link=document.createElement("button");link.type="button";link.className="username";link.textContent=e.name;link.addEventListener("click",()=>openProfile(e.id));name.append(link);
+   if(e.online){const tag=document.createElement("span");tag.className="tag";tag.textContent="ONLINE";name.append(tag)}
+   cell(e.bot?"World bot":"Player","type");
+   cell(fmt(skill==="overall"?e.totalLevel:e.skills?.[skill]?.level),"number gold");
+   cell(fmt(skill==="overall"?e.totalXp:e.skills?.[skill]?.xp),"number");
+   rows.append(tr);
+ }
+ $("empty").hidden=filtered.length>0;
+ $("pageInfo").textContent=filtered.length?("Showing "+(page*pageSize+1)+"–"+Math.min(filtered.length,(page+1)*pageSize)+" of "+filtered.length+" · Global ranks"):"No matching characters";
+ $("prev").disabled=page<=0;
+ $("next").disabled=(page+1)*pageSize>=filtered.length;
+ if(selectedId)openProfile(selectedId,false);
+}
+function openProfile(id,scroll=true){
+ const e=data.entries.find(row=>row.id===id);
+ if(!e){$("profile").hidden=true;selectedId=null;return}
+ selectedId=id;
+ $("profile").hidden=false;
+ $("profileName").textContent=e.name;
+ $("profileType").textContent=e.bot?"World bot":"Real player";
+ $("profileStats").textContent="Total level "+fmt(e.totalLevel)+" · "+fmt(e.totalXp)+" XP · "+(e.online?"Online":"Offline");
+ const cards=$("skillCards");cards.replaceChildren();
+ for(const skill of data.skills){
+   const stat=e.skills?.[skill]||{level:1,xp:0};
+   const card=document.createElement("div");card.className="skill";
+   const label=document.createElement("strong");label.textContent=title(skill)+" · "+fmt(stat.level);
+   const meta=document.createElement("div");meta.className="meta";meta.textContent=fmt(stat.xp)+" XP";
+   const bar=document.createElement("div");bar.className="bar";const fill=document.createElement("span");
+   fill.style.width=Math.min(100,(stat.level/99)*100)+"%";bar.append(fill);card.append(label,meta,bar);cards.append(card);
+ }
+ if(scroll)$("profile").scrollIntoView({behavior:"smooth",block:"start"});
+}
+$("search").addEventListener("input",()=>{page=0;draw()});
+$("skill").addEventListener("change",()=>{page=0;draw()});
+$("type").addEventListener("change",()=>{page=0;draw()});
+$("prev").addEventListener("click",()=>{page=Math.max(0,page-1);draw()});
+$("next").addEventListener("click",()=>{page++;draw()});
+$("closeProfile").addEventListener("click",()=>{selectedId=null;$("profile").hidden=true});
+async function refresh(){
+ try{
+  const response=await fetch("/highscores.json",{cache:"no-store"});
+  if(!response.ok)throw Error("HTTP "+response.status);
+  const latest=await response.json();
+  if(!Array.isArray(latest.entries)||!Array.isArray(latest.skills))throw Error("Invalid data");
+  const prevSkill=$("skill").value;data=latest;
+  const select=$("skill");select.replaceChildren();
+  for(const name of ["overall",...data.skills]){
+   const option=document.createElement("option");option.value=name;option.textContent=title(name);select.append(option);
+  }
+  select.value=["overall",...data.skills].includes(prevSkill)?prevSkill:"overall";
+  $("total").textContent=fmt(data.entries.length);
+  $("players").textContent=fmt(data.entries.filter(e=>!e.bot).length);
+  $("bots").textContent=fmt(data.entries.filter(e=>e.bot).length);
+  $("online").textContent=fmt(data.entries.filter(e=>e.online).length);
+  $("updated").textContent="Last refreshed: "+(latest.updatedAt?new Date(latest.updatedAt).toLocaleString():"not available");
+  draw();
+ }catch(error){$("updated").textContent="Could not refresh highscores: "+error.message+". Displaying last known results.";}
+}
+refresh();setInterval(refresh,30000);
+</script>
+</body>
+</html>
