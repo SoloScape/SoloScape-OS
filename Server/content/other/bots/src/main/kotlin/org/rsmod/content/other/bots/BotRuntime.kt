@@ -761,7 +761,8 @@ class BotPopulation @Inject constructor(
             if (count > 0 && graves.grave(player) != null &&
                 player.inv.indices.none { player.inv[it] == null }) {
                 bot.graveBankTrip = true
-                bot.phase = BotPhase.GraveBanking
+                // Build a fresh route from the grave to the bank on the next tick.
+                bot.phase = BotPhase.RecoveringGrave
                 bot.status = "grave partly claimed; banking to make space"
                 return true
             }
@@ -776,7 +777,8 @@ class BotPopulation @Inject constructor(
             }
             if (player.inv.indices.none { player.inv[it] == null }) {
                 bot.graveBankTrip = true
-                bot.phase = BotPhase.GraveBanking
+                // Build a fresh route from the grave to the bank on the next tick.
+                bot.phase = BotPhase.RecoveringGrave
                 bot.status = "banking items before reclaiming the rest"
             } else {
                 bot.status = "grave inaccessible; waiting for next attempt"
