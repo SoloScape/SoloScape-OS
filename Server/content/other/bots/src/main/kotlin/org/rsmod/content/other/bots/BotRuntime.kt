@@ -610,7 +610,14 @@ class BotPopulation @Inject constructor(
      */
     private fun flee(bot: WorldBot, cycle: Int): Boolean {
         val player = bot.player
-        if (player.hitpoints <= 0) return true
+        if (player.hitpoints <= 0) {
+            // Native death handling continues; a revived bot must not inherit a stale flee.
+            bot.fleeLastHit = -1
+            bot.fleeing = false
+            bot.fleeThreats.clear()
+            bot.fleeTarget = null
+            return false
+        }
         if (!bot.fleeing) {
             bot.fleeing = true
             bot.pauseUntil = 0
@@ -684,8 +691,9 @@ class BotPopulation @Inject constructor(
                 spawn(mode, minOf(2, target - living))
             } else if (target > 3) {
                 val retiring = bots.values.firstOrNull { bot ->
-                    bot.mode == mode && cycle >= bot.sessionEndAt &&
-                        bot.player.hitpoints > 0 && !bot.player.isDelayed &&
+                    bot.mode == mode && cycle >= bot.sessionEndAt && !bot.fleeing &&
+                        bot.player.hitpoints > 0 && !bot.player.isInPvnCombat() &&
+                        !bot.player.isDelayed &&
                         !bot.player.isAccessProtected && bot.player.interaction == null &&
                         bot.player.routeRequest == null
                 }
