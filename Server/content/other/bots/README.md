@@ -49,8 +49,8 @@ Gathering selects reachable resources and checks tree/rock level requirements.
 Woodcutting task names also match the cache's `Oak tree`, `Willow tree`, `Yew tree`
 and other tree-name suffixes, rather than searching only for the bare species.
 Oaks, willows, yews and magic trees allow multiple woodcutters, each reserving a
-separate standing tile. Fishing spots also allow multiple bots, with a separate
-reachable standing tile for each. Net tasks accept the cache's `Small Net` option;
+separate standing tile. All fishing bots can share a spot and its reachable standing
+tiles, without an occupancy limit. Net tasks accept the cache's `Small Net` option;
 rod tasks also match `Rod Fishing spot`. Other resources retain exclusive ownership.
 If the first approach tile is occupied, bots try other reachable tiles accepted by the native
 location interaction strategy. Temporary depletion causes a retry after ten game
@@ -67,7 +67,9 @@ crossings use the native `Pay-toll(10gp)` action, and bots retain a 100-coin tra
 reserve when banking. Blocked walking links can be replanned through road points
 using native collision checks. Repeated movement failures exclude the failed task
 for 1,000 game cycles before another activity is selected. An unavailable route to
-a bank is never treated as arrival. Protected actions with no movement or XP for
+a bank is never treated as arrival. Bank returns and stall recovery use native
+walking/running routes; recovery never teleports a bot to the bank.
+Protected actions with no movement or XP for
 200 cycles (120 seconds) are cancelled once the player is no longer delayed, so
 an unhandled dialogue or modal cannot suppress the bot controller indefinitely.
 
@@ -76,6 +78,7 @@ requirements, native equipment transactions, saved shield removal and mining
 level eligibility, shared-tree species and cache-backed targets for every
 woodcutting task. `BotActionsCheck` covers separate standing tiles, occupied
 approaches, rotated footprints, exhausted capacity and unreachable trees.
+It also checks 300 fishing approaches at an occupied spot and rejects unreachable spots.
 `BotMovementCheck` covers exact gate endpoints, collision-aware detours and the
 protected-action timeout, including movement/XP resets. Fishing names, options
 and the toll-gate operation are also checked against the installed cache.

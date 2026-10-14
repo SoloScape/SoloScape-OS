@@ -33,7 +33,7 @@ object BotActionsCheck {
         check(BotActions.zones(origin, 0).single() == ZoneKey.from(origin))
         for (angle in 0..3) checkSharedApproaches(angle)
         checkSharedFishingApproaches()
-        println("Bot interaction proximity, matching and shared-tree approach checks passed.")
+        println("Bot interaction checks passed: matching, shared trees and unlimited fishing approaches.")
     }
 
     private fun checkSharedFishingApproaches() {
@@ -46,14 +46,21 @@ object BotActionsCheck {
         val occupied = mutableSetOf<CoordGrid>()
         repeat(4) {
             val tile = checkNotNull(BotActions.npcGatheringDestination(routes, source, target, 1, occupied))
-            check(occupied.add(tile)) { "Fishing bots must select separate standing tiles" }
+            check(occupied.add(tile)) { "Exclusive NPC approaches must select separate standing tiles" }
         }
         check(BotActions.npcGatheringDestination(routes, source, target, 1, occupied) == null)
+        repeat(300) {
+            val tile = checkNotNull(BotActions.npcGatheringDestination(
+                routes, source, target, 1, occupied, shared = true))
+            check(tile in occupied) { "Fishing bots must be able to share occupied approaches" }
+        }
         val released = occupied.first()
         occupied.remove(released)
         check(BotActions.npcGatheringDestination(routes, source, target, 1, occupied) == released)
         for (z in 0..47) collision.add(18, z, 0, CollisionFlag.BLOCK_WALK)
         check(BotActions.npcGatheringDestination(routes, source, target, 1, emptySet()) == null)
+        check(BotActions.npcGatheringDestination(
+            routes, source, target, 1, occupied, shared = true) == null)
     }
 
     private fun checkSharedApproaches(angle: Int) {

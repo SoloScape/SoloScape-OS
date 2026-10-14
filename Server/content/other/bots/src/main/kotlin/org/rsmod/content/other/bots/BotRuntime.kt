@@ -447,7 +447,7 @@ class BotPopulation @Inject constructor(
         }
         setTask(bot, next)
         bot.needsPlan = false
-        bot.path = BotRoutes.path(player.coords, next.start)
+        bot.path = BotRoutes.path(player.coords, next.start, actions::canWalk)
         bot.pathOrigin = player.coords
         bot.waypoint = 0
         bot.phase = if (player.coords.level == next.start.level &&
@@ -668,7 +668,7 @@ class BotPopulation @Inject constructor(
 
     private fun walkRoute(bot: WorldBot) {
         val player = bot.player
-        if (bot.path.isEmpty() && bot.phase == BotPhase.Changing) {
+        if (bot.path.isEmpty() && bot.phase in setOf(BotPhase.Changing, BotPhase.Returning)) {
             if (player.coords.level != bot.task.start.level ||
                 player.coords.chebyshevDistance(bot.task.start) > 2) {
                 recover(bot)
@@ -751,14 +751,18 @@ class BotPopulation @Inject constructor(
         actions.release(player)
         player.clearPendingAction(events)
         if (bot.recoveries++ < 2) {
-            val destination = if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
-                actions.spawnPoint(bot.task.start) ?: return
-            } else bot.task.start
-            access.launch(player) { telejump(destination) }
-            bot.phase = BotPhase.Banking
+            bot.path = BotRoutes.path(player.coords, bot.task.start, actions::canWalk)
+            bot.pathOrigin = player.coords
+            bot.phase = BotPhase.Returning
+            bot.needsPlan = true
             bot.waypoint = 0
             bot.stalled = 0
-            bot.status = "recovering at bank"
+            bot.status = if (bot.path.isEmpty() &&
+                (player.coords.level != bot.task.start.level ||
+                    player.coords.chebyshevDistance(bot.task.start) > 2)) {
+                "waiting for a walkable bank route"
+            } else "walking to bank after stall"
+            bot.nextThink = player.currentMapClock + 10
         } else {
             bot.recoveries = 0
             if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive)) {

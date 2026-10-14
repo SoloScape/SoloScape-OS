@@ -163,7 +163,7 @@ constructor(
             val destination = if (exclusive) {
                 npcGatheringDestination(routeFinding, player.coords, npc.coords, npc.size,
                     players.playerList.filter { it !== player }.map { it.coords }.toSet() +
-                        destinations.filterKeys { it !== player }.values)
+                        destinations.filterKeys { it !== player }.values, shared = sharedNpc)
                     ?: run { noApproach++; null } ?: continue
             } else null
             if (reserveResource && !gatheringTargets.claim(player, npc)) continue
@@ -409,6 +409,7 @@ constructor(
             target: CoordGrid,
             size: Int,
             occupied: Set<CoordGrid>,
+            shared: Boolean = false,
         ): CoordGrid? {
             fun approach(from: CoordGrid) = routes.findRoute(
                 level = from.level, srcX = from.x, srcZ = from.z,
@@ -419,12 +420,12 @@ constructor(
             if (route.success) {
                 val preferred = route.lastOrNull()?.let { CoordGrid(it.x, it.z, source.level) }
                     ?: source
-                if (preferred !in occupied) return preferred
+                if (shared || preferred !in occupied) return preferred
             }
             return (-1..size).flatMap { x ->
                 (-1..size).filter { z -> x == -1 || x == size || z == -1 || z == size }
                     .map { z -> target.translate(x, z) }
-            }.filter { it !in occupied }.sortedBy { source.chebyshevDistance(it) }
+            }.filter { shared || it !in occupied }.sortedBy { source.chebyshevDistance(it) }
                 .firstOrNull { candidate ->
                     val adjacent = approach(candidate)
                     adjacent.success && adjacent.isEmpty() && routes.findRoute(
