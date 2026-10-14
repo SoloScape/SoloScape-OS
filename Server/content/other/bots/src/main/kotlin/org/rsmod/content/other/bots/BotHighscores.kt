@@ -60,11 +60,14 @@ internal object HighscoreRanking {
  * Offline rows are retained from previous sessions; we do not publish inventory/account IDs.
  */
 @Singleton
-internal class BotHighscores @Inject constructor() {
+internal class BotHighscores internal constructor(
+    private val output: Path,
+) {
+    @Inject constructor() : this(Path.of(".data", "highscores", "snapshot.json"))
+
     private val logger = InlineLogger()
     private val mapper = ObjectMapper()
     private val entries = LinkedHashMap<String, HighscoreEntry>()
-    private val output = Path.of(".data", "highscores", "snapshot.json")
 
     @Volatile private var published = """{"updatedAt":null,"skills":[],"entries":[]}"""
     private var server: HttpServer? = null
@@ -81,7 +84,6 @@ internal class BotHighscores @Inject constructor() {
     fun start() {
         val enabled = config.getProperty("highscores.enabled", "true").toBoolean()
         if (!enabled || server != null) return
-        load()
         val port = (config.getProperty("highscores.port", "7072").toIntOrNull() ?: 7072)
             .coerceIn(1, 65535)
         startHttp(port)
@@ -89,6 +91,7 @@ internal class BotHighscores @Inject constructor() {
 
     internal fun startHttp(port: Int) {
         if (server != null) return
+        load()
         try {
             // Intentional localhost bind: an operator may reverse-proxy /highscores publicly,
             // without also exposing the private bot-debugging endpoints.
