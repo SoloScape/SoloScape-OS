@@ -73,7 +73,8 @@ Ordinary skilling and progressive bots abandon noncombat activities when an NPC
 lands an attack (even a blocked 0-damage hit), including guards and dark wizards.
 The `PlayerHitEvents.Impact` handler records the real aggressor and interrupts the
 activity before the next skilling decision. The bot releases its resource reservation,
-clears the pending interaction, enables its existing run mode, optionally eats food,
+clears the pending interaction, temporarily disables NPC auto-retaliation (restoring its
+previous setting after escaping), enables its existing run mode, optionally eats food,
 and uses the native routefinder to choose a reachable, unoccupied tile farther from
 the NPC. If several NPCs attack it, the escape chooser considers all recorded attackers.
 It does not teleport, walk through locked gates or ignore freezes or native action delays.
