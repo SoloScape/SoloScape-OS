@@ -67,6 +67,15 @@ constructor(
     private val routeFinding = RouteFinding(collision)
     private val gatheringTargets = BotReservations<Player, Any>()
     private val destinations = WeakHashMap<Player, CoordGrid>()
+    private val selectionTraces = WeakHashMap<Player, String>()
+    var debugEnabled = false
+        set(value) { field = value; if (!value) selectionTraces.clear() }
+
+    fun selectionTrace(player: Player): String? = selectionTraces[player]
+
+    private fun trace(player: Player, message: String) {
+        if (debugEnabled) selectionTraces[player] = message
+    }
 
     fun release(player: Player) {
         gatheringTargets.release(player)
@@ -106,8 +115,12 @@ constructor(
 
     fun walk(player: Player, destination: CoordGrid, spread: Boolean = false) {
         if (busy(player) || player.coords.level != destination.level) return
-        val target = if (spread) freePoint(player.coords, destination, player, 2) ?: return
+        val target = if (spread) freePoint(player.coords, destination, player, 2) ?: run {
+            trace(player, "No free reachable tile near route waypoint $destination")
+            return
+        }
             else destination
+        trace(player, "Walking to ${target.x},${target.z},${target.level}")
         release(player)
         if (spread) destinations[player] = target
         player.clearPendingAction(eventBus)
@@ -125,23 +138,33 @@ constructor(
         eligibleLoc: (ObjectServerType) -> Boolean = { true },
     ): Boolean {
         if (busy(player)) return false
+        var matched = 0
+        var ineligible = 0
+        var reserved = 0
+        var noOption = 0
+        var noApproach = 0
+        fun report(result: String) = trace(player,
+            "$result; targets=${names.joinToString()}; option=$option; radius=$radius; " +
+                "matched=$matched; ineligible=$ineligible; reserved=$reserved; " +
+                "noOption=$noOption; noFreeReachableApproach=$noApproach")
         release(player)
         val npcs = zones(player.coords, radius).flatMap(npcRegistry::findAll)
             .filter { near(player.coords, it.coords, radius) && !it.hidden }
             .filter { named(it.name, names) }
             .sortedBy { player.coords.chebyshevDistance(it.coords) }
         for (npc in npcs) {
-            if (exclusive && !gatheringTargets.available(player, npc)) continue
+            matched++
+            if (exclusive && !gatheringTargets.available(player, npc)) { reserved++; continue }
             val op = InteractionOp.entries.firstOrNull {
                 npc.type.actions.getOpOrNull(it.slot - 1).equals(option, ignoreCase = true)
-            } ?: continue
+            } ?: run { noOption++; null } ?: continue
             val destination = if (exclusive) {
                 freeDestination(player, routeFinding.findRoute(
                     level = player.coords.level, srcX = player.coords.x, srcZ = player.coords.z,
                     destX = npc.coords.x, destZ = npc.coords.z,
                     destWidth = npc.size, destLength = npc.size,
                     locShape = RECTANGLE_EXCLUSIVE_STRATEGY, moveNear = false,
-                )) ?: continue
+                )) ?: run { noApproach++; null } ?: continue
             } else null
             if (exclusive && !gatheringTargets.claim(player, npc)) continue
             if (destination != null) destinations[player] = destination
@@ -154,21 +177,24 @@ constructor(
                 hasApTrigger = npcInteractions.hasApTrigger(player, npc, op),
             )
             player.routeRequest = RouteRequestPathingEntity(npc.avatar, clientRequest = true)
+            report("Selected NPC ${npc.name} at ${npc.coords}")
             return true
         }
         for (loc in locations(player, names, radius)) {
+            matched++
             val key = loc.coords to loc.id
             val type = ServerCacheManager.getObject(loc.id) ?: continue
-            if (!eligibleLoc(type)) continue
+            if (!eligibleLoc(type)) { ineligible++; continue }
             val reserveResource = exclusive && !sharedLoc(type)
-            if (reserveResource && !gatheringTargets.available(player, key)) continue
+            if (reserveResource && !gatheringTargets.available(player, key)) { reserved++; continue }
             val op = InteractionOp.entries.firstOrNull {
                 type.actions.getOpOrNull(it.slot - 1).equals(option, ignoreCase = true)
-            } ?: continue
+            } ?: run { noOption++; null } ?: continue
             val destination = if (exclusive) {
                 gatheringDestination(routeFinding, player.coords, loc, type,
                     players.playerList.filter { it !== player }.map { it.coords }.toSet() +
-                        destinations.filterKeys { it !== player }.values) ?: continue
+                        destinations.filterKeys { it !== player }.values)
+                    ?: run { noApproach++; null } ?: continue
             } else null
             if (reserveResource && !gatheringTargets.claim(player, key)) continue
             if (destination != null) destinations[player] = destination
@@ -185,8 +211,10 @@ constructor(
             if (destination != null) {
                 player.routeRequest = RouteRequestCoord(destination, clientRequest = true)
             } else routeLoc(player, loc, type)
+            report("Selected ${type.name} at ${loc.coords}; standing=$destination")
             return true
         }
+        report("No usable resource")
         return false
     }
 

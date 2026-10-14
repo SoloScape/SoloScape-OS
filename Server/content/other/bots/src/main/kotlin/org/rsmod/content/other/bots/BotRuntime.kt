@@ -61,6 +61,7 @@ private class WorldBot(
     var status = "starting"
     var needsPlan = true
     var resourceWaits = 0
+    var returnReason: String? = null
 }
 
 private class PendingWildernessSquad(
@@ -107,6 +108,16 @@ class BotPopulation @Inject constructor(
         Files.newInputStream(config).use { load(it) }
     }
     private val debugMap = BotDebugMap()
+    private val debugger = BotDebugger()
+
+    fun debug(enabled: Boolean): String {
+        actions.debugEnabled = enabled
+        if (enabled) debugger.start() else debugger.stop()
+        if (!enabled) debugMap.diagnostics("{\"enabled\":false,\"bots\":[]}")
+        val port = configured.getProperty("debug.map.port", "7071")
+        return if (enabled) "Bot debugger enabled: build/bot-debug/snapshot.json; browser http://127.0.0.1:$port/debug"
+            else "Bot debugger stopped; last snapshot retained."
+    }
     val count: Int get() = bots.size + minigames.count
     fun players(): List<Player> = bots.keys.toList()
     fun isBot(player: Player): Boolean = player in bots
@@ -403,6 +414,7 @@ class BotPopulation @Inject constructor(
         bot.stalled = 0
         bot.status = "walking to ${task.id}"
         bot.resourceWaits = 0
+        bot.returnReason = null
     }
 
     private fun chooseTask(bot: WorldBot) {
@@ -470,6 +482,28 @@ class BotPopulation @Inject constructor(
             think(bot, cycle)
         }
         updateDebugMap()
+        updateDiagnostics(cycle)
+    }
+
+    private fun updateDiagnostics(cycle: Int) {
+        if (!debugger.enabled) return
+        val rows = bots.values.map { bot ->
+            val player = bot.player
+            mapOf<String, Any?>("name" to player.displayName, "mode" to bot.mode.name,
+                "task" to bot.task.id, "phase" to bot.phase.name, "status" to bot.status,
+                "position" to "${player.coords.x},${player.coords.z},${player.coords.level}",
+                "waypoint" to bot.waypoint, "waypointCount" to bot.path.size,
+                "target" to bot.path.getOrNull(bot.waypoint)?.toString(),
+                "routeSteps" to player.routeDestination.size,
+                "interaction" to player.interaction?.javaClass?.simpleName,
+                "delayed" to player.isDelayed, "protected" to player.isAccessProtected,
+                "inventoryUsed" to player.inv.objs.count { it != null },
+                "totalXp" to BotSkills.all.sumOf { player.statMap.getFineXP(it).toLong() },
+                "resourceWaits" to bot.resourceWaits, "stallChecks" to bot.stalled,
+                "recoveries" to bot.recoveries, "returnReason" to bot.returnReason,
+                "selection" to actions.selectionTrace(player))
+        }
+        debugger.snapshot(cycle, rows)?.let(debugMap::diagnostics)
     }
 
     private fun eat(player: Player): Boolean {
@@ -565,6 +599,13 @@ class BotPopulation @Inject constructor(
                     (bot.mode == BotMode.Progressive && level >= bot.milestone) ||
                     !supplies.canSupply(player, bot.task)
                 ) {
+                    bot.returnReason = when {
+                        full -> "Inventory full"
+                        bot.resourceWaits >= 10 -> "Ten resource-selection failures"
+                        cycle >= bot.expiresAt -> "Activity timer expired"
+                        bot.mode == BotMode.Progressive && level >= bot.milestone -> "Training milestone reached"
+                        else -> "Required supplies unavailable"
+                    }
                     player.clearPendingAction(events)
                     actions.release(player)
                     bot.path = bot.task.route.asReversed() + bot.task.start
@@ -646,6 +687,7 @@ class BotPopulation @Inject constructor(
 
     private fun recover(bot: WorldBot) {
         val player = bot.player
+        bot.returnReason = "Movement or XP stalled (${bot.stalled} checks)"
         actions.release(player)
         if (bot.recoveries++ < 2) {
             player.clearPendingAction(events)
@@ -677,6 +719,8 @@ class BotPopulation @Inject constructor(
         nextOfferToPlayer.clear()
         minigames.removeAll()
         debugMap.stop()
+        debugger.stop()
+        actions.debugEnabled = false
     }
 
     private fun updateDebugMap() {

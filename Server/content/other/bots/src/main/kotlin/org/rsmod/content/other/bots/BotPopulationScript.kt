@@ -46,6 +46,17 @@ class BotPopulationScript @Inject constructor(
                 population.describe().forEach { player.mes(it) }
             }
         }
+        onCommand("botdebug") {
+            desc = "Export bot diagnostics: ::botdebug on|off"
+            requiredRights = Rights.ADMINISTRATOR
+            cheat {
+                when (args.firstOrNull()?.lowercase()) {
+                    "on" -> player.mes(population.debug(true))
+                    "off" -> player.mes(population.debug(false))
+                    else -> player.mes("Usage: ::botdebug on|off")
+                }
+            }
+        }
         onCommand("bottasks") {
             desc = "List imported bot tasks, optionally filtered by kind"
             requiredRights = Rights.ADMINISTRATOR

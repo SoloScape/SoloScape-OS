@@ -66,6 +66,32 @@ approaches, rotated footprints, exhausted capacity and unreachable trees.
 Confirm harvesting animations, inventory/XP gains and bank
 returns in a live game after restarting the rebuilt server.
 
+## Local bot debugger
+
+After rebuilding and restarting the server, run `::botdebug on` as an administrator.
+Open `http://127.0.0.1:7071/debug` (or your configured `debug.map.port`) to filter
+bots by name, task or failure reason. The existing localhost map must be enabled
+with `debug.map.enabled=true` for the browser page; file export works independently.
+Click a status to inspect its target-selection report and last 16 activity changes.
+Idle seconds measure time without movement or XP; they indicate a possible stall,
+not proof that a harvesting attempt failed.
+
+Every ten game ticks the debugger exports an atomic, readable snapshot to
+`Server/build/bot-debug/snapshot.json`, ignored by Git. Codex can read that file
+directly during play, so no chat text needs to be pasted. It includes task/phase,
+position, route waypoint and steps, pending interaction, delay/protection flags,
+inventory usage, resource retries, stall checks, recoveries and the explicit reason
+for returning to bank. Selection reports count matching candidates rejected for
+level eligibility, reservations, unavailable options or lack of a free reachable
+approach. This distinguishes a missing target from a crowded/blocked approach.
+
+Run `::botdebug off` to stop recording; the last file remains for inspection and its
+timestamp identifies when it was captured. Debugging is off by default and stops
+with the server. File writes run off the game thread using immutable snapshots and
+a single coalesced pending export. Reports include only bot gameplay fields, never
+account credentials or real-player records. `BotDebuggerCheck` verifies history
+bounds, progress/idle tracking, export and read-only localhost HTTP endpoints.
+
 ## Wilderness squads
 
 Wilderness PKers have a 25% chance to start a squad instead of spawning alone. Squad

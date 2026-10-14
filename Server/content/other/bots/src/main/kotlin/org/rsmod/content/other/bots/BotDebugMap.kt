@@ -26,6 +26,10 @@ internal class BotDebugMap {
 
     @Volatile
     private var snapshot: String = "[]"
+    @Volatile
+    private var diagnosticSnapshot = "{\"enabled\":false,\"bots\":[]}"
+
+    fun diagnostics(json: String) { diagnosticSnapshot = json }
 
     private var server: HttpServer? = null
     private var executor: ExecutorService? = null
@@ -44,6 +48,14 @@ internal class BotDebugMap {
                 } else {
                     send(exchange, 200, "application/json", snapshot)
                 }
+            }
+            http.createContext("/diagnostics.json") { exchange ->
+                if (exchange.requestMethod != "GET") send(exchange, 405, "text/plain", "Method not allowed")
+                else send(exchange, 200, "application/json", diagnosticSnapshot)
+            }
+            http.createContext("/debug") { exchange ->
+                if (exchange.requestMethod != "GET") send(exchange, 405, "text/plain", "Method not allowed")
+                else send(exchange, 200, "text/html", DEBUG_PAGE)
             }
             http.createContext("/") { exchange ->
                 if (exchange.requestMethod != "GET") {
@@ -79,6 +91,7 @@ internal class BotDebugMap {
         executor?.shutdownNow()
         executor = null
         snapshot = "[]"
+        diagnosticSnapshot = "{\"enabled\":false,\"bots\":[]}"
     }
 
     private fun send(exchange: HttpExchange, status: Int, contentType: String, body: String) {
@@ -90,6 +103,44 @@ internal class BotDebugMap {
     }
 
     private companion object {
+        val DEBUG_PAGE = """
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>SoloScape Bot Debugger</title><style>
+body{background:#141820;color:#e4eaf1;font:15px system-ui;margin:24px}input{padding:10px;width:320px}
+table{width:100%;border-collapse:collapse;margin-top:20px}td,th{text-align:left;padding:10px;border-bottom:1px solid #394354}
+th{color:#9dbbdf}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-width:850px;font-size:12px}
+.idle{color:#ffc76b}a{color:#9dbbdf}summary{cursor:pointer}
+</style><h1>Bot debugger</h1><p id="status">Loading…</p>
+<input id="filter" aria-label="Filter bots" placeholder="Bot name, task, phase or failure reason">
+<p><a href="/diagnostics.json" download="bot-diagnostics.json">Download snapshot</a> · <a href="/">PvP map</a></p>
+<table><thead><tr><th>Bot</th><th>Task / phase</th><th>Position</th><th>Idle</th><th>What is happening</th></tr></thead><tbody id="rows"></tbody></table>
+<script>
+let snapshot={bots:[]};
+function render(){
+ const filter=document.querySelector('#filter').value.toLowerCase();
+ const rows=document.querySelector('#rows');rows.replaceChildren();
+ const bots=snapshot.bots.filter(b=>JSON.stringify(b).toLowerCase().includes(filter)).sort((a,b)=>b.idleSeconds-a.idleSeconds);
+ for(const bot of bots){
+  const tr=document.createElement('tr');
+  for(const value of [bot.name,bot.task+' / '+bot.phase,bot.position,bot.idleSeconds.toFixed(1)+'s']){
+   const td=document.createElement('td');td.textContent=value;tr.append(td);
+  }
+  if(bot.idleSeconds>=30)tr.className='idle';
+  const td=document.createElement('td'),details=document.createElement('details'),summary=document.createElement('summary'),pre=document.createElement('pre');
+  summary.textContent=bot.returnReason||bot.status;pre.textContent=JSON.stringify(bot,null,2);
+  details.append(summary,pre);td.append(details);tr.append(td);rows.append(tr);
+ }
+}
+document.querySelector('#filter').addEventListener('input',render);
+async function refresh(){try{
+ const response=await fetch('/diagnostics.json',{cache:'no-store'});if(!response.ok)throw Error();snapshot=await response.json();
+ document.querySelector('#status').textContent=snapshot.enabled ? snapshot.bots.length+' bots · captured '+snapshot.capturedAt+' · click a status for target selection and recent history' : 'Run ::botdebug on in game to start recording.';
+ render();
+}catch(e){document.querySelector('#status').textContent='Server unavailable; displaying last snapshot.';}}
+refresh();setInterval(refresh,6000);
+</script></html>
+""".trimIndent()
+
         val PAGE: String = """
 <!doctype html>
 <html>
