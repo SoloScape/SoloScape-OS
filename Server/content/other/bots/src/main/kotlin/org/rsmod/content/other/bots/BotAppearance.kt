@@ -10,7 +10,7 @@ internal object BotAppearance {
         appearance.bodyType = if (female) Appearance.BODY_TYPE_B else Appearance.BODY_TYPE_A
         appearance.pronoun = if (female) Appearance.PRONOUN_SHE else Appearance.PRONOUN_HE
         val styles = if (female) {
-            listOf(45..55, -1..-1, 56..60, 61..66, 67..69, 70..78, 79..81)
+            listOf(45..55, 296..296, 56..60, 61..66, 67..69, 70..78, 79..81)
         } else {
             listOf(0..9, 10..17, 18..25, 26..32, 33..35, 36..41, 42..44)
         }

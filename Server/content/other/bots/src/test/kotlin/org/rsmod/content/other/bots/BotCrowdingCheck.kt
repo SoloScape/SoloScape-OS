@@ -12,7 +12,11 @@ object BotCrowdingCheck {
             check(appearance.coloursSnapshot().map { it.toInt() }.zip(listOf(25, 29, 29, 6, 8))
                 .all { (colour, size) -> colour in 0 until size })
             if (appearance.bodyType == Appearance.BODY_TYPE_B) {
-                check(appearance.identKitSnapshot()[1].toInt() == Appearance.NO_IDENT_KIT)
+                check(appearance.identKitSnapshot()[1].toInt() == 296) {
+                    "Female bots must retain their clean-shaven jaw model"
+                }
+            } else {
+                check(appearance.identKitSnapshot()[1].toInt() in 10..17)
             }
             Triple(appearance.bodyType, appearance.identKitSnapshot(), appearance.coloursSnapshot())
         }
