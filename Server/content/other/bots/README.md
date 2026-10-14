@@ -6,6 +6,41 @@ This is a native Kotlin adaptation, not a JavaScript runtime or a replacement co
 The workflow pins the TSPS PvP loadout and hotspot JSON blobs at that revision before running
 the port checks.
 
+## Player and bot highscores
+
+A standalone, **read-only** highscores page runs on the game server at
+**http://127.0.0.1:7072/highscores**, with a machine-readable feed at
+`http://127.0.0.1:7072/highscores.json`. It starts independently of whether
+world-bot spawning is enabled, and does not expose the existing bot debugger.
+The responsive page offers an overall XP leaderboard, one leaderboard for each
+supported skill, search by character name, a player/bot filter, online indicators,
+and a full per-character skills profile. World bots are explicitly labeled.
+
+The game thread samples all online players and bots roughly every **30 seconds**
+(50 game cycles), so displayed levels and XP follow real training. Logout
+captures the final skill snapshot and marks the character offline. Snapshots are
+saved atomically under `.data/highscores/snapshot.json`, including on shutdown,
+and restored when the server restarts. The saved file contains **only** the
+character's public display name, public username, bot flag, skills, XP, and
+timestamps—never passwords, inventory, account IDs or session credentials.
+Rankings are based on actual XP, and the overall chart sums all supported skills.
+After a restart every restored entry starts offline until seen online again.
+
+To configure in `.data/bots.properties`:
+
+```properties
+highscores.enabled=true
+highscores.port=7072
+```
+
+The page binds to **127.0.0.1** by default. For a public site, reverse-proxy
+`/highscores` and `/highscores.json` from a web server, rather than exposing
+the private `/debug` endpoint. Do not proxy the rest of the bot debugger.
+This initial implementation indexes **characters seen online since the feature
+was enabled**; pre-existing offline accounts will appear after their next login.
+It also includes simulated bots only after they have appeared in the live world.
+No external hosting service or separate website build is required.
+
 ## Configure
 
 World bot population is controlled by `.data/bots.properties` under the server working
