@@ -34,6 +34,11 @@ class BotSupplies @Inject constructor(
 
     private val seeded = Collections.newSetFromMap(WeakHashMap<Player, Boolean>())
     private val outfitStyles = WeakHashMap<Player, Int>()
+
+    /** Identity may be absent on test players; set it explicitly only on world-bot spawn. */
+    fun setOutfitIdentity(player: Player, identity: Int) {
+        outfitStyles[player] = Random(identity * 31 + 14).nextInt(12)
+    }
     private val random = Random.Default
     private val combatLoadouts = listOf(
         CombatLoadout(1, 1, items = listOf(
@@ -361,10 +366,7 @@ class BotSupplies @Inject constructor(
 
     internal fun equipOutfit(player: Player, task: BotTaskDefinition): Boolean {
         val bank = player.invMap.getOrPut("inv.bank")
-        val style = outfitStyles.getOrPut(player) {
-            // The bot ID survives simulated logouts, so its wardrobe preference does too.
-            Random(player.userId.toInt()).nextInt(12)
-        }
+        val style = outfitStyles.getOrPut(player) { random.nextInt(12) }
         val outfit = BotSkillingLoadouts.outfit(task, levels(player), style).map {
             resolve(it) ?: return false
         }
