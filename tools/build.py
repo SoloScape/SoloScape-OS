@@ -12,6 +12,8 @@ import time
 import urllib.request
 import zipfile
 
+import incremental
+
 ROOT = Path(__file__).resolve().parents[1]
 KOTLIN_VERSION = "2.2.10"
 
@@ -289,7 +291,7 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
 
     try:
         state = json.loads(manifest_file.read_text(encoding="utf-8"))
-        if not isinstance(state, dict) or state.get("version") != 2:
+        if not isinstance(state, dict) or state.get("version") != 3:
             state = {}
     except (OSError, ValueError):
         state = {}
@@ -306,6 +308,17 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
     library_hashes = {file.name: hash_file(file) for file in libraries}
     compiler_hashes = {file.name: hash_file(file) for file in sorted(compiler_lib.glob("*.jar"))}
     source_hashes = {file: hash_file(file) for file in sources}
+    source_keys = {file.relative_to(project).as_posix(): source_hashes[file]
+                   for file in sources}
+    old_source_hashes = state.get("source_hashes", {})
+    old_scaffolds = state.get("source_scaffolds", {})
+    source_scaffolds = {}
+    for file in sources:
+        key = file.relative_to(project).as_posix()
+        if old_source_hashes.get(key) == source_keys[key] and key in old_scaffolds:
+            source_scaffolds[key] = old_scaffolds[key]
+        else:
+            source_scaffolds[key] = incremental.source_scaffold(file)
     backend_threads = 1 if project_name == "Server" else 0
     compiler_flags = [project_name, "jvm21", "nested-type-aliases", "contracts",
                       f"backend-threads={backend_threads}",
@@ -318,6 +331,8 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
         "flags": compiler_flags,
         "libraries": library_hashes,
     }
+
+    common_key = fingerprint(common_inputs)
 
     # Cache each project's closed dependency layer separately from frequently edited code.
     # Server content and the application entry layer depend on engine/API/cache/services,
@@ -437,13 +452,53 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
         reuse_file(runtime / app_name, app_jar)
         progress.update(0.75, "Reusing compiled app code")
     else:
-        extra_classpath = (core_jar,) if core_jar is not None else ()
-        compile_sources(app_sources, app_jar, project_name, "compiler.args",
-                        extra_classpath=extra_classpath,
-                        friend_path=core_jar,
-                        label=f"Compiling app layer ({len(app_sources)} files)"
-                              if core_jar is not None else f"Compiling {len(app_sources)} files")
-        progress.update(0.75, "Compilation complete")
+        reused_changes = False
+        old_app_jar = runtime / app_name
+        old_keys = state.get("source_hashes", {})
+        old_scaffolds = state.get("source_scaffolds", {})
+        changed_app_sources = [file for file in app_sources
+                               if old_keys.get(file.relative_to(project).as_posix())
+                               != source_hashes[file]]
+        # Restrict the fast path to one implementation-only change; dependencies,
+        # declarations, deleted classes, and ambiguous cases rebuild the layer.
+        if (not rebuild and state.get("common_key") == common_key
+                and state.get("core_code_key") == core_code_key
+                and set(old_keys) == set(source_keys)
+                and len(changed_app_sources) == 1
+                and valid_artifact(app_name)
+                and all(old_scaffolds.get(file.relative_to(project).as_posix()) is not None
+                        and old_scaffolds[file.relative_to(project).as_posix()]
+                        == source_scaffolds[file.relative_to(project).as_posix()]
+                        for file in changed_app_sources)
+                and incremental.can_patch(old_app_jar, changed_app_sources, app_sources)):
+            delta_jar = output / "incremental-app.jar"
+            if delta_jar.exists():
+                delta_jar.unlink()
+            try:
+                extra_classpath = ([core_jar] if core_jar is not None else []) + [old_app_jar]
+                friend_paths = os.pathsep.join(str(path) for path in extra_classpath)
+                compile_sources(changed_app_sources, delta_jar, project_name,
+                                "compiler-incremental.args",
+                                extra_classpath=extra_classpath,
+                                friend_path=friend_paths,
+                                label="Compiling 1 changed Kotlin source")
+                reused_changes = incremental.overlay_implementation(
+                    old_app_jar, delta_jar, app_jar, changed_app_sources, app_sources)
+                if reused_changes:
+                    progress.update(0.75, "Reused unchanged Kotlin classes")
+            except RuntimeError:
+                # Retry with the complete layer if partial resolution fails.
+                pass
+            finally:
+                delta_jar.unlink(missing_ok=True)
+        if not reused_changes:
+            extra_classpath = (core_jar,) if core_jar is not None else ()
+            compile_sources(app_sources, app_jar, project_name, "compiler.args",
+                            extra_classpath=extra_classpath,
+                            friend_path=core_jar,
+                            label=f"Compiling app layer ({len(app_sources)} files)"
+                                  if core_jar is not None else f"Compiling {len(app_sources)} files")
+            progress.update(0.75, "Compilation complete")
     if project_name == "Server":
         validate_server_runtime(core_jar or app_jar)
 
@@ -472,7 +527,9 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
         progress.update(0.85 + 0.10 * (index + 1) / len(resource_inputs), "Packaging resources")
 
     new_artifacts = {file.name: file_hash(file) for file in stage.iterdir()}
-    new_state = {"version": 2, "code_key": code_key, "core_code_key": core_code_key,
+    new_state = {"version": 3, "code_key": code_key, "core_code_key": core_code_key,
+                 "common_key": common_key, "source_hashes": source_keys,
+                 "source_scaffolds": source_scaffolds,
                  "resource_keys": resource_keys, "artifacts": new_artifacts}
     progress.update(0.95, "Publishing build")
     previous = output / f"previous-{time.time_ns()}"
