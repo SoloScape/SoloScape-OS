@@ -225,7 +225,11 @@ class BotPopulation @Inject constructor(
                 .coerceIn(0, MAX_BOTS)
             desiredPopulation[mode] = count
             // Keep PvP squads and trader/event controllers at their configured startup sizes.
-            val stagger = humanPopulationEnabled && mode in setOf(BotMode.Skilling, BotMode.Progressive)
+            // Existing worldbot_N saves assume the original per-mode spawn order. Opt in to
+            // staggered startup only after migrating those IDs; runtime logins stay staggered.
+            val stagger = humanPopulationEnabled &&
+                configured.getProperty("human.population.stagger-startup", "false").toBoolean() &&
+                mode in setOf(BotMode.Skilling, BotMode.Progressive)
             spawn(mode, if (stagger) minOf(count, 3) else count)
         }
         updateDebugMap()
@@ -449,6 +453,9 @@ class BotPopulation @Inject constructor(
     private fun setTask(bot: WorldBot, task: BotTaskDefinition) {
         actions.release(bot.player)
         bot.task = task
+        if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive, BotMode.Combat)) {
+            task.skill?.let { social.configureActivity(bot.player, "stat.$it") }
+        }
         bot.path = task.route
         bot.pathOrigin = task.start
         bot.waypoint = 0
