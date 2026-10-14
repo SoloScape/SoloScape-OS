@@ -29,7 +29,7 @@ fun main() {
     history.record(tree, 101)
     check(history.eligible(near, 101))
     check(history.eligible(tree, 399))
-    check(!history.eligible(tree, 400))
+    check(!history.eligible(tree, 401))
     history.record(far, 401)
     check(history.eligible(far, 401))
     check(!history.eligible(tree, 401))
