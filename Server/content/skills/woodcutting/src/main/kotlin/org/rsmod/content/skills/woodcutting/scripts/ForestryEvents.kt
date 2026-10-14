@@ -343,8 +343,10 @@ class ForestryEventManager @Inject constructor(
             ForestryEventType.FOX -> e.foxHits < 3
             else -> true
         }
+        val onlineNearby = players.findAll(ZoneKey.from(e.origin), zoneRadius = 4)
+            .filter { forestryNear(it.coords, e.origin, 30) }.toSet()
         for ((player, c) in e.contributions) {
-            if (!c.eligible || c.actions == 0) continue
+            if (player !in onlineNearby || !c.eligible || c.actions == 0) continue
             if (success) {
                 give(player, "obj.forestry_currency", c.takeBark(25 + c.actions * 2))
                 when (e.type) {
@@ -464,8 +466,8 @@ class ForestryEventManager @Inject constructor(
                 }
             }
             role == "rainbow" && e.type == ForestryEventType.LEPRECHAUN -> {
-                if (player.coords != target.coords) {
-                    mes("Stand in the rainbow to collect its blessing.")
+                if (!forestryNear(player.coords, target.coords, 1)) {
+                    mes("Stand near the rainbow to collect its blessing.")
                 } else reward(c, 10.0 + player.woodcuttingLvl * 1.5)
             }
             role == "hive" && e.type == ForestryEventType.HIVE -> {
