@@ -7,6 +7,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Properties
 import kotlin.random.Random
+import org.rsmod.api.death.PlayerGravestones
 import org.rsmod.api.net.rsprot.BotSessions
 import org.rsmod.api.player.isInPvnCombat
 import org.rsmod.api.player.output.mes
@@ -40,7 +41,7 @@ enum class BotMode {
     }
 }
 
-private enum class BotPhase { Outbound, Working, Returning, Banking, Changing }
+private enum class BotPhase { Outbound, Working, Returning, Banking, Changing, RecoveringGrave }
 
 private class WorldBot(
     val player: Player,
@@ -105,6 +106,7 @@ class BotPopulation @Inject constructor(
     private val access: ProtectedAccessLauncher,
     private val events: EventBus,
     private val pvpCombat: BotPvpCombat,
+    private val graves: PlayerGravestones,
 ) {
     private val logger = InlineLogger()
     private val bots = LinkedHashMap<Player, WorldBot>()
@@ -558,6 +560,11 @@ class BotPopulation @Inject constructor(
             // Emergency escape outranks skilling actions, pause timers, protection delays,
             // menus and normal task decisions. Never resume working in active NPC combat.
             if (bot.fleeLastHit >= 0 && flee(bot, cycle)) continue
+
+            // Normal PvM graves belong to players, and bots use the same ownership rules.
+            // Handle this before normal work, banking, idle pauses and task interactions.
+            if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive) &&
+                player.hitpoints > 0 && recoverGrave(bot, cycle)) continue
             if (cycle < bot.nextThink) continue
             bot.nextThink = cycle + 3
             if (player.hitpoints <= 0) {
@@ -688,6 +695,72 @@ class BotPopulation @Inject constructor(
         return true
     }
 
+    /**
+     * A returning skiller walks back to their own grave using regular routefinding, reclaims
+     * as much as fits, then enters the existing NPC flee state. No death teleports or item
+     * duplication through seed(). Safe area/PvP deaths do not create recoverable graves.
+     */
+    private fun recoverGrave(bot: WorldBot, cycle: Int): Boolean {
+        val player = bot.player
+        val grave = graves.grave(player)
+        if (grave == null) {
+            if (bot.phase == BotPhase.RecoveringGrave) {
+                bot.phase = BotPhase.Banking
+                bot.needsPlan = true
+                chooseTask(bot)
+            }
+            return false
+        }
+        if (grave.office) {
+            val count = graves.reclaim(player, fromOffice = true)
+            if (count > 0) {
+                bot.status = "retrieved $count items from Death's Office"
+                bot.blockedTasks[bot.task.id] = cycle + BotFleePlanner.RETREAT_COOLDOWN
+            }
+            if (bot.phase == BotPhase.RecoveringGrave) {
+                bot.phase = BotPhase.Banking
+                bot.needsPlan = true
+                chooseTask(bot)
+            }
+            return count > 0
+        }
+        if (player.coords.level == grave.coords.level &&
+            player.coords.chebyshevDistance(grave.coords) <= 3) {
+            val count = graves.reclaim(player)
+            if (count > 0) {
+                bot.status = "recovered $count items; fleeing from grave"
+                bot.blockedTasks[bot.task.id] = cycle + BotFleePlanner.RETREAT_COOLDOWN
+                bot.fleeThreats.clear()
+                bot.fleeThreats.add(grave.coords)
+                bot.fleeLastHit = cycle
+                bot.phase = BotPhase.Banking
+                return true
+            }
+            bot.status = "grave full/inaccessible; waiting for Death's Office recovery"
+            bot.nextThink = cycle + 25
+            return true
+        }
+        if (bot.phase != BotPhase.RecoveringGrave) {
+            bot.phase = BotPhase.RecoveringGrave
+            bot.pathOrigin = player.coords
+            bot.path = BotRoutes.path(player.coords, grave.coords, actions::canWalk)
+            bot.waypoint = 0
+            bot.stalled = 0
+            bot.status = "walking back to gravestone"
+            bot.nextThink = cycle
+        }
+        if (cycle < bot.nextThink) return true
+        bot.nextThink = cycle + 3
+        if (player.isDelayed || player.isAccessProtected) return true
+        if (bot.path.isEmpty()) {
+            bot.status = "waiting for route to own gravestone"
+            bot.nextThink = cycle + 50
+            return true
+        }
+        walkRoute(bot)
+        return true
+    }
+
     /** Stagger arrivals and retire one settled character at a time. No PvP squad churn. */
     private fun reconcilePopulation(cycle: Int) {
         if (!humanPopulationEnabled || cycle < nextPopulationSweep) return
@@ -781,6 +854,7 @@ class BotPopulation @Inject constructor(
                 "fleeing" to bot.fleeing, "fleeLastHit" to bot.fleeLastHit,
                 "fleeThreats" to bot.fleeThreats.map { "${it.x},${it.z}" },
                 "fleeTarget" to bot.fleeTarget?.toString(),
+                "gravestone" to graves.grave(player)?.coords?.toString(),
                 "fleeFailedOrders" to bot.fleeFailedOrders,
                 "selection" to actions.selectionTrace(player))
         }
@@ -850,6 +924,7 @@ class BotPopulation @Inject constructor(
         val player = bot.player
         when (bot.phase) {
             BotPhase.Changing, BotPhase.Outbound, BotPhase.Returning -> walkRoute(bot)
+            BotPhase.RecoveringGrave -> Unit
             BotPhase.Banking -> {
                 val keep = supplies.requirements(bot.task, BotSkills.levels(player) +
                     ("members" to if (player.members) 1 else 0)).keys
@@ -991,6 +1066,7 @@ class BotPopulation @Inject constructor(
                 bot.pathOrigin = bot.task.start
                 bot.waypoint = 0
             }
+            BotPhase.RecoveringGrave -> bot.status = "arriving at gravestone"
             else -> bot.phase = BotPhase.Working
         }
     }
