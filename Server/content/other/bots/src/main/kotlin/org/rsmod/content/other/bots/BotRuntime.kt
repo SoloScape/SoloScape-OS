@@ -939,6 +939,8 @@ class BotPopulation @Inject constructor(
                 "fleeThreats" to bot.fleeThreats.map { "${it.x},${it.z}" },
                 "fleeTarget" to bot.fleeTarget?.toString(),
                 "gravestone" to graves.grave(player)?.coords?.toString(),
+                "graveRouteWaitCycles" to if (bot.graveRouteFailureAt < 0) 0 else
+                    cycle - bot.graveRouteFailureAt,
                 "fleeFailedOrders" to bot.fleeFailedOrders,
                 "selection" to actions.selectionTrace(player))
         }
