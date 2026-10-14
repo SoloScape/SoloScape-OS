@@ -17,6 +17,7 @@ import org.rsmod.api.repo.loc.LocRepository
 import org.rsmod.api.repo.npc.NpcRepository
 import org.rsmod.api.repo.obj.ObjRepository
 import org.rsmod.api.repo.player.PlayerRepository
+import org.rsmod.api.script.onCommand
 import org.rsmod.api.script.onEvent
 import org.rsmod.api.script.onOpLoc1
 import org.rsmod.api.script.onOpNpc1
@@ -160,6 +161,19 @@ class ForestryEventManager @Inject constructor(
         if (event.locs.isEmpty() && event.npcs.isEmpty()) return
         active.add(event)
         nearby.forEach { it.mes("A Forestry event has appeared: " + event.type.title + "!") }
+    }
+
+    /**
+     * Developer-only event entry point, used by the ::forestry command in live-client tests.
+     * Does not affect normal spawn chances or allow overlapping events.
+     */
+    fun debugSpawn(player: Player, type: ForestryEventType): Boolean {
+        if (active.any { forestryNear(it.origin, player.coords, 30) }) return false
+        val event = Event(type, player.coords, clock.cycle, clock.cycle + type.ticks, setOf(player))
+        prepare(event)
+        if (event.locs.isEmpty() && event.npcs.isEmpty()) return false
+        active.add(event)
+        return true
     }
 
     private fun prepare(e: Event) {
@@ -620,6 +634,20 @@ class ForestryEventScript @Inject constructor(
 ) : PluginScript() {
     override fun ScriptContext.startup() {
         onEvent<GameLifecycle.LateCycle> { events.tick() }
+        onCommand("forestry") {
+            desc = "Spawn a Forestry event for developer testing"
+            invalidArgs = "Usage: ::forestry ROOTS|SAPLING|ENT|FLOWERS|LEPRECHAUN|HIVE|FOX|RITUAL|PHEASANT"
+            cheat {
+                val type = ForestryEventType.entries.firstOrNull {
+                    it.name.equals(args.firstOrNull(), ignoreCase = true)
+                }
+                when {
+                    type == null -> player.mes("Usage: ::forestry ROOTS|SAPLING|ENT|FLOWERS|LEPRECHAUN|HIVE|FOX|RITUAL|PHEASANT")
+                    events.debugSpawn(player, type) -> player.mes("Spawned " + type.title + ".")
+                    else -> player.mes("An event is already nearby or this cache lacks the required Forestry assets.")
+                }
+            }
+        }
         for (loc in events.eventLocNames()) {
             onOpLoc1(loc) { with(events) { interactLoc(it.loc) } }
         }
