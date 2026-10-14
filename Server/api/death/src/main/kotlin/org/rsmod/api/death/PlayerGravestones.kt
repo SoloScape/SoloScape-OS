@@ -9,6 +9,7 @@ import jakarta.inject.Singleton
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 import java.util.Properties
 import org.rsmod.api.repo.loc.LocRepository
 import org.rsmod.game.entity.Player
@@ -110,8 +111,14 @@ public class PlayerGravestones @Inject constructor(
             if (grave.remaining <= 0) {
                 grave.office = true
                 removeMarker(grave.coords)
-                persist(grave)
-            } else if (ticks % 100 == 0) persist(grave)
+                runCatching { persist(grave) }.onFailure { error ->
+                    logger.error(error) { "Could not save expired grave for ${grave.owner}" }
+                }
+            } else if (ticks % 100 == 0) {
+                runCatching { persist(grave) }.onFailure { error ->
+                    logger.error(error) { "Could not checkpoint grave for ${grave.owner}" }
+                }
+            }
         }
     }
 
@@ -146,7 +153,11 @@ public class PlayerGravestones @Inject constructor(
 
     public fun shutdown() {
         if (!loaded) return
-        for (grave in records.values) persist(grave)
+        for (grave in records.values) {
+            runCatching { persist(grave) }.onFailure { error ->
+                logger.error(error) { "Could not save grave for ${grave.owner} on shutdown" }
+            }
+        }
     }
 
     private fun spawnMarker(coords: CoordGrid) {
@@ -165,8 +176,12 @@ public class PlayerGravestones @Inject constructor(
     }
 
     private fun path(owner: String): Path {
-        require(owner.matches(Regex("[a-z0-9_]+")))
-        return directory.resolve("$owner.properties")
+        // Player usernames need not be valid filesystem names. Hash instead of rejecting
+        // names or permitting user-controlled paths to escape the grave directory.
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(owner.toByteArray(Charsets.UTF_8))
+            .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+        return directory.resolve("$digest.properties")
     }
 
     private fun persist(grave: Grave) {
