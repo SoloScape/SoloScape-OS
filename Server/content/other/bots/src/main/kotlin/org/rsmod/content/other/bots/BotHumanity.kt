@@ -72,7 +72,8 @@ internal object BotHumanity {
                 else if (task.kind == current?.kind) 1.6 else 1.0
             val home = if (task.id.contains(personality.preferredArea, true)) 1.6 else 1.0
             val repeat = if (task.id == current?.id) (1.2 + personality.patience / 60.0) else 1.0
-            val company = if (task.id == friend?.id) 2.0 else 1.0
+            // Friends deliberately pick the same spots often, but never override eligibility.
+            val company = if (task.id == friend?.id) 4.0 else 1.0
             val exploration = if (task.id != current?.id) 0.75 + personality.curiosity / 150.0 else 1.0
             task.weight.toDouble() * preference * home * repeat * company * exploration /
                 (1.0 + (occupancy[task.id] ?: 0).coerceAtLeast(0))
