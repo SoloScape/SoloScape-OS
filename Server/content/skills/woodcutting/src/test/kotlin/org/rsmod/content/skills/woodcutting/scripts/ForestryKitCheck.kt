@@ -30,6 +30,9 @@ fun main() {
         ScriptContext(events, CheatCommandMap(), EngineQueueCache()).startup()
     }
     val items = ForestryKitRations.STORED_ITEMS
+    check(items.values.containsAll(listOf(
+        "obj.forestry_currency", "obj.nature_offerings", "obj.forestry_secateurs_attachment",
+    )))
     val nativeList = ServerCacheManager.getEnum(817)!!
     for ((index, item) in items) {
         check(nativeList.values[index + 1] == item.asRSCM(RSCMType.OBJ))
@@ -73,5 +76,5 @@ fun main() {
     check(!ForestryKitRations.withdrawItem(full, "obj.leaves", 5))
     check(full.inv.count("obj.leaves") == 10)
     check(storage.count("obj.leaves") == 20)
-    println("PASS: kit Fill, all six leaf types and rations, native list indices, carried/worn kits, stack merging, withdrawals and rejected transfers.")
+    println("PASS: kit Fill, bark, offerings, secateurs attachment, all six leaf types and rations, native list indices, carried/worn kits, stack merging, withdrawals and rejected transfers.")
 }

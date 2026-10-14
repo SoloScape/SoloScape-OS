@@ -76,7 +76,7 @@ class ForestryKitRations @Inject constructor(private val eventBus: EventBus) : P
 
     private fun ProtectedAccess.fill() {
         when (fillKit(player)) {
-            0 -> mes("You have no leaves or forester's rations to store.")
+            0 -> mes("You have no Forestry items to store.")
             -1 -> mes("Your kit cannot store these items right now.")
             else -> mes("You store your Forestry items in the kit.")
         }
@@ -117,7 +117,10 @@ class ForestryKitRations @Inject constructor(private val eventBus: EventBus) : P
         private const val WITHDRAW_X = "component.forestry_kit_main:x"
         private const val WITHDRAW_ALL = "component.forestry_kit_main:all"
         internal val STORED_ITEMS = mapOf(
+            0 to "obj.forestry_currency",
+            1 to "obj.nature_offerings",
             2 to ForestryRations.RATION,
+            3 to "obj.forestry_secateurs_attachment",
             4 to "obj.leaves",
             5 to "obj.leaves_oak",
             6 to "obj.leaves_willow",

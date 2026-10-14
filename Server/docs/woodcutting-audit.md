@@ -67,9 +67,10 @@ The item's Open action now opens the existing native Forestry kit main (823)
 and side (822) interfaces instead of presenting a ration withdrawal dialogue.
 On interface open, the server transmits the persistent kit inventory (814) so
 the client can draw its stored quantities; this transmission is stopped on close.
-Fill and Empty transfer forester's rations and all six leaf types (ordinary,
-oak, willow, maple, yew and magic). Leaves can also be deposited by using them
-on the kit or clicking them in the side inventory. The native 1, 5, X, and All
+Fill and Empty transfer anima-infused bark, nature offerings, secateurs
+attachments, forester's rations and all six leaf types (ordinary, oak, willow,
+maple, yew and magic). These items can also be deposited by using them on the
+kit or clicking them in the side inventory. The native 1, 5, X, and All
 controls withdraw the selected supported entry in the kit list. The X button
 alone prompts for a quantity. Unrelated items are rejected.
 Other Forestry item categories shown by the native interface still require
