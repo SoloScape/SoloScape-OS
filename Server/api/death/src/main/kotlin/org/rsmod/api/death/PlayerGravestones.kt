@@ -122,6 +122,29 @@ public class PlayerGravestones @Inject constructor(
         }
     }
 
+    /**
+     * Recovery-of-last-resort for simulated players that have repeatedly failed to find any
+     * walkable route to their grave. Preserve the items and owner, but move the claim to Death's
+     * Office instead of leaving an unreachable grave and an idle bot forever. Only the owner
+     * can trigger it; callers should first try routing for several minutes.
+     *
+     * Persist the new record before publishing the change to prevent item loss if disk IO fails.
+     */
+    public fun moveUnreachableGraveToOffice(player: Player): Boolean {
+        val grave = grave(player) ?: return false
+        if (grave.office) return true
+        val updated = grave.copy(office = true)
+        try {
+            persist(updated)
+        } catch (error: Exception) {
+            logger.error(error) { "Could not secure unreachable grave for ${grave.owner}" }
+            return false
+        }
+        records[grave.owner] = updated
+        removeMarker(grave.coords)
+        return true
+    }
+
     /** Returns claimed count, 0 if too far away, no room, or another player's grave. */
     public fun reclaim(
         player: Player,
