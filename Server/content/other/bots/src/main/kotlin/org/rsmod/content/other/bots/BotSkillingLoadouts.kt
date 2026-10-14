@@ -1,5 +1,7 @@
 package org.rsmod.content.other.bots
 
+import org.rsmod.content.skills.woodcutting.scripts.ForestryRations
+
 /** Ordinary, uncharged tools: no quest, charge or special-tool prerequisites. */
 internal object BotSkillingLoadouts {
     private data class Tier(val metal: String, val skill: Int, val attack: Int)
@@ -65,11 +67,13 @@ internal object BotSkillingLoadouts {
                 listOf("obj.brown_apron", "obj.leather_chaps", "obj.leather_boots")
         }
         val cape = when {
+            // This back-slot kit is the forester's backpack: every woodcutter wears one,
+            // including F2P characters and level-99 woodcutters who own a skillcape.
+            task.kind == BotTaskKind.Woodcutting -> ForestryRations.KIT
             members && level >= 99 && task.skill != null -> "obj.skillcape_${task.skill}"
             task.kind in setOf(BotTaskKind.Fishing, BotTaskKind.Cooking,
                 BotTaskKind.Smelting, BotTaskKind.Smithing) -> null
             variant in setOf(0, 3, 7) -> when (task.kind) {
-                BotTaskKind.Woodcutting -> "obj.green_cape"
                 BotTaskKind.Runecrafting -> "obj.blue_cape"
                 else -> "obj.black_cape"
             }
