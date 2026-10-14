@@ -79,6 +79,7 @@ private class WorldBot(
     var fleeTarget: CoordGrid? = null
     var fleeLastOrder = 0
     var fleeFailedOrders = 0
+    var previousAutoRetaliate = 0
     val protectedTimeout = BotProgressTimeout()
     val blockedTasks = mutableMapOf<String, Int>()
 }
@@ -612,6 +613,8 @@ class BotPopulation @Inject constructor(
         val player = bot.player
         if (player.hitpoints <= 0) {
             // Native death handling continues; a revived bot must not inherit a stale flee.
+            if (bot.fleeing) VarPlayerIntMapSetter.set(player,
+                "varp.option_nodef", bot.previousAutoRetaliate)
             bot.fleeLastHit = -1
             bot.fleeing = false
             bot.fleeThreats.clear()
@@ -621,6 +624,9 @@ class BotPopulation @Inject constructor(
         if (!bot.fleeing) {
             bot.fleeing = true
             bot.pauseUntil = 0
+            bot.previousAutoRetaliate = player.vars["varp.option_nodef"]
+            VarPlayerIntMapSetter.set(player, "varp.option_nodef", 1)
+            player.clearQueue("queue.com_retaliate_npc")
             player.clearPendingAction(events)
             actions.release(player)
             bot.fleeLastOrder = cycle - 20
@@ -637,6 +643,8 @@ class BotPopulation @Inject constructor(
         ) {
             bot.blockedTasks[bot.task.id] = cycle + BotFleePlanner.RETREAT_COOLDOWN
             bot.returnReason = "Escaped NPC attack near ${bot.task.id}"
+            VarPlayerIntMapSetter.set(player, "varp.option_nodef",
+                bot.previousAutoRetaliate)
             bot.fleeLastHit = -1
             bot.fleeing = false
             bot.fleeThreats.clear()
