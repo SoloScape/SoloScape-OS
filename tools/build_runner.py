@@ -11,7 +11,7 @@ import build as build_impl
 ROOT = Path(__file__).resolve().parents[1]
 LOG_FILE = ROOT / "build.log"
 TIMINGS_FILE = ROOT / ".build-tools" / "build-progress.json"
-COMPILE_RE = re.compile(r"^Compiling(?: client core| server core| app layer)? \(?([0-9]+) files\)?$")
+COMPILE_RE = re.compile(r"^Compiling(?: client core| server core| app layer)? \(?([0-9]+) files\)?$|^Compiling ([0-9]+) changed Kotlin sources?$")
 COMPILER_COMPAT_FLAGS = (
     "-Xannotation-default-target=param-property",
     "-Xconsistent-data-class-copy-visibility",
@@ -164,7 +164,7 @@ class FriendlyProgress(build_impl.Progress):
     def update(self, fraction, label):
         match = COMPILE_RE.match(label)
         if fraction <= 0.15 and match:
-            fraction, display_label = self._estimated_compile_progress(label, int(match.group(1)))
+            fraction, display_label = self._estimated_compile_progress(label, int(match.group(1) or match.group(2)))
         else:
             if self.compile_started is not None:
                 self._record_compile_timing()
