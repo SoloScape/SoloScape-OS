@@ -5,6 +5,7 @@ import jakarta.inject.Singleton
 import org.rsmod.api.config.refs.params
 import org.rsmod.api.market.MarketPrices
 import org.rsmod.api.player.SupplyItems
+import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.hook.GroundItemDropContext
 import org.rsmod.api.player.hook.GroundItemDropResolver
 import org.rsmod.api.player.hook.GroundItemDropSource
@@ -24,6 +25,7 @@ constructor(
     private val objRepo: ObjRepository,
     private val marketPrices: MarketPrices,
     private val groundItemDrops: GroundItemDropResolver,
+    private val graves: PlayerGravestones,
 ) {
     public fun selectDrops(
         player: Player,
@@ -172,14 +174,24 @@ constructor(
         handling: PlayerDeathHandling,
         coords: CoordGrid,
     ) {
-        if (keepsEverything(player, result)) {
-            return
-        }
+        if (keepsEverything(player, result)) return
+
+        // Store before clearing inventory. On any I/O problem the existing ground-drop
+        // implementation remains the fallback, never silently deleting the player's gear.
+        val deposited = if (handling.useGravestone) {
+            val lost = result.lostTradeable + result.lostUntradeable + result.supplyPile
+            runCatching { graves.store(player, coords, lost) }.getOrElse { false }
+        } else false
         player.inv.fillNulls()
         player.worn.fillNulls()
 
         for (item in result.kept) {
             addToInvDirect(player, item)
+        }
+        if (deposited) {
+            player.mes("Your items are safe in a gravestone at your death location. " +
+                "You have 15 minutes of logged-in time to reclaim them.")
+            return
         }
 
         // Some synthetic/economic death handlers materialize the lost items elsewhere (for
