@@ -108,6 +108,22 @@ constructor(
             destX = destination.x, destZ = destination.z, moveNear = false,
         ).success
 
+    /** Interrupt passive skilling and run to a reachable tile farther from nearby NPCs. */
+    fun escape(player: Player): Boolean {
+        val npcs = zones(player.coords, 12).flatMap(npcRegistry::findAll)
+            .filter { !it.hidden && it.hitpoints > 0 &&
+                near(player.coords, it.coords, 12) }.toList()
+        val dangerous = npcs.filter { npc ->
+            npc.name.contains("wizard", true) || npc.name.contains("guard", true) ||
+                npc.name.contains("prison", true)
+        }.ifEmpty { npcs.sortedBy { it.coords.chebyshevDistance(player.coords) }.take(3) }
+        val threatCoords = dangerous.map { it.coords }
+        val occupied = players.playerList.filter { it !== player }.map { it.coords }.toSet()
+        val destination = BotEscapePlanner.destination(player.coords, threatCoords,
+            ::canWalk, occupied::contains) ?: return false
+        return walk(player, destination)
+    }
+
     fun walk(player: Player, destination: CoordGrid, spread: Boolean = false): Boolean {
         if (busy(player) || player.coords.level != destination.level) return false
         val target = if (spread) freePoint(player.coords, destination, player, 2) ?: run {
