@@ -40,7 +40,7 @@ Existing skilling, trading, progression and Castle Wars controllers remain separ
 
 Ordinary overworld **PvM deaths** now keep the normal three valuable items (four with
 Protect Item) while the rest go into an owner-only, on-disk gravestone record under
-`.data/gravestones/<username>.properties`. The record is written **before** the death
+`.data/gravestones/<hashed-user-id>.properties`. The record is written **before** the death
 handler clears worn items and inventory. A save failure uses the existing ground-drop
 fallback rather than deleting the items. Graves last **1,500 game cycles (15 minutes) of
 time online**, pausing while their owner is logged out, and then roll over into persistent
@@ -61,8 +61,10 @@ AFK or interacting with the grave interface.
 The current **PvP/Wilderness, loot-key, instance, UIM, and safe-minigame death rules
 remain unchanged**, as those OSRS death modes have special handling. Skilling and
 progressive bots attempt to route back to their own grave using collision-aware
-walking; on reclaiming items they flee the death location using the existing
-NPC-attack escape controller, block the dangerous task, and choose a safer activity.
+walking; if one inventory cannot hold everything, they bank the partial claim and
+return for the remainder. After reclaiming their items, they flee the death location using
+the existing NPC-attack escape controller, block the dangerous task, and choose a safer
+activity.
 If the path cannot be reached or the timer expires, Death's Office storage remains
 available. No teleport is used to reach a grave. In-game validation should cover
 guard/wizard kills, route changes, grave recovery, a second death, multiple graves
