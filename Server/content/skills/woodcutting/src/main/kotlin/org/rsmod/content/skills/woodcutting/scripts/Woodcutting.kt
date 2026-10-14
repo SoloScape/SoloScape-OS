@@ -156,7 +156,7 @@ constructor(
         }
 
         if (wasSkillingRoll) {
-            forestry.onChop(player, tree.coords, type, despawn && cutLogs)
+            forestry.onChop(player, tree.coords, type, despawn && cutLogs, cutLogs)
         }
 
         if (despawn && cutLogs) {
