@@ -24,7 +24,6 @@ import org.rsmod.map.CoordGrid
 import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.game.queue.EngineQueueCache
 import org.rsmod.game.type.getInvObj
-import org.rsmod.content.skills.woodcutting.scripts.ForestryRations
 import org.rsmod.plugin.scripts.ScriptContext
 
 object BotSkillingCheck {
@@ -38,7 +37,7 @@ object BotSkillingCheck {
         val supplies = BotSupplies(HeldEquipOp(events, PlayerRestrictions(emptySet())),
             WornUnequipOp(events))
         // The forestry backpack must exist in the installed cache and use the back slot.
-        val forestryKit = checkNotNull(ServerCacheManager.getItem(ForestryRations.KIT.asRSCM()))
+        val forestryKit = checkNotNull(ServerCacheManager.getItem(BotSkillingLoadouts.FORESTRY_BACKPACK.asRSCM()))
         check(forestryKit.isEquipable && forestryKit.wearpos1 == Wearpos.Back.slot) {
             "Forestry kit must be a wearable backpack"
         }
@@ -179,7 +178,7 @@ object BotSkillingCheck {
                                 "obj.leather_chaps", "obj.leather_boots", "obj.brown_apron",
                                 "obj.white_apron", "obj.chefs_hat", "obj.leather_vambraces",
                                 "obj.wizards_robe", "obj.blue_skirt", "obj.bluewizhat",
-                                ForestryRations.KIT, "obj.green_cape", "obj.blue_cape",
+                                BotSkillingLoadouts.FORESTRY_BACKPACK, "obj.green_cape", "obj.blue_cape",
                                 "obj.black_cape", "obj.tiara_air", "obj.tiara_mind", "obj.tiara_water",
                                 "obj.tiara_earth", "obj.tiara_fire", "obj.tiara_body"))
                         }
@@ -187,7 +186,7 @@ object BotSkillingCheck {
                             (members && level == 99 && task.skill != null &&
                                 task.kind != BotTaskKind.Woodcutting))
                         if (task.kind == BotTaskKind.Woodcutting) {
-                            check(outfit.count { it == ForestryRations.KIT } == 1) {
+                            check(outfit.count { it == BotSkillingLoadouts.FORESTRY_BACKPACK } == 1) {
                                 "All Woodcutting outfits must include the Forestry backpack"
                             }
                         }
