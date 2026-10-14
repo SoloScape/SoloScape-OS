@@ -28,8 +28,10 @@ public class StandardPvmDeathHook @Inject constructor() : PlayerDeathHook {
             dropReceiver = context.player,
             dropDuration = DROP_DURATION_STANDARD,
             revealDelay = PVP_REVEAL_DELAY,
-            supplyPile = true,
+            // Preserve Wilderness, instance, safe-minigame and PvP handling separately.
+            supplyPile = false,
             untradeableHandling = UntradeableHandling.DROP,
+            useGravestone = true,
         )
 
     private fun instancePvmDeath(context: PlayerDeathContext): PlayerDeathHandling =
