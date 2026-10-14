@@ -27,6 +27,11 @@ object BotGravestoneCheck {
         check(!checkNotNull(hook.handleDeath(ctx.copy(recentPvpDamage = true))).useGravestone)
         check(hook.handleDeath(ctx.copy(inWilderness = true)) == null)
         check(PlayerGravestones.GRAVE_TICKS == 1500)
+        // A temporarily obstructed grave should be retried, not immediately abandoned.
+        check(!BotGraveRecoveryPolicy.shouldUseOffice(-1, 1200))
+        check(!BotGraveRecoveryPolicy.shouldUseOffice(300, 499))
+        check(BotGraveRecoveryPolicy.shouldUseOffice(300, 500))
+        check(!BotGraveRecoveryPolicy.shouldUseOffice(700, 500))
 
         val grave = PlayerGravestones.Grave("worldbot_12", coords,
             mutableListOf())
