@@ -545,10 +545,11 @@ class BotPopulation @Inject constructor(
             if (player.isDelayed || player.isAccessProtected) continue
             if (cycle % 100 < 3 && bot.mode == BotMode.Progressive) save(bot)
             if (eat(player)) continue
-            if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
+            if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive, BotMode.Combat)) {
                 // All conversational replies are delivered through BotSocial, including skillers.
                 social.tick(player, "skilling", cycle)
-                if (humanBehaviourEnabled && tickHumanBehaviour(bot, cycle)) continue
+                if (bot.mode != BotMode.Combat && humanBehaviourEnabled &&
+                    tickHumanBehaviour(bot, cycle)) continue
             }
             when (bot.mode) {
                 BotMode.Trade, BotMode.DropParty -> {
