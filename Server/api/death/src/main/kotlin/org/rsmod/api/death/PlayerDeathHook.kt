@@ -39,6 +39,7 @@ public data class PlayerDeathHandling(
     val destroyAllCarried: Boolean = false,
     val destroyLostCarried: Boolean = false,
     val spawnRemains: Boolean = true,
+    val useGravestone: Boolean = false,
 )
 
 public enum class UntradeableHandling {
