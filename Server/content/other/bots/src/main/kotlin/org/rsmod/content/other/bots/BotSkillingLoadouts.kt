@@ -32,14 +32,20 @@ internal object BotSkillingLoadouts {
                 when (variant % 4) {
                     0 -> listOf("obj.leather_armour", "obj.leather_chaps", "obj.leather_boots")
                     1 -> listOf("obj.brown_apron", "obj.leather_chaps", "obj.leather_boots")
-                    2 -> listOf("obj.desert_shirt", "obj.desert_robe", "obj.leather_boots")
-                    else -> listOf("obj.leather_armour", "obj.desert_robe", "obj.leather_boots")
+                    2 -> if (members)
+                        listOf("obj.desert_shirt", "obj.desert_robe", "obj.leather_boots") else
+                        listOf("obj.leather_armour", "obj.leather_chaps", "obj.leather_boots")
+                    else -> if (members)
+                        listOf("obj.leather_armour", "obj.desert_robe", "obj.leather_boots") else
+                        listOf("obj.brown_apron", "obj.leather_chaps", "obj.leather_boots")
                 }
             BotTaskKind.Mining -> if (experienced) set("motherlode_reward") else
                 when (variant % 3) {
                     0 -> listOf("obj.brown_apron", "obj.leather_chaps", "obj.leather_boots")
                     1 -> listOf("obj.leather_armour", "obj.leather_chaps", "obj.leather_boots")
-                    else -> listOf("obj.brown_apron", "obj.desert_robe", "obj.leather_boots")
+                    else -> if (members)
+                        listOf("obj.brown_apron", "obj.desert_robe", "obj.leather_boots") else
+                        listOf("obj.brown_apron", "obj.leather_chaps", "obj.leather_boots")
                 }
             BotTaskKind.Fishing -> if (experienced) set("trawler_reward") else if (members &&
                 variant % 2 == 0) listOf("obj.desert_shirt", "obj.desert_robe", "obj.leather_boots") else
