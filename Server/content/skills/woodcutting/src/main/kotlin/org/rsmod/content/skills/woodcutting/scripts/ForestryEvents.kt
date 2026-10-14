@@ -25,6 +25,7 @@ import org.rsmod.api.script.onOpNpc2
 import org.rsmod.api.script.onOpNpc3
 import org.rsmod.game.MapClock
 import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.treeLevelReq
+import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.treeXp
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.InvObj
@@ -317,7 +318,7 @@ class ForestryEventManager @Inject constructor(
 
     private fun collectRainbows(e: Event) {
         val nearby = players.findAll(ZoneKey.from(e.origin), zoneRadius = 4)
-            .filter { forestryNear(it.coords, e.origin, 30) }
+            .filter { forestryNear(it.coords, e.origin, 30) }.toList()
         for ((rainbow, role) in e.locs) {
             if (!role.startsWith("rainbow:")) continue
             val id = role.substringAfter(":").toInt()
