@@ -32,7 +32,9 @@ class ForestryKitRations @Inject constructor(private val eventBus: EventBus) : P
     private var Player.selectedKitItem by intVarBit("varbit.forestry_kit_selected_item")
 
     override fun ScriptContext.startup() {
-        onOpHeldU(ForestryRations.RATION, ForestryRations.KIT) { deposit(it.firstSlot) }
+        STORED_ITEMS.values.forEach { item ->
+            onOpHeldU(item, ForestryRations.KIT) { deposit(it.firstSlot) }
+        }
         onOpHeld1(ForestryRations.KIT) { openKit() }
         onOpHeld3(ForestryRations.KIT) { fill() }
         onOpWorn2(ForestryRations.KIT) { openKit() }
@@ -52,7 +54,7 @@ class ForestryKitRations @Inject constructor(private val eventBus: EventBus) : P
             if (it.comsub in 0..14) player.selectedKitItem = it.comsub
         }
         onIfModalButton(SIDE_ITEMS) {
-            if (it.obj?.internalName == ForestryRations.RATION) deposit(it.comsub)
+            if (it.obj?.internalName in STORED_ITEMS.values) deposit(it.comsub)
         }
         onIfModalButton(FILL) { fill() }
         onIfModalButton(EMPTY) { empty() }
@@ -60,8 +62,8 @@ class ForestryKitRations @Inject constructor(private val eventBus: EventBus) : P
         onIfModalButton(WITHDRAW_5) { withdraw(5) }
         onIfModalButton(WITHDRAW_ALL) { withdraw(Int.MAX_VALUE) }
         onIfModalButton(WITHDRAW_X) {
-            if (player.selectedKitItem != RATION_INDEX) return@onIfModalButton
-            val amount = countDialog("How many rations would you like to withdraw?")
+            if (player.selectedKitItem !in STORED_ITEMS) return@onIfModalButton
+            val amount = countDialog("How many would you like to withdraw?")
             if (amount > 0) withdraw(amount)
         }
     }
@@ -73,35 +75,33 @@ class ForestryKitRations @Inject constructor(private val eventBus: EventBus) : P
     }
 
     private fun ProtectedAccess.fill() {
-        val slots = inv.indices.filter {
-            inv[it]?.let { item -> getInvObj(item).internalName == ForestryRations.RATION } == true
+        when (fillKit(player)) {
+            0 -> mes("You have no leaves or forester's rations to store.")
+            -1 -> mes("Your kit cannot store these items right now.")
+            else -> mes("You store your Forestry items in the kit.")
         }
-        if (slots.isEmpty()) {
-            mes("You have no forester's rations to store.")
-            return
-        }
-        slots.forEach { deposit(it) }
     }
 
     private fun ProtectedAccess.deposit(slot: Int) {
-        if (depositRations(player, slot)) mes("You store your forester's rations in the kit.")
-        else mes("Your kit cannot store these rations right now.")
+        if (depositItem(player, slot)) mes("You store your Forestry items in the kit.")
+        else mes("Your kit cannot store these items right now.")
     }
 
     private fun ProtectedAccess.empty() {
-        val count = player.invMap[ForestryRations.STORAGE]?.count(ForestryRations.RATION) ?: 0
-        if (count > 0 && !withdrawRations(player, count)) {
-            mes("You do not have enough inventory space for the rations.")
+        var failed = false
+        for (item in STORED_ITEMS.values) {
+            val count = player.invMap[ForestryRations.STORAGE]?.count(item) ?: 0
+            if (count > 0 && !withdrawItem(player, item, count)) failed = true
         }
+        if (failed) mes("You do not have enough inventory space for the stored items.")
     }
 
     private fun ProtectedAccess.withdraw(amount: Int) {
-        // Other native Forestry items will need their own storage handlers.
-        if (player.selectedKitItem != RATION_INDEX) return
-        val count = player.invMap[ForestryRations.STORAGE]?.count(ForestryRations.RATION) ?: 0
+        val item = STORED_ITEMS[player.selectedKitItem] ?: return
+        val count = player.invMap[ForestryRations.STORAGE]?.count(item) ?: 0
         if (count <= 0) return
-        if (!withdrawRations(player, minOf(count, amount))) {
-            mes("You do not have enough inventory space for the rations.")
+        if (!withdrawItem(player, item, minOf(count, amount))) {
+            mes("You do not have enough inventory space for the stored items.")
         }
     }
 
@@ -116,22 +116,49 @@ class ForestryKitRations @Inject constructor(private val eventBus: EventBus) : P
         private const val WITHDRAW_5 = "component.forestry_kit_main:5"
         private const val WITHDRAW_X = "component.forestry_kit_main:x"
         private const val WITHDRAW_ALL = "component.forestry_kit_main:all"
-        private const val RATION_INDEX = 2
+        internal val STORED_ITEMS = mapOf(
+            2 to ForestryRations.RATION,
+            4 to "obj.leaves",
+            5 to "obj.leaves_oak",
+            6 to "obj.leaves_willow",
+            7 to "obj.leaves_maple",
+            8 to "obj.leaves_yew",
+            9 to "obj.leaves_magic",
+        )
+
+        internal fun fillKit(player: Player): Int {
+            val slots = player.inv.indices.filter {
+                player.inv[it]?.let { item -> getInvObj(item).internalName in STORED_ITEMS.values } == true
+            }
+            if (slots.isEmpty()) return 0
+            return if (slots.map { depositItem(player, it) }.all { it }) slots.size else -1
+        }
 
         fun depositRations(player: Player, slot: Int): Boolean {
+            val item = player.inv[slot] ?: return false
+            if (getInvObj(item).internalName != ForestryRations.RATION) return false
+            return depositItem(player, slot)
+        }
+
+        internal fun depositItem(player: Player, slot: Int): Boolean {
             if (!ForestryRations.hasKit(player)) return false
-            val ration = player.inv[slot] ?: return false
-            if (getInvObj(ration).internalName != ForestryRations.RATION) return false
+            val item = player.inv[slot] ?: return false
+            if (getInvObj(item).internalName !in STORED_ITEMS.values) return false
             val storage = player.invMap.getOrPut(ForestryRations.STORAGE)
             if (storage.type.scope != InvScope.Perm) return false
-            return player.invTransfer(player.inv, slot, ration.count, storage).success
+            return player.invTransfer(player.inv, slot, item.count, storage).success
         }
 
         fun withdrawRations(player: Player, amount: Int): Boolean {
+            return withdrawItem(player, ForestryRations.RATION, amount)
+        }
+
+        internal fun withdrawItem(player: Player, item: String, amount: Int): Boolean {
+            if (item !in STORED_ITEMS.values) return false
             if (amount <= 0 || !ForestryRations.hasKit(player)) return false
             val storage = player.invMap[ForestryRations.STORAGE] ?: return false
             val slot = storage.indices.firstOrNull {
-                storage[it]?.let { item -> getInvObj(item).internalName == ForestryRations.RATION } == true
+                storage[it]?.let { obj -> getInvObj(obj).internalName == item } == true
             } ?: return false
             return player.invTransfer(storage, slot, amount, player.inv).success
         }

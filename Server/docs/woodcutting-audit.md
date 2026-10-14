@@ -67,10 +67,14 @@ The item's Open action now opens the existing native Forestry kit main (823)
 and side (822) interfaces instead of presenting a ration withdrawal dialogue.
 On interface open, the server transmits the persistent kit inventory (814) so
 the client can draw its stored quantities; this transmission is stopped on close.
-Fill and Empty use the ration transfer helpers. The native 1, 5, X, and All
-controls withdraw rations after selecting their entry in the kit list. The X
-button alone prompts for a quantity. Other Forestry item categories shown by
-the native interface still require their own storage/withdrawal handlers.
+Fill and Empty transfer forester's rations and all six leaf types (ordinary,
+oak, willow, maple, yew and magic). Leaves can also be deposited by using them
+on the kit or clicking them in the side inventory. The native 1, 5, X, and All
+controls withdraw the selected supported entry in the kit list. The X button
+alone prompts for a quantity. Unrelated items are rejected.
+Other Forestry item categories shown by the native interface still require
+their own storage/withdrawal handlers; automatic leaf gathering and ration
+crafting are outside this storage change.
 The cache-loaded audit check verifies the interface and component registrations;
 full live client interaction and logout/login persistence still need testing.
 
