@@ -87,6 +87,10 @@ class ForestryEventManager @Inject constructor(
         var hiveProgress = 0
         var guardedNest = Random.nextInt(4)
         var infusedRoot = Random.nextInt(6)
+        var rainbowsSpawned = 0
+        var nextRainbow = start
+        var rainbowWarning = false
+        val rainbowTouched = mutableMapOf<Player, MutableSet<Int>>()
     }
 
     private val history = java.util.WeakHashMap<Player, ForestryHistory>()
@@ -95,9 +99,18 @@ class ForestryEventManager @Inject constructor(
     private val cooldowns = mutableMapOf<CoordGrid, Int>()
 
     /** Called on every actual 4-tick skilling roll, even when no log is awarded. */
-    fun onChop(player: Player, tree: CoordGrid, type: ObjectServerType, fallen: Boolean) {
+    fun onChop(player: Player, tree: CoordGrid, type: ObjectServerType, fallen: Boolean, harvested: Boolean) {
         val cycle = clock.cycle
         history.getOrPut(player) { ForestryHistory() }.record(tree, cycle)
+        // Luck is earned by walking under rainbows but paid out on subsequent successful chops.
+        // It is independent of the event's lifetime and does not require another event to be active.
+        if (ForestryLeprechaunLuck.consume(player, harvested, type.treeLevelReq)) {
+            player.statAdvance("stat.woodcutting",
+                ForestryLeprechaunLuck.bonusXp(type.treeXp, type.treeLevelReq, player.woodcuttingLvl))
+            give(player, "obj.forestry_currency", ForestryLeprechaunLuck.bark())
+            if (ForestryLeprechaunLuck.units(player) < ForestryLeprechaunLuck.UNITS_PER_CHOP)
+                player.mes("You use the last of your leprechaun's luck to gather some Anima-infused bark.")
+        }
         for (event in active) {
             if (!forestryNear(tree, event.origin, 30) && player !in event.contributions) {
                 event.excluded.add(player)
@@ -139,6 +152,7 @@ class ForestryEventManager @Inject constructor(
         }
         for (event in active.toList()) {
             if (!event.completed) advance(event, now)
+            if (event.type == ForestryEventType.LEPRECHAUN) collectRainbows(event)
             if (now >= event.finish || event.completed) {
                 finish(event)
                 active.remove(event)
@@ -193,7 +207,7 @@ class ForestryEventManager @Inject constructor(
                 locRoles.any { it.startsWith("ingredient:") }
             ForestryEventType.ENT -> npcRoles.any { it.startsWith("ent:") }
             ForestryEventType.FLOWERS -> npcRoles.count { it.startsWith("bush:") } >= 2
-            ForestryEventType.LEPRECHAUN -> "bank" in npcRoles
+            ForestryEventType.LEPRECHAUN -> "bank" in npcRoles && locRoles.any { it.startsWith("rainbow:") }
             ForestryEventType.HIVE -> "hive" in npcRoles
             ForestryEventType.FOX -> "trap" in npcRoles
             ForestryEventType.RITUAL -> npcRoles.count { it.startsWith("circle:") } == 5
@@ -229,7 +243,7 @@ class ForestryEventManager @Inject constructor(
             }
             ForestryEventType.LEPRECHAUN -> {
                 spawnNpc(e, "bank", 0, "Woodcutting Leprechaun")
-                repeat(6) { spawnLoc(e, "rainbow", it + 1, "End of Rainbow") }
+                spawnNextRainbow(e)
             }
             ForestryEventType.HIVE -> {
                 spawnNpc(e, "keeper", 0, "Bee keeper")
@@ -290,6 +304,38 @@ class ForestryEventManager @Inject constructor(
         e.npcs[entity] = role
     }
 
+    /** Rainbows are non-interactive scenery: spawn them serially and reward standing on a tile. */
+    private fun spawnNextRainbow(e: Event) {
+        if (e.rainbowsSpawned >= 6) return
+        val index = e.rainbowsSpawned
+        spawnLoc(e, "rainbow:" + index, index + 1, "End of Rainbow")
+        if (e.locs.values.contains("rainbow:" + index)) {
+            e.rainbowsSpawned++
+        }
+        e.nextRainbow = clock.cycle + Random.nextInt(16, 21)
+    }
+
+    private fun collectRainbows(e: Event) {
+        val nearby = players.findAll(ZoneKey.from(e.origin), zoneRadius = 4)
+            .filter { forestryNear(it.coords, e.origin, 30) }
+        for ((rainbow, role) in e.locs) {
+            if (!role.startsWith("rainbow:")) continue
+            val id = role.substringAfter(":").toInt()
+            for (player in nearby) {
+                // A rainbow has no click action; the player must physically stand inside it.
+                if (player.coords != rainbow.coords) continue
+                val touched = e.rainbowTouched.getOrPut(player) { mutableSetOf() }
+                if (!touched.add(id)) continue
+                val previous = ForestryLeprechaunLuck.units(player)
+                val current = ForestryLeprechaunLuck.collect(player)
+                if (current > previous) player.mes(
+                    "You feel more in touch with the trees after standing in the rainbow. " +
+                        "Leprechaun's luck: ${current}/255."
+                ) else player.mes("Your leprechaun's luck is already at its maximum.")
+            }
+        }
+    }
+
     private fun spawnTrap(e: Event) {
         if (e.phase >= 15) return
         spawnNpc(e, "trap", 6 + (e.phase % 6), "Fox trap")
@@ -337,6 +383,19 @@ class ForestryEventManager @Inject constructor(
 
     private fun advance(e: Event, now: Int) {
         when (e.type) {
+            ForestryEventType.LEPRECHAUN -> {
+                if (now >= e.finish - 38 && !e.rainbowWarning) {
+                    e.rainbowWarning = true
+                    players.findAll(ZoneKey.from(e.origin), zoneRadius = 4)
+                        .filter { forestryNear(it.coords, e.origin, 30) }
+                        .forEach { it.mes("Woodcutting Leprechaun: I'll have to go shortly...") }
+                    // The final rainbow appears as the leprechaun gives his leaving warning.
+                    if (e.rainbowsSpawned == 5) spawnNextRainbow(e)
+                } else if (now >= e.nextRainbow && e.rainbowsSpawned < 6 &&
+                    !(e.rainbowsSpawned == 5 && !e.rainbowWarning)) {
+                    spawnNextRainbow(e)
+                }
+            }
             ForestryEventType.ROOTS -> {
                 if (now - e.start >= 30 && (now - e.start - 30) % 20 == 0) {
                     e.infusedRoot = Random.nextInt(6)
@@ -376,6 +435,12 @@ class ForestryEventManager @Inject constructor(
 
     private fun finish(e: Event) {
         cooldowns[e.origin] = clock.cycle + Random.nextInt(67, 201)
+        if (e.type == ForestryEventType.LEPRECHAUN) {
+            // Depositing and collecting rainbows give no completion XP/bark.
+            // The luck attribute survives this cleanup and is spent only while chopping.
+            if (clock.cycle < e.finish) discard(e)
+            return
+        }
         val success = when (e.type) {
             ForestryEventType.SAPLING -> e.growth >= 400
             ForestryEventType.FOX -> e.foxHits < 3
@@ -506,11 +571,6 @@ class ForestryEventManager @Inject constructor(
                     if (e.growth >= 400) e.completed = true
                 }
             }
-            role == "rainbow" && e.type == ForestryEventType.LEPRECHAUN -> {
-                if (!forestryNear(player.coords, target.coords, 1)) {
-                    mes("Stand near the rainbow to collect its blessing.")
-                } else reward(c, 10.0 + player.woodcuttingLvl * 1.5)
-            }
             role == "hive" && e.type == ForestryEventType.HIVE -> {
                 buildHive(e, c)
             }
@@ -613,15 +673,24 @@ class ForestryEventManager @Inject constructor(
                 } else mes("Take the pollen to the other flowering bush.")
             }
             role == "bank" && e.type == ForestryEventType.LEPRECHAUN -> {
+                // Players chopping nearby when he appeared may use him as a deposit box;
+                // later arrivals can deposit only Woodcutting resources.
+                val fullDeposit = player in e.eligibleAtStart && player !in e.excluded
                 val bank = player.invMap.getOrPut("inv.bank")
                 var deposits = 0
                 for (slot in player.inv.indices) {
                     val obj = player.inv[slot] ?: continue
-                    if (getInvObj(obj).internalName !in ForestryRules.logs) continue
+                    val type = getInvObj(obj)
+                    if (!fullDeposit && type.internalName !in ForestryRules.logs &&
+                        type.internalName !in ForestryRules.leaves &&
+                        !type.name.lowercase().contains(" logs")) continue
                     if (player.invTransfer(player.inv, slot, obj.count, bank).success) deposits++
                 }
-                mes(if (deposits > 0) "The leprechaun deposits your logs in your bank."
-                    else "You have no logs to deposit or your bank is full.")
+                mes(when {
+                    deposits > 0 -> "The Woodcutting Leprechaun deposits your items in your bank."
+                    fullDeposit -> "You have nothing to deposit or your bank is full."
+                    else -> "Only Woodcutting resources can be deposited, or your bank is full."
+                })
             }
             role == "trap" && e.type == ForestryEventType.FOX -> {
                 if (!e.trapActive) return
@@ -654,7 +723,7 @@ class ForestryEventManager @Inject constructor(
     /** Event interaction hooks are installed only for real cache-backed definitions. */
     fun eventLocNames(): List<String> {
         val labels = listOf("Tree roots", "Struggling sapling", "Droppings", "Green leaves",
-            "Rotting leaves", "Splintered bark", "Wild mushrooms", "End of Rainbow",
+            "Rotting leaves", "Splintered bark", "Wild mushrooms",
             "Unfinished beehive", "Ritual circle", "Pheasant nest")
         return labels.mapNotNull { locType(it)?.internalName }.distinct()
     }
