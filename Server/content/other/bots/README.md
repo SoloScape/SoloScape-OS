@@ -36,6 +36,39 @@ Wilderness and both clan populations. The default is `standard`.
 Population changes use the properties file; the spawn/removal commands are removed.
 Existing skilling, trading, progression and Castle Wars controllers remain separate.
 
+## PvM gravestones and recovering bots
+
+Ordinary overworld **PvM deaths** now keep the normal three valuable items (four with
+Protect Item) while the rest go into an owner-only, on-disk gravestone record under
+`.data/gravestones/<username>.properties`. The record is written **before** the death
+handler clears worn items and inventory. A save failure uses the existing ground-drop
+fallback rather than deleting the items. Graves last **1,500 game cycles (15 minutes) of
+time online**, pausing while their owner is logged out, and then roll over into persistent
+Death's Office recovery. A second ordinary PvM death merges into the existing record.
+The cache provides the visual gravestone model if a usable model exists; otherwise the
+coordinates remain available through the command below.
+
+Use `::grave` to see your grave location and the remaining time, then walk within
+three tiles and run `::grave` again to claim your items. A gravestone with a suitable
+first-option model can also be clicked directly. Use `::deathoffice` to retrieve items
+from an expired grave, including any overflow that could not fit in your inventory.
+Inventory capacity is respected: only successfully reclaimed slots are removed.
+This first implementation does **not** yet charge OSRS item-value-based fees or
+offer the official Death's Office interface; those require a dedicated UI and
+market-value payment integration. It also does not pause timers when players are
+AFK or interacting with the grave interface.
+
+The current **PvP/Wilderness, loot-key, instance, UIM, and safe-minigame death rules
+remain unchanged**, as those OSRS death modes have special handling. Skilling and
+progressive bots attempt to route back to their own grave using collision-aware
+walking; on reclaiming items they flee the death location using the existing
+NPC-attack escape controller, block the dangerous task, and choose a safer activity.
+If the path cannot be reached or the timer expires, Death's Office storage remains
+available. No teleport is used to reach a grave. In-game validation should cover
+guard/wizard kills, route changes, grave recovery, a second death, multiple graves
+on the same tile, logout/restart, full inventories and PvP loot keys. The live
+visual marker is cache-dependent.
+
 ## One global XP rate for players and bots
 
 The XP plugin now applies `xp-rates.yml` to **every registered Player**, whether
