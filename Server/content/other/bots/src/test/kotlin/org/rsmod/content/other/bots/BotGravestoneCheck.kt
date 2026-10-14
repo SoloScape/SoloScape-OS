@@ -30,7 +30,7 @@ object BotGravestoneCheck {
         check(PlayerGravestones.GRAVE_TICKS == 1500)
 
         val grave = PlayerGravestones.Grave("worldbot_12", coords,
-            mutableListOf(InvObj("obj.coins", 120), InvObj("obj.bronze_axe", 1)))
+            mutableListOf(InvObj(995, 120), InvObj(1351, 1)))
         check(grave.items.size == 2 && grave.remaining == 1500 && !grave.office)
         check(BotFleePlanner.shouldInterrupt(BotMode.Skilling, BotTaskKind.Woodcutting))
         check(BotFleePlanner.shouldInterrupt(BotMode.Progressive, BotTaskKind.Mining))
