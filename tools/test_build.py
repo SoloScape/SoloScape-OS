@@ -204,6 +204,8 @@ class ServerBuildCacheTests(BuildFixture):
             self.assertEqual(self.calls, 3)
             self.assertIn(str(self.source).replace("\\", "/"), self.compilations[-1])
             self.assertNotIn(str(self.app).replace("\\", "/"), self.compilations[-1])
+            self.assertTrue(any(arg.startswith("-Xfriend-paths=") and "," in arg
+                                for arg in self.compilations[-1]))
             with zipfile.ZipFile(self.runtime / "soloscape-server.jar") as bundle:
                 self.assertTrue(bundle.read("Main.class").endswith(b"3"))
 
