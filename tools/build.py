@@ -126,6 +126,29 @@ def reuse_file(source, destination):
         shutil.copy2(source, destination)
 
 
+def check_runtime_replaceable(output):
+    """Check the same directory rename used for publication before paying for compilation."""
+    runtime = output / "lib"
+    if not runtime.exists():
+        return
+    probe = output / f"replace-check-{time.time_ns()}"
+    if runtime.resolve().parent != output.resolve() or probe.resolve().parent != output.resolve():
+        raise RuntimeError("Runtime replacement check must remain within the build output directory.")
+    try:
+        runtime.rename(probe)
+    except OSError as error:
+        raise RuntimeError(
+            f"Cannot replace {runtime}. Close the running {output.parents[1].name} "
+            "and any programs locking its runtime files, then build again. "
+            "Compilation was not started."
+        ) from error
+    try:
+        probe.rename(runtime)
+    except OSError as error:
+        raise RuntimeError(f"Could not restore runtime from {probe} to {runtime}; "
+                           "the existing files are preserved in the first directory.") from error
+
+
 def run_compiler(command, logfile, progress, label):
     with logfile.open("w", encoding="utf-8") as log:
         process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
@@ -405,6 +428,7 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
         progress.finish("Up to date - compilation skipped")
         return
 
+    check_runtime_replaceable(output)
     stage = output / "staging"
     if stage.exists():
         shutil.rmtree(stage)
@@ -459,12 +483,12 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
         changed_app_sources = [file for file in app_sources
                                if old_keys.get(file.relative_to(project).as_posix())
                                != source_hashes[file]]
-        # Restrict the fast path to one implementation-only change; dependencies,
+        # Restrict the fast path to implementation-only changes; dependencies,
         # declarations, deleted classes, and ambiguous cases rebuild the layer.
         if (not rebuild and state.get("common_key") == common_key
                 and state.get("core_code_key") == core_code_key
                 and set(old_keys) == set(source_keys)
-                and len(changed_app_sources) == 1
+                and changed_app_sources
                 and valid_artifact(app_name)
                 and all(old_scaffolds.get(file.relative_to(project).as_posix()) is not None
                         and old_scaffolds[file.relative_to(project).as_posix()]
@@ -481,7 +505,7 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
                                 "compiler-incremental.args",
                                 extra_classpath=extra_classpath,
                                 friend_path=friend_paths,
-                                label="Compiling 1 changed Kotlin source")
+                                label=f"Compiling {len(changed_app_sources)} changed Kotlin sources")
                 reused_changes = incremental.overlay_implementation(
                     old_app_jar, delta_jar, app_jar, changed_app_sources, app_sources)
                 if reused_changes:

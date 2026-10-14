@@ -26,12 +26,17 @@ core edits rebuild both layers. Unchanged builds skip compilation, and resource-
 edits repackage resources. Use `Server/build.bat --rebuild` to force both layers to
 compile. The first build after this split compiles both layers.
 
-The root `build.bat` uses a conservative single-source fast path for Kotlin
+The root `build.bat` uses a conservative changed-source fast path for Kotlin
 implementation-only edits in the client or server application layer. It reuses
-unchanged classes from the previous JAR when the file's declarations, toolchain,
+unchanged classes from the previous JAR when every changed file's declarations, toolchain,
 classpath, and generated class names are unchanged. Changes to public interfaces,
 inline functions, constants, core/API sources, filenames, or other ambiguous cases
 recompile the affected layer normally. The first build after this update refreshes
 the compilation cache; later changes can use the fast path. `build.bat --rebuild`
 forces full compilation of both projects. A failed partial compile automatically
 retries the original full-layer build, preserving the last successful runtime.
+Several method-body edits can compile together without rebuilding unrelated files.
+Before a changed build compiles, it checks that the runtime directory can be
+replaced. Close the running client/server when requested; a locked runtime now
+stops the build immediately instead of compiling and failing during installation.
+An unchanged build can still report up to date while the application is running.

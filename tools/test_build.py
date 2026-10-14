@@ -67,6 +67,33 @@ class BuildFixture(unittest.TestCase):
 
 class BuildCacheTests(BuildFixture):
 
+    def test_locked_runtime_stops_before_compilation_and_preserves_cache(self):
+        self.run_build()
+        manifest = self.runtime.parent / "build-state.json"
+        previous_state = manifest.read_bytes()
+        previous_runtime = {path.name: path.read_bytes() for path in self.runtime.iterdir()}
+        self.source.write_text("fun changedDeclaration() {}")
+        original_rename = Path.rename
+        def locked_rename(path, destination):
+            if path == self.runtime:
+                raise PermissionError("runtime in use")
+            return original_rename(path, destination)
+        with patch.object(Path, "rename", locked_rename):
+            with self.assertRaisesRegex(RuntimeError, "Compilation was not started"):
+                self.run_build()
+        self.assertEqual(self.calls, 1)
+        self.assertEqual(manifest.read_bytes(), previous_state)
+        self.assertEqual({path.name: path.read_bytes() for path in self.runtime.iterdir()}, previous_runtime)
+        self.run_build()
+        self.assertEqual(self.calls, 2)
+        self.assertFalse(list(self.runtime.parent.glob("replace-check-*")))
+
+    def test_unchanged_build_does_not_probe_a_locked_runtime(self):
+        self.run_build()
+        with patch.object(build, "check_runtime_replaceable", side_effect=AssertionError("unnecessary probe")):
+            self.run_build()
+        self.assertEqual(self.calls, 1)
+
     def test_unchanged_and_resource_only_builds_skip_compilation(self):
         self.run_build()
         self.run_build()
@@ -208,6 +235,38 @@ class ServerBuildCacheTests(BuildFixture):
                                 for arg in self.compilations[-1]))
             with zipfile.ZipFile(self.runtime / "soloscape-server.jar") as bundle:
                 self.assertTrue(bundle.read("Main.class").endswith(b"3"))
+
+    def test_multiple_body_edits_compile_only_changed_sources(self):
+        self.compile_patch.stop()
+        untouched = self.source.with_name("Untouched.kt")
+        untouched.write_text("fun untouched() {}")
+        def compiler(command, logfile, progress, label):
+            self.calls += 1
+            args = shlex.split(Path(command[-1][1:]).read_text())
+            self.compilations.append(args)
+            jar = Path(args[args.index("-d") + 1])
+            with zipfile.ZipFile(jar, "w") as bundle:
+                if jar.name == "soloscape-server-core.jar":
+                    bundle.writestr("org/rsmod/module/ExtendedModule.class", b"<init>")
+                else:
+                    for source in (self.source, self.app, untouched):
+                        if str(source).replace("\\", "/") in args:
+                            bundle.writestr(source.stem + ".class", fake_class(source.name, str(self.calls).encode()))
+        with patch.object(build, "run_compiler", side_effect=compiler):
+            self.run_build()
+            self.source.write_text('fun main() { println("changed") }')
+            self.app.write_text('fun app() { println("changed too") }')
+            self.run_build()
+            self.assertEqual(self.calls, 3)
+            self.assertIn(str(self.source).replace("\\", "/"), self.compilations[-1])
+            self.assertIn(str(self.app).replace("\\", "/"), self.compilations[-1])
+            self.assertNotIn(str(untouched).replace("\\", "/"), self.compilations[-1])
+            with zipfile.ZipFile(self.runtime / "soloscape-server.jar") as bundle:
+                self.assertTrue(bundle.read("Main.class").endswith(b"3"))
+                self.assertTrue(bundle.read("App.class").endswith(b"3"))
+                self.assertTrue(bundle.read("Untouched.class").endswith(b"2"))
+            self.run_build()
+            self.assertEqual(self.calls, 3)
 
     def test_core_and_toolchain_changes_rebuild_both_layers(self):
         self.run_build()
