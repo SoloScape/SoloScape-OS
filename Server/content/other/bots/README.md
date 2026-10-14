@@ -36,6 +36,37 @@ Wilderness and both clan populations. The default is `standard`.
 Population changes use the properties file; the spawn/removal commands are removed.
 Existing skilling, trading, progression and Castle Wars controllers remain separate.
 
+## One global XP rate for players and bots
+
+The XP plugin now applies `xp-rates.yml` to **every registered Player**, whether
+a human account or a world bot. PlayerRegistry's Initialize event also fires for
+simulated bots, which do not use the normal account login flow. New spawns,
+rejoining skilling bots and Wilderness bots inherit the current global rate
+before they can gain XP. Existing players and bots update immediately on
+`::globalxprate <rate>` or `::reloadxprates`.
+
+Use the following in the server-working-directory `xp-rates.yml`:
+
+```yaml
+global-rate: 5.0
+global-only: true
+rate: 1.0
+enforce-on-login: true
+reset-existing-levels: false
+```
+
+`global-only: true` is now the default even for old configs missing the key.
+It forces the stored per-character XP multiplier to **1x**, so the effective rate
+is `global-rate` for everyone rather than personal-rate × global-rate.
+`::setxprate` is disabled while global-only is enabled. To restore the previous
+personal-plus-global behaviour, explicitly set `global-only: false`, which also
+restores the `rate` / `enforce-on-login` settings and `::setxprate`.
+Only XP **awarded by actions** is multiplied: starting bot levels and restored
+bot XP snapshots are assigned directly and are not retroactively multiplied.
+`::globalxprate` affects this session; edit the YAML file to persist a change
+across restarts. Use `::xprate` to inspect a real character's effective rate.
+Do not turn on `reset-existing-levels` unless intentionally resetting progress.
+
 ## Human-like characters, schedules and routines
 
 Skilling and progressive bots now have **stable, deterministic personalities** derived from
