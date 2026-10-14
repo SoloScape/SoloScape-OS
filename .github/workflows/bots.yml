@@ -61,6 +61,16 @@ jobs:
           key: ${{ runner.os }}-kotlin-2.2.10
       - name: Prepare Kotlin compiler
         run: python -c "import sys; sys.path.insert(0, 'tools'); import build; build.compiler()"
+      - name: Validate highscores page JavaScript
+        shell: pwsh
+        run: |
+          $html = Get-Content "Server/content/other/bots/src/main/resources/highscores.html" -Raw
+          $match = [regex]::Match($html, '(?s)<script>(.*?)</script>')
+          if (-not $match.Success) { throw "Missing highscores JavaScript" }
+          $script = Join-Path $env:RUNNER_TEMP "highscores-page.js"
+          Set-Content $script -Value $match.Groups[1].Value -Encoding utf8NoBOM
+          node --check $script
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile Kotlin bot port and run regression checks
         shell: pwsh
         run: |
