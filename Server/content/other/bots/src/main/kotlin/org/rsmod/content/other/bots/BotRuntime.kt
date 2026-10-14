@@ -82,6 +82,8 @@ private class WorldBot(
     var fleeFailedOrders = 0
     var previousAutoRetaliate = 0
     var graveBankTrip = false
+    /** First tick on which no walkable route to our grave was available. */
+    var graveRouteFailureAt = -1
     val protectedTimeout = BotProgressTimeout()
     val graveTimeout = BotProgressTimeout()
     val blockedCrossings = mutableMapOf<Pair<CoordGrid, CoordGrid>, Int>()
@@ -524,27 +526,41 @@ class BotPopulation @Inject constructor(
                 supplies.canSupply(player, it) && it.id !in bot.blockedTasks
         }
         val friendTask = bots.values.firstOrNull { it.identity == bot.friendIdentity }?.task
-        val next = if (humanBehaviourEnabled) {
-            BotHumanity.chooseTask(candidates.filter {
-                bot.mode != BotMode.Progressive ||
-                    BotTaskPlanner.available(it, levels, player.members)
-            }, occupancy, bot.personality, random, bot.task, friendTask)
-        } else if (bot.mode == BotMode.Skilling) {
-            BotTaskPlanner.selectBalanced(candidates.filter { it.id != bot.task.id }, occupancy, random)
-                ?: BotTaskPlanner.selectBalanced(candidates, occupancy, random)
-        } else BotTaskPlanner.select(candidates, levels, player.members, occupancy, random)
-        if (next == null) {
-            bot.status = "waiting for supplies"
-            bot.nextThink = player.currentMapClock + 50
-            return
+        val remaining = candidates.toMutableList()
+        // Task selection used to accept an empty path to a remote start. That leaves
+        // a bot repeatedly "Changing" forever when the road graph is disconnected
+        // or a collision-blocked gate cannot be traversed.
+        repeat(6) {
+            val next = if (humanBehaviourEnabled) {
+                BotHumanity.chooseTask(remaining.filter {
+                    bot.mode != BotMode.Progressive ||
+                        BotTaskPlanner.available(it, levels, player.members)
+                }, occupancy, bot.personality, random, bot.task, friendTask)
+            } else if (bot.mode == BotMode.Skilling) {
+                BotTaskPlanner.selectBalanced(remaining.filter { it.id != bot.task.id },
+                    occupancy, random)
+                    ?: BotTaskPlanner.selectBalanced(remaining, occupancy, random)
+            } else BotTaskPlanner.select(remaining, levels, player.members, occupancy, random)
+            if (next == null) return@repeat
+            val atStart = player.coords.level == next.start.level &&
+                player.coords.chebyshevDistance(next.start) <= 2
+            val route = if (atStart) emptyList() else
+                route(bot, next.start)
+            if (atStart || route.isNotEmpty()) {
+                setTask(bot, next)
+                bot.needsPlan = false
+                bot.path = route
+                bot.pathOrigin = player.coords
+                bot.waypoint = 0
+                bot.phase = if (atStart) BotPhase.Banking else BotPhase.Changing
+                return
+            }
+            // Avoid choosing the same unreachable task every subsequent think tick.
+            bot.blockedTasks[next.id] = player.currentMapClock + 600
+            remaining.remove(next)
         }
-        setTask(bot, next)
-        bot.needsPlan = false
-        bot.path = route(bot, next.start)
-        bot.pathOrigin = player.coords
-        bot.waypoint = 0
-        bot.phase = if (player.coords.level == next.start.level &&
-            player.coords.chebyshevDistance(next.start) <= 2) BotPhase.Banking else BotPhase.Changing
+        bot.status = "no reachable task route; retrying from current position"
+        bot.nextThink = player.currentMapClock + 100
     }
 
     fun tick(cycle: Int) {
@@ -709,6 +725,7 @@ class BotPopulation @Inject constructor(
         val grave = graves.grave(player)
         if (grave == null) {
             bot.graveBankTrip = false
+            bot.graveRouteFailureAt = -1
             if (bot.phase in setOf(BotPhase.RecoveringGrave, BotPhase.GraveBanking)) {
                 bot.phase = BotPhase.Banking
                 bot.needsPlan = true
@@ -790,6 +807,7 @@ class BotPopulation @Inject constructor(
             return true
         }
         if (bot.phase != BotPhase.RecoveringGrave) {
+            bot.graveRouteFailureAt = -1
             bot.phase = BotPhase.RecoveringGrave
             bot.pathOrigin = player.coords
             bot.path = route(bot, grave.coords)
@@ -802,7 +820,8 @@ class BotPopulation @Inject constructor(
         bot.nextThink = cycle + 3
         if (player.isDelayed || player.isAccessProtected) return true
         val totalXp = BotSkills.all.sumOf { player.statMap.getFineXP(it).toLong() }
-        if (bot.path.isEmpty() || bot.graveTimeout.expired(cycle, player.coords, totalXp, true)) {
+        if (bot.path.isNotEmpty() &&
+            bot.graveTimeout.expired(cycle, player.coords, totalXp, true)) {
             player.clearPendingAction(events)
             actions.release(player)
             bot.path = route(bot, grave.coords)
@@ -811,9 +830,29 @@ class BotPopulation @Inject constructor(
             bot.graveTimeout.expired(cycle, player.coords, totalXp, false)
         }
         if (bot.path.isEmpty()) {
-            bot.status = "waiting for route to own gravestone"
-            bot.nextThink = cycle + 50
-            return true
+            if (bot.graveRouteFailureAt < 0) bot.graveRouteFailureAt = cycle
+            // Collision and nearby NPCs can change. Retry before giving up and handing
+            // unreachable loot to Death's Office. No teleportation or item deletion.
+            val retry = route(bot, grave.coords)
+            if (retry.isNotEmpty()) {
+                bot.path = retry
+                bot.pathOrigin = player.coords
+                bot.waypoint = 0
+                bot.graveRouteFailureAt = -1
+                bot.status = "found route to own gravestone"
+            } else if (BotGraveRecoveryPolicy.shouldUseOffice(bot.graveRouteFailureAt, cycle) &&
+                graves.moveUnreachableGraveToOffice(player)) {
+                bot.status = "unreachable gravestone secured at Death's Office"
+                bot.graveRouteFailureAt = -1
+                bot.nextThink = cycle + 1
+                return true
+            } else {
+                bot.status = "waiting for grave route; Death's Office fallback if unreachable"
+                bot.nextThink = cycle + 50
+                return true
+            }
+        } else {
+            bot.graveRouteFailureAt = -1
         }
         walkRoute(bot)
         return true
@@ -913,6 +952,8 @@ class BotPopulation @Inject constructor(
                 "fleeThreats" to bot.fleeThreats.map { "${it.x},${it.z}" },
                 "fleeTarget" to bot.fleeTarget?.toString(),
                 "gravestone" to graves.grave(player)?.coords?.toString(),
+                "graveRouteWaitCycles" to if (bot.graveRouteFailureAt < 0) 0 else
+                    cycle - bot.graveRouteFailureAt,
                 "fleeFailedOrders" to bot.fleeFailedOrders,
                 "selection" to actions.selectionTrace(player))
         }
@@ -1077,6 +1118,8 @@ class BotPopulation @Inject constructor(
         while (bot.waypoint < bot.path.size) {
             val target = bot.path[bot.waypoint]
             if (BotRoutes.reached(bot.pathOrigin, bot.path, bot.waypoint, player.coords)) {
+                bot.crossingAttempts.remove(
+                    (bot.path.getOrNull(bot.waypoint - 1) ?: bot.pathOrigin) to target)
                 bot.waypoint++
                 continue
             }
