@@ -610,14 +610,35 @@ class BotPopulation @Inject constructor(
                     other.coords.level == player.coords.level &&
                     other.coords.chebyshevDistance(player.coords) <= 8
             }
-            if (nearHuman && random.nextInt(100) < bot.personality.sociability / 3) {
-                player.say(BotHumanity.ambientLine(bot.task.kind, random))
+            val nearFriend = bots.values.firstOrNull { it.identity == bot.friendIdentity }
+                ?.player?.coords?.let { coords ->
+                    coords.level == player.coords.level &&
+                        coords.chebyshevDistance(player.coords) <= 8
+                } == true
+            if ((nearHuman || nearFriend) &&
+                random.nextInt(100) < bot.personality.sociability / 3) {
+                val comment = if (nearFriend && random.nextInt(3) == 0) {
+                    listOf("back at it again", "gl on the grind", "nice to train together")
+                        .random(random)
+                } else BotHumanity.ambientLine(bot.task.kind, random)
+                player.say(comment)
             }
         }
         if (cycle >= bot.nextPauseAt && bot.phase in setOf(BotPhase.Working, BotPhase.Banking) &&
             player.interaction == null && player.routeRequest == null) {
             bot.pauseUntil = cycle + BotHumanity.pauseCycles(bot.personality, random)
             bot.nextPauseAt = cycle + BotHumanity.nextPauseCycles(bot.personality, random)
+            if (bot.phase == BotPhase.Working && random.nextInt(100) < 25) {
+                // Move a step or two like a player repositioning before going briefly idle.
+                val origin = player.coords
+                repeat(3) {
+                    val destination = CoordGrid(origin.x + random.nextInt(-2, 3),
+                        origin.z + random.nextInt(-2, 3), origin.level)
+                    if (destination != origin && registry.playerList.none { other ->
+                            other != null && other !== player && other.coords == destination
+                        } && actions.walk(player, destination)) return@repeat
+                }
+            }
             bot.status = "taking a short break"
             return true
         }
