@@ -68,6 +68,8 @@ private class WorldBot(
     var status = "starting"
     var needsPlan = true
     var resourceWaits = 0
+    var routeWaits = 0
+    var planningWaits = 0
     var returnReason: String? = null
     var onlineSince = 0
     var sessionEndAt = Int.MAX_VALUE
@@ -131,6 +133,7 @@ class BotPopulation @Inject constructor(
     private val desiredPopulation = linkedMapOf<BotMode, Int>()
     private val restingIdentities = mutableMapOf<BotMode, java.util.ArrayDeque<Int>>()
     private var nextPopulationSweep = 0
+    private var decisionCursor = 0
     private val configured = Properties().apply {
         val config = Path.of(".data", "bots.properties")
         if (!Files.exists(config)) {
@@ -391,7 +394,7 @@ class BotPopulation @Inject constructor(
                 }
                 bots[player] = bot
                 if (mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
-                    chooseTask(bot)
+                    bot.phase = BotPhase.Planning
                 } else {
                     setTask(bot, task)
                 }
@@ -402,7 +405,7 @@ class BotPopulation @Inject constructor(
                 }
                 VarPlayerIntMapSetter.set(player, "varp.option_run", 1)
                 if (mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
-                    bot.nextThink = player.currentMapClock + random.nextInt(1, 15)
+                    bot.nextThink = BotDecisionTiming.next(player.currentMapClock, identity, random.nextInt(1, 15))
                 }
                 player.rebuildAppearance()
                 added++
@@ -510,6 +513,8 @@ class BotPopulation @Inject constructor(
         bot.recoveries = 0
         bot.status = "walking to ${task.id}"
         bot.resourceWaits = 0
+        bot.routeWaits = 0
+        bot.planningWaits = 0
         bot.returnReason = null
     }
 
@@ -536,6 +541,11 @@ class BotPopulation @Inject constructor(
         // a bot repeatedly "Changing" forever when the road graph is disconnected
         // or a collision-blocked gate cannot be traversed.
         repeat(6) {
+            if (!actions.decisionAvailable) {
+                bot.status = "task route search deferred until next decision"
+                bot.nextThink = BotDecisionTiming.next(player.currentMapClock, bot.identity)
+                return false
+            }
             val next = if (humanBehaviourEnabled) {
                 BotHumanity.chooseTask(remaining.filter {
                     bot.mode != BotMode.Progressive ||
@@ -563,14 +573,30 @@ class BotPopulation @Inject constructor(
         bot.status = "no reachable task route; retrying from current position"
         bot.needsPlan = true
         bot.phase = BotPhase.Planning
-        bot.nextThink = player.currentMapClock + 100
+        bot.planningWaits++
+        bot.nextThink = BotDecisionTiming.next(player.currentMapClock, bot.identity,
+            BotDecisionTiming.retryDelay(bot.planningWaits, random.nextInt(10)))
         return false
     }
 
     fun tick(cycle: Int) {
         reconcilePopulation(cycle)
+        actions.beginTick()
+        try {
+            tickBots(cycle)
+        } finally {
+            actions.endTick()
+        }
+    }
+
+    private fun tickBots(cycle: Int) {
         expirePlayerTeamInvitations(cycle)
-        for (bot in bots.values.toList()) {
+        val population = bots.values.toList()
+        val start = if (population.isEmpty()) 0 else Math.floorMod(decisionCursor, population.size)
+        for (offset in population.indices) {
+            val index = (start + offset) % population.size
+            val bot = population[index]
+            actions.beginDecision(priority = true)
             val player = bot.player
             if (!player.isSlotAssigned) {
                 remove(player)
@@ -589,8 +615,10 @@ class BotPopulation @Inject constructor(
             // Handle this before normal work, banking, idle pauses and task interactions.
             if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive) &&
                 player.hitpoints > 0 && recoverGrave(bot, cycle)) continue
-            if (cycle < bot.nextThink) continue
-            bot.nextThink = cycle + 3
+            actions.beginDecision()
+            if (cycle < bot.nextThink || !actions.decisionAvailable) continue
+            decisionCursor = index + 1
+            bot.nextThink = BotDecisionTiming.next(cycle, bot.identity, 3)
             if (player.hitpoints <= 0) {
                 actions.release(player)
                 continue
@@ -1061,7 +1089,7 @@ class BotPopulation @Inject constructor(
                     bot.blockedTasks[bot.task.id] = cycle + 600
                     bot.needsPlan = true
                     bot.status = "supplies exhausted; replanning"
-                    bot.nextThink = cycle + 50
+                    bot.nextThink = BotDecisionTiming.next(cycle, bot.identity, 50)
                 }
             }
             BotPhase.Working -> {
@@ -1105,13 +1133,18 @@ class BotPopulation @Inject constructor(
                     actions.pickup(player, 6, bot.task.ignoredLoot)) return
                 if (!supplies.perform(player, bot.task, actions,
                     radius = (12 + bot.resourceWaits * 2).coerceAtMost(32))) {
+                    if (actions.selectionDeferred) {
+                        bot.status = "resource search deferred until next decision"
+                        return
+                    }
                     val exclusive = bot.task.kind in setOf(
                         BotTaskKind.Mining, BotTaskKind.Fishing, BotTaskKind.Woodcutting,
                     )
                     if (exclusive) {
                         bot.resourceWaits++
                         bot.status = "waiting for a free resource at ${bot.task.id}"
-                        bot.nextThink = cycle + 10
+                        bot.nextThink = BotDecisionTiming.next(cycle, bot.identity,
+                            BotDecisionTiming.retryDelay(bot.resourceWaits, random.nextInt(10)))
                         return
                     }
                 }
@@ -1189,7 +1222,14 @@ class BotPopulation @Inject constructor(
             val walked = actions.walk(player, target,
                 spread = bot.mode in setOf(BotMode.Skilling, BotMode.Progressive) &&
                     !BotRoutes.exactWaypoint(bot.pathOrigin, bot.path, bot.waypoint))
-            if (!walked && bot.stalled == 3) {
+            if (walked) {
+                bot.routeWaits = 0
+            } else if (actions.normalDecision) {
+                bot.routeWaits++
+                bot.nextThink = BotDecisionTiming.next(player.currentMapClock, bot.identity,
+                    BotDecisionTiming.retryDelay(bot.routeWaits, random.nextInt(10)))
+            }
+            if (!walked && bot.stalled == 3 && actions.decisionAvailable) {
                 val detour = route(bot, target)
                 if (detour.isNotEmpty()) {
                     bot.path = detour + bot.path.drop(bot.waypoint + 1)
@@ -1245,14 +1285,14 @@ class BotPopulation @Inject constructor(
                     player.coords.chebyshevDistance(bot.task.start) > 2)) {
                 "waiting for a walkable bank route"
             } else "walking to bank after stall"
-            bot.nextThink = player.currentMapClock + 10
+            bot.nextThink = BotDecisionTiming.next(player.currentMapClock, bot.identity, 10)
         } else {
             bot.recoveries = 0
             if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
                 bot.blockedTasks[bot.task.id] = player.currentMapClock + 1000
                 chooseTask(bot)
             } else bot.status = "stalled: ${bot.task.id}"
-            bot.nextThink = player.currentMapClock + 100
+            bot.nextThink = BotDecisionTiming.next(player.currentMapClock, bot.identity, 100)
         }
     }
 
@@ -1292,7 +1332,7 @@ class BotPopulation @Inject constructor(
     }
 
     private fun remove(player: Player) {
-        actions.release(player)
+        actions.forget(player)
         val bot = bots.remove(player)
         playerTeamInvitations.remove(player)
         declinedPlayerTeams.remove(player)

@@ -42,6 +42,7 @@ import org.rsmod.game.movement.RouteRequestPathingEntity
 import org.rsmod.game.type.getInvObj
 import org.rsmod.map.CoordGrid
 import org.rsmod.map.zone.ZoneKey
+import org.rsmod.routefinder.Route
 import org.rsmod.routefinder.RouteFinding
 import org.rsmod.routefinder.collision.CollisionFlagMap
 
@@ -65,9 +66,63 @@ constructor(
 ) {
     private val routeFinding = RouteFinding(collision)
     private val gatheringTargets = BotReservations<Player, Any>()
-    private val destinations = WeakHashMap<Player, CoordGrid>()
+    private val occupancy = BotOccupancy<Player, CoordGrid>()
+    private val work = BotTickWork()
+    private val walkChecks = HashMap<Pair<CoordGrid, CoordGrid>, Boolean>()
+    private val resourceCursors = WeakHashMap<Player, Any>()
+    private var occupancyReady = false
+    private var selectionSearches = 0
+    private var priorityDecision = false
     private val selectionTraces = WeakHashMap<Player, String>()
     private val avoidedThreats = WeakHashMap<Player, Pair<Int, List<CoordGrid>>>()
+    var selectionDeferred = false
+        private set
+    val decisionAvailable: Boolean get() = priorityDecision || work.available
+    val normalDecision: Boolean get() = !priorityDecision
+
+    fun beginTick() {
+        walkChecks.clear()
+        occupancyReady = false
+        work.beginTick()
+    }
+
+    fun endTick() {
+        walkChecks.clear()
+        work.endTick()
+        priorityDecision = false
+    }
+
+    fun beginDecision(priority: Boolean = false) {
+        priorityDecision = priority
+        walkChecks.clear()
+        selectionDeferred = false
+    }
+
+    fun forget(player: Player) {
+        release(player)
+        occupancy.remove(player)
+        resourceCursors.remove(player)
+    }
+
+    private fun occupied(player: Player?): Set<CoordGrid> {
+        if (!occupancyReady) {
+            occupancy.snapshot(players.playerList.asSequence().map { it to it.coords })
+            occupancyReady = true
+        }
+        return occupancy.excluding(player)
+    }
+
+    private class SelectionDeferred : RuntimeException(null, null, false, false)
+
+    private fun resourceSearch(search: () -> Route): Route {
+        if (priorityDecision) return search()
+        if (!work.available || selectionSearches >= 32) throw SelectionDeferred()
+        selectionSearches++
+        return work.search(search)
+    }
+
+    private fun <T> candidates(player: Player, targets: Sequence<T>, key: (T) -> Any): List<T> =
+        BotCandidateOrder.resume(targets.toList(), resourceCursors[player], key)
 
     fun avoidThreats(player: Player, threats: List<CoordGrid>) {
         avoidedThreats[player] = (player.currentMapClock + BotFleePlanner.RETREAT_COOLDOWN) to
@@ -94,10 +149,14 @@ constructor(
 
     fun release(player: Player) {
         gatheringTargets.release(player)
-        destinations.remove(player)
+        occupancy.release(player)
     }
 
-    fun spawnPoint(origin: CoordGrid): CoordGrid? = freePoint(origin, origin, null, 6)
+    fun spawnPoint(origin: CoordGrid): CoordGrid? {
+        walkChecks.clear()
+        occupancyReady = false
+        return freePoint(origin, origin, null, 6).also { occupancyReady = false }
+    }
 
     private fun freePoint(
         source: CoordGrid,
@@ -105,24 +164,27 @@ constructor(
         player: Player?,
         radius: Int,
     ): CoordGrid? {
-        val occupied = players.playerList.filter { it !== player }.map { it.coords }.toSet() +
-            destinations.filterKeys { it !== player }.values
+        val occupied = occupied(player)
         val candidates = (-radius..radius).flatMap { x ->
             (-radius..radius).map { z -> CoordGrid(origin.x + x, origin.z + z, origin.level) }
         }.shuffled().sortedBy { origin.chebyshevDistance(it) }
         return candidates.firstOrNull { candidate ->
-            candidate !in occupied && routeFinding.findRoute(
-                level = source.level, srcX = source.x, srcZ = source.z,
-                destX = candidate.x, destZ = candidate.z, moveNear = false,
-            ).success
+            candidate !in occupied && canWalk(source, candidate)
         }
     }
 
-    fun canWalk(source: CoordGrid, destination: CoordGrid): Boolean =
-        source.level == destination.level && routeFinding.findRoute(
-            level = source.level, srcX = source.x, srcZ = source.z,
-            destX = destination.x, destZ = destination.z, moveNear = false,
-        ).success
+    fun canWalk(source: CoordGrid, destination: CoordGrid): Boolean {
+        if (source.level != destination.level) return false
+        return walkChecks.getOrPut(source to destination) {
+            val search = {
+                routeFinding.findRoute(
+                    level = source.level, srcX = source.x, srcZ = source.z,
+                    destX = destination.x, destZ = destination.z, moveNear = false,
+                ).success
+            }
+            if (priorityDecision) search() else work.search(search)
+        }
+    }
 
     fun walk(player: Player, destination: CoordGrid, spread: Boolean = false): Boolean {
         if (busy(player) || player.coords.level != destination.level) return false
@@ -137,7 +199,7 @@ constructor(
         }
         trace(player, "Walking to ${target.x},${target.z},${target.level}")
         release(player)
-        if (spread) destinations[player] = target
+        if (spread) occupancy.reserve(player, target)
         player.clearPendingAction(eventBus)
         player.resetFaceEntity()
         player.routeRequest = RouteRequestCoord(target, clientRequest = true)
@@ -145,6 +207,27 @@ constructor(
     }
 
     fun operate(
+        player: Player,
+        names: Set<String>,
+        option: String,
+        radius: Int = 12,
+        exclusive: Boolean = false,
+        sharedNpc: Boolean = false,
+        sharedLoc: (ObjectServerType) -> Boolean = { false },
+        eligibleLoc: (ObjectServerType) -> Boolean = { true },
+    ): Boolean {
+        selectionDeferred = false
+        selectionSearches = 0
+        return try {
+            operateResource(player, names, option, radius, exclusive, sharedNpc, sharedLoc, eligibleLoc)
+        } catch (_: SelectionDeferred) {
+            selectionDeferred = true
+            trace(player, "Resource search deferred by tick routing budget")
+            false
+        }
+    }
+
+    private fun operateResource(
         player: Player,
         names: Set<String>,
         option: String,
@@ -169,7 +252,8 @@ constructor(
             .filter { near(player.coords, it.coords, radius) && !it.hidden }
             .filter { named(it.name, names) && safeResource(player, it.coords) }
             .sortedBy { player.coords.chebyshevDistance(it.coords) }
-        for (npc in npcs) {
+        for (npc in if (exclusive) candidates(player, npcs) { it } else npcs.toList()) {
+            if (exclusive) resourceCursors[player] = npc
             matched++
             val reserveResource = exclusive && !sharedNpc
             if (reserveResource && !gatheringTargets.available(player, npc)) { reserved++; continue }
@@ -178,12 +262,11 @@ constructor(
             } ?: run { noOption++; null } ?: continue
             val destination = if (exclusive) {
                 npcGatheringDestination(routeFinding, player.coords, npc.coords, npc.size,
-                    players.playerList.filter { it !== player }.map { it.coords }.toSet() +
-                        destinations.filterKeys { it !== player }.values, shared = sharedNpc)
+                    occupied(player), shared = sharedNpc, search = ::resourceSearch)
                     ?: run { noApproach++; null } ?: continue
             } else null
             if (reserveResource && !gatheringTargets.claim(player, npc)) continue
-            if (destination != null) destinations[player] = destination
+            if (destination != null) occupancy.reserve(player, destination)
             player.clearPendingAction(eventBus)
             player.faceNpc(npc)
             player.interaction = InteractionNpcOp(
@@ -196,11 +279,14 @@ constructor(
                 RouteRequestCoord(destination, clientRequest = true)
             } else RouteRequestPathingEntity(npc.avatar, clientRequest = true)
             report("Selected NPC ${npc.name} at ${npc.coords}; standing=$destination")
+            resourceCursors.remove(player)
             return true
         }
-        for (loc in locations(player, names, radius)) {
+        val locs = locations(player, names, radius)
+        for (loc in if (exclusive) candidates(player, locs) { it.coords to it.id } else locs.toList()) {
             matched++
             val key = loc.coords to loc.id
+            if (exclusive) resourceCursors[player] = key
             val baseType = ServerCacheManager.getObject(loc.id) ?: continue
             val type = visibleType(player, loc, baseType)
             if (!eligibleLoc(type)) { ineligible++; continue }
@@ -211,12 +297,11 @@ constructor(
             } ?: run { noOption++; null } ?: continue
             val destination = if (exclusive) {
                 gatheringDestination(routeFinding, player.coords, loc, type,
-                    players.playerList.filter { it !== player }.map { it.coords }.toSet() +
-                        destinations.filterKeys { it !== player }.values)
+                    occupied(player), search = ::resourceSearch)
                     ?: run { noApproach++; null } ?: continue
             } else null
             if (reserveResource && !gatheringTargets.claim(player, key)) continue
-            if (destination != null) destinations[player] = destination
+            if (destination != null) occupancy.reserve(player, destination)
             val bound = BoundLocInfo(loc, baseType)
             player.clearPendingAction(eventBus)
             player.resetFaceEntity()
@@ -231,8 +316,10 @@ constructor(
                 player.routeRequest = RouteRequestCoord(destination, clientRequest = true)
             } else routeLoc(player, loc, type)
             report("Selected ${type.name} at ${loc.coords}; standing=$destination")
+            resourceCursors.remove(player)
             return true
         }
+        resourceCursors.remove(player)
         report("No usable resource")
         return false
     }
@@ -426,12 +513,13 @@ constructor(
             size: Int,
             occupied: Set<CoordGrid>,
             shared: Boolean = false,
+            search: (() -> Route) -> Route = { it() },
         ): CoordGrid? {
-            fun approach(from: CoordGrid) = routes.findRoute(
+            fun approach(from: CoordGrid) = search { routes.findRoute(
                 level = from.level, srcX = from.x, srcZ = from.z,
                 destX = target.x, destZ = target.z, destWidth = size, destLength = size,
                 locShape = RECTANGLE_EXCLUSIVE_STRATEGY, moveNear = false,
-            )
+            ) }
             val route = approach(source)
             if (route.success) {
                 val preferred = route.lastOrNull()?.let { CoordGrid(it.x, it.z, source.level) }
@@ -444,10 +532,10 @@ constructor(
             }.filter { shared || it !in occupied }.sortedBy { source.chebyshevDistance(it) }
                 .firstOrNull { candidate ->
                     val adjacent = approach(candidate)
-                    adjacent.success && adjacent.isEmpty() && routes.findRoute(
+                    adjacent.success && adjacent.isEmpty() && search { routes.findRoute(
                         level = source.level, srcX = source.x, srcZ = source.z,
                         destX = candidate.x, destZ = candidate.z, moveNear = false,
-                    ).success
+                    ) }.success
                 }
         }
 
@@ -457,14 +545,15 @@ constructor(
             loc: LocInfo,
             type: ObjectServerType,
             occupied: Set<CoordGrid>,
+            search: (() -> Route) -> Route = { it() },
         ): CoordGrid? {
-            fun approach(from: CoordGrid) = routes.findRoute(
+            fun approach(from: CoordGrid) = search { routes.findRoute(
                 level = from.level, srcX = from.x, srcZ = from.z,
                 destX = loc.coords.x, destZ = loc.coords.z,
                 destWidth = type.width, destLength = type.length,
                 locShape = loc.entity.shape, locAngle = loc.entity.angle,
                 blockAccessFlags = type.forceApproachFlags, moveNear = false,
-            )
+            ) }
             val route = approach(source)
             if (route.success) {
                 val preferred = route.lastOrNull()?.let { CoordGrid(it.x, it.z, source.level) } ?: source
@@ -480,10 +569,10 @@ constructor(
             return candidates.firstOrNull { candidate ->
                 // The native loc strategy must accept this tile without another step.
                 val adjacent = approach(candidate)
-                adjacent.success && adjacent.isEmpty() && routes.findRoute(
+                adjacent.success && adjacent.isEmpty() && search { routes.findRoute(
                     level = source.level, srcX = source.x, srcZ = source.z,
                     destX = candidate.x, destZ = candidate.z, moveNear = false,
-                ).success
+                ) }.success
             }
         }
 
