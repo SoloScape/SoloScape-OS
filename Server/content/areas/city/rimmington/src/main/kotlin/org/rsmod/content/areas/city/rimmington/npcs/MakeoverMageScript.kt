@@ -7,20 +7,15 @@ import dev.openrune.rscm.RSCMType
 import dev.openrune.types.MesAnimType
 import dev.openrune.types.NpcServerType
 import jakarta.inject.Inject
-import org.rsmod.api.attr.AttributeKey
 import org.rsmod.api.npc.access.StandardNpcAccess
 import org.rsmod.api.player.dialogue.Dialogue
 import org.rsmod.api.player.protect.ProtectedAccess
-import org.rsmod.api.player.vars.VarPlayerIntMapSetter
 import org.rsmod.api.random.GameRandom
 import org.rsmod.api.script.onAiTimer
 import org.rsmod.api.script.onIfModalButton
-import org.rsmod.api.script.onIfOpen
 import org.rsmod.api.script.onNpcQueue
 import org.rsmod.api.script.onOpNpc1
 import org.rsmod.api.script.onOpNpc4
-import org.rsmod.api.player.output.mes
-import org.rsmod.api.player.ui.ifSetEvents
 import org.rsmod.api.table.FacialHairStylesRow
 import org.rsmod.api.table.HairStylesRow
 import org.rsmod.api.table.HandStylesRow
@@ -29,7 +24,6 @@ import org.rsmod.api.table.ShoeStylesRow
 import org.rsmod.api.table.SleeveStylesRow
 import org.rsmod.api.table.TorsoStylesRow
 import org.rsmod.game.entity.player.Appearance
-import org.rsmod.content.areas.city.falador.npcs.appearanceMenuCategory
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -39,31 +33,6 @@ import org.rsmod.plugin.scripts.ScriptContext
  */
 class MakeoverMageScript @Inject constructor(private val random: GameRandom) : PluginScript() {
     override fun ScriptContext.startup() {
-        // The tutorial now opens the existing revision-240 appearance editor on
-        // first login. Initialise the same preview vars normally supplied by
-        // talking to the Makeover Mage; this is not a dialogue with the mage.
-        onIfOpen(INTERFACE) {
-            // These components may be displayed without an NPC interaction
-            // during the initial Tutorial Island login. Explicitly enable
-            // their Op1 events; otherwise the client/server button gates can
-            // silently discard every click, including the required Accept.
-            player.enableMakeoverInput()
-            val appearance = player.appearance
-            val colour = appearance.coloursSnapshot()[SKIN_COLOUR_SLOT].toInt()
-            VarPlayerIntMapSetter.set(player, VAR_BODY_TYPE, appearance.bodyType)
-            VarPlayerIntMapSetter.set(player, VAR_COLOUR, colour)
-            VarPlayerIntMapSetter.set(player, VAR_PRONOUN, appearance.pronoun)
-            VarPlayerIntMapSetter.set(player, "varp.if1", appearance.bodyType)
-            VarPlayerIntMapSetter.set(player, "varp.if2", colour)
-            VarPlayerIntMapSetter.set(player, "varp.if3", appearance.pronoun)
-        }
-        onIfModalButton("component.makeover_mage:burger_menu_frame") {
-            val category = appearanceMenuCategory(it.comsub) ?: return@onIfModalButton
-            applyMakeover()
-            vars["varbit.makeover_interface_type"] = category
-            vars["varbit.makeover_bodytype"] = player.appearance.bodyType
-            ifOpenMainModal(if (category == 2) INTERFACE else "interface.makeover")
-        }
         for ((index, mage) in MAGES.withIndex()) {
             onOpNpc1(mage) {
                 vars[VAR_MAGE] = index
@@ -102,32 +71,9 @@ class MakeoverMageScript @Inject constructor(private val random: GameRandom) : P
         onIfModalButton("component.makeover_mage:confirm_button") {
             applyMakeover()
             ifClose()
-            if (player.vars["varp.tutorial"] == 10 &&
-                player.attr[TUTORIAL_APPEARANCE_CONFIRMED] != 1) {
-                player.attr[TUTORIAL_APPEARANCE_CONFIRMED] = 1
-                mes("Your appearance has been saved. Talk to the Gielinor Guide to begin.")
-                return@onIfModalButton
-            }
             val mage = MAGES[vars[VAR_MAGE]]
             startDialogue { afterMakeover(mage) }
         }
-    }
-
-    /**
-     * Enable the static controls independently of the normal Makeover Mage
-     * dialogue, since on Tutorial Island the modal is opened directly at login.
-     * A range starting at zero supports both if1 clicks and if3 comsub 0 clicks.
-     */
-    private fun org.rsmod.game.entity.Player.enableMakeoverInput() {
-        for (component in listOf(
-            "bodytype_a", "bodytype_b",
-            "he_him", "she_her", "they_them",
-            "apply_button", "confirm_button",
-        )) {
-            ifSetEvents("component.makeover_mage:$component", 0..0, IfEvent.Op1)
-        }
-        ifSetEvents("component.makeover_mage:colour", SKIN_COLOUR_ORDER.indices, IfEvent.Op1)
-        ifSetEvents("component.makeover_mage:burger_menu_frame", 10..24, IfEvent.Op1)
     }
 
     private suspend fun StandardNpcAccess.switchForm() {
@@ -262,7 +208,7 @@ class MakeoverMageScript @Inject constructor(private val random: GameRandom) : P
         vars["varp.if3"] = appearance.pronoun
 
         ifOpenMainModal(INTERFACE)
-        player.enableMakeoverInput()
+        ifSetEvents("component.makeover_mage:colour", SKIN_COLOUR_ORDER.indices, IfEvent.Op1)
     }
 
     private fun ProtectedAccess.selectBodyType(bodyType: Int) {
@@ -332,8 +278,6 @@ class MakeoverMageScript @Inject constructor(private val random: GameRandom) : P
     }
 
     private companion object {
-        private val TUTORIAL_APPEARANCE_CONFIRMED =
-            AttributeKey<Int>("tutorial_appearance_confirmed")
         const val INTERFACE = "interface.makeover_mage"
         const val VAR_BODY_TYPE = "varbit.rimmington_makeover_bodytype"
         const val VAR_COLOUR = "varbit.rimmington_makeover_colour"

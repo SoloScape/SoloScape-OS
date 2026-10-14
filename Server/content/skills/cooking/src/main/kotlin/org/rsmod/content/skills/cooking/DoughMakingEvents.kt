@@ -1,7 +1,6 @@
 package org.rsmod.content.skills.cooking
 
 import org.rsmod.api.player.protect.ProtectedAccess
-import org.rsmod.api.player.events.skilling.SkillingProcessingEvent
 import org.rsmod.api.script.onOpHeldU
 import org.rsmod.content.skills.Material
 import org.rsmod.content.skills.SkillMultiConfig
@@ -43,7 +42,6 @@ class DoughMakingEvents : PluginScript() {
                 invAdd(inv, dough, 1)
                 invAdd(inv, "obj.pot_empty", 1)
                 invAdd(inv, emptyContainer, 1)
-                publish(SkillingProcessingEvent(player, "stat.cooking", "obj.pot_flour", dough))
             }
             val name = selection.entry.item.name
             mes("You mix the flour and water to make some $name.")

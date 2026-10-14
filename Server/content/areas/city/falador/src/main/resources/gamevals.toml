@@ -5,14 +5,3 @@ falador_makeover = 64850
 falador_makeover_active = 64850
 falador_makeover_original_kit = 64851
 falador_makeover_original_colour = 64852
-
-[gamevals.enum]
-makeover_torso_styles = 5495
-makeover_sleeve_styles = 5496
-makeover_legging_styles = 5497
-makeover_shoe_styles = 5498
-makeover_hand_styles = 5499
-makeover_hair_colours = 890
-makeover_top_colours = 789
-makeover_bottom_colours = 791
-makeover_shoe_colours = 5290

@@ -54,8 +54,6 @@ data class Quest(
     val questVarbit: String? = null,
     val closeDialogue: QuestClose = QuestClose.OnFinished,
     val closeScroll: QuestClose = QuestClose.Never,
-    val varpAuthoritative: Boolean = false,
-    val visibleInJournal: (Player) -> Boolean = { true },
 ) {
 
     private var Player.questVarpState by intVarp(questVarp)
@@ -110,8 +108,6 @@ data class Quest(
             varbit: String? = null,
             closeDialogue: QuestClose = QuestClose.OnFinished,
             closeScroll: QuestClose = QuestClose.Never,
-            varpAuthoritative: Boolean = false,
-            visibleInJournal: (Player) -> Boolean = { true },
         ): Quest {
 
             val rowKeyID = "dbrow.${rowKey}".asRSCM()
@@ -132,8 +128,6 @@ data class Quest(
                 questVarbit = varbit,
                 closeDialogue = closeDialogue,
                 closeScroll = closeScroll,
-                varpAuthoritative = varpAuthoritative,
-                visibleInJournal = visibleInJournal,
             )
             questsByKey[rowKey.normalizedQuestKey()] = quest
             return quest
@@ -142,15 +136,14 @@ data class Quest(
 
     fun getQuestStage(access: Player): Int {
         if (questVarbit != null) return access.vars[questVarbit]
-        if (varpAuthoritative) return access.vars[questVarp]
         val stages = access.attr.getOrPut(QUEST_STAGE_MAP_ATTR) { mutableMapOf() }
         return stages[key] ?: 0
     }
 
     private fun storeQuestStage(player: Player, stage: Int) {
         val clampedStage = stage.coerceIn(0, maxSteps)
-        if (questVarbit != null || varpAuthoritative) {
-            if (clientState(player) != clampedStage) {
+        if (questVarbit != null) {
+            if (player.vars[questVarbit] != clampedStage) {
                 setClientState(player, clampedStage)
             }
             return

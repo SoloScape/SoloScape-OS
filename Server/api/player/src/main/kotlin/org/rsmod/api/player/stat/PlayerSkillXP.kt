@@ -17,9 +17,7 @@ public object PlayerSkillXP {
         player.addXP(stat, xp, rate)
 
     private fun Player.addXP(stat: String, xp: Double, rate: Double): Int {
-        val fineXp = TutorialExperience.limit(
-            vars["varp.tutorial"], stat, statMap.getFineXP(stat), PlayerStatMap.toFineXP(xp * rate),
-        )
+        val fineXp = PlayerStatMap.toFineXP(xp * rate)
         if (fineXp.isInfinite()) {
             throw IllegalArgumentException("Total XP being added is too high! (xp=$xp, rate=$rate)")
         }

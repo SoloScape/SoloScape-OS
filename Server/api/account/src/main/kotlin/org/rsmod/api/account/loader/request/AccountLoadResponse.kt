@@ -1,5 +1,6 @@
 package org.rsmod.api.account.loader.request
 
+import kotlin.contracts.contract
 import dev.or2.central.account.AccountData
 import org.rsmod.api.account.character.CharacterDataTransformer
 
@@ -36,9 +37,6 @@ public sealed class AccountLoadResponse {
 }
 
 public fun AccountLoadResponse.Ok.isNewAccount(): Boolean {
-    // Registration may create the character before the game loader sees it. In that
-    // case it is a LoadAccount response, but still needs first-login initialisation.
-    val character = account.characterData
-    return this is AccountLoadResponse.Ok.NewAccount ||
-        (character.lastLogin == null && character.lastLogout == null)
+    contract { returns(true) implies (this@isNewAccount is AccountLoadResponse.Ok.NewAccount) }
+    return this is AccountLoadResponse.Ok.NewAccount
 }

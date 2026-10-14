@@ -43,16 +43,6 @@ class SqlitePersistenceTest {
                     ps.generatedKeys.use { keys -> assertTrue(keys.next()); characterId = keys.getInt(1) }
                 }
                 conn.createStatement().use { st ->
-                    st.executeQuery("SELECT display_name FROM account_characters WHERE id=$characterId")
-                        .use { rs -> assertTrue(rs.next()); assertNull(rs.getString(1)) }
-                }
-                conn.prepareStatement(OpenRuneSql.text("game/character/display_name_claim_initial.sql")).use { ps ->
-                    ps.setString(1, "ChosenName"); ps.setInt(2, characterId); ps.setLong(3, accountId)
-                    ps.setString(4, "ChosenName"); ps.setString(5, "ChosenName")
-                    ps.setLong(6, System.currentTimeMillis())
-                    assertEquals(1, ps.executeUpdate())
-                }
-                conn.createStatement().use { st ->
                     st.execute("INSERT INTO inventories VALUES ($characterId,'inv.bank')")
                     st.execute("INSERT INTO inventory_objs VALUES ($characterId,'inv.bank',0,'obj.coins',500,0)")
                     st.execute("INSERT INTO stats(character_id,stat_id,vis_level,base_level,fine_xp) VALUES ($characterId,0,42,42,10000)")
@@ -85,7 +75,7 @@ class SqlitePersistenceTest {
             val handler = object : PgNotifyHandler { override fun handle(payload: String?) { notifications.add(payload) } }
             val service = PgNotifyService(ds, mapOf("character_display_name_events" to handler, "character_mute_events" to handler))
             service.poll()
-            assertTrue(notifications.any { it?.contains("ChosenName") == true })
+            assertTrue(notifications.any { it?.contains("Tester") == true })
             assertTrue(notifications.any { it?.contains("1234567890000") == true })
             ds.connection.use { conn ->
                 conn.createStatement().use { st ->
@@ -100,7 +90,6 @@ class SqlitePersistenceTest {
                 conn.createStatement().use { st ->
                     st.executeQuery("SELECT count FROM inventory_objs").use { rs -> assertTrue(rs.next()); assertEquals(750, rs.getInt(1)) }
                     st.executeQuery("SELECT base_level FROM stats").use { rs -> assertTrue(rs.next()); assertEquals(43, rs.getInt(1)) }
-                    st.executeQuery("SELECT display_name FROM account_characters").use { rs -> assertTrue(rs.next()); assertEquals("ChosenName", rs.getString(1)) }
                     st.executeQuery("SELECT muted_until FROM account_characters").use { rs -> assertTrue(rs.next()); assertEquals(1234567890000L, rs.getTimestamp(1).time) }
                     st.execute("DELETE FROM accounts WHERE id=$accountId")
                     st.executeQuery("SELECT count(*) FROM inventory_objs").use { rs -> rs.next(); assertEquals(0, rs.getInt(1)) }

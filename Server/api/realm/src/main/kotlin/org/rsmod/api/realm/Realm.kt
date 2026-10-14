@@ -43,8 +43,8 @@ public class Realm(public val name: String) {
  *   This is usually compounded with each player's personal xp rate.
  * @param requireRegistration If `true`, players must have a pre-registered account in the database
  *   to log in. If `false`, new accounts will be automatically created on first login.
- * @param autoAssignDisplayNames Legacy persisted realm option. Tutorial characters choose their
- *   display name during setup instead of inheriting their login name.
+ * @param autoAssignDisplayNames If `true`, player display names will be automatically assigned
+ *   based on their login name.
  */
 public data class RealmConfig(
     val id: Int,

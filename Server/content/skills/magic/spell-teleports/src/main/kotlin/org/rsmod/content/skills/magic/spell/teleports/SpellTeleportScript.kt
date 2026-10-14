@@ -8,7 +8,6 @@ import dev.openrune.types.ItemServerType
 import dev.openrune.types.aconverted.interf.IfButtonOp
 import jakarta.inject.Inject
 import org.rsmod.api.area.checker.AreaChecker
-import org.rsmod.api.attr.AttributeKey
 import org.rsmod.api.area.checker.wildernessLevel
 import org.rsmod.api.combat.commons.magic.MagicSpell
 import org.rsmod.api.combat.manager.MagicRuneManager
@@ -28,13 +27,11 @@ import org.rsmod.api.script.onOpHeld3
 import org.rsmod.api.script.onOpHeld4
 import org.rsmod.api.script.onPlayerQueueWithArgs
 import org.rsmod.api.spells.MagicSpellRegistry
-import org.rsmod.content.areas.tutorial.TutorialProgress
 import org.rsmod.content.quest.manager.QuestRequirements
 import org.rsmod.content.skills.construction.HouseAccess
 import org.rsmod.content.skills.construction.house.HouseStore
 import org.rsmod.content.skills.construction.houseTeleportBuildMode
 import org.rsmod.content.skills.construction.houseTeleportOutside
-import org.rsmod.game.entity.Player
 import org.rsmod.game.inv.isType
 import org.rsmod.map.CoordGrid
 import org.rsmod.plugin.scripts.PluginScript
@@ -49,7 +46,6 @@ constructor(
     private val areaChecker: AreaChecker,
     private val houseAccess: HouseAccess,
     private val houseStore: HouseStore,
-    private val tutorialProgress: TutorialProgress,
 ) : PluginScript() {
     override fun ScriptContext.startup() {
         for (teleport in SpellTeleport.entries) {
@@ -95,24 +91,9 @@ constructor(
             return
         }
 
-        if (teleport == SpellTeleport.Home || teleport == SpellTeleport.EdgevilleHome) {
-            val lastCast = player.attr[HomeTeleportLastCastAt]
-            val remaining = if (lastCast == null) 0L
-                else (lastCast + HomeTeleportCooldownMillis - System.currentTimeMillis())
-                    .coerceAtLeast(0L)
-            if (remaining > 0L) {
-                val minutes = (remaining + 59_999L) / 60_000L
-                mes("You can cast Home Teleport again in $minutes minute(s).")
-                return
-            }
-        }
-
         val option = teleport.option(op)
         val house = if (teleport == SpellTeleport.TeleportToHouse) houseStore.state(player) else null
-        val destination = if (teleport == SpellTeleport.Home &&
-            TutorialProgress.canDepartByHomeTeleport(player)) {
-            TutorialProgress.LUMBRIDGE
-        } else if (house != null) {
+        val destination = if (house != null) {
             house.location.arrive.takeIf { house.owned }
         } else {
             teleport.destination(spell, option)
@@ -122,7 +103,7 @@ constructor(
             return
         }
 
-        if (!canTeleport(teleport)) {
+        if (!canTeleport()) {
             return
         }
 
@@ -267,37 +248,20 @@ constructor(
 
     private fun ProtectedAccess.processQueuedTeleport(task: PendingSpellTeleport) {
         val spell = task.teleport.resolveSpell() ?: return
-        if (!canTeleport(task.teleport)) {
+        if (!canTeleport()) {
             return
         }
-        val tutorialHomeExit = task.teleport == SpellTeleport.Home &&
-            TutorialProgress.canDepartByHomeTeleport(player) &&
-            CoordGrid(task.destination) == TutorialProgress.LUMBRIDGE
         if (task.houseInside) {
             houseAccess.enter(this, task.houseBuildMode)
         } else {
             houseAccess.clearSession(player)
-            val type = if (tutorialHomeExit) TeleportType.Exempt else TeleportType.Standard
-            telejump(CoordGrid(task.destination), type)
+            telejump(CoordGrid(task.destination))
         }
         task.teleport.style.endAnim?.let { anim(it) }
-        if ((task.teleport == SpellTeleport.Home || task.teleport == SpellTeleport.EdgevilleHome) &&
-            player.coords == CoordGrid(task.destination)) {
-            // Start the timer only after a successful arrival, never on a cancelled cast.
-            player.attr[HomeTeleportLastCastAt] = System.currentTimeMillis()
-        }
         statAdvance("stat.magic", spell.castXp)
-        if (tutorialHomeExit && player.coords == TutorialProgress.LUMBRIDGE) {
-            tutorialProgress.complete(player)
-            statRestore("stat.hitpoints")
-            statRestore("stat.prayer")
-        }
     }
 
-    private fun ProtectedAccess.canTeleport(teleport: SpellTeleport? = null): Boolean {
-        if (teleport == SpellTeleport.Home && TutorialProgress.canDepartByHomeTeleport(player)) {
-            return true
-        }
+    private fun ProtectedAccess.canTeleport(): Boolean {
         val denial =
             teleportValidator.validate(player, TeleportType.Standard, areaChecker)
         if (denial == null) {
@@ -753,8 +717,6 @@ constructor(
     private companion object {
         private const val Banana = "obj.banana"
         private const val HouseTeleportTablet = "obj.poh_tablet_teleporttohouse"
-        private val HomeTeleportLastCastAt = AttributeKey<Long>("home_teleport_last_cast_at")
-        private const val HomeTeleportCooldownMillis: Long = 30L * 60L * 1000L
         private const val TeleportQueue = "queue.spell_teleport"
         private const val TeleportSound = "synth.teleport_all"
         private const val TeleportDelay = 4
