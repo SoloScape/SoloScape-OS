@@ -159,7 +159,10 @@ class ForestryEventManager @Inject constructor(
         val eligible = nearby.filter { history[it]?.eligible(origin, clock.cycle) == true }.toSet()
         val event = Event(roll.type, origin, clock.cycle, clock.cycle + roll.type.ticks, eligible)
         prepare(event)
-        if (event.locs.isEmpty() && event.npcs.isEmpty()) return
+        if (!playable(event)) {
+            discard(event)
+            return
+        }
         active.add(event)
         nearby.forEach { it.mes("A Forestry event has appeared: " + event.type.title + "!") }
     }
@@ -172,9 +175,38 @@ class ForestryEventManager @Inject constructor(
         if (active.any { forestryNear(it.origin, player.coords, 30) }) return false
         val event = Event(type, player.coords, clock.cycle, clock.cycle + type.ticks, setOf(player))
         prepare(event)
-        if (event.locs.isEmpty() && event.npcs.isEmpty()) return false
+        if (!playable(event)) {
+            discard(event)
+            return false
+        }
         active.add(event)
         return true
+    }
+
+    /** A partial asset match should not create an unfinishable event. */
+    private fun playable(e: Event): Boolean {
+        val locRoles = e.locs.values
+        val npcRoles = e.npcs.values
+        return when (e.type) {
+            ForestryEventType.ROOTS -> locRoles.count { it.startsWith("root:") } >= 2
+            ForestryEventType.SAPLING -> "sapling" in locRoles &&
+                locRoles.any { it.startsWith("ingredient:") }
+            ForestryEventType.ENT -> npcRoles.any { it.startsWith("ent:") }
+            ForestryEventType.FLOWERS -> npcRoles.count { it.startsWith("bush:") } >= 2
+            ForestryEventType.LEPRECHAUN -> "bank" in npcRoles
+            ForestryEventType.HIVE -> "hive" in npcRoles
+            ForestryEventType.FOX -> "trap" in npcRoles
+            ForestryEventType.RITUAL -> npcRoles.count { it.startsWith("circle:") } == 5
+            ForestryEventType.PHEASANT -> "forester" in npcRoles &&
+                locRoles.any { it.startsWith("nest:") }
+        }
+    }
+
+    private fun discard(e: Event) {
+        for (npc in e.npcs.keys.toList()) npcs.del(npc, Int.MAX_VALUE)
+        for (loc in e.locs.keys.toList()) locs.del(loc, Int.MAX_VALUE)
+        e.npcs.clear()
+        e.locs.clear()
     }
 
     private fun prepare(e: Event) {
@@ -379,7 +411,9 @@ class ForestryEventManager @Inject constructor(
             player.mes(if (success) "The " + e.type.title + " event has ended."
                 else "The " + e.type.title + " event was unsuccessful.")
         }
-        // Timed repository lifecycles remove the entities; do not create permanent spawns.
+        // Cancel live entities for objectives completed before their original lifetime.
+        if (clock.cycle < e.finish) discard(e)
+        // Otherwise the repository's normal duration lifecycle has already removed them.
     }
 
     private fun giveLeaves(player: Player) {
