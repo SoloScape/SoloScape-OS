@@ -24,6 +24,7 @@ import org.rsmod.map.CoordGrid
 import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.game.queue.EngineQueueCache
 import org.rsmod.game.type.getInvObj
+import org.rsmod.content.skills.woodcutting.scripts.ForestryRations
 import org.rsmod.plugin.scripts.ScriptContext
 
 object BotSkillingCheck {
@@ -36,6 +37,11 @@ object BotSkillingCheck {
         }
         val supplies = BotSupplies(HeldEquipOp(events, PlayerRestrictions(emptySet())),
             WornUnequipOp(events))
+        // The forestry backpack must exist in the installed cache and use the back slot.
+        val forestryKit = checkNotNull(ServerCacheManager.getItem(ForestryRations.KIT.asRSCM()))
+        check(forestryKit.isEquipable && forestryKit.wearpos1 == Wearpos.Back.slot) {
+            "Forestry kit must be a wearable backpack"
+        }
         for (name in listOf("Oak tree", "Willow tree", "Yew tree", "Magic tree")) {
             val types = ServerCacheManager.getObjects().values.filter {
                 it.name.equals(name, true) && it.actions.getOpOrNull(0).equals("Chop down", true)
@@ -130,6 +136,11 @@ object BotSkillingCheck {
                     "${task.id} outfit missing torso: inv=${player.inv.objs.filterNotNull().map { getInvObj(it).name }} worn=${player.worn.objs.filterNotNull().map { getInvObj(it).name }}"
                 }
                 check(player.worn[Wearpos.Legs.slot] != null)
+                if (task.kind == BotTaskKind.Woodcutting) {
+                    check(player.worn[Wearpos.Back.slot]?.id == forestryKit.id) {
+                        "Woodcutting starter did not equip the Forestry backpack"
+                    }
+                }
                 val tool = player.worn[Wearpos.RightHand.slot]?.let(::getInvObj)?.name
                 check(tool == when (task.kind) {
                     BotTaskKind.Woodcutting -> "$metal axe"
@@ -168,18 +179,29 @@ object BotSkillingCheck {
                                 "obj.leather_chaps", "obj.leather_boots", "obj.brown_apron",
                                 "obj.white_apron", "obj.chefs_hat", "obj.leather_vambraces",
                                 "obj.wizards_robe", "obj.blue_skirt", "obj.bluewizhat",
-                                "obj.green_cape", "obj.blue_cape", "obj.black_cape",
-                                "obj.tiara_air", "obj.tiara_mind", "obj.tiara_water",
+                                ForestryRations.KIT, "obj.green_cape", "obj.blue_cape",
+                                "obj.black_cape", "obj.tiara_air", "obj.tiara_mind", "obj.tiara_water",
                                 "obj.tiara_earth", "obj.tiara_fire", "obj.tiara_body"))
                         }
                         check(outfit.any { it.startsWith("obj.skillcape_") } ==
-                            (members && level == 99 && task.skill != null))
+                            (members && level == 99 && task.skill != null &&
+                                task.kind != BotTaskKind.Woodcutting))
+                        if (task.kind == BotTaskKind.Woodcutting) {
+                            check(outfit.count { it == ForestryRations.KIT } == 1) {
+                                "All Woodcutting outfits must include the Forestry backpack"
+                            }
+                        }
                     }
                     check(supplies.equipOutfit(player, task)) {
                         "${task.id} outfit failed at $level, members=$members"
                     }
                     check(player.worn[Wearpos.Torso.slot]?.id != "obj.iron_chainbody".asRSCM())
                     check(player.worn[Wearpos.Back.slot]?.id != "obj.red_cape".asRSCM())
+                    if (task.kind == BotTaskKind.Woodcutting) {
+                        check(player.worn[Wearpos.Back.slot]?.id == forestryKit.id) {
+                            "Woodcutting outfit missing backpack at level $level, members=$members"
+                        }
+                    }
                     val bank = player.invMap.getOrPut("inv.bank")
                     val bankSize = bank.objs.filterNotNull().sumOf { it.count }
                     check(supplies.equipOutfit(player, task))
@@ -187,13 +209,21 @@ object BotSkillingCheck {
                     val nextTask = if (task.kind == BotTaskKind.Cooking) woodcutting else
                         SourceBotCatalog.tasks.first { it.kind == BotTaskKind.Cooking }
                     check(supplies.equipOutfit(player, nextTask))
+                    if (nextTask.kind == BotTaskKind.Woodcutting) {
+                        check(player.worn[Wearpos.Back.slot]?.id == forestryKit.id)
+                    }
                     check(supplies.equipOutfit(player, task))
+                    if (task.kind == BotTaskKind.Woodcutting) {
+                        check(player.worn[Wearpos.Back.slot]?.id == forestryKit.id) {
+                            "Returning to Woodcutting must re-equip the backpack"
+                        }
+                    }
                     check(bank.objs.filterNotNull().all { it.count == 1 }) {
                         "Outfit switching duplicated bank clothing"
                     }
                 }
             }
         }
-        println("Bot skilling checks passed: tool tiers, role outfits, mastery, F2P, job switching and gathering.")
+        println("Bot skilling checks passed: tool tiers, Forestry backpacks, role outfits, mastery, F2P, job switching and gathering.")
     }
 }
