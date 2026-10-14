@@ -82,6 +82,8 @@ private class WorldBot(
     var fleeFailedOrders = 0
     var previousAutoRetaliate = 0
     var graveBankTrip = false
+    /** First tick on which no walkable route to our grave was available. */
+    var graveRouteFailureAt = -1
     val protectedTimeout = BotProgressTimeout()
     val blockedTasks = mutableMapOf<String, Int>()
 }
@@ -521,27 +523,41 @@ class BotPopulation @Inject constructor(
                 supplies.canSupply(player, it) && it.id !in bot.blockedTasks
         }
         val friendTask = bots.values.firstOrNull { it.identity == bot.friendIdentity }?.task
-        val next = if (humanBehaviourEnabled) {
-            BotHumanity.chooseTask(candidates.filter {
-                bot.mode != BotMode.Progressive ||
-                    BotTaskPlanner.available(it, levels, player.members)
-            }, occupancy, bot.personality, random, bot.task, friendTask)
-        } else if (bot.mode == BotMode.Skilling) {
-            BotTaskPlanner.selectBalanced(candidates.filter { it.id != bot.task.id }, occupancy, random)
-                ?: BotTaskPlanner.selectBalanced(candidates, occupancy, random)
-        } else BotTaskPlanner.select(candidates, levels, player.members, occupancy, random)
-        if (next == null) {
-            bot.status = "waiting for supplies"
-            bot.nextThink = player.currentMapClock + 50
-            return
+        val remaining = candidates.toMutableList()
+        // Task selection used to accept an empty path to a remote start. That leaves
+        // a bot repeatedly "Changing" forever when the road graph is disconnected
+        // or a collision-blocked gate cannot be traversed.
+        repeat(6) {
+            val next = if (humanBehaviourEnabled) {
+                BotHumanity.chooseTask(remaining.filter {
+                    bot.mode != BotMode.Progressive ||
+                        BotTaskPlanner.available(it, levels, player.members)
+                }, occupancy, bot.personality, random, bot.task, friendTask)
+            } else if (bot.mode == BotMode.Skilling) {
+                BotTaskPlanner.selectBalanced(remaining.filter { it.id != bot.task.id },
+                    occupancy, random)
+                    ?: BotTaskPlanner.selectBalanced(remaining, occupancy, random)
+            } else BotTaskPlanner.select(remaining, levels, player.members, occupancy, random)
+            if (next == null) return@repeat
+            val atStart = player.coords.level == next.start.level &&
+                player.coords.chebyshevDistance(next.start) <= 2
+            val route = if (atStart) emptyList() else
+                BotRoutes.path(player.coords, next.start, actions::canWalk)
+            if (atStart || route.isNotEmpty()) {
+                setTask(bot, next)
+                bot.needsPlan = false
+                bot.path = route
+                bot.pathOrigin = player.coords
+                bot.waypoint = 0
+                bot.phase = if (atStart) BotPhase.Banking else BotPhase.Changing
+                return
+            }
+            // Avoid choosing the same unreachable task every subsequent think tick.
+            bot.blockedTasks[next.id] = player.currentMapClock + 600
+            remaining.remove(next)
         }
-        setTask(bot, next)
-        bot.needsPlan = false
-        bot.path = BotRoutes.path(player.coords, next.start, actions::canWalk)
-        bot.pathOrigin = player.coords
-        bot.waypoint = 0
-        bot.phase = if (player.coords.level == next.start.level &&
-            player.coords.chebyshevDistance(next.start) <= 2) BotPhase.Banking else BotPhase.Changing
+        bot.status = "no reachable task route; retrying from current position"
+        bot.nextThink = player.currentMapClock + 100
     }
 
     fun tick(cycle: Int) {
@@ -706,6 +722,7 @@ class BotPopulation @Inject constructor(
         val grave = graves.grave(player)
         if (grave == null) {
             bot.graveBankTrip = false
+            bot.graveRouteFailureAt = -1
             if (bot.phase in setOf(BotPhase.RecoveringGrave, BotPhase.GraveBanking)) {
                 bot.phase = BotPhase.Banking
                 bot.needsPlan = true
@@ -787,6 +804,7 @@ class BotPopulation @Inject constructor(
             return true
         }
         if (bot.phase != BotPhase.RecoveringGrave) {
+            bot.graveRouteFailureAt = -1
             bot.phase = BotPhase.RecoveringGrave
             bot.pathOrigin = player.coords
             bot.path = BotRoutes.path(player.coords, grave.coords, actions::canWalk)
@@ -799,9 +817,29 @@ class BotPopulation @Inject constructor(
         bot.nextThink = cycle + 3
         if (player.isDelayed || player.isAccessProtected) return true
         if (bot.path.isEmpty()) {
-            bot.status = "waiting for route to own gravestone"
-            bot.nextThink = cycle + 50
-            return true
+            if (bot.graveRouteFailureAt < 0) bot.graveRouteFailureAt = cycle
+            // Collision and nearby NPCs can change. Retry before giving up and handing
+            // unreachable loot to Death's Office. No teleportation or item deletion.
+            val retry = BotRoutes.path(player.coords, grave.coords, actions::canWalk)
+            if (retry.isNotEmpty()) {
+                bot.path = retry
+                bot.pathOrigin = player.coords
+                bot.waypoint = 0
+                bot.graveRouteFailureAt = -1
+                bot.status = "found route to own gravestone"
+            } else if (cycle - bot.graveRouteFailureAt >= 200 &&
+                graves.moveUnreachableGraveToOffice(player)) {
+                bot.status = "unreachable gravestone secured at Death's Office"
+                bot.graveRouteFailureAt = -1
+                bot.nextThink = cycle + 1
+                return true
+            } else {
+                bot.status = "waiting for grave route; Death's Office fallback if unreachable"
+                bot.nextThink = cycle + 50
+                return true
+            }
+        } else {
+            bot.graveRouteFailureAt = -1
         }
         walkRoute(bot)
         return true
