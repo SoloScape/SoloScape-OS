@@ -86,6 +86,7 @@ class ForestryEventManager @Inject constructor(
         var trapActive = false
         var hiveProgress = 0
         var guardedNest = Random.nextInt(4)
+        var infusedRoot = Random.nextInt(6)
     }
 
     private val history = java.util.WeakHashMap<Player, ForestryHistory>()
@@ -178,7 +179,7 @@ class ForestryEventManager @Inject constructor(
 
     private fun prepare(e: Event) {
         when (e.type) {
-            ForestryEventType.ROOTS -> repeat(6) { spawnLoc(e, "root", it, "Tree roots") }
+            ForestryEventType.ROOTS -> repeat(6) { spawnLoc(e, "root:" + it, it, "Tree roots") }
             ForestryEventType.SAPLING -> {
                 spawnLoc(e, "sapling", 0, "Struggling sapling")
                 listOf("Droppings", "Green leaves", "Rotting leaves", "Splintered bark",
@@ -304,6 +305,11 @@ class ForestryEventManager @Inject constructor(
 
     private fun advance(e: Event, now: Int) {
         when (e.type) {
+            ForestryEventType.ROOTS -> {
+                if (now - e.start >= 30 && (now - e.start - 30) % 20 == 0) {
+                    e.infusedRoot = Random.nextInt(6)
+                }
+            }
             ForestryEventType.FOX -> {
                 if (now - e.lastPhase >= 12) {
                     if (e.trapActive) {
@@ -433,13 +439,14 @@ class ForestryEventManager @Inject constructor(
         val c = contribution(e, player)
         if (!c.ready(clock.cycle)) return
         when {
-            role == "root" && e.type == ForestryEventType.ROOTS -> {
+            role.startsWith("root:") && e.type == ForestryEventType.ROOTS -> {
                 if (Woodcutting.findAxeForSpecialResource(player) == null) {
                     mes("You need an axe to chop down the roots.")
                     return
                 }
                 val elapsed = clock.cycle - e.start
-                val infused = elapsed >= 30 && (elapsed - 30) % 20 < 5
+                val infused = elapsed >= 30 && (elapsed - 30) % 20 < 5 &&
+                    role.substringAfter(":").toInt() == e.infusedRoot
                 reward(c, (if (infused) 42 else 15) + player.woodcuttingLvl * 1.5)
                 if (infused) give(player, "obj.forestry_currency", c.takeBark(8))
                 mes(if (infused) "You cut an anima-infused root." else "You cut a tree root.")
