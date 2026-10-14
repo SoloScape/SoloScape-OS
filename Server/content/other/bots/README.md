@@ -12,7 +12,10 @@ A standalone, **read-only** highscores page runs on the game server at
 **http://127.0.0.1:7072/highscores**, with a machine-readable feed at
 `http://127.0.0.1:7072/highscores.json`. It starts independently of whether
 world-bot spawning is enabled, and does not expose the existing bot debugger.
-The responsive page offers an overall XP leaderboard, one leaderboard for each
+The page uses a classic **OSRS-inspired** three-column layout (stone navigation,
+parchment rankings, and search/compare boxes). Like the reference URL,
+`/highscores?table=11` opens Fishing; `table=0` opens Overall. The responsive page
+offers an overall XP leaderboard, one leaderboard for each
 supported skill, search by character name, a player/bot filter, online indicators,
 and a full per-character skills profile. World bots are explicitly labeled.
 
@@ -100,6 +103,11 @@ walking; if one inventory cannot hold everything, they bank the partial claim an
 return for the remainder. After reclaiming their items, they flee the death location using
 the existing NPC-attack escape controller, block the dangerous task, and choose a safer
 activity.
+If a skilling bot cannot find a walkable route to its grave despite retrying for
+200 game cycles (about 2 minutes), the items are **persisted into Death's Office**
+before the inaccessible grave is cleared. The bot can then reclaim them without
+remaining frozen in `RecoveringGrave`. It never teleports to a blocked tile or
+deletes unrecovered items; this is a bot-only fail-safe, not standard OSRS timing.
 If the path cannot be reached or the timer expires, Death's Office storage remains
 available. No teleport is used to reach a grave. In-game validation should cover
 guard/wizard kills, route changes, grave recovery, a second death, multiple graves
@@ -275,6 +283,18 @@ protected-action timeout, including movement/XP resets. Fishing names, options
 and the toll-gate operation are also checked against the installed cache.
 Confirm harvesting animations, inventory/XP gains and bank
 returns in a live game after restarting the rebuilt server.
+
+## Unreachable task and bank routes
+
+A bot no longer commits to a fresh task when the initial route is empty or
+collision-disconnected. It tries up to six different eligible tasks, temporarily
+blacklisting unreachable choices, then waits to retry. This prevents loops where
+a bot changes job but cannot leave a blocked tile or cross a non-traversable door.
+The gravestone fallback prevents long-term idle sessions in Lumbridge after a
+death in distant areas. Bot diagnostics now show `graveRouteWaitCycles` alongside
+the current phase and route state. Always retest known hotspots (especially
+`2934,3355` and the Lumbridge respawn) on a live server, because client-world
+collision, NPCs and scene objects can differ from unit test maps.
 
 ## Local bot debugger
 
