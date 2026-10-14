@@ -1,7 +1,13 @@
 package org.rsmod.content.other.bots
 
+import dev.openrune.types.ObjectServerType
+import org.rsmod.game.loc.LocEntity
+import org.rsmod.game.loc.LocInfo
 import org.rsmod.map.CoordGrid
 import org.rsmod.map.zone.ZoneKey
+import org.rsmod.routefinder.RouteFinding
+import org.rsmod.routefinder.collision.CollisionFlagMap
+import org.rsmod.routefinder.flag.CollisionFlag
 
 object BotActionsCheck {
     @JvmStatic
@@ -20,6 +26,39 @@ object BotActionsCheck {
         check(zones.all { it.level == origin.level })
         check(BotActions.zones(CoordGrid(0, 0, 0), 12).all { it.x >= 0 && it.z >= 0 })
         check(BotActions.zones(origin, 0).single() == ZoneKey.from(origin))
-        println("Bot interaction proximity and matching checks passed.")
+        for (angle in 0..3) checkSharedApproaches(angle)
+        println("Bot interaction proximity, matching and shared-tree approach checks passed.")
+    }
+
+    private fun checkSharedApproaches(angle: Int) {
+        val collision = CollisionFlagMap()
+        for (x in 0..40 step 8) for (z in 0..40 step 8) collision.allocateIfAbsent(x, z, 0)
+        val routes = RouteFinding(collision)
+        val type = ObjectServerType(id = 1, name = "Oak", width = 2, length = 3)
+        val loc = LocInfo(2, CoordGrid(20, 20, 0), LocEntity(type.id, 10, angle))
+        val width = if (angle % 2 == 0) type.width else type.length
+        val length = if (angle % 2 == 0) type.length else type.width
+        for (x in 20 until 20 + width) for (z in 20 until 20 + length) {
+            collision.add(x, z, 0, CollisionFlag.LOC)
+        }
+        val source = CoordGrid(16, 20, 0)
+        val occupied = mutableSetOf<CoordGrid>()
+        // All legal standing tiles can be allocated independently around the same tree.
+        repeat(2 * (width + length)) {
+            val tile = checkNotNull(BotActions.gatheringDestination(routes, source, loc, type, occupied))
+            check(occupied.add(tile)) { "Two woodcutters selected the same standing tile" }
+            val adjacent = routes.findRoute(level = 0, srcX = tile.x, srcZ = tile.z,
+                destX = loc.coords.x, destZ = loc.coords.z, destWidth = type.width,
+                destLength = type.length, locShape = 10, locAngle = angle, moveNear = false)
+            check(adjacent.success && adjacent.isEmpty())
+        }
+        check(BotActions.gatheringDestination(routes, source, loc, type, occupied) == null)
+        val released = occupied.first()
+        occupied.remove(released)
+        check(BotActions.gatheringDestination(routes, source, loc, type, occupied) == released)
+        check(BotActions.gatheringDestination(routes, released, loc, type, occupied) == released)
+        // Free tiles across a solid barrier must never be selected as reachable approaches.
+        for (z in 0..47) collision.add(18, z, 0, CollisionFlag.BLOCK_WALK)
+        check(BotActions.gatheringDestination(routes, source, loc, type, emptySet()) == null)
     }
 }

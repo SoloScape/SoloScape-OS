@@ -45,16 +45,25 @@ Tool tiers are stocked at initialization; bank resupply updates the tool after a
 task change or level increase. Saved progressive profiles also have old swords and
 shields moved into their bank when initialized for skilling.
 
-Gathering selects reachable, unreserved resources and checks tree/rock level
-requirements. Temporary resource depletion causes a retry after ten game cycles,
-without a bank trip. Pending interactions still receive movement/XP stall checks,
+Gathering selects reachable resources and checks tree/rock level requirements.
+Woodcutting task names also match the cache's `Oak tree`, `Willow tree`, `Yew tree`
+and other tree-name suffixes, rather than searching only for the bare species.
+Oaks, willows, yews and magic trees allow multiple woodcutters, each reserving a
+separate standing tile. Other resources retain exclusive ownership. If the first
+approach tile is occupied, bots try other reachable tiles accepted by the native
+location interaction strategy. Temporary depletion causes a retry after ten game
+cycles; ten failed attempts trigger a bank return and a new task selection.
+Pending interactions still receive movement/XP stall checks,
 so a blocked interaction cannot bypass recovery indefinitely. Full inventories,
 task expiry, progression milestones and missing supplies still trigger banking.
 `::botinfo` shows whether a bot is working, waiting for a resource or recovering.
 
 The cache-backed `BotSkillingCheck` covers tool tiers, case-insensitive supply
 requirements, native equipment transactions, saved shield removal and mining
-level eligibility. Confirm harvesting animations, inventory/XP gains and bank
+level eligibility, shared-tree species and cache-backed targets for every
+woodcutting task. `BotActionsCheck` covers separate standing tiles, occupied
+approaches, rotated footprints, exhausted capacity and unreachable trees.
+Confirm harvesting animations, inventory/XP gains and bank
 returns in a live game after restarting the rebuilt server.
 
 ## Wilderness squads

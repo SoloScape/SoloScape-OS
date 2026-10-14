@@ -121,6 +121,7 @@ constructor(
         option: String,
         radius: Int = 12,
         exclusive: Boolean = false,
+        sharedLoc: (ObjectServerType) -> Boolean = { false },
         eligibleLoc: (ObjectServerType) -> Boolean = { true },
     ): Boolean {
         if (busy(player)) return false
@@ -157,22 +158,19 @@ constructor(
         }
         for (loc in locations(player, names, radius)) {
             val key = loc.coords to loc.id
-            if (exclusive && !gatheringTargets.available(player, key)) continue
             val type = ServerCacheManager.getObject(loc.id) ?: continue
             if (!eligibleLoc(type)) continue
+            val reserveResource = exclusive && !sharedLoc(type)
+            if (reserveResource && !gatheringTargets.available(player, key)) continue
             val op = InteractionOp.entries.firstOrNull {
                 type.actions.getOpOrNull(it.slot - 1).equals(option, ignoreCase = true)
             } ?: continue
             val destination = if (exclusive) {
-                freeDestination(player, routeFinding.findRoute(
-                    level = player.coords.level, srcX = player.coords.x, srcZ = player.coords.z,
-                    destX = loc.coords.x, destZ = loc.coords.z,
-                    destWidth = type.width, destLength = type.length,
-                    locShape = loc.entity.shape, locAngle = loc.entity.angle,
-                    blockAccessFlags = type.forceApproachFlags, moveNear = false,
-                )) ?: continue
+                gatheringDestination(routeFinding, player.coords, loc, type,
+                    players.playerList.filter { it !== player }.map { it.coords }.toSet() +
+                        destinations.filterKeys { it !== player }.values) ?: continue
             } else null
-            if (exclusive && !gatheringTargets.claim(player, key)) continue
+            if (reserveResource && !gatheringTargets.claim(player, key)) continue
             if (destination != null) destinations[player] = destination
             val bound = BoundLocInfo(loc, type)
             player.clearPendingAction(eventBus)
@@ -184,7 +182,9 @@ constructor(
                 hasOpTrigger = locInteractions.hasOpTrigger(player, bound, op, type),
                 hasApTrigger = locInteractions.hasApTrigger(player, bound, op, type),
             )
-            routeLoc(player, loc, type)
+            if (destination != null) {
+                player.routeRequest = RouteRequestCoord(destination, clientRequest = true)
+            } else routeLoc(player, loc, type)
             return true
         }
         return false
@@ -359,6 +359,42 @@ constructor(
         private const val BANK_RADIUS = 2
         private val BANK_NPCS = setOf("Banker", "Banker tutor")
         private val BANK_LOCS = setOf("Bank booth", "Bank chest")
+
+        internal fun gatheringDestination(
+            routes: RouteFinding,
+            source: CoordGrid,
+            loc: LocInfo,
+            type: ObjectServerType,
+            occupied: Set<CoordGrid>,
+        ): CoordGrid? {
+            fun approach(from: CoordGrid) = routes.findRoute(
+                level = from.level, srcX = from.x, srcZ = from.z,
+                destX = loc.coords.x, destZ = loc.coords.z,
+                destWidth = type.width, destLength = type.length,
+                locShape = loc.entity.shape, locAngle = loc.entity.angle,
+                blockAccessFlags = type.forceApproachFlags, moveNear = false,
+            )
+            val route = approach(source)
+            if (route.success) {
+                val preferred = route.lastOrNull()?.let { CoordGrid(it.x, it.z, source.level) } ?: source
+                if (preferred !in occupied) return preferred
+            }
+            val rotated = loc.entity.angle % 2 != 0
+            val width = if (rotated) type.length else type.width
+            val length = if (rotated) type.width else type.length
+            val candidates = (-1..width).flatMap { x ->
+                (-1..length).filter { z -> x == -1 || x == width || z == -1 || z == length }
+                    .map { z -> loc.coords.translate(x, z) }
+            }.filter { it !in occupied }.sortedBy { source.chebyshevDistance(it) }
+            return candidates.firstOrNull { candidate ->
+                // The native loc strategy must accept this tile without another step.
+                val adjacent = approach(candidate)
+                adjacent.success && adjacent.isEmpty() && routes.findRoute(
+                    level = source.level, srcX = source.x, srcZ = source.z,
+                    destX = candidate.x, destZ = candidate.z, moveNear = false,
+                ).success
+            }
+        }
 
         internal fun near(origin: CoordGrid, target: CoordGrid, radius: Int): Boolean =
             radius >= 0 && origin.level == target.level &&

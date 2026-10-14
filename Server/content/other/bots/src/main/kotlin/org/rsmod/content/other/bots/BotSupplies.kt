@@ -262,11 +262,21 @@ class BotSupplies @Inject constructor(
                             actions.useItemOnLoc(player, talisman.name, setOf("Mysterious ruins")))
                 }
             }
-            else -> actions.operate(player, task.targets, task.option,
+            else -> actions.operate(player, gatheringNames(task), task.option,
                 exclusive = task.kind in setOf(
                     BotTaskKind.Mining, BotTaskKind.Fishing, BotTaskKind.Woodcutting,
-                ), eligibleLoc = { canGather(player, task.kind, it) })
+                ), sharedLoc = { sharedTree(task.kind, it.name) },
+                eligibleLoc = { canGather(player, task.kind, it) })
         }
+
+    internal fun sharedTree(kind: BotTaskKind, name: String): Boolean =
+        kind == BotTaskKind.Woodcutting && BotActions.named(name,
+            setOf("Oak", "Oak tree", "Willow", "Willow tree", "Yew", "Yew tree", "Magic tree"))
+
+    internal fun gatheringNames(task: BotTaskDefinition): Set<String> =
+        if (task.kind == BotTaskKind.Woodcutting) {
+            task.targets + task.targets.filterNot { it.endsWith("tree", true) }.map { "$it tree" }
+        } else task.targets
 
     internal fun canGather(player: Player, kind: BotTaskKind, type: ObjectServerType): Boolean =
         when (kind) {

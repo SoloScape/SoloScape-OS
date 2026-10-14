@@ -26,6 +26,22 @@ object BotSkillingCheck {
         }
         val supplies = BotSupplies(HeldEquipOp(events, PlayerRestrictions(emptySet())),
             WornUnequipOp(events))
+        for (name in listOf("Oak tree", "Willow tree", "Yew tree", "Magic tree")) {
+            val types = ServerCacheManager.getObjects().values.filter {
+                it.name.equals(name, true) && it.actions.getOpOrNull(0).equals("Chop down", true)
+            }
+            check(types.isNotEmpty()) { "Missing cache-backed $name fixture" }
+            check(types.all { supplies.sharedTree(BotTaskKind.Woodcutting, it.name) })
+            check(!supplies.sharedTree(BotTaskKind.Mining, name))
+        }
+        check(!supplies.sharedTree(BotTaskKind.Woodcutting, "Tree"))
+        check(!supplies.sharedTree(BotTaskKind.Woodcutting, "Tree stump"))
+        for (task in SourceBotCatalog.tasks.filter { it.kind == BotTaskKind.Woodcutting }) {
+            check(ServerCacheManager.getObjects().values.any {
+                BotActions.named(it.name, supplies.gatheringNames(task)) &&
+                    it.actions.getOpOrNull(0).equals(task.option, true)
+            }) { "${task.id} cannot match a choppable tree in the installed cache" }
+        }
         val woodcutting = SourceBotCatalog.tasks.single { it.id == "DraynorOakWoodcutting" }
         val mining = SourceBotCatalog.tasks.first { it.kind == BotTaskKind.Mining }
         val fishing = SourceBotCatalog.tasks.single { it.id == "DraynorNetFishing" }
@@ -88,6 +104,6 @@ object BotSkillingCheck {
                 })
             }
         }
-        println("Bot skilling checks passed: tool tiers, single requirements, outfits and shield removal.")
+        println("Bot skilling checks passed: tool tiers, outfits, shared trees and all cache-backed woodcutting targets.")
     }
 }

@@ -60,6 +60,7 @@ private class WorldBot(
     var recoveries = 0
     var status = "starting"
     var needsPlan = true
+    var resourceWaits = 0
 }
 
 private class PendingWildernessSquad(
@@ -401,6 +402,7 @@ class BotPopulation @Inject constructor(
         } ?: 99
         bot.stalled = 0
         bot.status = "walking to ${task.id}"
+        bot.resourceWaits = 0
     }
 
     private fun chooseTask(bot: WorldBot) {
@@ -559,7 +561,7 @@ class BotPopulation @Inject constructor(
                 val gathering = bot.task.kind in setOf(BotTaskKind.Mining, BotTaskKind.Fishing,
                     BotTaskKind.Woodcutting, BotTaskKind.Shearing, BotTaskKind.Combat, BotTaskKind.MoneyMaking)
                 val full = gathering && player.inv.indices.none { player.inv[it] == null }
-                if (cycle >= bot.expiresAt || full ||
+                if (cycle >= bot.expiresAt || full || bot.resourceWaits >= 10 ||
                     (bot.mode == BotMode.Progressive && level >= bot.milestone) ||
                     !supplies.canSupply(player, bot.task)
                 ) {
@@ -583,11 +585,13 @@ class BotPopulation @Inject constructor(
                         BotTaskKind.Mining, BotTaskKind.Fishing, BotTaskKind.Woodcutting,
                     )
                     if (exclusive) {
+                        bot.resourceWaits++
                         bot.status = "waiting for a free resource at ${bot.task.id}"
                         bot.nextThink = cycle + 10
                         return
                     }
                 }
+                bot.resourceWaits = 0
                 bot.status = "working ${bot.task.id}"
             }
         }
