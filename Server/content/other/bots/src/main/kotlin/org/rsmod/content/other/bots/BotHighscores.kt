@@ -60,7 +60,7 @@ internal object HighscoreRanking {
  * Offline rows are retained from previous sessions; we do not publish inventory/account IDs.
  */
 @Singleton
-internal class BotHighscores internal constructor(
+class BotHighscores internal constructor(
     private val output: Path,
 ) {
     @Inject constructor() : this(Path.of(".data", "highscores", "snapshot.json"))
