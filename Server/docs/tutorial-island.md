@@ -44,6 +44,11 @@ automatically assigned as display names, including in development realms with th
 legacy `auto_assign_display_names` setting enabled. Existing chosen names remain intact.
 Movement and Escape cannot bypass this screen; logging out without choosing a name
 reopens it. A saved name goes straight to the next unfinished setup step on relog.
+After a successful lookup, `displayname_button_init` reinitializes **Set name**,
+restoring the click action cleared by the native disabled-button script. Merely
+calling `displayname_button_draw` changes its appearance and leaves it unclickable.
+The regression harness checks this against the local cache bytecode as well as
+the server's outgoing script packet.
 The native layout and input behaviour follow the
 [cache interface](https://github.com/Joshua-F/osrs-dumps/blob/master/interface/tutorial_displayname.if3)
 and its native `tutorial_displayname_*` scripts. Authenticated client visual verification

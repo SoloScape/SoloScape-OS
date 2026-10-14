@@ -124,7 +124,13 @@ public fun main() {
             .onLoad?.firstOrNull() == 8558)
         check(ServerCacheManager.fromComponent("component.tutorial_displayname:universe")
             .onLoad?.firstOrNull() == 2573)
-        listOf(1675, 4139, 4144).forEach { check(cache.data(12, it, 0, null) != null) }
+        listOf(1672, 4139, 4144).forEach { check(cache.data(12, it, 0, null) != null) }
+        check(nativeScriptInstructions(cache, 1672).any { it.first == 2300 }) {
+            "The native button initializer must restore IF_SETOP."
+        }
+        check(nativeScriptInstructions(cache, 1675).none { it.first == 2300 }) {
+            "Drawing the button alone must not be treated as restoring its click action."
+        }
         val tutorialRow = org.rsmod.api.table.QuestRow.getRow("dbrow.quest_learningtheropes")
         check(tutorialRow.id == 205 && tutorialRow.endstate == TutorialStage.DEPART.code)
         println("PASS: native guide script, familiarity screen initialization and quest cache row")
@@ -150,6 +156,28 @@ public fun main() {
             "passages, equipment, experience limits and departure")
     } finally {
         cache.close()
+    }
+}
+
+private fun nativeScriptInstructions(cache: dev.openrune.filesystem.Cache, id: Int): List<Pair<Int, Int>> {
+    val bytes = checkNotNull(cache.data(12, id, 0, null))
+    val input = java.nio.ByteBuffer.wrap(bytes)
+    val footerLength = input.getShort(bytes.size - 2).toInt() and 0xffff
+    val codeEnd = bytes.size - 2 - footerLength - 16
+    val count = input.getInt(codeEnd)
+    fun skipString() { while (input.get().toInt() != 0) Unit }
+    skipString()
+    return buildList {
+        while (input.position() < codeEnd) {
+            val opcode = input.short.toInt() and 0xffff
+            val operand = when {
+                opcode == 3 -> { skipString(); 0 }
+                opcode < 100 && opcode !in listOf(21, 38, 39) -> input.int
+                else -> input.get().toInt() and 0xff
+            }
+            add(opcode to operand)
+        }
+        check(size == count) { "Unexpected revision-240 clientscript instruction layout for $id." }
     }
 }
 
@@ -279,7 +307,13 @@ private class Fixture {
             player.ifCloseModals(events)
             ticks.onPostTick(player)
             check(player.ui.containsModal("interface.tutorial_displayname"))
+            packets.clear()
             lookup("FreshName")
+            check(packets.filterIsInstance<net.rsprot.protocol.game.outgoing.misc.player.RunClientScript>()
+                .any { it.id == 1672 && it.values == listOf(ServerCacheManager.fromComponent(
+                    "component.tutorial_displayname:set_name").packed, "Set name") }) {
+                "An available name must restore the native Set name operation, not just draw it."
+            }
             interaction {
                 check(events.publish(ProtectedAccess(player, coroutine, context),
                     IfModalButton(ServerCacheManager.fromComponent(

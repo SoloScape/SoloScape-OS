@@ -102,7 +102,9 @@ public class TutorialDisplayNameScript @Inject constructor(
             return
         }
         status("The name <col=ffffff>$name</col> is available.")
-        runNamingScript("displayname_button_draw", listOf(inputComponents[1], "Set name", 0))
+        val initializeButton =
+            "clientscript.[proc,displayname_button_init]".asRSCM(RSCMType.CLIENTSCRIPT)
+        runClientScript(initializeButton, listOf(inputComponents[1], "Set name"))
         ifSetHide("component.tutorial_displayname:look_up_name", true)
         ifSetHide("component.tutorial_displayname:set_name", false)
     }
