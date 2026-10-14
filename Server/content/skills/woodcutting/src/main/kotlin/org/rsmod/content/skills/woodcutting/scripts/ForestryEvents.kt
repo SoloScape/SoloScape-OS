@@ -325,12 +325,15 @@ class ForestryEventManager @Inject constructor(
             if (success) {
                 give(player, "obj.forestry_currency", c.takeBark(25 + c.actions * 2))
                 when (e.type) {
-                    ForestryEventType.SAPLING, ForestryEventType.ENT -> giveLeaves(player)
+                    ForestryEventType.SAPLING -> giveLeaves(player)
+                    ForestryEventType.ENT -> {
+                        giveLeaves(player)
+                        if (c.entlings.isNotEmpty() &&
+                            Random.nextInt(5) < e.entPrunes.count { it.isNotEmpty() })
+                            give(player, ordinaryBirdNest(Random.nextInt(3)), 1)
+                    }
                     ForestryEventType.HIVE -> if (c.hives.size >= e.phase && Random.nextInt(3) != 0)
                         giveNamed(player, "Sturdy beehive parts")
-                    ForestryEventType.ENT -> if (c.entlings.isNotEmpty() &&
-                        Random.nextInt(5) < e.entPrunes.count { it.isNotEmpty() })
-                        give(player, ordinaryBirdNest(Random.nextInt(3)), 1)
                     ForestryEventType.FOX -> if (Random.nextInt(30) == 0) giveNamed(player, "Fox whistle")
                     ForestryEventType.RITUAL -> if (Random.nextInt(30) == 0) giveNamed(player, "Petal garland")
                     ForestryEventType.PHEASANT -> if (Random.nextBoolean()) giveNamed(player, "Pheasant tail feathers")
@@ -486,7 +489,6 @@ class ForestryEventManager @Inject constructor(
                     reward(e, c, 18.0 + player.woodcuttingLvl * 1.2)
                     mes("You correctly identify the unique ritual circle.")
                 } else mes("That circle is not the unique shape and colour.")
-            }
     }
 
     fun ProtectedAccess.interactNpc(target: Npc, option: Int) {
