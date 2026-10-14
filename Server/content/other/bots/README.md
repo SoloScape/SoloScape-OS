@@ -67,6 +67,28 @@ bot XP snapshots are assigned directly and are not retroactively multiplied.
 across restarts. Use `::xprate` to inspect a real character's effective rate.
 Do not turn on `reset-existing-levels` unless intentionally resetting progress.
 
+## Run away when NPCs attack
+
+Ordinary skilling and progressive bots abandon noncombat activities when an NPC
+lands an attack (even a blocked 0-damage hit), including guards and dark wizards.
+The `PlayerHitEvents.Impact` handler records the real aggressor and interrupts the
+activity before the next skilling decision. The bot releases its resource reservation,
+clears the pending interaction, enables its existing run mode, optionally eats food,
+and uses the native routefinder to choose a reachable, unoccupied tile farther from
+the NPC. If several NPCs attack it, the escape chooser considers all recorded attackers.
+It does not teleport, walk through locked gates or ignore freezes or native action delays.
+
+Fleeing takes priority over wandering, dialogue, skilling, resource selection and
+task timeouts. After the bot is safely beyond the threat (or it has not been hit
+for 120 cycles and combat ends), it blocks that activity for 1,200 cycles, then
+selects a different eligible task rather than returning to the same danger. If it
+is trapped or frozen it keeps trying a legal escape: this is *not* invincibility
+and very low-level bots can still die. Dedicated Wilderness/Clan PvP controllers
+and intentionally trained progressive combat bots are deliberately excluded.
+Use `::botdebug on` to inspect `fleeing`, `fleeThreats`, `fleeTarget`, and
+`fleeFailedOrders` in the bot diagnostics JSON. The `BotFleeCheck` CI test
+validates attack scoping, safe distances, reachable tiles and recovery timing.
+
 ## Human-like characters, schedules and routines
 
 Skilling and progressive bots now have **stable, deterministic personalities** derived from
