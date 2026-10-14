@@ -36,6 +36,59 @@ Wilderness and both clan populations. The default is `standard`.
 Population changes use the properties file; the spawn/removal commands are removed.
 Existing skilling, trading, progression and Castle Wars controllers remain separate.
 
+## Human-like characters, schedules and routines
+
+Skilling and progressive bots now have **stable, deterministic personalities** derived from
+their identity: preferred job and region, efficiency, sociability, patience and curiosity.
+Their preferences affect activity selection while respecting eligibility, levels, membership,
+item supplies and resource crowding. Existing native movement, interactions, equipment rules
+and recovery remain in charge. Bots can take bounded short breaks *only when not busy*, and
+speak occasional contextual lines when a real player is nearby. Replies to greetings and
+level questions are staggered and limited so crowds do not respond together. Some compatible
+bots form loose friendships and favour each other's training tasks; they still reserve
+separate working tiles and never bypass the collision/interaction system.
+
+Level progression, bank, worn items, inventory and last task for both skilling and progressive
+world bots are stored under `.data/bots/worldbot_N.properties` at shutdown and simulated
+logout. Saved inventories are restored exactly, including empty containers. Character body
+appearance and outfit preferences are deterministic for a given identity; changing tasks
+updates equipment at bank. Existing save files remain supported.
+
+When `human.population.enabled=true`, skilling and progressive bots whose sessions
+have expired can log out safely while idle, and their identity is reused during subsequent
+arrival sweeps. Population sweeps run approximately every 50-110 game cycles, adding at most
+two bots per configured population at a time; they do **not** churn PvP squads or traders.
+Original startup spawn order is preserved by default to avoid switching old saved identities
+between populations. Set `human.population.stagger-startup=true` only if starting with fresh
+profiles or after deliberately migrating existing `worldbot_N` profile IDs.
+
+The values below are copied into `.data/bots.properties` only on a fresh install;
+on an existing server, manually add the keys or rely on the built-in defaults:
+
+```properties
+human.behaviour.enabled=true
+human.routines.expanded=true
+human.population.enabled=true
+human.population.stagger-startup=false
+```
+
+`human.routines.expanded` adds supported cooking, smelting, smithing, crafting and spinning
+jobs to ordinary skillers after their initial job. The planner still validates levels,
+materials and task restrictions. Set it to `false` to keep the initial three gathering jobs.
+`human.behaviour.enabled=false` disables preferences, ambient speech and idle breaks.
+`human.population.enabled=false` disables bot logouts/arrivals. World bot population
+counts remain controlled by the existing per-mode properties. All changes are server-side,
+no external text-generation service is required, and bots remain simulated characters;
+make this clear in any public server description.
+
+`::botinfo` now includes each bot's personality and friend ID. `::botdebug on` captures
+the personality, friend ID, session expiry and pause timings, so intentional pauses can be
+distinguished from blocked pathfinding. Live acceptance should cover: two bots with distinct
+styles at one skilling spot; chat greetings answered by at most one nearby bot; varied
+working/banking times; changes of jobs after banking; logout/rejoin with identical skills,
+gear and items; resource crowding; and no pause during an active interaction. PvP combat
+should remain unaffected by these scheduling features.
+
 ## Skilling equipment and gathering
 
 Skilling bots wear job-specific worker clothes and leave the shield slot empty.
