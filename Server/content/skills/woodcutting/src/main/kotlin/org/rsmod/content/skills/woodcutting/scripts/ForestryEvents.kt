@@ -9,6 +9,7 @@ import jakarta.inject.Singleton
 import kotlin.random.Random
 import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.invtx.invTransfer
+import org.rsmod.api.player.ironman.IronmanRestrictions
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.stat.statAdvance
@@ -17,6 +18,7 @@ import org.rsmod.api.repo.loc.LocRepository
 import org.rsmod.api.repo.npc.NpcRepository
 import org.rsmod.api.repo.obj.ObjRepository
 import org.rsmod.api.repo.player.PlayerRepository
+import org.rsmod.api.stats.xpmod.XpModifiers
 import org.rsmod.api.script.onCommand
 import org.rsmod.api.script.onEvent
 import org.rsmod.api.script.onOpLoc1
@@ -53,6 +55,7 @@ class ForestryEventManager @Inject constructor(
     private val locs: LocRepository,
     private val npcs: NpcRepository,
     private val objects: ObjRepository,
+    private val xpMods: XpModifiers,
 ) {
     private data class TreeRoll(
         val origin: CoordGrid,
@@ -107,7 +110,8 @@ class ForestryEventManager @Inject constructor(
         // It is independent of the event's lifetime and does not require another event to be active.
         if (ForestryLeprechaunLuck.consume(player, harvested, type.treeLevelReq)) {
             player.statAdvance("stat.woodcutting",
-                ForestryLeprechaunLuck.bonusXp(type.treeXp, type.treeLevelReq, player.woodcuttingLvl))
+                ForestryLeprechaunLuck.bonusXp(type.treeXp, type.treeLevelReq, player.woodcuttingLvl) *
+                    xpMods.get(player, "stat.woodcutting"))
             give(player, "obj.forestry_currency", ForestryLeprechaunLuck.bark())
             if (ForestryLeprechaunLuck.units(player) < ForestryLeprechaunLuck.UNITS_PER_CHOP)
                 player.mes("You use the last of your leprechaun's luck to gather some Anima-infused bark.")
@@ -676,6 +680,7 @@ class ForestryEventManager @Inject constructor(
             role == "bank" && e.type == ForestryEventType.LEPRECHAUN -> {
                 // Players chopping nearby when he appeared may use him as a deposit box;
                 // later arrivals can deposit only Woodcutting resources.
+                if (IronmanRestrictions.blockUimBank(player)) return
                 val fullDeposit = player in e.eligibleAtStart && player !in e.excluded
                 val bank = player.invMap.getOrPut("inv.bank")
                 var deposits = 0
