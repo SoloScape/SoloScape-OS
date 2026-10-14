@@ -12,6 +12,8 @@ import time
 import urllib.request
 import zipfile
 
+import incremental
+
 ROOT = Path(__file__).resolve().parents[1]
 KOTLIN_VERSION = "2.2.10"
 
@@ -176,10 +178,60 @@ def validate_server_runtime(jar):
                            "refusing to publish or reuse it. Run build.bat --rebuild.")
 
 
+SERVER_CACHE_FILES = tuple(
+    f"Server/.data/cache/{name}/main_file_cache.dat2" for name in ("LIVE", "SERVER")
+)
+LFS_POINTER_HEADER = b"version https://git-lfs.github.com/spec/v1"
+
+
+def unavailable_server_caches():
+    pending = []
+    for name in SERVER_CACHE_FILES:
+        file = ROOT / name
+        if not file.is_file():
+            pending.append(name)
+            continue
+        with file.open("rb") as stream:
+            header = stream.read(128)
+        if not header or header.startswith(LFS_POINTER_HEADER):
+            pending.append(name)
+    return pending
+
+
+def ensure_server_cache():
+    pending = unavailable_server_caches()
+    if not pending:
+        return
+    print("Restoring server cache data with Git LFS...", flush=True)
+    recovery = ('Install Git LFS and run git lfs install, then retry build.bat. '
+                'If downloading fails, restore the matching LIVE and SERVER cache data '
+                'or run git lfs pull --include="Server/.data/cache/**" --exclude="".')
+    commands = [
+        ["checkout", *pending],
+        ["pull", "--include=" + ",".join(pending), "--exclude="],
+    ]
+    for args in commands:
+        try:
+            result = subprocess.run(["git", "-C", str(ROOT), "lfs", *args],
+                                    capture_output=True, text=True)
+        except OSError as error:
+            raise RuntimeError("Cannot restore server cache data. " + recovery) from error
+        if result.returncode:
+            raise RuntimeError("Git LFS could not restore server cache data. " + recovery)
+        pending = unavailable_server_caches()
+        if not pending:
+            print("Server cache data restored.", flush=True)
+            return
+    raise RuntimeError("Server cache data is still missing, empty or a Git LFS pointer: "
+                       + ", ".join(pending) + ". " + recovery)
+
+
 def build_project(project_name, rebuild, home, compiler_lib):
     project = ROOT / project_name
     progress = Progress(project_name)
     progress.update(0, "Checking inputs")
+    if project_name == "Server":
+        ensure_server_cache()
     installed = project / ("build/install/rsprox/lib" if project_name == "Client"
                            else "server/app/build/install/app/lib")
     if not installed.is_dir():
@@ -239,7 +291,7 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
 
     try:
         state = json.loads(manifest_file.read_text(encoding="utf-8"))
-        if not isinstance(state, dict) or state.get("version") != 2:
+        if not isinstance(state, dict) or state.get("version") != 3:
             state = {}
     except (OSError, ValueError):
         state = {}
@@ -256,6 +308,17 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
     library_hashes = {file.name: hash_file(file) for file in libraries}
     compiler_hashes = {file.name: hash_file(file) for file in sorted(compiler_lib.glob("*.jar"))}
     source_hashes = {file: hash_file(file) for file in sources}
+    source_keys = {file.relative_to(project).as_posix(): source_hashes[file]
+                   for file in sources}
+    old_source_hashes = state.get("source_hashes", {})
+    old_scaffolds = state.get("source_scaffolds", {})
+    source_scaffolds = {}
+    for file in sources:
+        key = file.relative_to(project).as_posix()
+        if old_source_hashes.get(key) == source_keys[key] and key in old_scaffolds:
+            source_scaffolds[key] = old_scaffolds[key]
+        else:
+            source_scaffolds[key] = incremental.source_scaffold(file)
     backend_threads = 1 if project_name == "Server" else 0
     compiler_flags = [project_name, "jvm21", "nested-type-aliases", "contracts",
                       f"backend-threads={backend_threads}",
@@ -269,25 +332,31 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
         "libraries": library_hashes,
     }
 
-    # Most client edits are in GUI/proxy/transcriber code, while the historical protocol
-    # revisions are large and comparatively stable. Build that closed dependency layer once
-    # and compile the small app layer against it. -Xfriend-paths preserves Kotlin `internal`
-    # access that previously worked because the whole client was one compiler invocation.
-    core_sources = []
+    common_key = fingerprint(common_inputs)
+
+    # Cache each project's closed dependency layer separately from frequently edited code.
+    # Server content and the application entry layer depend on engine/API/cache/services,
+    # never the reverse. Friend paths preserve the previous Kotlin `internal` access.
     if project_name == "Client":
         core_roots = {"cache", "shared", "protocol"}
         core_modules = [module for module in modules
                         if module.relative_to(project).parts[0] in core_roots]
-        core_sources = sorted(file for module in core_modules
-                              for file in (module / "src/main").rglob("*.kt"))
+    else:
+        core_modules = [module for module in modules
+                        if module.relative_to(project).parts[0] != "content"
+                        and module.relative_to(project).as_posix() != "server/app"]
+    core_sources = sorted(file for module in core_modules
+                          for file in (module / "src/main").rglob("*.kt"))
     core_source_set = set(core_sources)
     app_sources = [file for file in sources if file not in core_source_set]
-    core_name = "soloscape-client-core.jar" if core_sources else None
+    core_name = f"soloscape-{project_name.lower()}-core.jar" if core_sources else None
+    core_module_name = f"{project_name}Core"
+    core_label = f"{project_name.lower()} core"
     core_code_key = None
     if core_sources:
         core_code_key = fingerprint({
             "common": common_inputs,
-            "module": "ClientCore",
+            "module": core_module_name,
             "sources": {file.relative_to(project).as_posix(): source_hashes[file]
                         for file in core_sources},
         })
@@ -331,7 +400,7 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
             and {file.name for file in runtime.iterdir()} == expected
             and all(valid_artifact(name) for name in expected)):
         if project_name == "Server":
-            validate_server_runtime(runtime / app_name)
+            validate_server_runtime(runtime / (core_name or app_name))
         flush_hash_cache()
         progress.finish("Up to date - compilation skipped")
         return
@@ -373,25 +442,65 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
         if (not rebuild and state.get("core_code_key") == core_code_key
                 and valid_artifact(core_name)):
             reuse_file(runtime / core_name, core_jar)
-            progress.update(0.12, f"Reusing client core ({len(core_sources)} files)")
+            progress.update(0.12, f"Reusing {core_label} ({len(core_sources)} files)")
         else:
-            compile_sources(core_sources, core_jar, "ClientCore", "compiler-core.args",
-                            label=f"Compiling client core ({len(core_sources)} files)")
+            compile_sources(core_sources, core_jar, core_module_name, "compiler-core.args",
+                            label=f"Compiling {core_label} ({len(core_sources)} files)")
 
     app_jar = stage / app_name
     if not rebuild and state.get("code_key") == code_key and valid_artifact(app_name):
         reuse_file(runtime / app_name, app_jar)
         progress.update(0.75, "Reusing compiled app code")
     else:
-        extra_classpath = (core_jar,) if core_jar is not None else ()
-        compile_sources(app_sources, app_jar, project_name, "compiler.args",
-                        extra_classpath=extra_classpath,
-                        friend_path=core_jar,
-                        label=f"Compiling app layer ({len(app_sources)} files)"
-                              if core_jar is not None else f"Compiling {len(app_sources)} files")
-        progress.update(0.75, "Compilation complete")
+        reused_changes = False
+        old_app_jar = runtime / app_name
+        old_keys = state.get("source_hashes", {})
+        old_scaffolds = state.get("source_scaffolds", {})
+        changed_app_sources = [file for file in app_sources
+                               if old_keys.get(file.relative_to(project).as_posix())
+                               != source_hashes[file]]
+        # Restrict the fast path to one implementation-only change; dependencies,
+        # declarations, deleted classes, and ambiguous cases rebuild the layer.
+        if (not rebuild and state.get("common_key") == common_key
+                and state.get("core_code_key") == core_code_key
+                and set(old_keys) == set(source_keys)
+                and len(changed_app_sources) == 1
+                and valid_artifact(app_name)
+                and all(old_scaffolds.get(file.relative_to(project).as_posix()) is not None
+                        and old_scaffolds[file.relative_to(project).as_posix()]
+                        == source_scaffolds[file.relative_to(project).as_posix()]
+                        for file in changed_app_sources)
+                and incremental.can_patch(old_app_jar, changed_app_sources, app_sources)):
+            delta_jar = output / "incremental-app.jar"
+            if delta_jar.exists():
+                delta_jar.unlink()
+            try:
+                extra_classpath = ([core_jar] if core_jar is not None else []) + [old_app_jar]
+                friend_paths = ",".join(str(path) for path in extra_classpath)
+                compile_sources(changed_app_sources, delta_jar, project_name,
+                                "compiler-incremental.args",
+                                extra_classpath=extra_classpath,
+                                friend_path=friend_paths,
+                                label="Compiling 1 changed Kotlin source")
+                reused_changes = incremental.overlay_implementation(
+                    old_app_jar, delta_jar, app_jar, changed_app_sources, app_sources)
+                if reused_changes:
+                    progress.update(0.75, "Reused unchanged Kotlin classes")
+            except RuntimeError:
+                # Retry with the complete layer if partial resolution fails.
+                pass
+            finally:
+                delta_jar.unlink(missing_ok=True)
+        if not reused_changes:
+            extra_classpath = (core_jar,) if core_jar is not None else ()
+            compile_sources(app_sources, app_jar, project_name, "compiler.args",
+                            extra_classpath=extra_classpath,
+                            friend_path=core_jar,
+                            label=f"Compiling app layer ({len(app_sources)} files)"
+                                  if core_jar is not None else f"Compiling {len(app_sources)} files")
+            progress.update(0.75, "Compilation complete")
     if project_name == "Server":
-        validate_server_runtime(app_jar)
+        validate_server_runtime(core_jar or app_jar)
 
     for index, library in enumerate(libraries):
         if valid_artifact(library.name) and artifacts[library.name] == library_hashes[library.name]:
@@ -418,7 +527,9 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
         progress.update(0.85 + 0.10 * (index + 1) / len(resource_inputs), "Packaging resources")
 
     new_artifacts = {file.name: file_hash(file) for file in stage.iterdir()}
-    new_state = {"version": 2, "code_key": code_key, "core_code_key": core_code_key,
+    new_state = {"version": 3, "code_key": code_key, "core_code_key": core_code_key,
+                 "common_key": common_key, "source_hashes": source_keys,
+                 "source_scaffolds": source_scaffolds,
                  "resource_keys": resource_keys, "artifacts": new_artifacts}
     progress.update(0.95, "Publishing build")
     previous = output / f"previous-{time.time_ns()}"
