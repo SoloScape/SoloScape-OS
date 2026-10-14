@@ -10,7 +10,8 @@ from unittest.mock import patch
 import zipfile
 
 import build
-from test_incremental import fake_class
+import incremental
+from test_incremental import fake_class, fake_module
 
 
 class BuildFixture(unittest.TestCase):
@@ -267,6 +268,73 @@ class ServerBuildCacheTests(BuildFixture):
                 self.assertTrue(bundle.read("Untouched.class").endswith(b"2"))
             self.run_build()
             self.assertEqual(self.calls, 3)
+
+    def test_added_file_and_signature_change_compile_packages_and_callers(self):
+        self.compile_patch.stop()
+        self.source.write_text("package api\nclass Main { fun result() = 1 }")
+        self.app.write_text("package consumer\nimport api.Main\nfun app() = Main().result()")
+        untouched = self.source.with_name("Untouched.kt")
+        untouched.write_text("package untouched\nclass Untouched")
+
+        def compiler(command, logfile, progress, label):
+            self.calls += 1
+            args = shlex.split(Path(command[-1][1:]).read_text())
+            self.compilations.append(args)
+            jar = Path(args[args.index("-d") + 1])
+            with zipfile.ZipFile(jar, "w") as bundle:
+                if jar.name == "soloscape-server-core.jar":
+                    bundle.writestr("org/rsmod/module/ExtendedModule.class", b"<init>")
+                else:
+                    parts = []
+                    for source in (self.source, self.app, untouched, self.source.with_name("New.kt")):
+                        if str(source).replace("\\", "/") not in args:
+                            continue
+                        package = source.read_text().splitlines()[0].split()[1]
+                        bundle.writestr(package + "/" + source.stem + ".class",
+                                        fake_class(source.name, str(self.calls).encode()))
+                        parts.append((package, source.stem))
+                    bundle.writestr("META-INF/Server.kotlin_module", fake_module(parts))
+
+        with patch.object(build, "run_compiler", side_effect=compiler):
+            self.run_build()
+            self.source.write_text("package api\nclass Main { fun result(value: Int = 1) = value }")
+            self.source.with_name("New.kt").write_text("package api\nclass New")
+            self.run_build()
+            self.assertEqual(self.calls, 3)
+            self.assertNotIn(str(untouched).replace("\\", "/"), self.compilations[-1])
+            self.assertIn(str(self.app).replace("\\", "/"), self.compilations[-1])
+            with zipfile.ZipFile(self.runtime / "soloscape-server.jar") as jar:
+                self.assertIn("api/New.class", jar.namelist())
+                self.assertTrue(jar.read("untouched/Untouched.class").endswith(b"2"))
+            self.run_build()
+            self.assertEqual(self.calls, 3)
+
+    def test_failed_package_compile_falls_back_to_full_layer(self):
+        self.run_build()
+        self.source.write_text("fun main(argument: String) {}")
+        with patch.object(incremental, "affected_packages", return_value=[self.source]), \
+                patch.object(incremental, "package_dependency_jar", return_value=True), \
+                patch.object(build, "run_compiler", side_effect=lambda command, log, progress, label:
+                    (_ for _ in ()).throw(RuntimeError("partial failed")) if "affected" in label
+                    else self.compile(command, log, progress, label)):
+            self.run_build()
+        self.assertEqual(self.calls, 3)
+        self.assertIn(str(self.app).replace("\\", "/"), self.compilations[-1])
+
+    def test_failed_package_and_full_compile_preserve_previous_runtime(self):
+        self.run_build()
+        jar = self.runtime / "soloscape-server.jar"
+        manifest = self.runtime.parent / "build-state.json"
+        before_jar, before_state = jar.read_bytes(), manifest.read_bytes()
+        self.source.write_text("fun main(argument: String) {}")
+        with patch.object(incremental, "affected_packages", return_value=[self.source]), \
+                patch.object(incremental, "package_dependency_jar", return_value=True), \
+                patch.object(build, "run_compiler", side_effect=RuntimeError("compiler failed")):
+            with self.assertRaisesRegex(RuntimeError, "compiler failed"):
+                self.run_build()
+        self.assertEqual(jar.read_bytes(), before_jar)
+        self.assertEqual(manifest.read_bytes(), before_state)
+        self.assertFalse((self.runtime.parent / "incremental-dependencies.jar").exists())
 
     def test_core_and_toolchain_changes_rebuild_both_layers(self):
         self.run_build()

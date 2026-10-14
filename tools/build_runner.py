@@ -11,7 +11,7 @@ import build as build_impl
 ROOT = Path(__file__).resolve().parents[1]
 LOG_FILE = ROOT / "build.log"
 TIMINGS_FILE = ROOT / ".build-tools" / "build-progress.json"
-COMPILE_RE = re.compile(r"^Compiling(?: client core| server core| app layer)? \(?([0-9]+) files\)?$|^Compiling ([0-9]+) changed Kotlin sources?$")
+COMPILE_RE = re.compile(r"^Compiling(?: client core| server core| app layer)? \(?([0-9]+) files\)?$|^Compiling ([0-9]+) (?:changed|affected) Kotlin sources?$")
 COMPILER_COMPAT_FLAGS = (
     "-Xannotation-default-target=param-property",
     "-Xconsistent-data-class-copy-visibility",

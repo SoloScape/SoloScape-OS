@@ -516,6 +516,35 @@ def build_runtime(project_name, rebuild, home, compiler_lib, project, output,
             finally:
                 delta_jar.unlink(missing_ok=True)
         if not reused_changes:
+            if (not rebuild and state.get("common_key") == common_key
+                    and state.get("core_code_key") == core_code_key
+                    and set(old_keys) <= set(source_keys)
+                    and changed_app_sources and valid_artifact(app_name)):
+                added_sources = [file for file in app_sources
+                                 if file.relative_to(project).as_posix() not in old_keys]
+                affected = incremental.affected_packages(old_app_jar, changed_app_sources,
+                                                        app_sources, added_sources)
+                if affected and len(affected) < len(app_sources):
+                    delta_jar = output / "incremental-app.jar"
+                    dependency_jar = output / "incremental-dependencies.jar"
+                    try:
+                        if incremental.package_dependency_jar(old_app_jar, dependency_jar, affected):
+                            extra_classpath = ([core_jar] if core_jar is not None else []) + [dependency_jar]
+                            compile_sources(affected, delta_jar, project_name,
+                                            "compiler-incremental.args",
+                                            extra_classpath=extra_classpath,
+                                            friend_path=",".join(str(path) for path in extra_classpath),
+                                            label=f"Compiling {len(affected)} affected Kotlin sources")
+                            reused_changes = incremental.overlay_packages(
+                                old_app_jar, delta_jar, app_jar, affected)
+                        if reused_changes:
+                            progress.update(0.75, "Reused unaffected Kotlin packages")
+                    except RuntimeError:
+                        pass
+                    finally:
+                        delta_jar.unlink(missing_ok=True)
+                        dependency_jar.unlink(missing_ok=True)
+        if not reused_changes:
             extra_classpath = (core_jar,) if core_jar is not None else ()
             compile_sources(app_sources, app_jar, project_name, "compiler.args",
                             extra_classpath=extra_classpath,
