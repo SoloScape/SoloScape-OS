@@ -1,6 +1,7 @@
 package org.rsmod.content.skills.woodcutting.scripts
 
 import dev.openrune.ServerCacheManager
+import dev.openrune.types.InvScope
 import dev.openrune.types.NpcMode
 import dev.openrune.types.ObjectServerType
 import jakarta.inject.Inject
@@ -10,6 +11,7 @@ import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.invtx.invTransfer
 import org.rsmod.api.player.output.mes
 import org.rsmod.api.player.protect.ProtectedAccess
+import org.rsmod.api.player.stat.statAdvance
 import org.rsmod.api.player.stat.woodcuttingLvl
 import org.rsmod.api.repo.loc.LocRepository
 import org.rsmod.api.repo.npc.NpcRepository
@@ -53,6 +55,7 @@ class ForestryEventManager @Inject constructor(
     private data class TreeRoll(
         val origin: CoordGrid,
         val type: ForestryEventType,
+        val level: Int,
         val fireAt: Int,
         var lastChopped: Int,
     )
@@ -108,7 +111,7 @@ class ForestryEventManager @Inject constructor(
         if (!ForestryRations.hasKit(player)) return
         val choices = ForestryEventType.entries.toList()
         val selected = choices[Random.nextInt(choices.size)]
-        scheduled[tree] = TreeRoll(tree, selected, cycle + Random.nextInt(67, 201), cycle)
+        scheduled[tree] = TreeRoll(tree, selected, type.treeLevelReq, cycle + Random.nextInt(67, 201), cycle)
     }
 
     private fun canSpawnAt(type: ObjectServerType, tree: CoordGrid): Boolean {
@@ -149,7 +152,7 @@ class ForestryEventManager @Inject constructor(
         val nearby = players.findAll(ZoneKey.from(origin), zoneRadius = 4)
             .filter { forestryNear(it.coords, origin, 30) }.toList()
         if (nearby.none { ForestryRations.hasKit(it) }) return
-        if (Random.nextInt(100) >= ForestryRules.spawnPercent(30, nearby.size)) return
+        if (Random.nextInt(100) >= ForestryRules.spawnPercent(roll.level, nearby.size)) return
         val eligible = nearby.filter { history[it]?.eligible(origin, clock.cycle) == true }.toSet()
         val event = Event(roll.type, origin, clock.cycle, clock.cycle + roll.type.ticks, eligible)
         prepare(event)
@@ -260,8 +263,11 @@ class ForestryEventManager @Inject constructor(
         val colour = Random.nextInt(4)
         val shape = Random.nextInt(4)
         e.circles.clear()
-        repeat(4) { e.circles.add(colour to shape) }
+        e.circles.add(colour to shape)
+        e.circles.add(colour to (shape + 1) % 4)
+        e.circles.add((colour + 1) % 4 to shape)
         e.circles.add((colour + 1) % 4 to (shape + 1) % 4)
+        e.circles.add((colour + 2) % 4 to (shape + 2) % 4)
         e.circles.shuffle()
         e.circleAnswer = ForestryRules.validCircle(e.circles)
         for (npc in e.npcs.filterValues { it.startsWith("circle:") }.keys.toList()) {
@@ -340,6 +346,11 @@ class ForestryEventManager @Inject constructor(
                     else -> Unit
                 }
             }
+            if (success) {
+                // Bonus is proportional to completed actions and the visible Woodcutting level.
+                val bonus = (player.woodcuttingLvl + 1) * c.actions.coerceAtMost(15) * 0.6
+                player.statAdvance("stat.woodcutting", bonus)
+            }
             player.mes(if (success) "The " + e.type.title + " event has ended."
                 else "The " + e.type.title + " event was unsuccessful.")
         }
@@ -359,10 +370,9 @@ class ForestryEventManager @Inject constructor(
     private fun give(player: Player, name: String, amount: Int) {
         if (amount <= 0) return
         val type = ServerCacheManager.getItems().values.firstOrNull { it.internalName == name } ?: return
+        val stored = player.invMap[ForestryRations.STORAGE]
         val inventory = if (name == "obj.forestry_currency" && ForestryRations.hasKit(player) &&
-            player.invMap[ForestryRations.STORAGE] != null) {
-            player.invMap.getValue(ForestryRations.STORAGE)
-        } else player.inv
+            stored?.type?.scope == InvScope.Perm) stored else player.inv
         val stack = type.isStackable
         val existing = if (stack) inventory.indices.firstOrNull {
             inventory[it]?.let { obj -> getInvObj(obj).id == type.id } == true
@@ -390,7 +400,7 @@ class ForestryEventManager @Inject constructor(
             ForestryContribution(eligible)
         }
 
-    private fun ProtectedAccess.reward(e: Event, c: ForestryContribution, xp: Double, skill: String = "stat.woodcutting") {
+    private fun ProtectedAccess.reward(c: ForestryContribution, xp: Double, skill: String = "stat.woodcutting") {
         c.actions++
         statAdvance(skill, if (c.eligible) xp else 1.0)
         give(player, "obj.forestry_currency", c.takeBark(2 + player.woodcuttingLvl / 25))
@@ -405,8 +415,13 @@ class ForestryEventManager @Inject constructor(
         if (!c.ready(clock.cycle)) return
         when {
             role == "root" && e.type == ForestryEventType.ROOTS -> {
-                val infused = ((clock.cycle - e.start) / 18) % 6 == 0
-                reward(e, c, (if (infused) 42 else 15) + player.woodcuttingLvl * 1.5)
+                if (Woodcutting.findAxeForSpecialResource(player) == null) {
+                    mes("You need an axe to chop down the roots.")
+                    return
+                }
+                val elapsed = clock.cycle - e.start
+                val infused = elapsed >= 30 && (elapsed - 30) % 20 < 5
+                reward(c, (if (infused) 42 else 15) + player.woodcuttingLvl * 1.5)
                 if (infused) give(player, "obj.forestry_currency", c.takeBark(8))
                 mes(if (infused) "You cut an anima-infused root." else "You cut a tree root.")
             }
@@ -425,7 +440,7 @@ class ForestryEventManager @Inject constructor(
                     val nutrition = ForestryRules.mulchNutrition(e.recipe, c.ingredients)
                     e.growth += nutrition
                     c.ingredients.clear()
-                    reward(e, c, nutrition * (1 + player.woodcuttingLvl / 30.0))
+                    reward(c, nutrition * (1 + player.woodcuttingLvl / 30.0))
                     statAdvance("stat.farming", if (c.eligible) nutrition.toDouble() else 1.0)
                     mes("Your mulch has " + nutrition + "% nutritional value.")
                     if (e.growth >= 400) e.completed = true
@@ -434,7 +449,7 @@ class ForestryEventManager @Inject constructor(
             role == "rainbow" && e.type == ForestryEventType.LEPRECHAUN -> {
                 if (player.coords != target.coords) {
                     mes("Stand in the rainbow to collect its blessing.")
-                } else reward(e, c, 10.0 + player.woodcuttingLvl * 1.5)
+                } else reward(c, 10.0 + player.woodcuttingLvl * 1.5)
             }
             role == "hive" && e.type == ForestryEventType.HIVE -> {
                 buildHive(e, c)
@@ -470,7 +485,7 @@ class ForestryEventManager @Inject constructor(
                     player.inv[slot] = if (logs.count > 1) logs.copy(count = logs.count - 1) else null
                     e.hiveProgress++
                     c.hives.add(e.phase)
-                    reward(e, c, player.woodcuttingLvl * 0.9)
+                    reward(c, player.woodcuttingLvl * 0.9)
                     statAdvance("stat.construction", if (c.eligible) 12.0 else 1.0)
                     if (e.hiveProgress >= 3) {
                         e.hiveProgress = 0
@@ -486,7 +501,7 @@ class ForestryEventManager @Inject constructor(
                 if (c.lastRound == e.phase) return
                 c.lastRound = e.phase
                 if (number == e.circleAnswer) {
-                    reward(e, c, 18.0 + player.woodcuttingLvl * 1.2)
+                    reward(c, 18.0 + player.woodcuttingLvl * 1.2)
                     mes("You correctly identify the unique ritual circle.")
                 } else mes("That circle is not the unique shape and colour.")
     }
@@ -503,10 +518,17 @@ class ForestryEventManager @Inject constructor(
                 val i = role.substringAfter(":").toInt()
                 val requests = listOf(setOf(2), setOf(1, 3), setOf(2, 3), setOf(1))
                 val wanted = requests[e.entStyles[i]]
+                mes("This entling needs pruning " +
+                    when (e.entStyles[i]) {
+                        0 -> "on its left."
+                        1 -> "on both sides."
+                        2 -> "on its right and back."
+                        else -> "at the back."
+                    })
                 if (option !in wanted) {
                     mes("The entling does not like that haircut.")
                 } else if (e.entPrunes[i].add(option)) {
-                    reward(e, c, 10.0 + player.woodcuttingLvl)
+                    reward(c, 10.0 + player.woodcuttingLvl)
                     statAdvance("stat.fletching", if (c.eligible) 9.0 else 1.0)
                     if (e.entPrunes[i].containsAll(wanted)) {
                         c.entlings.add(i)
@@ -526,7 +548,7 @@ class ForestryEventManager @Inject constructor(
                 } else if (c.pollen != i) {
                     c.pollen = -1
                     c.lastRound = e.phase
-                    reward(e, c, 12.0 + player.woodcuttingLvl)
+                    reward(c, 12.0 + player.woodcuttingLvl)
                     mes("The flowers are successfully pollinated.")
                 } else mes("Take the pollen to the other flowering bush.")
             }
@@ -544,7 +566,7 @@ class ForestryEventManager @Inject constructor(
             role == "trap" && e.type == ForestryEventType.FOX -> {
                 if (!e.trapActive) return
                 removeTrap(e)
-                reward(e, c, 10.0 + player.woodcuttingLvl)
+                reward(c, 10.0 + player.woodcuttingLvl)
                 statAdvance("stat.hunter", if (c.eligible) 18.0 else 1.0)
                 mes("You disarm the fox trap.")
             }
@@ -555,7 +577,7 @@ class ForestryEventManager @Inject constructor(
                     mes("The pheasant caught you with its egg!")
                 } else {
                     c.egg = false
-                    reward(e, c, 14.0 + player.woodcuttingLvl)
+                    reward(c, 14.0 + player.woodcuttingLvl)
                     statAdvance("stat.thieving", if (c.eligible) 20.0 else 1.0)
                     mes("You deliver the pheasant egg.")
                 }
