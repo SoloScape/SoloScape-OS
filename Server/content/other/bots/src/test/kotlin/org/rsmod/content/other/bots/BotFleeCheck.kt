@@ -39,6 +39,14 @@ object BotFleeCheck {
         check(BotFleePlanner.safeToResume(100, 50, false, found, listOf(wizard)))
         check(!BotFleePlanner.safeToResume(100, 50, false, victim, listOf(wizard)))
 
+        check(!BotFleePlanner.safeResource(victim, listOf(wizard)))
+        check(!BotFleePlanner.safeResource(wizard.translate(17, 0), listOf(wizard)))
+        check(BotFleePlanner.safeResource(wizard.translate(18, 0), listOf(wizard)))
+        check(!BotFleePlanner.safeResource(wizard.translate(18, 0),
+            listOf(wizard, wizard.translate(19, 0))))
+        check(BotFleePlanner.safeResource(CoordGrid(wizard.x, wizard.z, 1), listOf(wizard)))
+        check(BotFleePlanner.safeResource(victim, emptyList()))
+
         val collision = CollisionFlagMap()
         for (x in 3184..3264 step 8) for (z in 3376..3456 step 8) {
             collision.allocateIfAbsent(x, z, 0)

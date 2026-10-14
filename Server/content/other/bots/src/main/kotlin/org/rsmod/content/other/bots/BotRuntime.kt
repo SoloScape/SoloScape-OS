@@ -77,6 +77,7 @@ private class WorldBot(
     var friendIdentity: Int? = null
     var fleeLastHit = -1
     var fleeing = false
+    var fleeStartedAt = 0
     var fleeThreats = ArrayList<CoordGrid>()
     var fleeTarget: CoordGrid? = null
     var fleeLastOrder = 0
@@ -636,8 +637,8 @@ class BotPopulation @Inject constructor(
     /**
      * Once an NPC hits a noncombat bot, stop harvesting immediately and run to a
      * reachable tile away from the aggressor. Do not jump through blocked objects or
-     * ignore native movement delays and freezes. Retry if chased, and choose a new
-     * activity rather than walking straight back to the same dangerous location.
+     * ignore native movement delays and freezes. Resume the interrupted activity
+     * away from recorded aggressors once combat ends.
      */
     private fun flee(bot: WorldBot, cycle: Int): Boolean {
         val player = bot.player
@@ -653,6 +654,7 @@ class BotPopulation @Inject constructor(
         }
         if (!bot.fleeing) {
             bot.fleeing = true
+            bot.fleeStartedAt = cycle
             bot.pauseUntil = 0
             bot.previousAutoRetaliate = player.vars["varp.option_nodef"]
             VarPlayerIntMapSetter.set(player, "varp.option_nodef", 1)
@@ -671,8 +673,14 @@ class BotPopulation @Inject constructor(
             // unreachable behind a fence or locked gate.
             (cycle - bot.fleeLastHit >= 120 && !inCombat)
         ) {
-            bot.blockedTasks[bot.task.id] = cycle + BotFleePlanner.RETREAT_COOLDOWN
-            bot.returnReason = "Escaped NPC attack near ${bot.task.id}"
+            player.clearPendingAction(events)
+            actions.release(player)
+            actions.avoidThreats(player, bot.fleeThreats)
+            bot.expiresAt += cycle - bot.fleeStartedAt
+            bot.stalled = 0
+            bot.resourceWaits = 0
+            bot.previousCoords = player.coords
+            bot.status = "resuming ${bot.task.id} away from NPC attack"
             VarPlayerIntMapSetter.set(player, "varp.option_nodef",
                 bot.previousAutoRetaliate)
             bot.fleeLastHit = -1
@@ -680,8 +688,6 @@ class BotPopulation @Inject constructor(
             bot.fleeThreats.clear()
             bot.fleeTarget = null
             bot.fleeFailedOrders = 0
-            bot.needsPlan = true
-            chooseTask(bot)
             bot.nextThink = cycle + 3
             return true
         }

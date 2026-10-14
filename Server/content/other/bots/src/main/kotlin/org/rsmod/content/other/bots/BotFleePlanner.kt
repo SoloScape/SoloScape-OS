@@ -31,6 +31,10 @@ internal object BotFleePlanner {
                 it.level != position.level || position.chebyshevDistance(it) >= SAFE_DISTANCE
             }
 
+    fun safeResource(position: CoordGrid, threats: List<CoordGrid>): Boolean =
+        threats.all { it.level != position.level ||
+            position.chebyshevDistance(it) >= SAFE_DISTANCE + 2 }
+
     fun destination(
         origin: CoordGrid,
         threats: List<CoordGrid>,

@@ -67,6 +67,22 @@ constructor(
     private val gatheringTargets = BotReservations<Player, Any>()
     private val destinations = WeakHashMap<Player, CoordGrid>()
     private val selectionTraces = WeakHashMap<Player, String>()
+    private val avoidedThreats = WeakHashMap<Player, Pair<Int, List<CoordGrid>>>()
+
+    fun avoidThreats(player: Player, threats: List<CoordGrid>) {
+        avoidedThreats[player] = (player.currentMapClock + BotFleePlanner.RETREAT_COOLDOWN) to
+            threats.toList()
+    }
+
+    private fun safeResource(player: Player, coords: CoordGrid): Boolean {
+        val avoidance = avoidedThreats[player] ?: return true
+        if (player.currentMapClock >= avoidance.first) {
+            avoidedThreats.remove(player)
+            return true
+        }
+        return BotFleePlanner.safeResource(coords, avoidance.second)
+    }
+
     var debugEnabled = false
         set(value) { field = value; if (!value) selectionTraces.clear() }
 
@@ -151,7 +167,7 @@ constructor(
         release(player)
         val npcs = zones(player.coords, radius).flatMap(npcRegistry::findAll)
             .filter { near(player.coords, it.coords, radius) && !it.hidden }
-            .filter { named(it.name, names) }
+            .filter { named(it.name, names) && safeResource(player, it.coords) }
             .sortedBy { player.coords.chebyshevDistance(it.coords) }
         for (npc in npcs) {
             matched++
@@ -357,7 +373,7 @@ constructor(
 
     private fun locations(player: Player, names: Set<String>, radius: Int): Sequence<LocInfo> =
         zones(player.coords, radius).flatMap(locRegistry::findAll)
-            .filter { near(player.coords, it.coords, radius) }
+            .filter { near(player.coords, it.coords, radius) && safeResource(player, it.coords) }
             .filter { loc -> names.any { it.startsWith("loc.") && it.asRSCM() == loc.id } ||
                 ServerCacheManager.getObject(loc.id)?.let {
                     named(visibleType(player, loc, it).name, names)
