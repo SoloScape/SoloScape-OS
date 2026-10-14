@@ -38,13 +38,29 @@ object BotMovementCheck {
             BotRoutes.traversal(a, b) != null
         }) { "Closed gates must be traversed instead of bypassed by geometric links" }
         check(!canWalk(east, west))
+        val blocked = setOf(east to west, west to east)
+        check(BotRoutes.path(east.translate(1, 0), west.translate(-1, 0),
+            ::canWalk, blocked).isEmpty()) {
+            "Failed crossings must not be selected again while the wall remains closed"
+        }
         for (z in 3184..3287) {
             collision.remove(3267, z, 0, CollisionFlag.WALL_EAST)
             collision.remove(3268, z, 0, CollisionFlag.WALL_WEST)
         }
         check(canWalk(east, west))
         check(BotRoutes.path(east, west, ::canWalk) == listOf(west))
-        check(BotRoutes.path(CoordGrid(1, 1, 0), CoordGrid(2, 1, 0)) { _, _ -> false }.isEmpty())
+        check(BotRoutes.path(CoordGrid(1, 1, 0), CoordGrid(2, 1, 0), canWalk = { _, _ -> false }).isEmpty())
+        val stranded = CoordGrid(2830, 3536, 0)
+        val bank = CoordGrid(3184, 3435, 0)
+        val rejoined = BotRoutes.path(stranded, bank, canWalk = { from, to ->
+            from.level == to.level && from.chebyshevDistance(to) <= 50
+        })
+        check(rejoined.isNotEmpty() && rejoined.last() == bank) {
+            "A stranded endpoint more than 25 tiles from roads must be able to rejoin"
+        }
+        check(BotRoutes.path(stranded, bank, { _, _ -> false }).isEmpty()) {
+            "Wider endpoint connections must still respect collision"
+        }
         val timeout = BotProgressTimeout()
         check(!timeout.expired(0, east, 0, true))
         check(!timeout.expired(199, east, 0, true))

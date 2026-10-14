@@ -268,16 +268,17 @@ public object BotRoutes {
 
     /** Dijkstra over imported road points and short native walking connections. */
     public fun path(from: CoordGrid, to: CoordGrid,
-        canWalk: (CoordGrid, CoordGrid) -> Boolean = { _, _ -> true }): List<CoordGrid> {
+        canWalk: (CoordGrid, CoordGrid) -> Boolean = { _, _ -> true },
+        blockedCrossings: Set<Pair<CoordGrid, CoordGrid>> = emptySet()): List<CoordGrid> {
         if (from == to) return emptyList()
-        if (traversal(from, to) != null ||
+        if ((traversal(from, to) != null && from to to !in blockedCrossings) ||
             (from.level == to.level && distance(from, to) <= 25 && canWalk(from, to))) return listOf(to)
         val points = (roads.flatten() + crossings.keys.flatMap { listOf(it.first, it.second) } +
             from + to).distinct()
         val adjacency = Array(points.size) { mutableListOf<Pair<Int, Int>>() }
         val index = points.withIndex().associate { it.value to it.index }
         fun connect(a: CoordGrid, b: CoordGrid) {
-            if (a == b) return
+            if (a == b || a to b in blockedCrossings) return
             val crossing = traversal(a, b)
             if (crossing == null && (a.level != b.level || distance(a, b) > 50)) return
             val cost = if (crossing == null) distance(a, b).coerceAtLeast(1) else 20
@@ -292,7 +293,10 @@ public object BotRoutes {
         for ((a, b) in crossings.keys) connect(a, b)
         for (i in points.indices) {
             for (j in i + 1 until points.size) {
-                if (points[i].level != points[j].level || distance(points[i], points[j]) > 25) continue
+                val radius = if (points[i] == from || points[j] == from ||
+                    points[i] == to || points[j] == to) 50 else 25
+                if (points[i].level != points[j].level ||
+                    distance(points[i], points[j]) > radius) continue
                 connect(points[i], points[j])
                 connect(points[j], points[i])
             }

@@ -83,6 +83,9 @@ private class WorldBot(
     var previousAutoRetaliate = 0
     var graveBankTrip = false
     val protectedTimeout = BotProgressTimeout()
+    val graveTimeout = BotProgressTimeout()
+    val blockedCrossings = mutableMapOf<Pair<CoordGrid, CoordGrid>, Int>()
+    val crossingAttempts = mutableMapOf<Pair<CoordGrid, CoordGrid>, Int>()
     val blockedTasks = mutableMapOf<String, Int>()
 }
 
@@ -537,7 +540,7 @@ class BotPopulation @Inject constructor(
         }
         setTask(bot, next)
         bot.needsPlan = false
-        bot.path = BotRoutes.path(player.coords, next.start, actions::canWalk)
+        bot.path = route(bot, next.start)
         bot.pathOrigin = player.coords
         bot.waypoint = 0
         bot.phase = if (player.coords.level == next.start.level &&
@@ -722,7 +725,7 @@ class BotPopulation @Inject constructor(
                     bot.graveBankTrip = false
                     bot.phase = BotPhase.RecoveringGrave
                     bot.pathOrigin = player.coords
-                    bot.path = BotRoutes.path(player.coords, grave.coords, actions::canWalk)
+                    bot.path = route(bot, grave.coords)
                     bot.waypoint = 0
                     bot.status = "returning for remaining grave items"
                 }
@@ -731,7 +734,7 @@ class BotPopulation @Inject constructor(
             if (bot.phase != BotPhase.GraveBanking) {
                 bot.phase = BotPhase.GraveBanking
                 bot.pathOrigin = player.coords
-                bot.path = BotRoutes.path(player.coords, bank, actions::canWalk)
+                bot.path = route(bot, bank)
                 bot.waypoint = 0
                 bot.nextThink = cycle
             }
@@ -789,7 +792,7 @@ class BotPopulation @Inject constructor(
         if (bot.phase != BotPhase.RecoveringGrave) {
             bot.phase = BotPhase.RecoveringGrave
             bot.pathOrigin = player.coords
-            bot.path = BotRoutes.path(player.coords, grave.coords, actions::canWalk)
+            bot.path = route(bot, grave.coords)
             bot.waypoint = 0
             bot.stalled = 0
             bot.status = "walking back to gravestone"
@@ -798,6 +801,15 @@ class BotPopulation @Inject constructor(
         if (cycle < bot.nextThink) return true
         bot.nextThink = cycle + 3
         if (player.isDelayed || player.isAccessProtected) return true
+        val totalXp = BotSkills.all.sumOf { player.statMap.getFineXP(it).toLong() }
+        if (bot.path.isEmpty() || bot.graveTimeout.expired(cycle, player.coords, totalXp, true)) {
+            player.clearPendingAction(events)
+            actions.release(player)
+            bot.path = route(bot, grave.coords)
+            bot.pathOrigin = player.coords
+            bot.waypoint = 0
+            bot.graveTimeout.expired(cycle, player.coords, totalXp, false)
+        }
         if (bot.path.isEmpty()) {
             bot.status = "waiting for route to own gravestone"
             bot.nextThink = cycle + 50
@@ -1047,6 +1059,12 @@ class BotPopulation @Inject constructor(
         watchStall(bot)
     }
 
+    private fun route(bot: WorldBot, destination: CoordGrid): List<CoordGrid> {
+        bot.blockedCrossings.entries.removeAll { it.value <= bot.player.currentMapClock }
+        return BotRoutes.path(bot.player.coords, destination, actions::canWalk,
+            bot.blockedCrossings.keys)
+    }
+
     private fun walkRoute(bot: WorldBot) {
         val player = bot.player
         if (bot.path.isEmpty() && bot.phase in setOf(BotPhase.Changing, BotPhase.Returning)) {
@@ -1067,7 +1085,24 @@ class BotPopulation @Inject constructor(
             val transition = BotRoutes.traversal(previous, target)
             if (transition != null && player.coords == previous) {
                 if (actions.canWalk(player.coords, target)) {
+                    bot.crossingAttempts.remove(previous to target)
                     actions.walk(player, target)
+                    return
+                }
+                val crossing = previous to target
+                val attempts = (bot.crossingAttempts[crossing] ?: 0) + 1
+                bot.crossingAttempts[crossing] = attempts
+                if (attempts >= 10) {
+                    bot.crossingAttempts.remove(crossing)
+                    bot.blockedCrossings[crossing] = player.currentMapClock + 1000
+                    bot.blockedCrossings[target to previous] = player.currentMapClock + 1000
+                    val destination = bot.path.last()
+                    player.clearPendingAction(events)
+                    actions.release(player)
+                    bot.path = route(bot, destination)
+                    bot.pathOrigin = player.coords
+                    bot.waypoint = 0
+                    bot.status = "rerouting around failed crossing"
                     return
                 }
                 if (transition.item != null) {
@@ -1090,7 +1125,7 @@ class BotPopulation @Inject constructor(
                 spread = bot.mode in setOf(BotMode.Skilling, BotMode.Progressive) &&
                     !BotRoutes.exactWaypoint(bot.pathOrigin, bot.path, bot.waypoint))
             if (!walked && bot.stalled == 3) {
-                val detour = BotRoutes.path(player.coords, target, actions::canWalk)
+                val detour = route(bot, target)
                 if (detour.isNotEmpty()) {
                     bot.path = detour + bot.path.drop(bot.waypoint + 1)
                     bot.pathOrigin = player.coords
@@ -1134,7 +1169,7 @@ class BotPopulation @Inject constructor(
         actions.release(player)
         player.clearPendingAction(events)
         if (bot.recoveries++ < 2) {
-            bot.path = BotRoutes.path(player.coords, bot.task.start, actions::canWalk)
+            bot.path = route(bot, bot.task.start)
             bot.pathOrigin = player.coords
             bot.phase = BotPhase.Returning
             bot.needsPlan = true
