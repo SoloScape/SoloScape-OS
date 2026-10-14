@@ -38,9 +38,18 @@ Existing skilling, trading, progression and Castle Wars controllers remain separ
 
 ## Skilling equipment and gathering
 
-Skilling bots wear varied armour, wizard clothing or leather clothing and leave the
-shield slot empty. Woodcutters and miners wield the highest ordinary axe or pickaxe
-allowed by their skill level, Attack level and world membership, up to Dragon.
+Skilling bots wear job-specific worker clothes and leave the shield slot empty.
+Members upgrade to lumberjack clothing at 44 Woodcutting, and prospector or angler
+clothing at 40 Mining or Fishing. Beginners and F2P bots use simple work clothes;
+cooks wear chef hats and white aprons, smiths and crafters wear brown aprons, and
+runecrafters wear robes with wizard hats or matching rune tiaras. Individual styles
+vary cape use and headwear. Fishing, cooking and smithing outfits normally omit capes.
+Members with 99 in their current task skill wear its skillcape. Outfits refresh at
+bank resupply after job or level changes, reusing stored clothing. Saved armour is
+banked instead of covering the new outfit. Farming and thieving tasks are not yet
+part of this bot catalogue.
+Woodcutters and miners wield the highest ordinary axe or pickaxe allowed by their
+skill level, Attack level and world membership, up to Dragon.
 Tool tiers are stocked at initialization; bank resupply updates the tool after a
 task change or level increase. Saved progressive profiles also have old swords and
 shields moved into their bank when initialized for skilling.

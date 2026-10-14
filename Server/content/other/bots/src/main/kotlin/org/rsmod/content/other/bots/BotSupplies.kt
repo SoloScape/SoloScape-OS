@@ -33,6 +33,7 @@ class BotSupplies @Inject constructor(
     )
 
     private val seeded = Collections.newSetFromMap(WeakHashMap<Player, Boolean>())
+    private val outfitStyles = WeakHashMap<Player, Int>()
     private val random = Random.Default
     private val combatLoadouts = listOf(
         CombatLoadout(1, 1, items = listOf(
@@ -169,17 +170,17 @@ class BotSupplies @Inject constructor(
                     strict = true, autoCommit = false)
                 if (transaction.success) transaction.commitAll()
             }
-            for (item in BotSkillingLoadouts.outfit(
-                player.statMap.getBaseLevel("stat.defence").toInt(), random.nextInt(3),
-            )) add(player, player.inv, item, 1)
+            equipOutfit(player, task)
         }
         for (tool in BotSkillingLoadouts.tools) {
             if (count(bank, tool) + count(player.inv, tool) + count(player.worn, tool) == 0) {
                 add(player, bank, tool, 1)
             }
         }
-        for (slot in player.inv.indices) {
-            if (player.inv[slot] != null) equipment.equip(player, slot, player.inv)
+        if (task == null || task.kind == BotTaskKind.Combat) {
+            for (slot in player.inv.indices) {
+                if (player.inv[slot] != null) equipment.equip(player, slot, player.inv)
+            }
         }
         if (!progressive && task?.kind == BotTaskKind.Combat) {
             add(player, player.inv, if (player.members) "Shark" else "Lobster", 12)
@@ -204,6 +205,7 @@ class BotSupplies @Inject constructor(
 
     fun replenish(player: Player, task: BotTaskDefinition, actions: BotActions): Boolean {
         val bank = player.invMap.getOrPut("inv.bank")
+        val dressed = task.kind == BotTaskKind.Combat || equipOutfit(player, task)
         if (task.kind != BotTaskKind.Combat) {
             val required = requirements(task, levels(player)).keys
             for (pos in listOf(Wearpos.LeftHand, Wearpos.RightHand)) {
@@ -229,7 +231,7 @@ class BotSupplies @Inject constructor(
             if (amount > 0 && !actions.withdraw(player, item, amount)) supplied = false
         }
         equipRequired(player, task)
-        return supplied && canSupply(player, task)
+        return dressed && supplied && canSupply(player, task)
     }
 
     fun canSupply(player: Player, task: BotTaskDefinition): Boolean {
@@ -357,15 +359,38 @@ class BotSupplies @Inject constructor(
             it.certtemplate == 0 && it.name.equals(name, true)
         }
 
+    internal fun equipOutfit(player: Player, task: BotTaskDefinition): Boolean {
+        val bank = player.invMap.getOrPut("inv.bank")
+        val style = outfitStyles.getOrPut(player) { random.nextInt(3) }
+        val outfit = BotSkillingLoadouts.outfit(task, levels(player), style).map {
+            resolve(it) ?: return false
+        }
+        for (pos in listOf(Wearpos.Hat, Wearpos.Torso, Wearpos.Legs,
+            Wearpos.Feet, Wearpos.Hands, Wearpos.Back)) {
+            val current = player.worn[pos.slot] ?: continue
+            if (outfit.any { it.id == current.id }) continue
+            unequip.unequip(player, pos.slot, player.worn, bank)
+            if (player.worn[pos.slot] != null) return false
+        }
+        for (type in outfit) {
+            if (player.worn[type.wearpos1]?.id == type.id) continue
+            val inventorySlot = player.inv.indices.firstOrNull { player.inv[it]?.id == type.id }
+            if (inventorySlot != null) {
+                equipment.equip(player, inventorySlot, player.inv)
+            } else {
+                if (bank.objs.filterNotNull().none { it.id == type.id }) {
+                    player.invAdd(bank, type.id, 1)
+                }
+                val slot = bank.indices.firstOrNull { bank[it]?.id == type.id } ?: return false
+                equipment.equip(player, slot, bank)
+            }
+            if (player.worn[type.wearpos1]?.id != type.id) return false
+        }
+        return true
+    }
+
     private fun levels(player: Player): Map<String, Int> =
-        mapOf(
-            "cooking" to player.statMap.getBaseLevel("stat.cooking").toInt(),
-            "smithing" to player.statMap.getBaseLevel("stat.smithing").toInt(),
-            "woodcutting" to player.statMap.getBaseLevel("stat.woodcutting").toInt(),
-            "mining" to player.statMap.getBaseLevel("stat.mining").toInt(),
-            "attack" to player.statMap.getBaseLevel("stat.attack").toInt(),
-            "members" to if (player.members) 1 else 0,
-        )
+        BotSkills.levels(player) + ("members" to if (player.members) 1 else 0)
 
     private fun rawFood(cooking: Int): String = if (cooking >= 40) "Raw lobster" else "Raw shrimps"
 }

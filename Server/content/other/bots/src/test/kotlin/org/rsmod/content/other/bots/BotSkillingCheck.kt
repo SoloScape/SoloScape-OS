@@ -142,6 +142,58 @@ object BotSkillingCheck {
                 })
             }
         }
-        println("Bot skilling checks passed: tool tiers, outfits, shared trees and all cache-backed woodcutting targets.")
+        val clothingTasks = SourceBotCatalog.tasks.filter { it.kind != BotTaskKind.Combat }
+            .distinctBy { it.kind to it.skill }
+        for (task in clothingTasks) {
+            for (members in listOf(false, true)) {
+                for (level in listOf(1, 39, 40, 98, 99)) {
+                    val player = Player().apply {
+                        inv = invMap.getOrPut("inv.inv")
+                        worn = invMap.getOrPut("inv.worn")
+                        this.members = members
+                        for (skill in BotSkills.all) {
+                            statMap.setBaseLevel(skill, level.toByte())
+                            statMap.setCurrentLevel(skill, level.toByte())
+                        }
+                        worn[Wearpos.Torso.slot] = InvObj("obj.iron_chainbody")
+                        worn[Wearpos.Back.slot] = InvObj("obj.red_cape")
+                    }
+                    for (style in 0..2) {
+                        val outfit = BotSkillingLoadouts.outfit(task,
+                            BotSkills.levels(player) + ("members" to if (members) 1 else 0), style)
+                        for (symbol in outfit) {
+                            val type = checkNotNull(ServerCacheManager.getItem(symbol.asRSCM()))
+                            check(type.isEquipable) { "$symbol is not wearable" }
+                            if (!members) check(symbol in setOf("obj.leather_armour",
+                                "obj.leather_chaps", "obj.leather_boots", "obj.brown_apron",
+                                "obj.white_apron", "obj.chefs_hat", "obj.leather_vambraces",
+                                "obj.wizards_robe", "obj.blue_skirt", "obj.bluewizhat",
+                                "obj.green_cape", "obj.blue_cape", "obj.black_cape",
+                                "obj.tiara_air", "obj.tiara_mind", "obj.tiara_water",
+                                "obj.tiara_earth", "obj.tiara_fire", "obj.tiara_body"))
+                        }
+                        check(outfit.any { it.startsWith("obj.skillcape_") } ==
+                            (members && level == 99 && task.skill != null))
+                    }
+                    check(supplies.equipOutfit(player, task)) {
+                        "${task.id} outfit failed at $level, members=$members"
+                    }
+                    check(player.worn[Wearpos.Torso.slot]?.id != "obj.iron_chainbody".asRSCM())
+                    check(player.worn[Wearpos.Back.slot]?.id != "obj.red_cape".asRSCM())
+                    val bank = player.invMap.getOrPut("inv.bank")
+                    val bankSize = bank.objs.filterNotNull().sumOf { it.count }
+                    check(supplies.equipOutfit(player, task))
+                    check(bank.objs.filterNotNull().sumOf { it.count } == bankSize)
+                    val nextTask = if (task.kind == BotTaskKind.Cooking) woodcutting else
+                        SourceBotCatalog.tasks.first { it.kind == BotTaskKind.Cooking }
+                    check(supplies.equipOutfit(player, nextTask))
+                    check(supplies.equipOutfit(player, task))
+                    check(bank.objs.filterNotNull().all { it.count == 1 }) {
+                        "Outfit switching duplicated bank clothing"
+                    }
+                }
+            }
+        }
+        println("Bot skilling checks passed: tool tiers, role outfits, mastery, F2P, job switching and gathering.")
     }
 }

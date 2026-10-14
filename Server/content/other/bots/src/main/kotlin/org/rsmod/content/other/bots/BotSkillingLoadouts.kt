@@ -21,18 +21,47 @@ internal object BotSkillingLoadouts {
         return "${tier.metal} ${if (mining) "pickaxe" else "axe"}"
     }
 
-    fun outfit(defence: Int, style: Int): List<String> = when (style.mod(3)) {
-        0 -> {
-            val metal = when {
-                defence >= 40 -> "Rune"
-                defence >= 30 -> "Adamant"
-                defence >= 20 -> "Mithril"
-                defence >= 5 -> "Steel"
-                else -> "Iron"
-            }
-            listOf("$metal full helm", "$metal chainbody", "$metal platelegs")
+    fun outfit(task: BotTaskDefinition, levels: Map<String, Int>, style: Int): List<String> {
+        val level = levels[task.skill] ?: 1
+        val members = levels["members"] == 1
+        val experienced = members && level >= 40
+        val variant = style.mod(3)
+        val clothes = when (task.kind) {
+            BotTaskKind.Woodcutting -> if (experienced && level >= 44) set("ramble_lumberjack") else
+                listOf("obj.leather_armour", "obj.leather_chaps", "obj.leather_boots")
+            BotTaskKind.Mining -> if (experienced) set("motherlode_reward") else
+                listOf("obj.brown_apron", "obj.leather_chaps", "obj.leather_boots")
+            BotTaskKind.Fishing -> if (experienced) set("trawler_reward") else if (members)
+                listOf("obj.desert_shirt", "obj.desert_robe", "obj.leather_boots") else
+                listOf("obj.leather_armour", "obj.leather_chaps", "obj.leather_boots")
+            BotTaskKind.Cooking -> listOf("obj.chefs_hat", "obj.white_apron",
+                "obj.leather_chaps", "obj.leather_boots")
+            BotTaskKind.Smelting, BotTaskKind.Smithing,
+            BotTaskKind.Tanning, BotTaskKind.Crafting -> listOf("obj.brown_apron",
+                "obj.leather_chaps", "obj.leather_boots", "obj.leather_vambraces")
+            BotTaskKind.Runecrafting -> listOf("obj.wizards_robe", "obj.blue_skirt",
+                "obj.leather_boots") + if (variant == 0) listOf("obj.bluewizhat") else
+                task.requiredItems.keys.firstOrNull { it.endsWith(" talisman", true) }
+                    ?.substringBefore(" ")?.lowercase()?.let { listOf("obj.tiara_$it") }
+                    ?: listOf("obj.bluewizhat")
+            else -> if (members && variant == 0)
+                listOf("obj.desert_shirt", "obj.desert_robe", "obj.desert_boots") else
+                listOf("obj.brown_apron", "obj.leather_chaps", "obj.leather_boots")
         }
-        1 -> listOf("obj.bluewizhat", "obj.wizards_robe", "obj.blue_skirt")
-        else -> listOf("obj.leather_armour", "obj.leather_chaps", "obj.leather_vambraces")
-    } + listOf("obj.leather_boots", "obj.red_cape")
+        val cape = when {
+            members && level >= 99 && task.skill != null -> "obj.skillcape_${task.skill}"
+            task.kind in setOf(BotTaskKind.Fishing, BotTaskKind.Cooking,
+                BotTaskKind.Smelting, BotTaskKind.Smithing) -> null
+            variant == 0 -> when (task.kind) {
+                BotTaskKind.Woodcutting -> "obj.green_cape"
+                BotTaskKind.Runecrafting -> "obj.blue_cape"
+                else -> "obj.black_cape"
+            }
+            else -> null
+        }
+        return clothes + listOfNotNull(cape)
+    }
+
+    private fun set(prefix: String): List<String> =
+        listOf("hat", "top", "legs", "boots").map { "obj.${prefix}_$it" }
 }
