@@ -2,155 +2,397 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#111a20">
-<title>SoloScape | Highscores</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#181713">
+<meta name="description" content="SoloScape Old School-style Hiscores for players and world bots.">
+<title>SoloScape - Old School Hiscores</title>
 <style>
-:root{color-scheme:dark;--bg:#10171c;--surface:#192329;--light:#233139;--line:#334148;--text:#f3f0e8;--muted:#a2b5b6;--gold:#e7ba6a;--accent:#69b9a3}
-*{box-sizing:border-box}body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:radial-gradient(circle at 50% -230px,#31483e,transparent 600px),var(--bg);color:var(--text);margin:0;min-height:100vh}
-header,main,footer{max-width:1120px;margin:auto;padding:0 22px}
-header{padding-top:40px;padding-bottom:24px}.eyebrow{text-transform:uppercase;letter-spacing:.22em;color:var(--accent);font-size:11px;font-weight:800}
-h1{font-family:Georgia,serif;letter-spacing:.015em;color:var(--gold);font-weight:600;font-size:clamp(36px,6vw,58px);margin:5px 0}
-.lead{color:var(--muted);margin:3px 0 0;line-height:1.6}.stats{display:flex;gap:24px;flex-wrap:wrap;margin:30px 0 0}
-.stat strong{display:block;font-size:23px;font-variant-numeric:tabular-nums}.stat small{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
-.panel{background:var(--surface);border:1px solid var(--line);border-radius:13px;overflow:hidden;box-shadow:0 16px 35px #0003}
-.controls{padding:18px;display:grid;grid-template-columns:minmax(180px,2fr) minmax(135px,1fr) minmax(150px,1fr);gap:12px;border-bottom:1px solid var(--line)}
-label{font-size:12px;font-weight:700;color:var(--muted);display:block;margin-bottom:7px}
-input,select{background:#111b21;border:1px solid #45605d;color:var(--text);border-radius:7px;padding:11px 12px;font:inherit;width:100%;min-height:44px}
-input:focus,select:focus,button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
-.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:620px}th,td{text-align:left;padding:15px 18px;border-bottom:1px solid #2c393e}th{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:750}
-td{font-variant-numeric:tabular-nums}tbody tr:hover{background:#213036}
-.rank{color:var(--gold);font-weight:750;width:75px}.username{font-weight:750;cursor:pointer;border:0;background:transparent;color:var(--text);padding:0;font:inherit;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:4px}
-.username:hover,.username:focus{text-decoration-color:var(--gold)}
-.tag{display:inline-block;color:#87ceb9;border:1px solid #4b8170;padding:2px 7px;border-radius:20px;font-size:10px;letter-spacing:.04em;margin-left:9px;font-weight:750}
-.offline{color:#94a6aa;border-color:#56686a}.type{color:var(--muted);font-size:13px}.number{text-align:right}.gold{color:var(--gold)}
-.pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 18px;color:var(--muted);font-size:13px}
-button.nav{padding:8px 16px;background:#263c3b;border:1px solid #45615c;border-radius:7px;color:var(--text);cursor:pointer}button.nav:disabled{opacity:.35;cursor:default}
-.empty{padding:36px;text-align:center;color:var(--muted)}
-#profile{margin-top:24px;padding:24px}#profile[hidden]{display:none}
-.profileHead{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap}
-h2{font-family:Georgia,serif;font-size:29px;font-weight:500;color:var(--gold);margin:0 0 8px}
-.skillsGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-top:24px}
-.skill{background:#111b21;border:1px solid #2e4648;border-radius:8px;padding:12px}
-.skill strong{display:block}.skill .meta{color:var(--muted);font-size:12px;margin-top:5px}
-.bar{height:3px;background:#2a3b3a;margin-top:12px;border-radius:8px;overflow:hidden}.bar span{display:block;background:var(--gold);height:100%}
-a{color:var(--accent)}footer{padding-top:25px;padding-bottom:40px;color:var(--muted);font-size:12px;line-height:1.7}
-@media(max-width:720px){header{padding-top:26px}.controls{grid-template-columns:1fr}.stats{gap:20px}.stats .stat{min-width:90px}.pagination{font-size:12px}th,td{padding:12px}.skillsGrid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}}
+:root{--gold:#f9d382;--paper:#d7bb80;--ink:#372818;--stone:#24221e;--metal:#5d5d4b}
+*{box-sizing:border-box}
+html{min-width:320px}
+body{margin:0;min-height:100vh;font:12px Arial,Helvetica,sans-serif;color:#f5ebd0;
+ background-color:#171713;
+ background-image:radial-gradient(ellipse at 50% 0%,#464338 0%,transparent 60%),
+ repeating-linear-gradient(57deg,transparent 0 60px,#0005 61px 63px,transparent 64px 135px),
+ repeating-linear-gradient(124deg,transparent 0 77px,#05050480 78px 81px,transparent 82px 154px),
+ repeating-linear-gradient(0deg,#272720 0 65px,#121410 67px 72px,#282720 74px 140px);
+ background-attachment:fixed}
+a{color:inherit}
+button,input,select{font:inherit}
+button{cursor:pointer}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #f8d36b;outline-offset:2px}
+.site{width:min(100%,948px);margin:0 auto;min-height:100vh;padding:0 28px 16px;background:linear-gradient(90deg,#171610c9 0,#12120da6 4%,#1b1a16b5 50%,#12120da6 96%,#171610c9);border-left:12px ridge #555244;border-right:12px ridge #555244;box-shadow:0 0 45px #000d,0 0 10px #000 inset}
+.utility{background:#080908;min-height:24px;margin:0 -28px;color:#8e9b80;border:1px solid #44412f;display:flex;align-items:center;justify-content:space-between;padding:4px 15px;font-size:11px}
+.utility .onlineDot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#69b973;margin-right:5px}
+.banner{height:125px;position:relative;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden;
+ background:radial-gradient(ellipse at 50% 60%,#353428 0%,#201e19 46%,#0b0d0a 95%);
+ border-bottom:5px solid #161710}
+.banner:before,.banner:after{content:"";position:absolute;width:160px;height:110px;opacity:.45;filter:blur(.5px);bottom:-48px;border:9px solid #50533b;box-shadow:inset 0 0 18px #050505,0 0 15px #080808}
+.banner:before{left:4%;transform:rotate(-27deg);border-radius:70% 15% 85% 20%}
+.banner:after{right:4%;transform:rotate(27deg);border-radius:15% 70% 20% 85%}
+.brand{position:relative;z-index:1;text-shadow:3px 4px 2px #090807,-2px -1px 0 #21180c}
+.brand .name{font-family:Georgia,"Times New Roman",serif;color:#ebc16c;font-variant:small-caps;letter-spacing:2px;font-size:48px;font-weight:bold;line-height:1}
+.brand .sub{font:700 12px Georgia,serif;color:#c9c2a9;letter-spacing:1.8px;margin-top:6px}
+.brand .sub span{color:#e4b865}
+.tabs{display:flex;justify-content:center;gap:4px;margin:3px 0 18px;flex-wrap:wrap}
+.tab{border:2px ridge #575042;background:linear-gradient(#1b1d19,#090a09);color:#a4b587;font-weight:bold;padding:8px 20px;min-width:102px;text-decoration:none;text-align:center}
+.tab[aria-selected="true"]{color:#f5e0a7;background:linear-gradient(#353b2b,#121712);border-bottom-color:#a99451}
+.content{display:grid;grid-template-columns:156px minmax(0,1fr) 178px;align-items:start;gap:15px;margin:0 auto;max-width:858px}
+.sidebarTitle{color:#2c2311;background:linear-gradient(#ded1a8,#ae955c);font:700 14px Georgia,serif;text-align:center;padding:9px 4px;transform:rotate(-3deg);box-shadow:1px 3px 5px #0008;margin:5px -6px 7px}
+.skills-nav{background:linear-gradient(90deg,#293138,#465052 15%,#39434b 75%,#242b31);border:5px ridge #5b5d51;border-radius:8px;padding:7px 5px;box-shadow:inset 0 0 13px #060607,0 3px 8px #000c;max-height:none}
+.category{display:flex;align-items:center;gap:5px;width:100%;padding:4px 3px;border:0;border-bottom:1px solid #70818321;background:transparent;text-align:left;text-decoration:none;color:#dfd4a4;line-height:17px;font-size:12px}
+.category:hover,.category.active{background:linear-gradient(90deg,#29241c,#47402d);color:#fff3c6}
+.category.active{font-weight:700}
+.category .skillIcon{width:18px;height:18px;object-fit:contain;image-rendering:pixelated;flex-shrink:0}
+.category .fallbackIcon{display:inline-block;width:18px;text-align:center;font-size:13px;color:#ffd15f}
+.nav-note{text-align:center;color:#879492;font-size:10px;padding:10px 2px;line-height:1.4}
+.scroll{position:relative;min-width:0;background:
+ radial-gradient(circle at 11% 23%,#a5824942 0 1px,transparent 2px),
+ repeating-linear-gradient(99deg,transparent 0 24px,#fff3d020 25px 26px,transparent 29px 45px),
+ linear-gradient(90deg,#a88a53 0%,#dfc793 7%,#ead4a0 48%,#d4b678 92%,#ae925a);
+ border:1px solid #8e754d;
+ box-shadow:0 3px 12px #000c,inset 0 0 23px #77532f66;color:var(--ink);
+ margin:3px 0 4px;padding:20px 12px 21px;
+ clip-path:polygon(1% 0,7% 1%,13% 0,24% 1%,39% 0,57% 1%,75% 0,90% 1%,99% 0,100% 5%,99% 13%,100% 22%,99% 34%,100% 44%,99% 55%,100% 67%,99% 79%,100% 89%,99% 99%,88% 100%,72% 99%,56% 100%,41% 99%,29% 100%,15% 99%,1% 100%,0 91%,1% 79%,0 70%,1% 58%,0 45%,1% 30%,0 16%)}
+.scroll:before,.scroll:after{content:"";display:block;position:absolute;left:6px;right:6px;height:11px;pointer-events:none;background:linear-gradient(0deg,#8e6d3b4d,#f1dda779,#886b4066);border-radius:40%}
+.scroll:before{top:0}.scroll:after{bottom:0;transform:rotate(180deg)}
+.scroll h1{font:700 16px Georgia,"Times New Roman",serif;text-align:center;margin:3px 0 2px;color:#463016}
+.scroll .underline{height:1px;background:#8f6c3a80;margin:9px 4px 11px}
+.scroll .subtitle{text-align:center;font-size:11px;color:#715631;margin:0 0 13px}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th{font-size:11px;color:#40301e;border-bottom:1px solid #9a8054;padding:5px 3px;text-align:left;white-space:nowrap}
+td{padding:5px 3px;white-space:nowrap}
+tbody tr:nth-child(even){background:#8662341a}
+tbody tr:hover{background:#faf0c2a3}
+tr.highlight{background:#fff3a6!important}
+.rank{width:38px;text-align:right}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.entry-name{border:0;background:transparent;font-weight:400;color:#282016;padding:0;text-align:left;text-decoration:none;max-width:170px;white-space:normal}
+.entry-name:hover{text-decoration:underline}
+.bot-label{font:700 9px Arial,sans-serif;color:#365022;border:1px solid #7a865d;border-radius:2px;padding:0 2px;margin-left:3px;white-space:nowrap}
+.active-label{color:#3a6a29;font-size:10px}
+.paper-footer{text-align:center;margin:12px 0 0;padding-top:7px;border-top:1px solid #9b7a4566;font-size:11px;color:#594325}
+.pager{display:flex;align-items:center;justify-content:center;gap:7px;margin:9px 0;flex-wrap:wrap}
+.paper-button{border:1px solid #775a31;border-radius:2px;background:linear-gradient(#f0deb0,#c3a36d);padding:4px 11px;color:#312312;box-shadow:0 1px 2px #39230e69}
+.paper-button:hover:not(:disabled){background:#faf0c8}
+.paper-button:disabled{opacity:.45;cursor:default}
+#empty{padding:25px 5px;text-align:center;font-style:italic}
+.search-panel{background:radial-gradient(ellipse at center,#434b46 0%,#222725 88%);border:5px ridge #5d6158;box-shadow:inset 0 0 14px #080a09,1px 2px 6px #000e;margin:4px 0 12px;padding:8px;text-align:center}
+.search-panel h2{font:700 13px Georgia,serif;color:#e5c78d;margin:0 0 10px;border-bottom:1px solid #6b6b4e;padding-bottom:7px;text-shadow:1px 2px 2px #090909}
+.search-panel input,.search-panel select{width:100%;border:2px inset #9e936a;background:#fffbee;color:#201c16;padding:5px;font:12px Arial,sans-serif;min-height:28px;margin-bottom:7px}
+.search-panel button{color:#20180e;padding:4px 13px;border:2px outset #a6a396;background:linear-gradient(#fff,#cfcac0);font-weight:bold}
+.search-panel p{color:#c9cfb3;font-size:10px;line-height:1.5;margin:5px 0}
+#searchError,#compareError{color:#eac47d;min-height:12px}
+#compareInputs input{margin-bottom:5px}
+#resultInfo{font-size:11px;margin:10px 0;color:#d3bb8c;text-align:center}
+.feature-box{color:#e5c48a;text-align:center;padding:11px 5px;border:4px ridge #6e6751;background:#302e27;font-size:11px;line-height:1.5}
+.feature-box strong{font:700 13px Georgia,serif}
+.feature-box p{color:#d2c7ae}
+.site-footer{text-align:center;font-size:10px;color:#aaa08b;line-height:1.6;margin:30px 0 0;padding:10px}
+.site-footer a{color:#b5b67f}
+.profile-back{margin:6px 0 11px}
+.profile-name{font-weight:700;font-size:14px;overflow-wrap:anywhere}
+.profile-line{display:flex;gap:4px;align-items:center}
+.profile-line .skillIcon{width:16px;height:16px;object-fit:contain}
+.profile-line span{white-space:normal}
+#rankView[hidden],#profileView[hidden],#compareView[hidden],#empty[hidden]{display:none}
+@media(max-width:800px){
+ .site{padding:0 10px 10px;border-width:5px}
+ .utility{margin:0 -10px}
+ .content{grid-template-columns:133px minmax(0,1fr);gap:10px}
+ .right{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:start}
+ .feature-box{grid-column:1/-1}
+ .banner{height:108px}
+ .brand .name{font-size:38px}
+ .scroll{padding:17px 7px 22px}
+}
+@media(max-width:520px){
+ .content{display:flex;flex-direction:column;gap:8px}
+ .left,.middle,.right{width:100%}
+ .left .skills-nav{display:flex;gap:3px;overflow-x:auto;padding:5px;max-width:100%}
+ .sidebarTitle{display:none}
+ .category{width:auto;flex:0 0 auto;white-space:nowrap;border:1px solid #6e6b52;border-radius:3px;padding:4px 8px}
+ .nav-note{display:none}
+ .right{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+ .middle{order:2}
+ .left{order:1}
+ .right{order:3}
+ .scroll{margin:3px auto;width:100%;max-width:480px;padding:19px 12px 25px}
+ .banner{height:95px}.brand .name{font-size:30px}.brand .sub{font-size:10px}
+ .utility{font-size:10px}
+ .tab{min-width:0;flex:1;padding:8px}
+ .search-panel{margin:4px 0}
+}
 </style>
 </head>
 <body>
-<header>
-  <div class="eyebrow">SoloScape • Hall of Fame</div>
-  <h1>Highscores</h1>
-  <p class="lead">Real adventurers and simulated world characters, ranked side by side.<br>Choose a skill, search by name or explore a player's full stats.</p>
-  <div class="stats">
-    <div class="stat"><strong id="total">—</strong><small>Characters ranked</small></div>
-    <div class="stat"><strong id="players">—</strong><small>Real players</small></div>
-    <div class="stat"><strong id="bots">—</strong><small>World bots</small></div>
-    <div class="stat"><strong id="online">—</strong><small>Online now</small></div>
-  </div>
-</header>
-<main>
-  <section class="panel" aria-label="Highscores rankings">
-    <div class="controls">
-      <div><label for="search">Find an adventurer</label><input id="search" type="search" placeholder="Search player or bot name" autocomplete="off"></div>
-      <div><label for="skill">Leaderboard</label><select id="skill"><option value="overall">Overall</option></select></div>
-      <div><label for="type">Character type</label><select id="type"><option value="all">All characters</option><option value="players">Real players</option><option value="bots">Bots</option></select></div>
+<div class="site">
+ <div class="utility"><span>SoloScape Hall of Fame</span><span><span class="onlineDot"></span><span id="worldStatus">Loading world rankings…</span></span></div>
+ <header class="banner"><div class="brand"><div class="name">SoloScape</div><div class="sub">OLD SCHOOL <span>HISCORES</span></div></div></header>
+ <nav class="tabs" aria-label="Hiscores category">
+   <button class="tab" id="allTab" type="button" aria-selected="true">Hiscores</button>
+   <button class="tab" id="humanTab" type="button" aria-selected="false">Players</button>
+   <button class="tab" id="botTab" type="button" aria-selected="false">World Bots</button>
+ </nav>
+ <main class="content">
+  <aside class="left" aria-label="Skill navigation">
+   <div class="sidebarTitle">Category</div>
+   <nav id="skillNav" class="skills-nav" aria-label="Select hiscores skill">
+    <a class="category active" href="?table=0" data-skill="overall">Overall</a>
+   </nav>
+   <div class="nav-note">Select a skill<br>to view its rankings</div>
+  </aside>
+  <div class="middle">
+   <section class="scroll" aria-label="Hiscores parchment">
+    <div id="rankView">
+     <h1 id="heading">Overall Hiscores</h1>
+     <p class="subtitle" id="rankDescription">All characters · Ranked by experience</p>
+     <div class="underline"></div>
+     <table aria-label="Skill leaderboard">
+      <thead><tr><th class="rank">Rank</th><th>Name</th><th class="num">Level</th><th class="num">XP</th></tr></thead>
+      <tbody id="rankingRows"></tbody>
+     </table>
+     <div id="empty" hidden>No adventurers found.</div>
+     <div class="paper-footer">
+      <div class="pager"><button id="first" class="paper-button" type="button">«</button><button id="prev" class="paper-button" type="button">‹</button><span id="pageInfo">Page 1</span><button id="next" class="paper-button" type="button">›</button><button id="last" class="paper-button" type="button">»</button></div>
+      <span id="rankingSummary">Loading scores…</span>
+     </div>
     </div>
-    <div class="scroll"><table><thead><tr><th>Rank</th><th>Adventurer</th><th>Type</th><th class="number">Level</th><th class="number">XP</th></tr></thead><tbody id="rows"></tbody></table></div>
-    <div id="empty" class="empty" hidden>No characters match your filters.</div>
-    <div class="pagination"><span id="pageInfo">Loading highscores…</span><div><button class="nav" id="prev" type="button">Previous</button> <button class="nav" id="next" type="button">Next</button></div></div>
-  </section>
-  <section id="profile" class="panel" hidden aria-label="Character profile">
-    <div class="profileHead"><div><div class="eyebrow" id="profileType"></div><h2 id="profileName"></h2><p class="lead" id="profileStats"></p></div><button type="button" class="nav" id="closeProfile">Close profile</button></div>
-    <div class="skillsGrid" id="skillCards"></div>
-  </section>
-</main>
-<footer><p id="updated">Waiting for server…</p><p>Online statuses and progress refresh roughly every 30 seconds. Offline characters appear after their first recorded login. Bots are identified as simulated characters.</p><p>JSON feed: <a href="/highscores.json">highscores.json</a></p></footer>
+    <div id="profileView" hidden>
+      <button class="paper-button profile-back" id="profileBack" type="button">‹ Back to Hiscores</button>
+      <h1 id="profileName" class="profile-name"></h1>
+      <p id="profileKind" class="subtitle"></p>
+      <div class="underline"></div>
+      <table aria-label="Character skills"><thead><tr><th>Skill</th><th class="num">Rank</th><th class="num">Level</th><th class="num">XP</th></tr></thead><tbody id="profileRows"></tbody></table>
+    </div>
+    <div id="compareView" hidden>
+      <button class="paper-button profile-back" id="compareBack" type="button">‹ Back to Hiscores</button>
+      <h1>Compare Users</h1>
+      <p class="subtitle" id="compareNames"></p>
+      <div class="underline"></div>
+      <table aria-label="Compare skill levels"><thead><tr><th>Skill</th><th class="num" id="compareA"></th><th class="num" id="compareB"></th></tr></thead><tbody id="compareRows"></tbody></table>
+      <div class="paper-footer">Showing skill levels · Select a player name for detailed XP.</div>
+    </div>
+   </section>
+  </div>
+  <aside class="right" aria-label="Hiscores searches">
+    <form id="nameForm" class="search-panel">
+      <h2>Search by name</h2><label for="nameSearch" class="sr-only">Player name</label>
+      <input id="nameSearch" maxlength="40" placeholder="Adventurer name" autocomplete="off">
+      <button type="submit">Search</button><p id="searchError" role="status"></p>
+    </form>
+    <form id="rankForm" class="search-panel">
+      <h2>Search by rank</h2><label for="rankSearch" class="sr-only">Hiscores rank</label>
+      <input id="rankSearch" type="number" min="1" step="1" placeholder="Enter rank">
+      <button type="submit">Search</button><p id="rankError" role="status"></p>
+    </form>
+    <form id="compareForm" class="search-panel">
+      <h2>Compare Users</h2><div id="compareInputs">
+      <label for="compareNameA" class="sr-only">First player name</label><input id="compareNameA" maxlength="40" placeholder="First adventurer">
+      <label for="compareNameB" class="sr-only">Second player name</label><input id="compareNameB" maxlength="40" placeholder="Second adventurer">
+      </div><button type="submit">Compare</button><p id="compareError" role="status"></p>
+    </form>
+    <section class="feature-box"><strong>Friends Hiscores</strong>
+      <p>Real adventurers and simulated world bots share these rankings.</p>
+      <span id="resultInfo">Waiting for the first snapshot…</span>
+    </section>
+  </aside>
+ </main>
+ <footer class="site-footer">
+  <div id="updatedAt">Connecting to the game world…</div>
+  <div><a href="/highscores.json">Hiscores data</a> · Updates every 30 seconds · SoloScape fan server</div>
+  <div>OSRS-inspired interface. This is a SoloScape page and is not operated by Jagex.</div>
+ </footer>
+</div>
 <script>
 "use strict";
 const $=id=>document.getElementById(id);
-let data={entries:[],skills:[]},page=0,selectedId=null;
-const pageSize=25;
 const fmt=n=>Number(n||0).toLocaleString("en-GB");
-const title=s=>s.replace(/(^|\s)\S/g,m=>m.toUpperCase());
-function order(rows,skill){
-  return rows.slice().sort((a,b)=>{
-    const ap=skill==="overall"?a.totalXp:(a.skills?.[skill]?.xp||0);
-    const bp=skill==="overall"?b.totalXp:(b.skills?.[skill]?.xp||0);
-    const al=skill==="overall"?a.totalLevel:(a.skills?.[skill]?.level||1);
-    const bl=skill==="overall"?b.totalLevel:(b.skills?.[skill]?.level||1);
-    return bp-ap||bl-al||a.name.localeCompare(b.name)||a.id.localeCompare(b.id);
-  });
+const names={overall:"Overall",hitpoints:"Hitpoints",runecrafting:"Runecraft"};
+const glyph={overall:"★",attack:"⚔",defence:"◆",strength:"✦",hitpoints:"♥",ranged:"➶",prayer:"✝",magic:"✧",cooking:"♨",woodcutting:"♣",fletching:"➹",fishing:"♓",firemaking:"♨",crafting:"◇",smithing:"⚒",mining:"⛏",herblore:"❀",agility:"➚",thieving:"◆",slayer:"☠",farming:"☘",runecrafting:"◈",hunter:"⌖",construction:"⚒"};
+const skillLabel=s=>names[s]||s.charAt(0).toUpperCase()+s.slice(1);
+const iconUrl=s=>"https://oldschool.runescape.wiki/images/"+(s==="runecrafting"?"Runecraft":skillLabel(s))+"_icon.png";
+const state={entries:[],skills:[],skill:"overall",filter:"all",page:0,selected:null,comparison:null,focus:null,updated:null};
+const size=25;
+function icon(skill){
+ const img=document.createElement("img");img.className="skillIcon";img.alt="";img.width=18;img.height=18;img.loading="lazy";img.src=iconUrl(skill);
+ img.addEventListener("error",()=>{const span=document.createElement("span");span.className="fallbackIcon";span.textContent=glyph[skill]||"•";img.replaceWith(span)});
+ return img;
+}
+function skillsOrder(){return ["overall",...state.skills]}
+function rankOrder(skill){
+ return state.entries.slice().sort((a,b)=>{
+  const ax=skill==="overall"?a.totalXp:a.skills?.[skill]?.xp||0;
+  const bx=skill==="overall"?b.totalXp:b.skills?.[skill]?.xp||0;
+  const al=skill==="overall"?a.totalLevel:a.skills?.[skill]?.level||1;
+  const bl=skill==="overall"?b.totalLevel:b.skills?.[skill]?.level||1;
+  return bx-ax||bl-al||a.name.localeCompare(b.name)||a.id.localeCompare(b.id)
+ });
+}
+function member(name){
+ const match=name.trim().toLowerCase();
+ return state.entries.find(e=>e.name.toLowerCase()===match||e.id===match)||
+        state.entries.find(e=>e.name.toLowerCase().includes(match));
+}
+function params(){
+ const q=new URLSearchParams();
+ q.set("table",String(Math.max(0,skillsOrder().indexOf(state.skill))));
+ if(state.filter!=="all")q.set("type",state.filter);
+ if(state.selected)q.set("user",state.selected);
+ if(state.page)q.set("page",String(state.page+1));
+ history.replaceState(null,"","?"+q.toString());
+}
+function navigateSkill(skill){
+ if(!skillsOrder().includes(skill))return;
+ state.skill=skill;state.page=0;state.focus=null;state.selected=null;state.comparison=null;params();draw();
+}
+function setType(type){
+ state.filter=type;state.page=0;state.focus=null;state.selected=null;state.comparison=null;params();draw();
+}
+function renderSkills(){
+ const nav=$("skillNav");nav.replaceChildren();
+ for(const skill of skillsOrder()){
+  const link=document.createElement("a");link.className="category"+(state.skill===skill?" active":"");
+  link.href="?table="+skillsOrder().indexOf(skill);link.dataset.skill=skill;
+  link.append(icon(skill),document.createTextNode(skillLabel(skill)));
+  link.addEventListener("click",event=>{event.preventDefault();navigateSkill(skill)});
+  nav.append(link);
+ }
+}
+function td(row,value,cls){
+ const cell=document.createElement("td");if(cls)cell.className=cls;cell.textContent=value;row.append(cell);return cell;
+}
+function openProfile(id){
+ if(!state.entries.find(e=>e.id===id))return;
+ state.selected=id;state.comparison=null;params();draw();document.querySelector(".scroll").scrollIntoView({block:"start",behavior:"smooth"});
+}
+function back(){
+ state.selected=null;state.comparison=null;params();draw();
+}
+function drawRanks(){
+ const ranked=rankOrder(state.skill);
+ const globalRanks=new Map(ranked.map((e,i)=>[e.id,i+1]));
+ const visible=ranked.filter(e=>state.filter==="all"||(state.filter==="bots"?e.bot:!e.bot));
+ const maxPage=Math.max(0,Math.ceil(visible.length/size)-1);
+ state.page=Math.min(Math.max(state.page,0),maxPage);
+ const chunk=visible.slice(state.page*size,(state.page+1)*size);
+ const rows=$("rankingRows");rows.replaceChildren();
+ for(const e of chunk){
+  const row=document.createElement("tr");
+  if(state.focus===globalRanks.get(e.id))row.className="highlight";
+  td(row,fmt(globalRanks.get(e.id)),"rank");
+  const cell=td(row,"");const name=document.createElement("button");name.className="entry-name";name.type="button";name.textContent=e.name;name.addEventListener("click",()=>openProfile(e.id));cell.append(name);
+  if(e.bot){const tag=document.createElement("span");tag.className="bot-label";tag.textContent="BOT";cell.append(tag)}
+  const level=state.skill==="overall"?e.totalLevel:e.skills?.[state.skill]?.level;
+  const xp=state.skill==="overall"?e.totalXp:e.skills?.[state.skill]?.xp;
+  td(row,fmt(level),"num");td(row,fmt(xp),"num");rows.append(row);
+ }
+ $("heading").textContent=skillLabel(state.skill)+" Hiscores";
+ $("rankDescription").textContent=(state.filter==="all"?"All characters":state.filter==="bots"?"World bots":"Real players")+" · Ranked by "+(state.skill==="overall"?"total XP":skillLabel(state.skill)+" XP");
+ $("empty").hidden=visible.length!==0;
+ $("pageInfo").textContent="Page "+(state.page+1)+" of "+(maxPage+1);
+ $("rankingSummary").textContent=fmt(visible.length)+" characters in this category";
+ $("first").disabled=$("prev").disabled=state.page===0;
+ $("next").disabled=$("last").disabled=state.page>=maxPage;
+}
+function drawProfile(){
+ const e=state.entries.find(p=>p.id===state.selected);
+ if(!e){back();return}
+ $("profileName").textContent=e.name+" — Personal Hiscores";
+ $("profileKind").textContent=(e.bot?"World bot":"Real player")+" · "+(e.online?"Online now":"Offline");
+ const rows=$("profileRows");rows.replaceChildren();
+ for(const skill of skillsOrder()){
+  const ranked=rankOrder(skill);
+  const rank=ranked.findIndex(p=>p.id===e.id)+1;
+  const stats=skill==="overall"?{level:e.totalLevel,xp:e.totalXp}:e.skills?.[skill]||{level:1,xp:0};
+  const row=document.createElement("tr");const cell=td(row,"");
+  const line=document.createElement("div");line.className="profile-line";
+  line.append(icon(skill),document.createTextNode(skillLabel(skill)));cell.append(line);
+  td(row,fmt(rank),"num");td(row,fmt(stats.level),"num");td(row,fmt(stats.xp),"num");rows.append(row);
+ }
+}
+function drawComparison(){
+ const people=state.comparison.map(id=>state.entries.find(e=>e.id===id));
+ if(people.some(p=>!p)){back();return}
+ $("compareNames").textContent=people[0].name+" vs. "+people[1].name;
+ $("compareA").textContent=people[0].name;$("compareB").textContent=people[1].name;
+ const rows=$("compareRows");rows.replaceChildren();
+ for(const skill of skillsOrder()){
+  const a=skill==="overall"?people[0].totalLevel:people[0].skills?.[skill]?.level||1;
+  const b=skill==="overall"?people[1].totalLevel:people[1].skills?.[skill]?.level||1;
+  const row=document.createElement("tr");
+  const label=td(row,"");const name=document.createElement("button");name.className="entry-name";name.type="button";name.textContent=skillLabel(skill);name.addEventListener("click",()=>navigateSkill(skill));label.append(name);
+  td(row,fmt(a),"num"+(a>b?" active-label":""));td(row,fmt(b),"num"+(b>a?" active-label":""));rows.append(row);
+ }
 }
 function draw(){
- const skill=$("skill").value,kind=$("type").value,search=$("search").value.toLowerCase().trim();
- const ranking=order(data.entries,skill);
- const rankById=new Map(ranking.map((e,i)=>[e.id,i+1]));
- const filtered=ranking.filter(e=>(kind==="all"||(kind==="bots"?e.bot:!e.bot))&&e.name.toLowerCase().includes(search));
- page=Math.min(page,Math.max(0,Math.ceil(filtered.length/pageSize)-1));
- const rows=$("rows");rows.replaceChildren();
- for(const e of filtered.slice(page*pageSize,(page+1)*pageSize)){
-   const tr=document.createElement("tr");
-   function cell(text,cls){const td=document.createElement("td");td.textContent=text;if(cls)td.className=cls;tr.append(td);return td}
-   cell("#"+rankById.get(e.id),"rank");
-   const name=cell("");const link=document.createElement("button");link.type="button";link.className="username";link.textContent=e.name;link.addEventListener("click",()=>openProfile(e.id));name.append(link);
-   if(e.online){const tag=document.createElement("span");tag.className="tag";tag.textContent="ONLINE";name.append(tag)}
-   cell(e.bot?"World bot":"Player","type");
-   cell(fmt(skill==="overall"?e.totalLevel:e.skills?.[skill]?.level),"number gold");
-   cell(fmt(skill==="overall"?e.totalXp:e.skills?.[skill]?.xp),"number");
-   rows.append(tr);
+ renderSkills();
+ for(const [id,type] of [["allTab","all"],["humanTab","players"],["botTab","bots"]]){
+  $(id).setAttribute("aria-selected",String(state.filter===type));
  }
- $("empty").hidden=filtered.length>0;
- $("pageInfo").textContent=filtered.length?("Showing "+(page*pageSize+1)+"–"+Math.min(filtered.length,(page+1)*pageSize)+" of "+filtered.length+" · Global ranks"):"No matching characters";
- $("prev").disabled=page<=0;
- $("next").disabled=(page+1)*pageSize>=filtered.length;
- if(selectedId)openProfile(selectedId,false);
+ const profile=!!state.selected,comparison=!!state.comparison;
+ $("rankView").hidden=profile||comparison;
+ $("profileView").hidden=!profile;
+ $("compareView").hidden=!comparison;
+ if(profile)drawProfile();else if(comparison)drawComparison();else drawRanks();
+ $("worldStatus").textContent=fmt(state.entries.filter(e=>e.online).length)+" online · "+fmt(state.entries.length)+" ranked";
+ $("resultInfo").textContent=fmt(state.entries.filter(e=>!e.bot).length)+" players · "+fmt(state.entries.filter(e=>e.bot).length)+" bots";
+ $("updatedAt").textContent=state.updated?"Last updated "+new Date(state.updated).toLocaleString():"Waiting for world rankings";
 }
-function openProfile(id,scroll=true){
- const e=data.entries.find(row=>row.id===id);
- if(!e){$("profile").hidden=true;selectedId=null;return}
- selectedId=id;
- $("profile").hidden=false;
- $("profileName").textContent=e.name;
- $("profileType").textContent=e.bot?"World bot":"Real player";
- $("profileStats").textContent="Total level "+fmt(e.totalLevel)+" · "+fmt(e.totalXp)+" XP · "+(e.online?"Online":"Offline");
- const cards=$("skillCards");cards.replaceChildren();
- for(const skill of data.skills){
-   const stat=e.skills?.[skill]||{level:1,xp:0};
-   const card=document.createElement("div");card.className="skill";
-   const label=document.createElement("strong");label.textContent=title(skill)+" · "+fmt(stat.level);
-   const meta=document.createElement("div");meta.className="meta";meta.textContent=fmt(stat.xp)+" XP";
-   const bar=document.createElement("div");bar.className="bar";const fill=document.createElement("span");
-   fill.style.width=Math.min(100,(stat.level/99)*100)+"%";bar.append(fill);card.append(label,meta,bar);cards.append(card);
- }
- if(scroll)$("profile").scrollIntoView({behavior:"smooth",block:"start"});
+function applyQuery(){
+ const q=new URLSearchParams(location.search);
+ const index=Number(q.get("table")||0);
+ state.skill=skillsOrder()[index]||"overall";
+ state.filter=["all","bots","players"].includes(q.get("type"))?q.get("type"):"all";
+ state.page=Math.max(0,Math.min(100000,Number(q.get("page")||1)-1||0));
+ const user=q.get("user");
+ state.selected=user&&state.entries.some(e=>e.id===user)?user:null;
+ state.comparison=null;state.focus=null;draw();
 }
-$("search").addEventListener("input",()=>{page=0;draw()});
-$("skill").addEventListener("change",()=>{page=0;draw()});
-$("type").addEventListener("change",()=>{page=0;draw()});
-$("prev").addEventListener("click",()=>{page=Math.max(0,page-1);draw()});
-$("next").addEventListener("click",()=>{page++;draw()});
-$("closeProfile").addEventListener("click",()=>{selectedId=null;$("profile").hidden=true});
+for(const [id,type] of [["allTab","all"],["humanTab","players"],["botTab","bots"]]){
+ $(id).addEventListener("click",()=>setType(type));
+}
+for(const [id,position] of [["first",0],["prev",-1],["next",1],["last",Infinity]]){
+ $(id).addEventListener("click",()=>{
+  const max=Math.max(0,Math.ceil(rankOrder(state.skill).filter(e=>state.filter==="all"||(state.filter==="bots"?e.bot:!e.bot)).length/size)-1);
+  state.page=position===Infinity?max:position===0?0:Math.max(0,Math.min(max,state.page+position));
+  state.focus=null;params();draw();
+ });
+}
+$("profileBack").addEventListener("click",back);
+$("compareBack").addEventListener("click",back);
+$("nameForm").addEventListener("submit",event=>{
+ event.preventDefault();const name=$("nameSearch").value.trim();
+ const target=name?member(name):null;
+ if(!target){$("searchError").textContent="Character not found.";return}
+ $("searchError").textContent="";openProfile(target.id);
+});
+$("rankForm").addEventListener("submit",event=>{
+ event.preventDefault();const rank=Number($("rankSearch").value);
+ const ranked=rankOrder(state.skill);
+ if(!Number.isSafeInteger(rank)||rank<1||rank>ranked.length){$("rankError").textContent="Choose a rank from 1 to "+ranked.length+".";return}
+ $("rankError").textContent="";
+ state.selected=null;state.comparison=null;state.filter="all";
+ state.page=Math.floor((rank-1)/size);state.focus=rank;params();draw();
+});
+$("compareForm").addEventListener("submit",event=>{
+ event.preventDefault();
+ const nameA=$("compareNameA").value.trim(),nameB=$("compareNameB").value.trim();
+ const a=nameA?member(nameA):null,b=nameB?member(nameB):null;
+ if(!a||!b||a.id===b.id){$("compareError").textContent="Enter two different registered character names.";return}
+ $("compareError").textContent="";state.selected=null;state.comparison=[a.id,b.id];params();draw();
+});
+addEventListener("popstate",applyQuery);
 async function refresh(){
  try{
   const response=await fetch("/highscores.json",{cache:"no-store"});
   if(!response.ok)throw Error("HTTP "+response.status);
-  const latest=await response.json();
-  if(!Array.isArray(latest.entries)||!Array.isArray(latest.skills))throw Error("Invalid data");
-  const prevSkill=$("skill").value;data=latest;
-  const select=$("skill");select.replaceChildren();
-  for(const name of ["overall",...data.skills]){
-   const option=document.createElement("option");option.value=name;option.textContent=title(name);select.append(option);
-  }
-  select.value=["overall",...data.skills].includes(prevSkill)?prevSkill:"overall";
-  $("total").textContent=fmt(data.entries.length);
-  $("players").textContent=fmt(data.entries.filter(e=>!e.bot).length);
-  $("bots").textContent=fmt(data.entries.filter(e=>e.bot).length);
-  $("online").textContent=fmt(data.entries.filter(e=>e.online).length);
-  $("updated").textContent="Last refreshed: "+(latest.updatedAt?new Date(latest.updatedAt).toLocaleString():"not available");
-  draw();
- }catch(error){$("updated").textContent="Could not refresh highscores: "+error.message+". Displaying last known results.";}
+  const data=await response.json();
+  if(!Array.isArray(data.entries)||!Array.isArray(data.skills))throw Error("Invalid hiscores feed");
+  const first=!state.skills.length;
+  state.entries=data.entries;state.skills=data.skills;state.updated=data.updatedAt;
+  if(first)applyQuery();else draw();
+ }catch(error){$("updatedAt").textContent="Waiting for hiscores feed: "+error.message+" · showing last known rankings.";}
 }
 refresh();setInterval(refresh,30000);
 </script>
