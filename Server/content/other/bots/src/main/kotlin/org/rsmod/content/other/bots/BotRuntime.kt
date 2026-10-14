@@ -60,6 +60,7 @@ private class WorldBot(
     var recoveries = 0
     var status = "starting"
     var needsPlan = true
+    var resourceWaits = 0
 }
 
 private class PendingWildernessSquad(
@@ -272,6 +273,8 @@ class BotPopulation @Inject constructor(
                     }
                     BotMode.ClanOne -> CoordGrid(3217, 3682)
                     BotMode.ClanTwo -> CoordGrid(3232, 3682)
+                    BotMode.Skilling, BotMode.Progressive ->
+                        actions.spawnPoint(initial.start) ?: return added
                     else -> initial.start
                 }
                 runEnergy = 10000
@@ -282,6 +285,9 @@ class BotPopulation @Inject constructor(
                 return added
             }
             try {
+                if (mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
+                    BotAppearance.assign(player.appearance, identity)
+                }
                 initializeLevels(player, mode, initial)
                 if (mode.isPvp) {
                     check(pvpCombat.register(player, identity, effectiveDifficulty, hotspot?.id)) {
@@ -303,6 +309,9 @@ class BotPopulation @Inject constructor(
                         "drop-party-leader" else "drop-party-follower")
                 }
                 VarPlayerIntMapSetter.set(player, "varp.option_run", 1)
+                if (mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
+                    bot.nextThink = player.currentMapClock + random.nextInt(1, 15)
+                }
                 player.rebuildAppearance()
                 added++
                 if (mode.isPvp) nextPvpPopulationIndex++
@@ -353,6 +362,9 @@ class BotPopulation @Inject constructor(
             (configured.getProperty("members", "true").toBoolean() || !it.members) }
         return if (mode == BotMode.Progressive) {
             all.firstOrNull { it.id == "DraynorTreeWoodcutting" }
+        } else if (mode == BotMode.Skilling) {
+            val occupancy = bots.values.groupingBy { it.task.id }.eachCount()
+            BotTaskPlanner.selectBalanced(all, occupancy, random)
         } else all.randomOrNull(random)
     }
 
@@ -367,7 +379,9 @@ class BotPopulation @Inject constructor(
                     if (bare == "hitpoints") 30 else 1,
                     random.nextInt(30, 80))
             }
-            val level = base.coerceIn(1, 99)
+            val level = if (mode == BotMode.Skilling && bare == task.skill) {
+                base.coerceIn(task.minimumLevel, task.maximumLevel)
+            } else base.coerceIn(1, 99)
             player.statMap.setFineXP(skill, PlayerSkillXPTable.getFineXPFromLevel(level))
             player.statMap.setBaseLevel(skill, level.toByte())
             player.statMap.setCurrentLevel(skill, level.toByte())
@@ -376,6 +390,7 @@ class BotPopulation @Inject constructor(
     }
 
     private fun setTask(bot: WorldBot, task: BotTaskDefinition) {
+        actions.release(bot.player)
         bot.task = task
         bot.path = task.route
         bot.waypoint = 0
@@ -386,17 +401,25 @@ class BotPopulation @Inject constructor(
             BotTaskPlanner.nextMilestone(it, BotSkills.levels(bot.player)[it] ?: 1)
         } ?: 99
         bot.stalled = 0
+        bot.resourceWaits = 0
         bot.status = "walking to ${task.id}"
     }
 
     private fun chooseTask(bot: WorldBot) {
         val player = bot.player
-        val occupancy = bots.values.groupingBy { it.task.id }.eachCount()
+        val occupancy = bots.values.filter { it !== bot }.groupingBy { it.task.id }.eachCount()
         val candidates = SourceBotCatalog.tasks.filter {
-            it.kind !in setOf(BotTaskKind.Trade, BotTaskKind.DropParty) &&
+            (if (bot.mode == BotMode.Skilling) {
+                it.kind in setOf(BotTaskKind.Mining, BotTaskKind.Fishing, BotTaskKind.Woodcutting) &&
+                    (it.skill?.let { skill -> BotSkills.levels(player)[skill] ?: 1 } ?: 1) >=
+                        it.minimumLevel && (!it.members || player.members)
+            } else it.kind !in setOf(BotTaskKind.Trade, BotTaskKind.DropParty)) &&
                 supplies.canSupply(player, it)
         }
-        val next = BotTaskPlanner.select(candidates, BotSkills.levels(player),
+        val next = if (bot.mode == BotMode.Skilling) {
+            BotTaskPlanner.selectBalanced(candidates.filter { it.id != bot.task.id }, occupancy, random)
+                ?: BotTaskPlanner.selectBalanced(candidates, occupancy, random)
+        } else BotTaskPlanner.select(candidates, BotSkills.levels(player),
             player.members, occupancy, random)
         if (next == null) {
             bot.status = "waiting for supplies"
@@ -425,8 +448,12 @@ class BotPopulation @Inject constructor(
             }
             if (cycle < bot.nextThink) continue
             bot.nextThink = cycle + 3
+            if (player.hitpoints <= 0) {
+                actions.release(player)
+                continue
+            }
             if (menus.tick(player)) continue
-            if (player.isDelayed || player.isAccessProtected || player.hitpoints <= 0) continue
+            if (player.isDelayed || player.isAccessProtected) continue
             if (cycle % 100 < 3 && bot.mode == BotMode.Progressive) save(bot)
             if (eat(player)) continue
             when (bot.mode) {
@@ -514,8 +541,8 @@ class BotPopulation @Inject constructor(
                         it.contains("hammer") || it.contains("needle") || it.contains("talisman") }
                     .toSet()
                 if (!actions.bank(player, keep)) return
-                if (bot.mode == BotMode.Progressive && bot.needsPlan) {
-                    save(bot)
+                if (bot.mode in setOf(BotMode.Progressive, BotMode.Skilling) && bot.needsPlan) {
+                    if (bot.mode == BotMode.Progressive) save(bot)
                     chooseTask(bot)
                     if (bot.phase == BotPhase.Changing) return
                 }
@@ -533,11 +560,12 @@ class BotPopulation @Inject constructor(
                 val gathering = bot.task.kind in setOf(BotTaskKind.Mining, BotTaskKind.Fishing,
                     BotTaskKind.Woodcutting, BotTaskKind.Shearing, BotTaskKind.Combat, BotTaskKind.MoneyMaking)
                 val full = gathering && player.inv.indices.none { player.inv[it] == null }
-                if (cycle >= bot.expiresAt || full ||
+                if (cycle >= bot.expiresAt || full || bot.resourceWaits >= 10 ||
                     (bot.mode == BotMode.Progressive && level >= bot.milestone) ||
                     !supplies.canSupply(player, bot.task)
                 ) {
                     player.clearPendingAction(events)
+                    actions.release(player)
                     bot.path = bot.task.route.asReversed() + bot.task.start
                     bot.waypoint = 0
                     bot.phase = BotPhase.Returning
@@ -549,8 +577,17 @@ class BotPopulation @Inject constructor(
                 if (bot.task.kind == BotTaskKind.Combat &&
                     actions.pickup(player, 6, bot.task.ignoredLoot)) return
                 if (!supplies.perform(player, bot.task, actions)) {
-                    actions.operate(player, bot.task.targets, bot.task.option)
+                    val exclusive = bot.task.kind in setOf(
+                        BotTaskKind.Mining, BotTaskKind.Fishing, BotTaskKind.Woodcutting,
+                    )
+                    if (!actions.operate(player, bot.task.targets, bot.task.option,
+                            exclusive = exclusive) && exclusive) {
+                        bot.resourceWaits++
+                        bot.status = "waiting for a free resource at ${bot.task.id}"
+                        return
+                    }
                 }
+                bot.resourceWaits = 0
                 bot.status = "working ${bot.task.id}"
             }
         }
@@ -578,7 +615,8 @@ class BotPopulation @Inject constructor(
                 return
             }
             if (bot.stalled >= 3 && actions.operate(player, setOf("Door", "Gate"), "Open", 2)) return
-            actions.walk(player, target)
+            actions.walk(player, target,
+                spread = bot.mode in setOf(BotMode.Skilling, BotMode.Progressive))
             return
         }
         when (bot.phase) {
@@ -604,9 +642,13 @@ class BotPopulation @Inject constructor(
 
     private fun recover(bot: WorldBot) {
         val player = bot.player
+        actions.release(player)
         if (bot.recoveries++ < 2) {
             player.clearPendingAction(events)
-            access.launch(player) { telejump(bot.task.start) }
+            val destination = if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
+                actions.spawnPoint(bot.task.start) ?: return
+            } else bot.task.start
+            access.launch(player) { telejump(destination) }
             bot.phase = BotPhase.Banking
             bot.waypoint = 0
             bot.stalled = 0
@@ -650,6 +692,7 @@ class BotPopulation @Inject constructor(
     }
 
     private fun remove(player: Player) {
+        actions.release(player)
         val bot = bots.remove(player)
         playerTeamInvitations.remove(player)
         declinedPlayerTeams.remove(player)

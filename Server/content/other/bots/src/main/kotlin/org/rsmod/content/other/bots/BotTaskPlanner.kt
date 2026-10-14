@@ -4,6 +4,22 @@ import kotlin.random.Random
 
 /** Weighted activity selection and progressive training milestones. */
 public object BotTaskPlanner {
+    public fun selectBalanced(
+        tasks: List<BotTaskDefinition>,
+        occupancy: Map<String, Int>,
+        random: Random,
+    ): BotTaskDefinition? {
+        val candidates = tasks.filter { it.weight > 0 }
+        val minimum = candidates.minOfOrNull { occupancy[it.id] ?: 0 } ?: return null
+        val leastCrowded = candidates.filter { (occupancy[it.id] ?: 0) == minimum }
+        var roll = random.nextDouble() * leastCrowded.sumOf { it.weight }
+        for (task in leastCrowded) {
+            roll -= task.weight
+            if (roll < 0) return task
+        }
+        return leastCrowded.last()
+    }
+
     public fun available(
         task: BotTaskDefinition,
         levels: Map<String, Int>,

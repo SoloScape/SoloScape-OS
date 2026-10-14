@@ -6,6 +6,8 @@ import dev.openrune.rscm.RSCM.asRSCM
 import dev.openrune.rscm.RSCMType
 import dev.openrune.types.ObjectServerType
 import jakarta.inject.Inject
+import jakarta.inject.Singleton
+import java.util.WeakHashMap
 import org.rsmod.api.invtx.invTransaction
 import org.rsmod.api.invtx.invTransfer
 import org.rsmod.api.invtx.select
@@ -22,6 +24,7 @@ import org.rsmod.api.player.protect.clearPendingAction
 import org.rsmod.api.registry.loc.LocRegistry
 import org.rsmod.api.registry.npc.NpcRegistry
 import org.rsmod.api.registry.obj.ObjRegistry
+import org.rsmod.api.registry.player.PlayerRegistry
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
 import org.rsmod.game.interact.HeldOp
@@ -39,7 +42,11 @@ import org.rsmod.game.movement.RouteRequestPathingEntity
 import org.rsmod.game.type.getInvObj
 import org.rsmod.map.CoordGrid
 import org.rsmod.map.zone.ZoneKey
+import org.rsmod.routefinder.Route
+import org.rsmod.routefinder.RouteFinding
+import org.rsmod.routefinder.collision.CollisionFlagMap
 
+@Singleton
 class BotActions
 @Inject
 constructor(
@@ -54,12 +61,58 @@ constructor(
     private val heldInteractions: HeldInteractions,
     private val heldUInteractions: HeldUInteractions,
     private val protectedAccess: ProtectedAccessLauncher,
+    private val players: PlayerRegistry,
+    collision: CollisionFlagMap,
 ) {
-    fun walk(player: Player, destination: CoordGrid) {
+    private val routeFinding = RouteFinding(collision)
+    private val gatheringTargets = BotReservations<Player, Any>()
+    private val destinations = WeakHashMap<Player, CoordGrid>()
+
+    fun release(player: Player) {
+        gatheringTargets.release(player)
+        destinations.remove(player)
+    }
+
+    fun spawnPoint(origin: CoordGrid): CoordGrid? = freePoint(origin, origin, null, 6)
+
+    private fun freeDestination(player: Player, route: Route): CoordGrid? {
+        if (!route.success) return null
+        val last = route.lastOrNull()
+        val point = last?.let { CoordGrid(it.x, it.z, player.coords.level) } ?: player.coords
+        if (players.playerList.any { it !== player && it.coords == point } ||
+            destinations.any { (other, target) -> other !== player && target == point }
+        ) return null
+        return point
+    }
+
+    private fun freePoint(
+        source: CoordGrid,
+        origin: CoordGrid,
+        player: Player?,
+        radius: Int,
+    ): CoordGrid? {
+        val occupied = players.playerList.filter { it !== player }.map { it.coords }.toSet() +
+            destinations.filterKeys { it !== player }.values
+        val candidates = (-radius..radius).flatMap { x ->
+            (-radius..radius).map { z -> CoordGrid(origin.x + x, origin.z + z, origin.level) }
+        }.shuffled().sortedBy { origin.chebyshevDistance(it) }
+        return candidates.firstOrNull { candidate ->
+            candidate !in occupied && routeFinding.findRoute(
+                level = source.level, srcX = source.x, srcZ = source.z,
+                destX = candidate.x, destZ = candidate.z, moveNear = false,
+            ).success
+        }
+    }
+
+    fun walk(player: Player, destination: CoordGrid, spread: Boolean = false) {
         if (busy(player) || player.coords.level != destination.level) return
+        val target = if (spread) freePoint(player.coords, destination, player, 2) ?: return
+            else destination
+        release(player)
+        if (spread) destinations[player] = target
         player.clearPendingAction(eventBus)
         player.resetFaceEntity()
-        player.routeRequest = RouteRequestCoord(destination, clientRequest = true)
+        player.routeRequest = RouteRequestCoord(target, clientRequest = true)
     }
 
     fun operate(
@@ -67,16 +120,29 @@ constructor(
         names: Set<String>,
         option: String,
         radius: Int = 12,
+        exclusive: Boolean = false,
     ): Boolean {
         if (busy(player)) return false
+        release(player)
         val npcs = zones(player.coords, radius).flatMap(npcRegistry::findAll)
             .filter { near(player.coords, it.coords, radius) && !it.hidden }
             .filter { named(it.name, names) }
             .sortedBy { player.coords.chebyshevDistance(it.coords) }
         for (npc in npcs) {
+            if (exclusive && !gatheringTargets.available(player, npc)) continue
             val op = InteractionOp.entries.firstOrNull {
                 npc.type.actions.getOpOrNull(it.slot - 1).equals(option, ignoreCase = true)
             } ?: continue
+            val destination = if (exclusive) {
+                freeDestination(player, routeFinding.findRoute(
+                    level = player.coords.level, srcX = player.coords.x, srcZ = player.coords.z,
+                    destX = npc.coords.x, destZ = npc.coords.z,
+                    destWidth = npc.size, destLength = npc.size,
+                    locShape = RECTANGLE_EXCLUSIVE_STRATEGY, moveNear = false,
+                )) ?: continue
+            } else null
+            if (exclusive && !gatheringTargets.claim(player, npc)) continue
+            if (destination != null) destinations[player] = destination
             player.clearPendingAction(eventBus)
             player.faceNpc(npc)
             player.interaction = InteractionNpcOp(
@@ -89,10 +155,23 @@ constructor(
             return true
         }
         for (loc in locations(player, names, radius)) {
+            val key = loc.coords to loc.id
+            if (exclusive && !gatheringTargets.available(player, key)) continue
             val type = ServerCacheManager.getObject(loc.id) ?: continue
             val op = InteractionOp.entries.firstOrNull {
                 type.actions.getOpOrNull(it.slot - 1).equals(option, ignoreCase = true)
             } ?: continue
+            val destination = if (exclusive) {
+                freeDestination(player, routeFinding.findRoute(
+                    level = player.coords.level, srcX = player.coords.x, srcZ = player.coords.z,
+                    destX = loc.coords.x, destZ = loc.coords.z,
+                    destWidth = type.width, destLength = type.length,
+                    locShape = loc.entity.shape, locAngle = loc.entity.angle,
+                    blockAccessFlags = type.forceApproachFlags, moveNear = false,
+                )) ?: continue
+            } else null
+            if (exclusive && !gatheringTargets.claim(player, key)) continue
+            if (destination != null) destinations[player] = destination
             val bound = BoundLocInfo(loc, type)
             player.clearPendingAction(eventBus)
             player.resetFaceEntity()
@@ -274,6 +353,7 @@ constructor(
         player.isDelayed || player.isAccessProtected || player.hitpoints <= 0
 
     companion object {
+        private const val RECTANGLE_EXCLUSIVE_STRATEGY = -2
         private const val BANK_RADIUS = 2
         private val BANK_NPCS = setOf("Banker", "Banker tutor")
         private val BANK_LOCS = setOf("Bank booth", "Bank chest")
