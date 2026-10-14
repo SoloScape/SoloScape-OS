@@ -45,6 +45,8 @@ private class WorldBot(
     val player: Player,
     val mode: BotMode,
     var task: BotTaskDefinition,
+    val identity: Int,
+    val personality: BotPersonality = BotHumanity.personality(identity),
     var patrol: CoordGrid? = null,
     val hotspot: BotPvpHotspot? = null,
 ) {
@@ -64,6 +66,12 @@ private class WorldBot(
     var needsPlan = true
     var resourceWaits = 0
     var returnReason: String? = null
+    var onlineSince = 0
+    var sessionEndAt = Int.MAX_VALUE
+    var nextPauseAt = Int.MAX_VALUE
+    var pauseUntil = 0
+    var nextAmbientAt = Int.MAX_VALUE
+    var friendIdentity: Int? = null
     val protectedTimeout = BotProgressTimeout()
     val blockedTasks = mutableMapOf<String, Int>()
 }
@@ -102,6 +110,9 @@ class BotPopulation @Inject constructor(
     private val nextOfferToPlayer = HashMap<Player, Int>()
     private var nextIdentity = 1
     private var nextPvpPopulationIndex = 1
+    private val desiredPopulation = linkedMapOf<BotMode, Int>()
+    private val restingIdentities = mutableMapOf<BotMode, java.util.ArrayDeque<Int>>()
+    private var nextPopulationSweep = 0
     private val configured = Properties().apply {
         val config = Path.of(".data", "bots.properties")
         if (!Files.exists(config)) {
@@ -198,6 +209,11 @@ class BotPopulation @Inject constructor(
         bot.say("Team?")
     }
 
+    private val humanBehaviourEnabled: Boolean
+        get() = configured.getProperty("human.behaviour.enabled", "true").toBoolean()
+    private val humanPopulationEnabled: Boolean
+        get() = configured.getProperty("human.population.enabled", "true").toBoolean()
+
     fun startup() {
         if (!configured.getProperty("enabled", "false").toBoolean()) return
         if (configured.getProperty("debug.map.enabled", "true").toBoolean()) {
@@ -205,8 +221,12 @@ class BotPopulation @Inject constructor(
             debugMap.start(port.coerceIn(1, 65535))
         }
         for (mode in BotMode.entries) {
-            val count = configured.getProperty(mode.name.lowercase(), "0").toIntOrNull() ?: 0
-            spawn(mode, count)
+            val count = (configured.getProperty(mode.name.lowercase(), "0").toIntOrNull() ?: 0)
+                .coerceIn(0, MAX_BOTS)
+            desiredPopulation[mode] = count
+            // Keep PvP squads and trader/event controllers at their configured startup sizes.
+            val stagger = humanPopulationEnabled && mode in setOf(BotMode.Skilling, BotMode.Progressive)
+            spawn(mode, if (stagger) minOf(count, 3) else count)
         }
         updateDebugMap()
     }
@@ -222,7 +242,7 @@ class BotPopulation @Inject constructor(
         repeat(total) { index ->
             val slot = registry.nextFreeSlot() ?: return added
             if (registry.count() >= MAX_BOTS) return added
-            val identity = freeIdentity()
+            val identity = freeIdentity(mode)
             val difficulty = if (mode.isPvp) {
                 BotPvpDifficulty.configured(difficultySetting, nextPvpPopulationIndex)
                     ?: BotPvpDifficulty.Standard
@@ -309,9 +329,24 @@ class BotPopulation @Inject constructor(
                         "Unable to seed PvP bot loadout"
                     }
                 } else supplies.seed(player, initial, mode == BotMode.Progressive)
-                val restoredTask = if (mode == BotMode.Progressive) profiles.load(player) else null
+                val restoredTask = if (mode in setOf(BotMode.Progressive, BotMode.Skilling))
+                    profiles.load(player) else null
                 val task = SourceBotCatalog.tasks.firstOrNull { it.id == restoredTask } ?: initial
-                val bot = WorldBot(player, mode, task, patrol, hotspot)
+                val bot = WorldBot(player, mode, task, identity, patrol = patrol, hotspot = hotspot)
+                val now = player.currentMapClock
+                bot.onlineSince = now
+                bot.sessionEndAt = now + BotHumanity.sessionCycles(bot.personality, random)
+                bot.nextPauseAt = now + BotHumanity.nextPauseCycles(bot.personality, random)
+                bot.nextAmbientAt = now + random.nextInt(400, 900)
+                if (mode in setOf(BotMode.Skilling, BotMode.Progressive) &&
+                    random.nextInt(100) < 35) {
+                    val candidates = bots.values.filter { it.mode == mode &&
+                        it.task.kind == task.kind && it.friendIdentity == null }
+                    candidates.randomOrNull(random)?.let { friend ->
+                        bot.friendIdentity = friend.identity
+                        friend.friendIdentity = identity
+                    }
+                }
                 bots[player] = bot
                 if (mode == BotMode.Progressive) {
                     chooseTask(bot)
@@ -355,7 +390,14 @@ class BotPopulation @Inject constructor(
         return added
     }
 
-    private fun freeIdentity(): Int {
+    private fun freeIdentity(mode: BotMode): Int {
+        val queue = restingIdentities[mode]
+        while (queue != null && queue.isNotEmpty()) {
+            val identity = queue.removeFirst()
+            val name = SourceBotCatalog.names[(identity - 1) % SourceBotCatalog.names.size]
+            if (registry.playerList.none { it?.username == "worldbot_$identity" ||
+                it?.displayName?.equals(name, true) == true }) return identity
+        }
         while (true) {
             val id = nextIdentity++
             val name = SourceBotCatalog.names[(id - 1) % SourceBotCatalog.names.size]
@@ -412,7 +454,10 @@ class BotPopulation @Inject constructor(
         bot.waypoint = 0
         bot.phase = BotPhase.Outbound
         bot.startedAt = bot.player.currentMapClock
-        bot.expiresAt = bot.startedAt + random.nextInt(30, 90) * 100
+        bot.expiresAt = bot.startedAt + if (humanBehaviourEnabled &&
+            bot.mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
+            BotHumanity.workingCycles(bot.personality, random)
+        } else random.nextInt(30, 90) * 100
         bot.milestone = task.skill?.let {
             BotTaskPlanner.nextMilestone(it, BotSkills.levels(bot.player)[it] ?: 1)
         } ?: 99
@@ -427,19 +472,29 @@ class BotPopulation @Inject constructor(
         val player = bot.player
         val occupancy = bots.values.filter { it !== bot }.groupingBy { it.task.id }.eachCount()
         bot.blockedTasks.entries.removeAll { it.value <= player.currentMapClock }
+        val expandedKinds = setOf(BotTaskKind.Mining, BotTaskKind.Fishing,
+            BotTaskKind.Woodcutting, BotTaskKind.Cooking, BotTaskKind.Smelting,
+            BotTaskKind.Smithing, BotTaskKind.Crafting, BotTaskKind.Spinning)
+        val basicKinds = setOf(BotTaskKind.Mining, BotTaskKind.Fishing, BotTaskKind.Woodcutting)
+        val availableKinds = if (configured.getProperty("human.routines.expanded", "true")
+            .toBoolean()) expandedKinds else basicKinds
+        val levels = BotSkills.levels(player)
         val candidates = SourceBotCatalog.tasks.filter {
             (if (bot.mode == BotMode.Skilling) {
-                it.kind in setOf(BotTaskKind.Mining, BotTaskKind.Fishing, BotTaskKind.Woodcutting) &&
-                    (it.skill?.let { skill -> BotSkills.levels(player)[skill] ?: 1 } ?: 1) >=
-                        it.minimumLevel && (!it.members || player.members)
+                it.kind in availableKinds && BotTaskPlanner.available(it, levels, player.members)
             } else it.kind !in setOf(BotTaskKind.Trade, BotTaskKind.DropParty)) &&
                 supplies.canSupply(player, it) && it.id !in bot.blockedTasks
         }
-        val next = if (bot.mode == BotMode.Skilling) {
+        val friendTask = bots.values.firstOrNull { it.identity == bot.friendIdentity }?.task
+        val next = if (humanBehaviourEnabled) {
+            BotHumanity.chooseTask(candidates.filter {
+                bot.mode != BotMode.Progressive ||
+                    BotTaskPlanner.available(it, levels, player.members)
+            }, occupancy, bot.personality, random, bot.task, friendTask)
+        } else if (bot.mode == BotMode.Skilling) {
             BotTaskPlanner.selectBalanced(candidates.filter { it.id != bot.task.id }, occupancy, random)
                 ?: BotTaskPlanner.selectBalanced(candidates, occupancy, random)
-        } else BotTaskPlanner.select(candidates, BotSkills.levels(player),
-            player.members, occupancy, random)
+        } else BotTaskPlanner.select(candidates, levels, player.members, occupancy, random)
         if (next == null) {
             bot.status = "waiting for supplies"
             bot.nextThink = player.currentMapClock + 50
@@ -455,6 +510,7 @@ class BotPopulation @Inject constructor(
     }
 
     fun tick(cycle: Int) {
+        reconcilePopulation(cycle)
         expirePlayerTeamInvitations(cycle)
         for (bot in bots.values.toList()) {
             val player = bot.player
@@ -489,6 +545,11 @@ class BotPopulation @Inject constructor(
             if (player.isDelayed || player.isAccessProtected) continue
             if (cycle % 100 < 3 && bot.mode == BotMode.Progressive) save(bot)
             if (eat(player)) continue
+            if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
+                // All conversational replies are delivered through BotSocial, including skillers.
+                social.tick(player, "skilling", cycle)
+                if (humanBehaviourEnabled && tickHumanBehaviour(bot, cycle)) continue
+            }
             when (bot.mode) {
                 BotMode.Trade, BotMode.DropParty -> {
                     social.tick(player, if (bot.mode == BotMode.Trade) "trade" else "dropparty", cycle)
@@ -504,6 +565,55 @@ class BotPopulation @Inject constructor(
         }
         updateDebugMap()
         updateDiagnostics(cycle)
+    }
+
+    /** Stagger arrivals and retire one settled character at a time. No PvP squad churn. */
+    private fun reconcilePopulation(cycle: Int) {
+        if (!humanPopulationEnabled || cycle < nextPopulationSweep) return
+        nextPopulationSweep = cycle + random.nextInt(50, 110)
+        for (mode in listOf(BotMode.Skilling, BotMode.Progressive)) {
+            val target = desiredPopulation[mode] ?: continue
+            val living = bots.values.count { it.mode == mode }
+            if (living < target) {
+                spawn(mode, minOf(2, target - living))
+            } else if (target > 3) {
+                val retiring = bots.values.firstOrNull { bot ->
+                    bot.mode == mode && cycle >= bot.sessionEndAt &&
+                        bot.player.hitpoints > 0 && !bot.player.isDelayed &&
+                        !bot.player.isAccessProtected && bot.player.interaction == null &&
+                        bot.player.routeRequest == null
+                }
+                if (retiring != null) remove(retiring.player)
+            }
+        }
+    }
+
+    /** Leave any native pending interaction alone; these are intentional idle decisions. */
+    private fun tickHumanBehaviour(bot: WorldBot, cycle: Int): Boolean {
+        val player = bot.player
+        if (cycle < bot.pauseUntil) {
+            bot.status = "taking a short break"
+            return true
+        }
+        if (cycle >= bot.nextAmbientAt) {
+            bot.nextAmbientAt = cycle + random.nextInt(700, 1700)
+            val nearHuman = registry.playerList.any { other ->
+                other != null && other !== player && other !in bots &&
+                    other.coords.level == player.coords.level &&
+                    other.coords.chebyshevDistance(player.coords) <= 8
+            }
+            if (nearHuman && random.nextInt(100) < bot.personality.sociability / 3) {
+                player.say(BotHumanity.ambientLine(bot.task.kind, random))
+            }
+        }
+        if (cycle >= bot.nextPauseAt && bot.phase in setOf(BotPhase.Working, BotPhase.Banking) &&
+            player.interaction == null && player.routeRequest == null) {
+            bot.pauseUntil = cycle + BotHumanity.pauseCycles(bot.personality, random)
+            bot.nextPauseAt = cycle + BotHumanity.nextPauseCycles(bot.personality, random)
+            bot.status = "taking a short break"
+            return true
+        }
+        return false
     }
 
     private fun updateDiagnostics(cycle: Int) {
@@ -522,6 +632,9 @@ class BotPopulation @Inject constructor(
                 "totalXp" to BotSkills.all.sumOf { player.statMap.getFineXP(it).toLong() },
                 "resourceWaits" to bot.resourceWaits, "stallChecks" to bot.stalled,
                 "recoveries" to bot.recoveries, "returnReason" to bot.returnReason,
+                "personality" to bot.personality.summary, "friendIdentity" to bot.friendIdentity,
+                "pauseUntil" to bot.pauseUntil, "nextPauseAt" to bot.nextPauseAt,
+                "sessionEndAt" to bot.sessionEndAt,
                 "selection" to actions.selectionTrace(player))
         }
         debugger.snapshot(cycle, rows)?.let(debugMap::diagnostics)
@@ -775,7 +888,8 @@ class BotPopulation @Inject constructor(
 
     fun describe(): List<String> = bots.values.map {
         "${it.player.displayName} ${it.mode} ${pvpCombat.description(it.player)}: ${it.status} " +
-            "(${it.player.coords.x},${it.player.coords.z},${it.player.coords.level})"
+            "(${it.player.coords.x},${it.player.coords.z},${it.player.coords.level}) " +
+            "[${it.personality.summary}; friend=${it.friendIdentity ?: "none"}]"
     }
 
     fun removeAll() {
@@ -811,7 +925,15 @@ class BotPopulation @Inject constructor(
         val bot = bots.remove(player)
         playerTeamInvitations.remove(player)
         declinedPlayerTeams.remove(player)
-        if (bot?.mode == BotMode.Progressive) save(bot)
+        if (bot?.mode in setOf(BotMode.Progressive, BotMode.Skilling)) {
+            save(checkNotNull(bot))
+            if (humanPopulationEnabled) {
+                restingIdentities.getOrPut(bot.mode) { java.util.ArrayDeque() }.addLast(bot.identity)
+            }
+            bots.values.filter { it.friendIdentity == bot.identity }.forEach {
+                it.friendIdentity = null
+            }
+        }
         pvpCombat.remove(player)
         social.remove(player)
         minigames.remove(player)
