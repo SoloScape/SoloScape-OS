@@ -45,5 +45,17 @@ fun main() {
     check(!ForestryContribution(eligible = false).let { it.takeBark(15) > 0 })
     check(ForestryRules.spawnPercent(99, 10) >= ForestryRules.spawnPercent(99, 1))
 
-    println("Forestry checks passed: nine event types, access tiers, mulch, ritual, egg rate, history, radius, contribution and spawn odds.")
+    // Rainbow collection grants twelve fifth-units; successful non-level-1 chopping
+    // consumes five, leaving fractional luck for later sessions.
+    check(ForestryLeprechaunLuck.UNITS_PER_RAINBOW == 12)
+    check(ForestryLeprechaunLuck.UNITS_PER_CHOP == 5)
+    check(ForestryLeprechaunLuck.MAX_UNITS == 255)
+    check(ForestryLeprechaunLuck.canConsume(12, succeeded = true, treeLevel = 15))
+    check(ForestryLeprechaunLuck.canConsume(5, succeeded = true, treeLevel = 15))
+    check(!ForestryLeprechaunLuck.canConsume(4, succeeded = true, treeLevel = 15))
+    check(!ForestryLeprechaunLuck.canConsume(12, succeeded = false, treeLevel = 15))
+    check(!ForestryLeprechaunLuck.canConsume(12, succeeded = true, treeLevel = 1))
+    check(ForestryLeprechaunLuck.bonusXp(67.5, 30, 75) > 0.0)
+
+    println("Forestry checks passed: nine event types, access tiers, mulch, ritual, egg rate, history, radius, contribution, spawn odds, and persistent Leprechaun luck rules.")
 }
