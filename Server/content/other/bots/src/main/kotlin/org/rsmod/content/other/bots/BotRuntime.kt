@@ -41,7 +41,7 @@ enum class BotMode {
     }
 }
 
-private enum class BotPhase { Outbound, Working, Returning, Banking, Changing, RecoveringGrave }
+private enum class BotPhase { Outbound, Working, Returning, Banking, Changing, RecoveringGrave, GraveBanking }
 
 private class WorldBot(
     val player: Player,
@@ -81,6 +81,7 @@ private class WorldBot(
     var fleeLastOrder = 0
     var fleeFailedOrders = 0
     var previousAutoRetaliate = 0
+    var graveBankTrip = false
     val protectedTimeout = BotProgressTimeout()
     val blockedTasks = mutableMapOf<String, Int>()
 }
@@ -704,12 +705,42 @@ class BotPopulation @Inject constructor(
         val player = bot.player
         val grave = graves.grave(player)
         if (grave == null) {
-            if (bot.phase == BotPhase.RecoveringGrave) {
+            bot.graveBankTrip = false
+            if (bot.phase in setOf(BotPhase.RecoveringGrave, BotPhase.GraveBanking)) {
                 bot.phase = BotPhase.Banking
                 bot.needsPlan = true
                 chooseTask(bot)
             }
             return false
+        }
+        if (bot.graveBankTrip) {
+            val bank = bot.task.start
+            if (player.coords.level == bank.level &&
+                player.coords.chebyshevDistance(bank) <= 2) {
+                if (!player.isDelayed && !player.isAccessProtected &&
+                    actions.bank(player, emptySet())) {
+                    bot.graveBankTrip = false
+                    bot.phase = BotPhase.RecoveringGrave
+                    bot.pathOrigin = player.coords
+                    bot.path = BotRoutes.path(player.coords, grave.coords, actions::canWalk)
+                    bot.waypoint = 0
+                    bot.status = "returning for remaining grave items"
+                }
+                return true
+            }
+            if (bot.phase != BotPhase.GraveBanking) {
+                bot.phase = BotPhase.GraveBanking
+                bot.pathOrigin = player.coords
+                bot.path = BotRoutes.path(player.coords, bank, actions::canWalk)
+                bot.waypoint = 0
+                bot.nextThink = cycle
+            }
+            if (cycle >= bot.nextThink && !player.isDelayed && !player.isAccessProtected) {
+                bot.nextThink = cycle + 3
+                if (bot.path.isNotEmpty()) walkRoute(bot)
+                else bot.status = "waiting for walkable bank route with grave supplies"
+            }
+            return true
         }
         if (grave.office) {
             val count = graves.reclaim(player, fromOffice = true)
@@ -727,6 +758,13 @@ class BotPopulation @Inject constructor(
         if (player.coords.level == grave.coords.level &&
             player.coords.chebyshevDistance(grave.coords) <= 3) {
             val count = graves.reclaim(player)
+            if (count > 0 && graves.grave(player) != null &&
+                player.inv.indices.none { player.inv[it] == null }) {
+                bot.graveBankTrip = true
+                bot.phase = BotPhase.GraveBanking
+                bot.status = "grave partly claimed; banking to make space"
+                return true
+            }
             if (count > 0) {
                 bot.status = "recovered $count items; fleeing from grave"
                 bot.blockedTasks[bot.task.id] = cycle + BotFleePlanner.RETREAT_COOLDOWN
@@ -736,8 +774,14 @@ class BotPopulation @Inject constructor(
                 bot.phase = BotPhase.Banking
                 return true
             }
-            bot.status = "grave full/inaccessible; waiting for Death's Office recovery"
-            bot.nextThink = cycle + 25
+            if (player.inv.indices.none { player.inv[it] == null }) {
+                bot.graveBankTrip = true
+                bot.phase = BotPhase.GraveBanking
+                bot.status = "banking items before reclaiming the rest"
+            } else {
+                bot.status = "grave inaccessible; waiting for next attempt"
+                bot.nextThink = cycle + 25
+            }
             return true
         }
         if (bot.phase != BotPhase.RecoveringGrave) {
@@ -924,7 +968,7 @@ class BotPopulation @Inject constructor(
         val player = bot.player
         when (bot.phase) {
             BotPhase.Changing, BotPhase.Outbound, BotPhase.Returning -> walkRoute(bot)
-            BotPhase.RecoveringGrave -> Unit
+            BotPhase.RecoveringGrave, BotPhase.GraveBanking -> Unit
             BotPhase.Banking -> {
                 val keep = supplies.requirements(bot.task, BotSkills.levels(player) +
                     ("members" to if (player.members) 1 else 0)).keys
@@ -1067,6 +1111,7 @@ class BotPopulation @Inject constructor(
                 bot.waypoint = 0
             }
             BotPhase.RecoveringGrave -> bot.status = "arriving at gravestone"
+            BotPhase.GraveBanking -> bot.status = "arriving at bank with grave supplies"
             else -> bot.phase = BotPhase.Working
         }
     }
