@@ -25,3 +25,13 @@ into `soloscape-server.jar` against that core. Content-only edits reuse the core
 core edits rebuild both layers. Unchanged builds skip compilation, and resource-only
 edits repackage resources. Use `Server/build.bat --rebuild` to force both layers to
 compile. The first build after this split compiles both layers.
+
+The root `build.bat` uses a conservative single-source fast path for Kotlin
+implementation-only edits in the client or server application layer. It reuses
+unchanged classes from the previous JAR when the file's declarations, toolchain,
+classpath, and generated class names are unchanged. Changes to public interfaces,
+inline functions, constants, core/API sources, filenames, or other ambiguous cases
+recompile the affected layer normally. The first build after this update refreshes
+the compilation cache; later changes can use the fast path. `build.bat --rebuild`
+forces full compilation of both projects. A failed partial compile automatically
+retries the original full-layer build, preserving the last successful runtime.
