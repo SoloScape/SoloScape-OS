@@ -75,7 +75,19 @@ internal object BotHumanity {
             // Friends deliberately pick the same spots often, but never override eligibility.
             val company = if (task.id == friend?.id) 4.0 else 1.0
             val exploration = if (task.id != current?.id) 0.75 + personality.curiosity / 150.0 else 1.0
-            task.weight.toDouble() * preference * home * repeat * company * exploration /
+            val followOn = when (current?.kind) {
+                BotTaskKind.Fishing -> BotTaskKind.Cooking
+                BotTaskKind.Cooking -> BotTaskKind.Fishing
+                BotTaskKind.Mining -> BotTaskKind.Smelting
+                BotTaskKind.Smelting -> BotTaskKind.Smithing
+                else -> null
+            }
+            val routine = if (task.kind == followOn &&
+                task.start == current?.start) 2.25 else 1.0
+            val safety = if (task.kind == BotTaskKind.Combat)
+                (1.20 - personality.cautious / 100.0).coerceAtLeast(0.2) else 1.0
+            task.weight.toDouble() * preference * home * repeat * company * exploration *
+                routine * safety /
                 (1.0 + (occupancy[task.id] ?: 0).coerceAtLeast(0))
         }
         var roll = random.nextDouble() * weighted.sum()
