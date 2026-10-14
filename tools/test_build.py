@@ -10,6 +10,7 @@ from unittest.mock import patch
 import zipfile
 
 import build
+from test_incremental import fake_class
 
 
 class BuildFixture(unittest.TestCase):
@@ -179,6 +180,32 @@ class ServerBuildCacheTests(BuildFixture):
         self.resource.write_text("select 2;")
         self.run_build()
         self.assertEqual(self.calls, 3)
+
+    def test_one_body_edit_compiles_only_its_source(self):
+        self.compile_patch.stop()
+
+        def compiler(command, logfile, progress, label):
+            self.calls += 1
+            args = shlex.split(Path(command[-1][1:]).read_text())
+            self.compilations.append(args)
+            jar = Path(args[args.index("-d") + 1])
+            with zipfile.ZipFile(jar, "w") as bundle:
+                if jar.name == "soloscape-server-core.jar":
+                    bundle.writestr("org/rsmod/module/ExtendedModule.class", b"<init>")
+                else:
+                    bundle.writestr("Main.class", fake_class(
+                        "Main.kt", str(self.calls).encode()))
+
+        with patch.object(build, "run_compiler", side_effect=compiler):
+            self.run_build()
+            self.assertEqual(self.calls, 2)
+            self.source.write_text('fun main() { println("changed") }')
+            self.run_build()
+            self.assertEqual(self.calls, 3)
+            self.assertIn(str(self.source).replace("\\", "/"), self.compilations[-1])
+            self.assertNotIn(str(self.app).replace("\\", "/"), self.compilations[-1])
+            with zipfile.ZipFile(self.runtime / "soloscape-server.jar") as bundle:
+                self.assertTrue(bundle.read("Main.class").endswith(b"3"))
 
     def test_core_and_toolchain_changes_rebuild_both_layers(self):
         self.run_build()
