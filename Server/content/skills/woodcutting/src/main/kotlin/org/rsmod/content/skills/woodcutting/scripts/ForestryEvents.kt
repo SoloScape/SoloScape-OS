@@ -275,8 +275,11 @@ class ForestryEventManager @Inject constructor(
             e.npcs.remove(npc)
         }
         val variants = ServerCacheManager.getNpcs().values
-            .filter { it.internalName.startsWith("npc.gathering_event_enchanted_ritual_") &&
-                it.internalName.lastOrNull()?.isDigit() == true }
+            .filter {
+                (it.internalName.startsWith("npc.gathering_event_enchanted_ritual_") ||
+                    normalized(it.name).startsWith("ritual circle")) &&
+                    it.internalName.lastOrNull()?.isDigit() == true
+            }
             .sortedBy { it.id }.distinctBy { it.id }
         for (i in e.circles.indices) {
             val (colourIndex, shapeIndex) = e.circles[i]
@@ -372,7 +375,7 @@ class ForestryEventManager @Inject constructor(
         val type = ServerCacheManager.getItems().values.firstOrNull { it.internalName == name } ?: return
         val stored = player.invMap[ForestryRations.STORAGE]
         val inventory = if (name == "obj.forestry_currency" && ForestryRations.hasKit(player) &&
-            stored?.type?.scope == InvScope.Perm) stored else player.inv
+            stored != null && stored.type.scope == InvScope.Perm) stored else player.inv
         val stack = type.isStackable
         val existing = if (stack) inventory.indices.firstOrNull {
             inventory[it]?.let { obj -> getInvObj(obj).id == type.id } == true
@@ -600,10 +603,12 @@ class ForestryEventManager @Inject constructor(
     }
     fun eventNpcNames(): List<String> {
         val labels = listOf("Entling", "Flowering bush", "Woodcutting Leprechaun", "Bee keeper",
-            "Frightened Fox", "Poacher", "Fox trap", "Dryad", "Freaky Forester", "Pheasant")
+            "Frightened Fox", "Poacher", "Fox trap", "Dryad", "Freaky Forester", "Pheasant",
+            "Ritual circle")
         val specials = ServerCacheManager.getNpcs().values.filter {
             normalized(it.name).startsWith("flowering bush") ||
                 it.internalName.startsWith("npc.gathering_event_enchanted_ritual_") ||
+                normalized(it.name).startsWith("ritual circle") ||
                 normalized(it.name) == "unfinished beehive"
         }.map { it.internalName }
         return (labels.mapNotNull { npcType(it)?.internalName } + specials).distinct()
