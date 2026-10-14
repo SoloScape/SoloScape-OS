@@ -631,12 +631,12 @@ class BotPopulation @Inject constructor(
             if (bot.phase == BotPhase.Working && random.nextInt(100) < 25) {
                 // Move a step or two like a player repositioning before going briefly idle.
                 val origin = player.coords
-                repeat(3) {
+                for (attempt in 0 until 3) {
                     val destination = CoordGrid(origin.x + random.nextInt(-2, 3),
                         origin.z + random.nextInt(-2, 3), origin.level)
                     if (destination != origin && registry.playerList.none { other ->
                             other != null && other !== player && other.coords == destination
-                        } && actions.walk(player, destination)) return@repeat
+                        } && actions.walk(player, destination)) break
                 }
             }
             bot.status = "taking a short break"
