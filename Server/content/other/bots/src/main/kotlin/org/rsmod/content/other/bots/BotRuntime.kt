@@ -19,6 +19,7 @@ import org.rsmod.api.registry.player.PlayerRegistry
 import org.rsmod.api.registry.player.isSuccess
 import org.rsmod.events.EventBus
 import org.rsmod.game.entity.Player
+import org.rsmod.game.interact.InteractionLocOp
 import org.rsmod.game.stat.PlayerSkillXPTable
 import org.rsmod.map.CoordGrid
 
@@ -638,6 +639,9 @@ class BotPopulation @Inject constructor(
                     return
                 }
                 if (player.interaction != null || player.routeRequest != null) {
+                    if (bot.task.kind == BotTaskKind.Woodcutting) {
+                        (player.interaction as? InteractionLocOp)?.let { player.faceLoc(it.target) }
+                    }
                     watchStall(bot)
                     return
                 }
