@@ -10,6 +10,20 @@ internal object BotDecisionTiming {
         (10 shl (failures - 1).coerceIn(0, 4)).coerceAtMost(100) + jitter.coerceIn(0, 9)
 }
 
+/**
+ * Fairly rotate the population each tick and issue already planned travel before
+ * expensive fresh task selections. The caller uses separate capped routing budgets
+ * for the two groups; neither group can starve the other.
+ */
+internal object BotDecisionScheduling {
+    fun <T> ordered(population: List<T>, cursor: Int, travelling: (T) -> Boolean): List<T> {
+        if (population.isEmpty()) return emptyList()
+        val offset = Math.floorMod(cursor, population.size)
+        val rotated = List(population.size) { population[(offset + it) % population.size] }
+        return rotated.filter(travelling) + rotated.filterNot(travelling)
+    }
+}
+
 internal object BotCandidateOrder {
     fun <T> resume(targets: List<T>, deferred: Any?, key: (T) -> Any): List<T> {
         val offset = targets.indexOfFirst { key(it) == deferred }
