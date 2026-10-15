@@ -878,7 +878,7 @@ class ForestryEventManager @Inject constructor(
         weakQueue(QUEUE_HIVE_BUILD, ForestryHiveRules.BUILD_TICKS + compensation, task)
     }
 
-    fun ProtectedAccess.continueHiveBuild(task: ForestryHiveBuildTask) {
+    internal fun ProtectedAccess.continueHiveBuild(task: ForestryHiveBuildTask) {
         val e = active.firstOrNull {
             it.type == ForestryEventType.HIVE && it.npcs[task.hive] == "hive"
         }
