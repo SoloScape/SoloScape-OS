@@ -4,6 +4,21 @@ import kotlin.random.Random
 
 /** Weighted activity selection and progressive training milestones. */
 public object BotTaskPlanner {
+    /** Start new skillers across activity types before balancing destinations within a type. */
+    public fun selectStarting(
+        tasks: List<BotTaskDefinition>,
+        kinds: Map<BotTaskKind, Int>,
+        occupancy: Map<String, Int>,
+        random: Random,
+    ): BotTaskDefinition? {
+        val eligible = tasks.filter { it.weight > 0 }
+        if (eligible.isEmpty()) return null
+        val possible = eligible.map { it.kind }.distinct()
+        val lowest = possible.minOf { kinds[it] ?: 0 }
+        val kind = possible.filter { (kinds[it] ?: 0) == lowest }.random(random)
+        return selectBalanced(eligible.filter { it.kind == kind }, occupancy, random)
+    }
+
     public fun selectBalanced(
         tasks: List<BotTaskDefinition>,
         occupancy: Map<String, Int>,
