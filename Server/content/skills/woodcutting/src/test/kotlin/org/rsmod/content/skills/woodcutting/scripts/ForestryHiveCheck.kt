@@ -17,13 +17,20 @@ fun main() {
     check(rules.QUANTITY_TITLE == "How many logs would you like to add?")
     val selector = org.rsmod.content.skills.SkillMultiConfig(
         verb = "add",
-        entries = listOf(org.rsmod.content.skills.SkillMultiEntry(
-            "obj.logs", labelOverride = "Beehive")),
-        maxCountProvider = { _, _ -> 28 },
+        entries = listOf(
+            org.rsmod.content.skills.SkillMultiEntry("obj.logs"),
+            org.rsmod.content.skills.SkillMultiEntry("obj.oak_logs"),
+        ),
+        maxCountProvider = { _, entry -> if (entry.internal == "obj.logs") 2 else 3 },
         titleOverride = rules.QUANTITY_TITLE,
+        minimumQuantityDisplay = 9,
     )
     check(selector.title == rules.QUANTITY_TITLE)
-    check(selector.entries.single().labelOverride == "Beehive")
+    check(selector.entries.map { it.internal } == listOf("obj.logs", "obj.oak_logs"))
+    check(selector.entries.all { it.labelOverride == null })
+    check(selector.minimumQuantityDisplay == 9) {
+        "The native Beehive selector must display 1, 5, X and All even for only two logs"
+    }
     check(selector.maxCountProvider != null)
     check(rules.BUILD_TICKS == 2)
     check(rules.BUILD_ANIMATION == "seq.human_poh_build")
