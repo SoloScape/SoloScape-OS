@@ -52,10 +52,11 @@ data class SkillMultiConfig(
     val verb: String,
     val entries: List<SkillMultiEntry>,
     val maxCountProvider: ((Inventory, SkillMultiEntry) -> Int)? = null,
+    val titleOverride: String? = null,
 ) {
 
     val title: String
-        get() = if (entries.size == 1) {
+        get() = titleOverride ?: if (entries.size == 1) {
             "How many would you like to $verb?"
         } else {
             "What would you like to $verb?"
