@@ -53,7 +53,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Validate build helpers
-        run: python -m py_compile tools/build.py tools/build_runner.py
+        run: python -m py_compile tools/build.py tools/build_runner.py tools/rsprot_observers.py
       - name: Cache Kotlin compiler
         uses: actions/cache@v5
         with:
@@ -89,6 +89,12 @@ jobs:
               "Server/content/other/castle-wars/src/main/kotlin"
           )
           $sources = @(Get-ChildItem $sourceDirs -Recurse -Filter "*.kt" | ForEach-Object FullName)
+          # The prebuilt core JAR predates the inventory and stat revision fields
+          # on this branch; compile their current sources alongside bot tests.
+          $sources += @(
+              "Server/engine/game/src/main/kotlin/org/rsmod/game/inv/Inventory.kt",
+              "Server/engine/game/src/main/kotlin/org/rsmod/game/stat/PlayerStatMap.kt"
+          )
           $compilerLib = (Resolve-Path .build-tools/kotlinc/lib).Path
           $compilerArgs = @("-no-stdlib", "-no-reflect", "-jvm-target", "21", "-Xnested-type-aliases", "-Xannotation-default-target=param-property", "-Xconsistent-data-class-copy-visibility", "-opt-in=org.rsmod.annotations.InternalApi", "-classpath", $classpath, "-d", $testJar) + $sources
           $argFile = Join-Path $testDir "compiler.args"
@@ -97,10 +103,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $runtimeClasspath = ($testJar, $classpath, (Resolve-Path "Server/content/other/bots/src/main/resources").Path, (Resolve-Path "Server/content/other/grand-exchange/src/main/resources").Path) -join [IO.Path]::PathSeparator
           Set-Location Server
-          foreach ($check in @("BotActionsCheck", "BotPlannerCheck", "BotHumanityCheck", "BotRoutineCheck", "BotXpRateCheck", "BotHighscoresCheck", "BotFleeCheck", "BotCrowdingCheck", "BotMovementCheck", "BotGravestoneCheck", "BotSkillingCheck", "BotDebuggerCheck", "BotPortCheckKt", "BotPvpCheck")) {
+          foreach ($check in @("BotPerformanceCheck", "BotTickWorkCheck", "BotActionsCheck", "BotPlannerCheck", "BotHumanityCheck", "BotRoutineCheck", "BotXpRateCheck", "BotHighscoresCheck", "BotFleeCheck", "BotCrowdingCheck", "BotMovementCheck", "BotGravestoneCheck", "BotSkillingCheck", "BotDebuggerCheck", "BotPortCheckKt", "BotPvpCheck")) {
           $runArgs = @("-cp", $runtimeClasspath, "org.rsmod.content.other.bots.$check")
           $runArgFile = Join-Path $testDir "run.args"
           $runArgs | ForEach-Object { '"' + $_.Replace('\', '/').Replace('"', '\"') + '"' } | Set-Content -Encoding utf8NoBOM $runArgFile
           & "$env:JAVA_HOME/bin/java.exe" "@$runArgFile"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+      - name: Verify RSProt observer packet parity
+        run: python tools/rsprot_observers.py --check
