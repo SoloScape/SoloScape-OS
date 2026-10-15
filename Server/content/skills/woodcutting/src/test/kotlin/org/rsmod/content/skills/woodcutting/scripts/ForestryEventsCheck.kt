@@ -72,6 +72,7 @@ private class ForestryFixture {
     val manager = ForestryEventManager(clock, PlayerRepository(playerRegistry), locs, npcs,
         ObjRepository(clock, ObjRegistry(updates)), XpModifiers(emptySet()), flags)
     val player = Player().apply {
+        members = true
         coords = origin
         inv = invMap.getOrPut("inv.inv")
         worn = invMap.getOrPut("inv.worn")
@@ -123,6 +124,29 @@ private class ForestryFixture {
     }
     fun operate(npc: Npc, option: Int) {
         with(manager) { access.interactNpc(npc, option) }
+    }
+    fun addPlayer(): Pair<Player, ProtectedAccess> {
+        val guest = Player().apply {
+            members = true
+            coords = origin
+            inv = invMap.getOrPut("inv.inv")
+            worn = invMap.getOrPut("inv.worn")
+            for (skill in listOf("woodcutting", "construction")) {
+                statMap.setBaseLevel("stat.$skill", 50)
+                statMap.setCurrentLevel("stat.$skill", 50)
+            }
+            slotId = checkNotNull(playerRegistry.nextFreeSlot())
+            uuid = slotId.toLong()
+            observerUUID = uuid
+            playerRegistry.add(this)
+            playerRegistry.change(this, ZoneKey.NULL, ZoneKey.from(coords))
+        }
+        return guest to ProtectedAccess(guest, GameCoroutine(),
+            ProtectedAccessContextFactory.empty().copy(getEventBus = { bus },
+                getLocInteractions = { LocInteractions(BoundValidator(flags), bus) }))
+    }
+    fun operate(npc: Npc, guest: ProtectedAccess, option: Int) {
+        with(manager) { guest.interactNpc(npc, option) }
     }
     fun move(to: CoordGrid) {
         val from = player.coords
@@ -260,11 +284,92 @@ fun main() {
     }
     run {
         val f = ForestryFixture()
+        // Use the real stage IDs, not an arbitrary NPC named "Beehive".
+        check(ForestryAssets.npc(ForestryAssets.HIVE)?.id == 12515)
+        check(ForestryAssets.hiveHalf()?.id == 12516)
+        check(ForestryAssets.hiveComplete()?.id == 12517)
+        f.spawn(ForestryEventType.HIVE)
+        var completed = 0
+        var previousParts = 0
+        repeat(ForestryHiveRules.HIVES) { round ->
+            val hive = f.npc(ForestryAssets.HIVE)
+            check(hive.type.id == 12515)
+            repeat(ForestryHiveRules.logsPerHive(1)) { index ->
+                f.player.inv[2] = InvObj("obj.logs")
+                f.operate(hive, 1)
+                check(f.player.inv.count("obj.logs") == 0)
+                check(hive.type.id == when {
+                    index + 1 == ForestryHiveRules.logsPerHive(1) -> 12517
+                    index + 1 >= 5 -> 12516
+                    else -> 12515
+                })
+                if (index + 1 < ForestryHiveRules.logsPerHive(1)) {
+                    check(f.player.inv.count("obj.sturdy_beehive_parts") == previousParts)
+                }
+                f.ticks(2)
+            }
+            completed++
+            val parts = f.player.inv.count("obj.sturdy_beehive_parts")
+            check(parts in previousParts..(previousParts + 1))
+            previousParts = parts
+            if (round < ForestryHiveRules.HIVES - 1) {
+                f.ticks(ForestryHiveRules.RESPAWN_TICKS)
+                check(f.npc(ForestryAssets.HIVE) !== hive)
+            } else {
+                f.ticks(ForestryHiveRules.RESPAWN_TICKS + 1)
+                check(f.npcList.none())
+            }
+        }
+        check(completed == 6)
+        check(f.player.statMap.getFineXP("stat.construction") ==
+            (ForestryHiveRules.CONSTRUCTION_XP_PER_LOG * 60 * 10).toInt())
+        check(f.player.statMap.getFineXP("stat.woodcutting") > 0)
+    }
+    run {
+        val f = ForestryFixture()
+        // The log requirement is frozen at spawn. Spectators do not increase it.
+        f.addPlayer()
+        f.spawn(ForestryEventType.HIVE)
+        val hive = f.npc(ForestryAssets.HIVE)
+        repeat(10) {
+            f.player.inv[2] = InvObj("obj.logs")
+            f.operate(hive, 1)
+            f.ticks(2)
+        }
+        check(hive.type.id == 12516 && f.npcList.any { it === hive })
+        repeat(10) {
+            f.player.inv[2] = InvObj("obj.logs")
+            f.operate(hive, 1)
+            f.ticks(2)
+        }
+        check(hive.type.id == 12517)
+    }
+    run {
+        val f = ForestryFixture()
+        f.spawn(ForestryEventType.HIVE)
+        val (late, lateAccess) = f.addPlayer()
+        val hive = f.npc(ForestryAssets.HIVE)
+        late.inv[0] = InvObj("obj.logs")
+        f.operate(hive, lateAccess, 1)
+        check(late.inv.count("obj.logs") == 0)
+        check(late.statMap.getFineXP("stat.woodcutting") == 10)
+        check(late.statMap.getFineXP("stat.construction") == 0)
+        repeat(9) {
+            f.player.inv[2] = InvObj("obj.logs")
+            f.operate(hive, 1)
+            f.ticks(2)
+        }
+        check(late.inv.count("obj.sturdy_beehive_parts") == 0)
+        check(late.inv.count("obj.forestry_currency") == 0)
+    }
+    run {
+        // Partial work times out without granting a 2/3 sturdy-parts roll.
+        val f = ForestryFixture()
         f.spawn(ForestryEventType.HIVE)
         f.player.inv[2] = InvObj("obj.logs")
         f.operate(f.npc(ForestryAssets.HIVE), 1)
-        check(f.player.inv.count("obj.logs") == 0)
-        check(f.player.statMap.getFineXP("stat.construction") > 0)
+        f.ticks(ForestryEventType.HIVE.ticks)
+        check(f.player.inv.count("obj.sturdy_beehive_parts") == 0)
     }
     run {
         val f = ForestryFixture()
