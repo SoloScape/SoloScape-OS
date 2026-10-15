@@ -29,6 +29,7 @@ import org.rsmod.api.script.onOpNpc3
 import org.rsmod.api.script.onOpNpc4
 import org.rsmod.api.script.onOpNpc5
 import org.rsmod.game.MapClock
+import org.rsmod.content.skills.construction.house.HouseStore
 import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.treeLevelReq
 import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.treeXp
 import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.axeWoodcuttingAnim
@@ -64,6 +65,7 @@ class ForestryEventManager @Inject constructor(
     private val npcs: NpcRepository,
     private val objects: ObjRepository,
     private val xpMods: XpModifiers,
+    private val houses: HouseStore,
     flags: CollisionFlagMap,
 ) {
     private val placement = ForestryPlacement(flags)
@@ -874,12 +876,16 @@ class ForestryEventManager @Inject constructor(
         c.hives.add(e.phase)
         e.hiveProgress++
         if (c.eligible) {
-            statAdvance("stat.woodcutting", ForestryHiveRules.logXp(player.woodcuttingLvl) *
-                xpMods.get(player, "stat.woodcutting"))
-            statAdvance("stat.construction", ForestryHiveRules.CONSTRUCTION_XP_PER_LOG *
-                xpMods.get(player, "stat.construction"))
+            statAdvance("stat.woodcutting",
+                ForestryHiveRules.logXp(player.woodcuttingLvl, log, Random) *
+                    xpMods.get(player, "stat.woodcutting"))
+            if (houses.state(player).owned) {
+                statAdvance("stat.construction", ForestryHiveRules.constructionXp(
+                    player.statMap.getCurrentLevel("stat.construction").toInt(), log) *
+                    xpMods.get(player, "stat.construction"))
+            }
             give(player, "obj.forestry_currency",
-                c.takeBark(ForestryHiveRules.barkForLog(log)))
+                c.takeBark(ForestryHiveRules.barkForLog(log, Random)))
         } else {
             statAdvance("stat.woodcutting", 1.0 * xpMods.get(player, "stat.woodcutting"))
         }
@@ -897,8 +903,10 @@ class ForestryEventManager @Inject constructor(
                     participant.statMap.getCurrentLevel("stat.woodcutting").toInt())
                 participant.statAdvance("stat.woodcutting",
                     xp * xpMods.get(participant, "stat.woodcutting"))
-                if (ForestryHiveRules.sturdyPartDrop(Random))
+                if (ForestryHiveRules.sturdyPartDrop(Random)) {
                     giveNamed(participant, "Sturdy beehive parts")
+                    participant.mes("The temporary beehive was made so well you take some parts for building a permanent hive.")
+                }
             }
             e.hiveProgress = 0
             e.phase++
