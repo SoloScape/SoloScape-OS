@@ -21,6 +21,16 @@ fun main() {
     check(!ForestryLogBasket.isOpen(player))
     check(ForestryLogBasket.toggleOpen(player))
     check(ForestryLogBasket.isOpen(player))
+    check(player.inv[0]?.id == ServerCacheManager.getItems().values.first {
+        it.internalName == ForestryLogBasket.LOG_OPEN
+    }.id)
+    check(ForestryLogBasket.toggleOpen(player) == false)
+    check(!ForestryLogBasket.isOpen(player))
+    check(player.inv[0]?.id == ServerCacheManager.getItems().values.first {
+        it.internalName == ForestryLogBasket.LOG_CLOSED
+    }.id)
+    check(ForestryLogBasket.toggleOpen(player))
+    check(ForestryLogBasket.isOpen(player))
 
     player.inv[1] = InvObj("obj.logs")
     player.inv[2] = InvObj("obj.magic_logs")
@@ -49,10 +59,28 @@ fun main() {
     check(ForestryLogBasket.consume(player) == null)
     player.inv[0] = InvObj(item.internalName)
     check(ForestryLogBasket.count(player) == 28)
-    check(ForestryLogBasket.empty(player) == 27)
+    val forestry = ServerCacheManager.getItems().values.first {
+        it.internalName == ForestryLogBasket.FORESTRY_CLOSED
+    }
+    // Both variants share exactly the same storage; equipped-only baskets work.
+    player.inv[0] = null
+    player.worn[1] = InvObj(forestry.internalName)
+    check(ForestryLogBasket.count(player) == 28)
+    check(ForestryLogBasket.setOpen(player, true))
+    check(player.worn[1]?.id == ServerCacheManager.getItems().values.first {
+        it.internalName == ForestryLogBasket.FORESTRY_OPEN
+    }.id)
+    check(ForestryHiveSupplies.consumeLog(player) == "obj.logs")
+    check(ForestryLogBasket.count(player) == 27)
+    check(ForestryLogBasket.setOpen(player, false))
+    check(player.worn[1]?.id == forestry.id)
+    player.worn[1] = null
+    player.inv[0] = InvObj(item.internalName)
+    check(ForestryLogBasket.count(player) == 27)
+    check(ForestryLogBasket.empty(player) == 26)
     check(ForestryLogBasket.count(player) == 1)
     check(ForestryLogBasket.empty(player) == 0)
     check(ForestryLogBasket.consume(player) == "obj.logs")
     check(ForestryLogBasket.count(player) == 0)
-    println("Forestry Log Basket checks passed: persistent 28-log capacity, nonduplication, open/close, fill/empty and Beehive consumption.")
+    println("Forestry Log Basket checks passed: 28-log shared storage, native open/closed item transformations, worn variant, fill/empty and Beehive consumption.")
 }
