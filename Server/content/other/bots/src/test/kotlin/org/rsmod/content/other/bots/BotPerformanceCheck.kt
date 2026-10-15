@@ -81,6 +81,20 @@ object BotPerformanceCheck {
         check(BotMovementState.waiting(false, 5, true, 20))
         check(!BotMovementState.waiting(false, 5, false, 3))
         check(!BotMovementState.waiting(false, 0, false, 0))
+        // Walking bots must update their progress each decision; otherwise stalled
+        // stays zero and the unfinished native route is never retried.
+        var stalledTravel = 0
+        repeat(2) {
+            stalledTravel = BotMovementState.nextStall(a, a, stalledTravel)
+            check(BotMovementState.waiting(true, 5, false, stalledTravel))
+        }
+        stalledTravel = BotMovementState.nextStall(a, a, stalledTravel)
+        check(stalledTravel == 3)
+        check(!BotMovementState.waiting(true, 5, false, stalledTravel))
+        check(BotMovementState.nextStall(a, b, stalledTravel) == 0)
+        check(BotMovementState.waiting(true, 5, true, 0))
+        repeat(30) { stalledTravel = BotMovementState.nextStall(a, a, stalledTravel) }
+        check(stalledTravel == 20) { "Travel must reach its bounded recovery threshold" }
 
         var report: List<String>? = null
         check(BotMetrics.start(0, 2, 1) { report = it })
