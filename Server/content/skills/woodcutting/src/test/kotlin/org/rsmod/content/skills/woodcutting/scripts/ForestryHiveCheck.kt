@@ -1,9 +1,19 @@
 package org.rsmod.content.skills.woodcutting.scripts
 
 import kotlin.random.Random
+import org.rsmod.map.CoordGrid
 
 fun main() {
     val rules = ForestryHiveRules
+    val history = ForestryHistory()
+    val tree = CoordGrid(3200, 3200)
+    val other = tree.translate(1, 0)
+    history.record(tree, 10)
+    check(history.activeAt(tree, 18))
+    check(!history.activeAt(tree, 19))
+    check(!history.activeAt(other, 12))
+    history.record(other, 20)
+    check(history.activeAt(other, 20) && !history.activeAt(tree, 20))
     check(rules.HIVES == 6)
     check(rules.logsPerHive(0) == 10)
     check(rules.logsPerHive(1) == 10)
