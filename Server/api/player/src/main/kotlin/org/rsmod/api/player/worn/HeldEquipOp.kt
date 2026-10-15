@@ -122,10 +122,32 @@ constructor(private val eventBus: EventBus, private val restrictions: PlayerRest
     }
 
     private fun equip(player: Player, type: ItemServerType): HeldEquipResult {
-        val statRequirements =
-            type.statRequirements().filter { player.statBase(RSCM.getReverseMapping(RSCMType.STAT, it.stat.id)) < it.level }
-        if (statRequirements.isNotEmpty()) {
-            val messages = type.toMessages(statRequirements)
+        val nativeRequirements = type.statRequirements()
+        val unmetNativeRequirements =
+            nativeRequirements.filter {
+                player.statBase(RSCM.getReverseMapping(RSCMType.STAT, it.stat.id)) < it.level
+            }
+        if (unmetNativeRequirements.isNotEmpty()) {
+            val messages = type.toMessages(unmetNativeRequirements)
+            return HeldEquipResult.Fail.StatRequirements(messages)
+        }
+
+        // Some items in the runtime cache lack equipment statreq parameters entirely.
+        // Apply the reviewed combat-only supplement on the same server-side equip path.
+        // Native requirements take precedence to avoid overriding newer cache values.
+        val nativeSkills =
+            nativeRequirements.mapTo(hashSetOf()) {
+                RSCM.getReverseMapping(RSCMType.STAT, it.stat.id)
+            }
+        val unmetSupplementalRequirements =
+            EquipmentStatSupplement.unmetRequirements(type.id, nativeSkills) { skill ->
+                player.statBase(skill)
+            }
+        if (unmetSupplementalRequirements.isNotEmpty()) {
+            val messages = unmetSupplementalRequirements.map {
+                val skillName = it.skill.replaceFirstChar { char -> char.titlecase() }
+                "You need to have ${skillName.addArticle()} level of ${it.level} to equip this item."
+            }
             return HeldEquipResult.Fail.StatRequirements(messages)
         }
 

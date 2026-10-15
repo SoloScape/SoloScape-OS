@@ -1,0 +1,26 @@
+name: Equipment requirement data checks
+
+on:
+  pull_request:
+    paths:
+      - "Server/api/player/src/main/kotlin/org/rsmod/api/player/worn/**"
+      - "Server/api/player/src/main/resources/org/rsmod/api/player/worn/**"
+      - "Server/content/other/commands/src/main/kotlin/org/rsmod/content/other/commands/EquipmentAuditCommands.kt"
+      - "tools/check_equipment_stat_requirements.py"
+      - ".github/workflows/equipment-requirements.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-equipment-metadata:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Validate runtime equipment stat supplement
+        run: python tools/check_equipment_stat_requirements.py
