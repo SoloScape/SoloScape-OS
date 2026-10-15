@@ -175,7 +175,7 @@ fun main() {
     println("Forestry basket cache items: " + ServerCacheManager.getItems().values
         .filter { it.name.contains("Log basket", true) ||
             it.name.contains("Forestry basket", true) }
-        .map { it.internalName + " [" + it.id + "] " + it.actions.toString() })
+        .map { it.internalName + " [" + it.id + "]" })
     check(ForestryAssets.npc(ForestryAssets.HIVE)!!.name.contains("<col="))
     check(ForestryAssets.npc(ForestryAssets.TRAP)!!.name.contains("<col="))
 
