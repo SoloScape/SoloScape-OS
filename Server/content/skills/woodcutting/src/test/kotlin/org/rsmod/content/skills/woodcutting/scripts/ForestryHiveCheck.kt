@@ -38,6 +38,23 @@ fun main() {
     check(rules.buildSound(24, 50) == rules.BUILD_STRIKE_SOUND)
     check(rules.buildSound(25, 50) == rules.BUILD_SECTION_SOUND)
     check(rules.buildSound(26, 50) == rules.BUILD_STRIKE_SOUND)
+    check(rules.COMPLETE_MESSAGE ==
+        "The hive is complete and won't benefit from any more wood.")
+    check(rules.PROGRESS_HEADBAR_ID == 12)
+    check(rules.PROGRESS_SEGMENTS == 70)
+    check(rules.progressFill(0, 50) == 0)
+    check(rules.progressFill(50, 50) == 70)
+    check(rules.progressFill(100, 50) == 70)
+    check(rules.progressFill(-1, 50) == 0)
+    check(rules.progressFill(1, 0) == 0)
+    check(rules.progressFill(5, 10) == 35)
+    for (required in 1..50) {
+        val fills = (0..required).map { rules.progressFill(it, required) }
+        check(fills.first() == 0 && fills.last() == rules.PROGRESS_SEGMENTS)
+        check(fills.zipWithNext().all { (old, next) -> next > old }) {
+            "Every contributed log must visibly advance the headbar: $required"
+        }
+    }
     check(rules.HIVES == 6)
     check(rules.logsPerHive(0) == 5)
     check(rules.logsPerHive(1) == 5)
