@@ -42,6 +42,33 @@ Native client/map assets must exist in the configured cache for an event to spaw
 - Optional Friendly Bees and Wild Beehive NPCs are selected only when a matching cache-backed asset exists. Test in the client that they render, and confirm the correct build interaction, animations and sound. Members status is checked using both the player membership flag and `members-world` from `game.yml` (defaults to true; set false for an F2P world).
 - Cache-backed `ForestryEventsCheck` tests six full hive cycles, halfway/complete models, scaling with two choppers, late spectators and timeout without a rare-part reward. `ForestryHiveCheck` asserts reward thresholds, log tiers, and part-roll probabilities. The branch push workflow builds the server and runs `tools/test_woodcutting.py`.
 
+### Beehive reward-list audit (15 October 2026)
+
+The Old School RuneScape Wiki's 4 August 2026 Beehive rewards table includes
+**Achey tree logs** (regular), **Jatoba logs** (intermediate), and **Camphor,
+Ironwood, and Rosewood logs** (high-tier), in addition to the previously
+supported logs. All fifteen are now present in `ForestryRules.logs`. Jatoba
+uses the 55–60%-of-Woodcutting-level, 30%-of-Construction-level, 4–5-bark
+tier; Camphor/Ironwood/Rosewood use 75–80% Woodcutting, 40% Construction,
+5–6 bark. Basket and Beehive inventory input both use the same shared
+accepted-log list. New hardwoods are only usable if real item definitions
+exist in the running cache; `ForestryEventsCheck` prints these four cache
+names/IDs and verifies mappings when available (the cache currently built
+by CI may predate the newer Sailing items).
+
+The completion XP calculation remains isolated in
+`ForestryHiveRules.completionXp(level)` as **5.45 × level − 0.02 × level²**.
+The regular Wiki page's equation fails to render in the accessible text mirror
+but this exact formula also appears in the
+[OSRS Wiki's user sandbox Beehive graph source](https://oldschool.runescape.wiki/w/Module:Sandbox/User:Keplare/Beehive_event).
+A sandbox source corroborates the equation, but is **not authoritative
+proof** that the current game applies the same formula or rounding.
+`ForestryHiveCheck` snapshots this provisional curve at 50/60/70/80/90/99
+to detect regressions, without misrepresenting those predictions as measured
+OSRS XP. The per-hive 25 (2/5) / 26 (3/5) bark and 2/3 sturdy-parts reward,
+and the requirement for at least one contributed log per completed hive,
+remain unchanged.
+
 ### Beehive native quantity interface (15 October 2026)
 
 Click **Build** on an unfinished Beehive to open the **native OSRS SkillMulti chatbox item/quantity interface** (`interface.skillmulti`, client script 2046) instead of the old plain-text options menu. Its exact title is **"How many logs would you like to add?"** as seen at 03:06 in the supplied OSRS gameplay footage. Select a quantity (native client choices include 1, 5, X, All, and may expose 10/remembered X depending on client state), then click the **Beehive** item image to begin building. The UI uses a cache-backed Beehive icon if there is one, otherwise sturdy parts or logs as a fallback; confirm the artwork in the actual client.
