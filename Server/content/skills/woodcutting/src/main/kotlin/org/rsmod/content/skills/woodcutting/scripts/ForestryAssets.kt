@@ -39,6 +39,17 @@ internal object ForestryAssets {
     val npcNames = listOf(ENTLING, PRUNED_ENTLING, LEPRECHAUN, KEEPER, HIVE, FOX,
         POACHER, TRAP, DRYAD, FORESTER, PHEASANT) + bushes + circles
 
+    /**
+     * Native SkillMulti requires an inventory item graphic, not an NPC model.
+     * Prefer an item actually called Beehive; otherwise use the native sturdy
+     * beehive parts sprite, and fall back to a logs graphic if neither exists.
+     */
+    fun hiveMenuItem(): String = ServerCacheManager.getItems().values.firstOrNull {
+        it.name.equals("Beehive", ignoreCase = true)
+    }?.internalName ?: ServerCacheManager.getItems().values.firstOrNull {
+        it.name.equals("Sturdy beehive parts", ignoreCase = true)
+    }?.internalName ?: "obj.logs"
+
     fun hiveHalf() = ServerCacheManager.getNpcs().values.firstOrNull { it.id == HIVE_HALF_ID }
     fun hiveComplete() = ServerCacheManager.getNpcs().values.firstOrNull { it.id == HIVE_COMPLETE_ID }
 
