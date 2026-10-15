@@ -90,10 +90,18 @@ capacity are considered. Basic-routines mode continues to start exclusively in
 mining, fishing and woodcutting. If a first destination is blocked or unsuitable,
 the existing planner falls back to an alternative task.
 
-Existing files under `.data/bots/worldbot_N.properties` are **not reset**:
-their stored XP, inventory, equipment and previous activity still take priority.
-Progressive, PvP and other bot modes keep their existing level and task seeding.
-Do not delete saved profiles unless you explicitly intend to reset their progress.
+Existing bot profiles retain their stored XP, inventory, equipment and previous
+activity. Old `.data/bots/worldbot_N.properties` files automatically migrate to
+**display-name filenames**, such as `stijnkessel.properties` or
+`mars noob.properties`, when the corresponding bot first loads. The internal
+`worldbot_N` username remains unchanged. Each saved profile records its internal
+owner ID, so different bots cannot overwrite one another's progress; a repeated
+display name gets a suffix such as `varduka (worldbot_123).properties`.
+Only the old file belonging to that exact bot ID is migrated, and it is deleted
+only after the named save has been written. Stop the server before manually
+editing or deleting saves; `.data/bots.properties` is a separate configuration file
+and must not be deleted. Progressive, PvP and other bot modes keep their existing
+level and task seeding.
 
 ## PvM gravestones and recovering bots
 
