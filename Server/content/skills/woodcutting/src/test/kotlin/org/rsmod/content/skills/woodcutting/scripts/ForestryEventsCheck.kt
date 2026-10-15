@@ -3,6 +3,7 @@ package org.rsmod.content.skills.woodcutting.scripts
 import dev.openrune.ServerCacheManager
 import dev.openrune.rscm.RSCM.asRSCM
 import org.rsmod.content.skills.construction.house.HouseStore
+import org.rsmod.api.server.config.ServerConfig
 import org.rsmod.api.player.interact.LocInteractions
 import org.rsmod.api.player.events.interact.NpcEvents
 import org.rsmod.api.player.protect.ProtectedAccess
@@ -50,7 +51,7 @@ import org.rsmod.plugin.scripts.ScriptContext
 import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.routefinder.flag.CollisionFlag
 
-private class ForestryFixture {
+private class ForestryFixture(private val memberWorld: Boolean = true) {
     val origin = CoordGrid(3200, 3200)
     val clock = MapClock(100)
     val flags = CollisionFlagMap()
@@ -71,8 +72,11 @@ private class ForestryFixture {
     val locs = LocRepository(clock, registry, regions)
     val npcs = NpcRepository(clock, npcRegistry, npcList)
     val houseStore = HouseStore()
+    val serverConfig = ServerConfig("Forestry test", 0, 240, "test", 1,
+        membersWorld = memberWorld)
     val manager = ForestryEventManager(clock, PlayerRepository(playerRegistry), locs, npcs,
-        ObjRepository(clock, ObjRegistry(updates)), XpModifiers(emptySet()), houseStore, flags)
+        ObjRepository(clock, ObjRegistry(updates)), XpModifiers(emptySet()),
+        houseStore, serverConfig, flags)
     val player = Player().apply {
         members = true
         coords = origin
@@ -187,6 +191,12 @@ fun main() {
         check(!placement.clear(CoordGrid(3300, 3300), 1, 1))
     }
 
+    run {
+        val f = ForestryFixture(memberWorld = false)
+        check(f.manager.debugSpawn(f.player, ForestryEventType.HIVE)?.contains("members") == true)
+        check(f.npcList.none() && f.locations().isEmpty())
+        f.spawn(ForestryEventType.ROOTS)
+    }
     for (type in ForestryEventType.entries) {
         val f = ForestryFixture()
         f.flags[f.origin.x - 3, f.origin.z, 0] = CollisionFlag.BLOCK_WALK
