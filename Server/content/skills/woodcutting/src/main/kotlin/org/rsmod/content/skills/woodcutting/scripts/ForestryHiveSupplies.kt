@@ -16,6 +16,23 @@ internal object ForestryHiveSupplies {
         "inv.forestry_basket" to "forestry_basket",
     )
 
+    /** Count only actual logs, including supported permanent basket inventories. */
+    fun availableLogs(player: Player): Int {
+        var total = count(player.inv)
+        val carried = (player.inv.objs.asSequence() + player.worn.objs.asSequence())
+            .filterNotNull().map { getInvObj(it).internalName.lowercase() }.toSet()
+        for ((storageKey, objectName) in basketContainers) {
+            if (carried.none { objectName in it }) continue
+            val storage = player.invMap[storageKey] ?: continue
+            if (storage.type.scope == InvScope.Perm) total += count(storage)
+        }
+        return total
+    }
+
+    private fun count(inventory: Inventory): Int = inventory.objs.filterNotNull()
+        .filter { getInvObj(it).internalName in ForestryRules.logs }
+        .sumOf { it.count }
+
     fun consumeLog(player: Player): String? {
         take(player.inv)?.let { return it }
         val equipped = (player.inv.objs.asSequence() + player.worn.objs.asSequence())
