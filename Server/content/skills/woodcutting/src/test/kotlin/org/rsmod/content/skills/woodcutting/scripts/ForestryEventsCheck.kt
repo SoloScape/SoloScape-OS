@@ -289,6 +289,9 @@ fun main() {
         check(ForestryAssets.hiveHalf()?.id == 12516)
         check(ForestryAssets.hiveComplete()?.id == 12517)
         f.spawn(ForestryEventType.HIVE)
+        val partsSymbol = ServerCacheManager.getItems().values.first {
+            it.name.equals("Sturdy beehive parts", ignoreCase = true)
+        }.internalName
         var completed = 0
         var previousParts = 0
         repeat(ForestryHiveRules.HIVES) { round ->
@@ -304,12 +307,12 @@ fun main() {
                     else -> 12515
                 })
                 if (index + 1 < ForestryHiveRules.logsPerHive(1)) {
-                    check(f.player.inv.count("obj.sturdy_beehive_parts") == previousParts)
+                    check(f.player.inv.count(partsSymbol) == previousParts)
                 }
                 f.ticks(2)
             }
             completed++
-            val parts = f.player.inv.count("obj.sturdy_beehive_parts")
+            val parts = f.player.inv.count(partsSymbol)
             check(parts in previousParts..(previousParts + 1))
             previousParts = parts
             if (round < ForestryHiveRules.HIVES - 1) {
@@ -349,6 +352,9 @@ fun main() {
         f.spawn(ForestryEventType.HIVE)
         val (late, lateAccess) = f.addPlayer()
         val hive = f.npc(ForestryAssets.HIVE)
+        val partsSymbol = ServerCacheManager.getItems().values.first {
+            it.name.equals("Sturdy beehive parts", ignoreCase = true)
+        }.internalName
         late.inv[0] = InvObj("obj.logs")
         f.operate(hive, lateAccess, 1)
         check(late.inv.count("obj.logs") == 0)
@@ -359,17 +365,20 @@ fun main() {
             f.operate(hive, 1)
             f.ticks(2)
         }
-        check(late.inv.count("obj.sturdy_beehive_parts") == 0)
+        check(late.inv.count(partsSymbol) == 0)
         check(late.inv.count("obj.forestry_currency") == 0)
     }
     run {
         // Partial work times out without granting a 2/3 sturdy-parts roll.
         val f = ForestryFixture()
         f.spawn(ForestryEventType.HIVE)
+        val partsSymbol = ServerCacheManager.getItems().values.first {
+            it.name.equals("Sturdy beehive parts", ignoreCase = true)
+        }.internalName
         f.player.inv[2] = InvObj("obj.logs")
         f.operate(f.npc(ForestryAssets.HIVE), 1)
         f.ticks(ForestryEventType.HIVE.ticks)
-        check(f.player.inv.count("obj.sturdy_beehive_parts") == 0)
+        check(f.player.inv.count(partsSymbol) == 0)
     }
     run {
         val f = ForestryFixture()
