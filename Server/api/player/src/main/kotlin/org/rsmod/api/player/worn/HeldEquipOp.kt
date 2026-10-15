@@ -139,10 +139,10 @@ constructor(private val eventBus: EventBus, private val restrictions: PlayerRest
             nativeRequirements.mapTo(hashSetOf()) {
                 RSCM.getReverseMapping(RSCMType.STAT, it.stat.id)
             }
-        val supplementalRequirements =
-            EquipmentStatSupplement.additionalRequirements(type.id, nativeSkills)
         val unmetSupplementalRequirements =
-            supplementalRequirements.filter { player.statBase(it.internalName) < it.level }
+            EquipmentStatSupplement.unmetRequirements(type.id, nativeSkills) { skill ->
+                player.statBase(skill)
+            }
         if (unmetSupplementalRequirements.isNotEmpty()) {
             val messages = unmetSupplementalRequirements.map {
                 val skillName = it.skill.replaceFirstChar { char -> char.titlecase() }
