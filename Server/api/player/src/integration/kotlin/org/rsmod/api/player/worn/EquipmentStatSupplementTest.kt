@@ -61,6 +61,38 @@ class EquipmentStatSupplementTest {
     }
 
     @Test
+    fun `wield denies just below Attack threshold and allows at threshold`() {
+        val below = EquipmentStatSupplement.unmetRequirements(1357, emptySet()) {
+            if (it == "stat.attack") 29 else 99
+        }
+        assertEquals(1, below.size)
+        assertEquals("attack", below.single().skill)
+
+        val atLevel = EquipmentStatSupplement.unmetRequirements(1357, emptySet()) {
+            if (it == "stat.attack") 30 else 99
+        }
+        assertTrue(atLevel.isEmpty())
+    }
+
+    @Test
+    fun `multi-stat items require every missing skill`() {
+        val unmet = EquipmentStatSupplement.unmetRequirements(10146, emptySet()) { skill ->
+            if (skill == "stat.magic") 49 else 50
+        }
+        assertEquals(listOf("magic"), unmet.map { it.skill })
+        assertTrue(
+            EquipmentStatSupplement.unmetRequirements(10146, emptySet()) { 50 }.isEmpty()
+        )
+    }
+
+    @Test
+    fun `native stat params avoid duplicate secondary checks`() {
+        assertTrue(
+            EquipmentStatSupplement.unmetRequirements(1357, setOf("stat.attack")) { 1 }.isEmpty()
+        )
+    }
+
+    @Test
     fun `supplement is nonempty and does not add quiver requirements`() {
         assertFalse(EquipmentStatSupplement.requirementsFor(1357).isEmpty())
         assertTrue(EquipmentStatSupplement.requirementsFor(806).isEmpty()) // Rune dart
