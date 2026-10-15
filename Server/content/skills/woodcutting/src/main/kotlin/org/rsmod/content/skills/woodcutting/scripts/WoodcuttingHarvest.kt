@@ -5,6 +5,8 @@ import jakarta.inject.Inject
 import org.rsmod.api.player.events.skilling.SkillingActionCompleteEvent
 import org.rsmod.api.player.events.skilling.SkillingActionContext
 import org.rsmod.api.player.events.skilling.SkillingProduct
+import org.rsmod.api.player.events.skilling.SkillingProductPrepareEvent
+import org.rsmod.api.player.skilling.recordSkillingProduct
 import org.rsmod.api.player.events.skilling.SkillingProductSource
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.skilling.SkillingAwardResult
@@ -61,10 +63,34 @@ class WoodcuttingHarvest @Inject constructor(private val xpMods: XpModifiers) {
             experience = xp,
             source = source,
         )
-        if (awardSkillingProduct(product) != SkillingAwardResult.Success) return false
-        // When the basket is open, store only genuine logs already awarded by
-        // the skilling transaction. Never mint a second copy of a harvested log.
-        if (ForestryLogBasket.isOpen(player)) ForestryLogBasket.fill(player)
+        val basketOnly = ForestryLogBasket.isOpen(player) && inv.isFull() &&
+            ForestryLogBasket.availableSpace(player) >= count &&
+            product.item in ForestryRules.logs
+        if (basketOnly) {
+            // Match the ordinary skilling award lifecycle even when all inventory
+            // slots are occupied. The logs are put straight in the existing
+            // persistent basket; they must never be created in the inventory too.
+            publish(SkillingProductPrepareEvent(product))
+            if (product.cancelled || product.item !in ForestryRules.logs ||
+                product.count <= 0 ||
+                ForestryLogBasket.availableSpace(player) < product.count) return false
+            repeat(product.count) {
+                check(ForestryLogBasket.add(player, product.item))
+            }
+            if (product.grantsExperience && product.experience > 0.0) {
+                statAdvance(product.skill, product.experience)
+            }
+            player.recordSkillingProduct(product.skill, product.item, product.count)
+            publish(SkillingActionCompleteEvent(player, SkillingActionContext.Product(
+                product.skill, product.item, product.count,
+                if (product.grantsExperience) product.experience else 0.0,
+                product.source, isBonus = product.isBonus,
+            )))
+        } else {
+            if (awardSkillingProduct(product) != SkillingAwardResult.Success) return false
+            // A full basket never deletes inventory logs: Fill stops at capacity.
+            if (ForestryLogBasket.isOpen(player)) ForestryLogBasket.fill(player)
+        }
         if (ration) ForestryRations.consume(player)
         if (name == "obj.crystal_axe" || name == "obj.crystal_axe_2h") {
             WoodcuttingAxes.consume(player, axe)
