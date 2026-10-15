@@ -6,7 +6,7 @@ Tracking issue: [#60](https://github.com/SoloScape/SoloScape-OS/issues/60)
 
 Players reproduced wielding an adamant axe at 11 Attack (49 Woodcutting), and subsequently reported that axes, pickaxes **and ordinary weapons** also appeared to ignore Attack requirements. Individual variants and all other skill/quest requirements have **not** been exhaustively verified in a live client.
 
-The common equip path is `HeldInteractions` -> `HeldEquipOp`. The latter only rejects stat requirements that exist in the loaded `statreq1_skill/statreq1_level` and `statreq2_skill/statreq2_level` pairs. An item with neither skill field has no equip stat checks from that method. `levelrequire` is **not** an equip requirement; it governs skill use, including mining/woodcutting.
+The common equip path is `HeldInteractions` -> `HeldEquipOp`. Prior to the fix in PR #61, the latter only rejected stat requirements that existed in the loaded `statreq1_skill/statreq1_level` and `statreq2_skill/statreq2_level` pairs. An item with neither skill field has no equip stat checks from that method. `levelrequire` is **not** an equip requirement; it governs skill use, including mining/woodcutting.
 
 ## Static audit of tracked TOML overrides (main branch)
 
@@ -33,18 +33,18 @@ Examples lacking **explicit override** wield requirements: `obj.adamant_axe`, `o
 
 ## How to enumerate EVERY runtime-equippable item
 
-This draft adds the administrator-only `::equipmentaudit` command. After a server build and restart, run it with an administrator account. It writes:
+PR #61 includes the administrator-only `::equipmentaudit` command. After a server build and restart, run it with an administrator account. It writes:
 
 - `Server/build/equipment-audit/runtime-equipment.csv` (if the server's working directory is `Server/`). One row for **every runtime item accepted as an equipment candidate** by the same primary wear-slot lookup used by `HeldEquipOp`. Excludes certificates, placeholders and dummy items.
 - `Server/build/equipment-audit/summary.txt` with loaded/equippable counts, missing/malformed metadata and slot distribution.
 
-The CSV contains numeric item IDs, internal names, display names, wear slots, both server equip skill/level requirement pairs, and the *separate* skilling-use requirement. It also flags expected Attack levels for a conservative set of regular metal axes/pickaxes/weapons; **these flags are candidate anomalies, not final verdicts for unusual variants**.
+The CSV contains numeric item IDs, internal names, display names, wear slots, both native equip skill/level requirement pairs, **effective and supplemental equipment requirements**, and the *separate* skilling-use requirement. It also flags expected Attack levels for a conservative set of regular metal axes/pickaxes/weapons; **these flags are candidate anomalies, not final verdicts for unusual variants**.
 
-It does not change equipment rules, spawn items, edit accounts or claim to execute in-game equipment tests. Until the command is run on the same runtime cache as the live server, this is **not a completed census of every equippable item**.
+The export command itself does not change equipment rules, spawn items, or edit accounts. The initial export was supplied from the deployed cache and counted 34,606 loaded items / 6,354 equippable items. A **post-fix** export is needed to verify the additional requirements loaded as intended.
 
 ## Remaining audit and acceptance criteria
 
-1. Run the export against the actual deployed item cache and retain the CSV as evidence. Confirm every equippable item/variant is included across **weapon, shield, head, chest, legs, hands, feet, cape, neck, ammo/quiver and ring** positions.
+1. Re-run the revised audit export after deployment to capture **effective** requirements and retain the CSV as evidence. Confirm every equippable item/variant is included across **weapon, shield, head, chest, legs, hands, feet, cape, neck, ammo/quiver and ring** positions.
 2. Join the runtime CSV against authoritative OSRS equipment skill and quest requirements. Include low-level/no-requirement gear, specialist weapons, charged/inactive/ornamented items, Barrows, crystal, raids, boss gear, skilling outfits, achievement/quest rewards and holiday items. Do **not** invent level requirements for items without them.
 3. Test negative and positive level boundaries per expected requirement (below required level **must fail**, at required level **must pass**, subject to other valid gates). Cover **Attack, Strength, Defence, Ranged, Magic, Prayer** and any other stat conditions.
 4. Independently verify relevant quest and activity restrictions, including cases that are not represented by the two stat parameter pairs.
@@ -58,4 +58,22 @@ It does not change equipment rules, spawn items, edit accounts or claim to execu
 
 **Not yet confirmed:** precise runtime root cause, number of invalid equip definitions, full item-specific compliance and corrected behaviour after patch.
 
-This audit branch is intentionally **diagnostic only**. It must not be described as a completed fix or comprehensive item-validation result until the runtime export and item-by-item comparison/tests are performed.
+The audit branch now also includes **server-side supplementary combat equip requirements**. It must not be represented as a complete OSRS item compliance fix until item-by-item verification and live equipment boundary tests are performed.
+
+## First corrective pass on PR #61
+
+The player-provided deployed-cache export yielded 6,354 equippable item IDs. It was compared with the maintained DayV-git OSRS community requirements data (last updated 18 September 2026), **excluding ammo/quiver Ranged use requirements** and conservatively avoiding ambiguous max-cape/Pest-seal rules.
+
+- New per-item stat supplement: `Server/api/player/src/main/resources/org/rsmod/api/player/worn/equipment-stat-requirements.tsv`. **1,751 added combat-skill checks on 1,330 item IDs** where the runtime metadata lacked a requirement. Includes conventional metal axes, pickaxes, melee weapons, armour, bows, mage gear and representative multi-stat equipment.
+- Applied centrally in `HeldEquipOp`: the existing `statreq1`/`statreq2` data **takes precedence for the same skill**; supplemental requirements reject equipping if the player's base level is below the stated level.
+- Handles any number of supplemental stat requirements per item, unlike the two native stat pairs. Validates rows strictly and fails loudly if the CSV-equivalent TSV resource is missing.
+- New regression tests validate expected requirements, ammunition exemptions, native precedence, multi-skill items, and exact Attack level boundaries. These **do not yet constitute full live equip transaction tests**.
+- `::equipmentaudit` now exports both **native** and **effective** equip requirements, and flags expected Attack gaps after the supplement. The native source-level count may remain high; the effective count is the important post-fix value.
+
+### Deliberate non-changes
+
+No automatic conversion of Mining, Woodcutting or Fishing *use* levels into wield requirements. Quiver ammunition is not gated merely by its combat-use Ranged requirement. No guessed quest/unlock gates are added. Existing native stat requirements (including discrepancies relative to a third-party source) are not overridden. Known special multi-quest exceptions and items missing from the source still need focused review.
+
+### Validation status
+
+Changes are committed on draft PR #61 but **not built or play-tested from this assistant session**. Live confirmation, automated build execution, and quest-specific compliance are outstanding. Keep the PR draft until completed.
