@@ -42,10 +42,17 @@ fun main() {
     check(!rules.partEligible(true, true, false))
     check(!rules.partEligible(false, true, true))
     check(rules.partEligible(true, true, true))
-    val tiers = listOf("obj.logs", "obj.oak_logs", "obj.willow_logs",
-        "obj.teak_logs", "obj.maple_logs", "obj.mahogany_logs",
-        "obj.arctic_pine_log", "obj.yew_logs", "obj.magic_logs", "obj.redwood_logs")
-    check(tiers.map(rules::tier) == listOf(0, 1, 1, 1, 1, 1, 2, 2, 2, 2))
+    val tiers = listOf(
+        "obj.logs", "obj.achey_tree_logs",
+        "obj.oak_logs", "obj.willow_logs", "obj.teak_logs", "obj.maple_logs",
+        "obj.jatoba_logs", "obj.mahogany_logs", "obj.arctic_pine_log",
+        "obj.yew_logs", "obj.camphor_logs", "obj.ironwood_logs",
+        "obj.magic_logs", "obj.redwood_logs", "obj.rosewood_logs",
+    )
+    check(ForestryRules.logs.toSet() == tiers.toSet()) {
+        "Every documented Beehive log must be accepted, not only assigned an XP tier."
+    }
+    check(tiers.map(rules::tier) == listOf(0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2))
     val amounts = (0 until 100).map { Random(it) }
     check(amounts.map { rules.barkForLog("obj.logs", it) }.all { it in 2..3 })
     check(amounts.map { rules.barkForLog("obj.oak_logs", it) }.all { it in 4..5 })
@@ -56,7 +63,31 @@ fun main() {
     check(rules.constructionXp(50, "obj.logs") == 10.0)
     check(rules.constructionXp(50, "obj.oak_logs") == 15.0)
     check(rules.constructionXp(99, "obj.magic_logs") == 39.6)
-    check(rules.completionXp(50) == 222.5)
+    // New Sailing hardwoods reuse the documented middle/high reward ranges.
+    for (symbol in listOf("obj.jatoba_logs")) {
+        check(rules.constructionXp(99, symbol) == 29.7)
+        check((0 until 100).all { rules.barkForLog(symbol, Random(it)) in 4..5 })
+        check((0 until 100).all { rules.logXp(99, symbol, Random(it)) in 54.45..59.4 })
+    }
+    for (symbol in listOf("obj.camphor_logs", "obj.ironwood_logs", "obj.rosewood_logs")) {
+        check(rules.constructionXp(99, symbol) == 39.6)
+        check((0 until 100).all { rules.barkForLog(symbol, Random(it)) in 5..6 })
+        check((0 until 100).all { rules.logXp(99, symbol, Random(it)) in 74.25..79.2 })
+    }
+    // These are snapshots of our *provisional* equation, not verified OSRS
+    // completion XP. The wiki text mirror supplies only the level-50 anchor.
+    val provisionalCompletionXp = mapOf(
+        50 to 222.5, 60 to 255.0, 70 to 283.5,
+        80 to 308.0, 90 to 328.5, 99 to 343.53,
+    )
+    for ((level, expected) in provisionalCompletionXp) {
+        check(kotlin.math.abs(rules.completionXp(level) - expected) < 0.000001) {
+            "Provisional Beehive completion XP changed at Woodcutting $level"
+        }
+    }
+    check(rules.HIVES == 6)
+    check(rules.partEligible(contributed = true, hiveCompleted = true, eligible = true))
+    check(rules.partEligible(contributed = false, hiveCompleted = true, eligible = true).not())
     val random = Random(413)
     val rolls = (0 until 900).count { rules.sturdyPartDrop(random) }
     check(rolls in 550..650) { "Sturdy parts should have a 2/3 roll: $rolls/900" }
