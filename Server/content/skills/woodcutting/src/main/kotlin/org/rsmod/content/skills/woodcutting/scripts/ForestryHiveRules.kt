@@ -8,21 +8,7 @@ internal object ForestryHiveRules {
     const val RESPAWN_TICKS = 3
     const val BUILD_TICKS = 2
     const val BUILD_ANIMATION = "seq.human_poh_build"
-    val QUANTITY_OPTIONS = listOf("1", "5", "10", "X", "All", "Cancel")
-
-    /** A cancelled/invalid dialog must never turn into an item-consuming action. */
-    fun requestedLogs(option: Int, entered: Int, available: Int): Int {
-        val requested = when (option) {
-            0 -> 1
-            1 -> 5
-            2 -> 10
-            3 -> entered
-            4 -> available
-            else -> 0
-        }
-        return requested.coerceAtLeast(0).coerceAtMost(available.coerceAtLeast(0))
-    }
-
+    const val QUANTITY_TITLE = "How many logs would you like to add?"
 
     // The Wiki confirms ten active choppers and a hard ceiling of 50 logs.
     // Its mathematical formula isn't exposed by the text mirror; the linear
