@@ -162,6 +162,9 @@ fun main() {
     for (symbol in ForestryAssets.mulch + ForestryAssets.EGG)
         checkNotNull(ServerCacheManager.getItem(symbol.asRSCM()))
     check(ForestryAssets.loc(ForestryAssets.SAPLING)!!.width == 1)
+    checkNotNull(ServerCacheManager.getAnim(ForestryHiveRules.BUILD_ANIMATION.asRSCM())) {
+        "The native Construction building animation must exist in this cache"
+    }
     check(ForestryAssets.npc(ForestryAssets.HIVE)!!.name.contains("<col="))
     check(ForestryAssets.npc(ForestryAssets.TRAP)!!.name.contains("<col="))
 
@@ -376,7 +379,9 @@ fun main() {
             it.name.equals("Sturdy beehive parts", ignoreCase = true)
         }.internalName
         f.player.inv[2] = InvObj("obj.logs")
+        check(ForestryHiveSupplies.availableLogs(f.player) == 1)
         f.operate(f.npc(ForestryAssets.HIVE), 1)
+        check(ForestryHiveSupplies.availableLogs(f.player) == 0)
         f.ticks(ForestryEventType.HIVE.ticks)
         check(f.player.inv.count(partsSymbol) == 0)
     }
