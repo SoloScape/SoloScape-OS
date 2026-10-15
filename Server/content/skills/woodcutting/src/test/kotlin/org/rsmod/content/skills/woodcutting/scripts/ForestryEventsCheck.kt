@@ -180,6 +180,22 @@ fun main() {
         "The native Beehive SkillMulti item graphic must exist in this cache"
     }
     println("Beehive SkillMulti icon: " + ForestryAssets.hiveMenuItem())
+    // Sailing hardwoods may be absent from older cache revisions. Report actual
+    // definitions instead of pretending that a rule-list string creates an item.
+    val sailingLogs = listOf(
+        "Jatoba logs", "Camphor logs", "Ironwood logs", "Rosewood logs"
+    )
+    val knownItems = ServerCacheManager.getItems().values
+    for (name in sailingLogs) {
+        val definition = knownItems.firstOrNull { it.name.equals(name, ignoreCase = true) }
+        println("Beehive log cache: $name -> " +
+            (definition?.internalName ?: "unavailable in this cache"))
+        if (definition != null) {
+            check(definition.internalName in ForestryRules.logs) {
+                "Wiki-supported $name uses ${definition.internalName}, but ForestryRules.logs omits it"
+            }
+        }
+    }
     println("Bank Deposit Containers mapping: " + runCatching {
         "component.bankmain:depositcontainers".asRSCM(RSCMType.COMPONENT)
     }.getOrNull())
