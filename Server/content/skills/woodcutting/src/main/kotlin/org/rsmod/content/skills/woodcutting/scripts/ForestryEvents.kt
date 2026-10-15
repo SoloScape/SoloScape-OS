@@ -868,11 +868,13 @@ class ForestryEventManager @Inject constructor(
         val e = active.firstOrNull {
             it.type == ForestryEventType.HIVE && it.npcs[task.hive] == "hive"
         } ?: return
-        if (!hiveBuildActive(e, task.hive, task.phase, task.origin) ||
+        if (task.remaining <= 0 ||
+            !hiveBuildActive(e, task.hive, task.phase, task.origin) ||
             !isWithinDistance(task.hive, 2) ||
             ForestryHiveSupplies.availableLogs(player) <= 0) return
         faceEntitySquare(task.hive)
         anim(ForestryHiveRules.BUILD_ANIMATION)
+        soundSynth(ForestryHiveRules.buildSound(e.hiveProgress, e.hiveLogsRequired))
         val queuedBeforeProcessing = player.currentMapClock != player.processedMapClock
         val compensation = if (queuedBeforeProcessing) 1 else 0
         weakQueue(QUEUE_HIVE_BUILD, ForestryHiveRules.BUILD_TICKS + compensation, task)
@@ -913,6 +915,7 @@ class ForestryEventManager @Inject constructor(
         }
         faceEntitySquare(task.hive)
         anim(ForestryHiveRules.BUILD_ANIMATION)
+        soundSynth(ForestryHiveRules.buildSound(e.hiveProgress, e.hiveLogsRequired))
         weakQueue(QUEUE_HIVE_BUILD, ForestryHiveRules.BUILD_TICKS, rest)
     }
 
