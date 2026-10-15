@@ -30,6 +30,49 @@ object BotSkillingCheck {
     @JvmStatic
     fun main(args: Array<String>) {
         ServerCacheManager.init(240).close()
+        val startSkills = listOf("woodcutting", "fishing", "smithing", "mining",
+            "cooking", "crafting", "runecrafting")
+        val profiles = (1..128).map { identity ->
+            val focus = BotHumanity.personality(identity).focus
+            val levels = BotStartingSkills.levels(identity, focus)
+            check(levels == BotStartingSkills.levels(identity, focus))
+            check(levels.keys == BotSkills.all.map { it.removePrefix("stat.") }.toSet())
+            check(startSkills.all { (levels[it] ?: 0) in 1..95 })
+            check(startSkills.map { levels.getValue(it) }.distinct().size >= 4) {
+                "Skiller $identity lacks independent starting skill levels"
+            }
+            levels
+        }
+        check(startSkills.all { skill ->
+            profiles.map { it.getValue(skill) }.distinct().size > 25
+        }) { "Starting skills must vary substantially between bot identities" }
+        val openingTasks = SourceBotCatalog.tasks.filter {
+            it.kind in BotRoutinePlanner.expandedKinds
+        }
+        val openingKinds = HashMap<BotTaskKind, Int>()
+        val openingLocations = HashMap<String, Int>()
+        for (identity in 1..128) {
+            val skillLevels = profiles[identity - 1]
+            val skiller = Player()
+            for ((skill, level) in skillLevels) {
+                skiller.statMap.setBaseLevel("stat.$skill", level.toByte())
+            }
+            skiller.appearance.combatLevel =
+                org.rsmod.api.player.stat.PlayerSkillXP.calculateCombatLevel(skiller)
+            val eligible = openingTasks.filter {
+                BotTaskPlanner.available(it, BotSkills.levels(skiller), members = true)
+            }
+            val first = checkNotNull(BotTaskPlanner.selectStarting(
+                eligible, openingKinds, openingLocations, kotlin.random.Random(identity),
+            )) { "No eligible opening task for skiller $identity" }
+            check(BotTaskPlanner.available(first, BotSkills.levels(skiller), true))
+            openingKinds[first.kind] = (openingKinds[first.kind] ?: 0) + 1
+            openingLocations[first.id] = (openingLocations[first.id] ?: 0) + 1
+        }
+        check(openingKinds.keys.containsAll(setOf(BotTaskKind.Woodcutting,
+            BotTaskKind.Fishing, BotTaskKind.Mining, BotTaskKind.Smithing))) {
+            "Opening tasks must cover distinct skills: $openingKinds"
+        }
         val stats = org.rsmod.game.stat.PlayerStatMap()
         stats.setBaseLevel("stat.mining", 2)
         check(stats.levelVersion == 1L)
