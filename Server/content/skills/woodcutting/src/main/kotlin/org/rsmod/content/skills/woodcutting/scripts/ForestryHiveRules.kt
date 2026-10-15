@@ -11,6 +11,20 @@ internal object ForestryHiveRules {
     const val BUILD_SECTION_SOUND = "synth.hammer_and_build"
     const val BUILD_STRIKE_SOUND = "synth.hammering"
     const val QUANTITY_TITLE = "How many logs would you like to add?"
+    const val COMPLETE_MESSAGE = "The hive is complete and won't benefit from any more wood."
+
+    // health_70 = 12 in the server's revision-240 headbar gamevals.
+    // A 70-segment native red/green health bar shows every individual log
+    // increase even at the 50-log maximum.
+    const val PROGRESS_HEADBAR_ID = 12
+    const val PROGRESS_SEGMENTS = 70
+
+    /** Native headbar green fill: 0 logs is red, required logs is fully green. */
+    fun progressFill(progress: Int, required: Int): Int {
+        if (required <= 0) return 0
+        return ((progress.coerceIn(0, required).toLong() * PROGRESS_SEGMENTS) /
+            required).toInt()
+    }
 
     /** The opening and halfway stage use the section-building sound.
      *  All other successful building starts use the repeated hammering sound.
