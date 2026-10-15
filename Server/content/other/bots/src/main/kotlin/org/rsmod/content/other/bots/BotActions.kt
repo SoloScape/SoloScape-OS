@@ -67,33 +67,43 @@ constructor(
     private val routeFinding = RouteFinding(collision)
     private val gatheringTargets = BotReservations<Player, Any>()
     private val occupancy = BotOccupancy<Player, CoordGrid>()
-    private val work = BotTickWork()
+    // Keep starting/choosing new tasks from exhausting the routing budget needed
+    // by bots that already know their destination. Total search time remains capped
+    // at roughly the original per-tick budget (individual searches can overrun).
+    private val work = BotTickWork(maxSearches = 128, maxNanos = 28_000_000)
+    private val travelWork = BotTickWork(maxSearches = 128, maxNanos = 32_000_000)
     private val walkChecks = HashMap<Pair<CoordGrid, CoordGrid>, Boolean>()
     private val resourceCursors = WeakHashMap<Player, Any>()
     private var occupancyReady = false
     private var selectionSearches = 0
     private var priorityDecision = false
+    private var travelDecision = false
     private val selectionTraces = WeakHashMap<Player, String>()
     private val avoidedThreats = WeakHashMap<Player, Pair<Int, List<CoordGrid>>>()
     var selectionDeferred = false
         private set
-    val decisionAvailable: Boolean get() = priorityDecision || work.available
+    private val activeWork: BotTickWork get() = if (travelDecision) travelWork else work
+    val decisionAvailable: Boolean get() = priorityDecision || activeWork.available
     val normalDecision: Boolean get() = !priorityDecision
 
     fun beginTick() {
         walkChecks.clear()
         occupancyReady = false
         work.beginTick()
+        travelWork.beginTick()
     }
 
     fun endTick() {
         walkChecks.clear()
         work.endTick()
+        travelWork.endTick()
         priorityDecision = false
+        travelDecision = false
     }
 
-    fun beginDecision(priority: Boolean = false) {
+    fun beginDecision(priority: Boolean = false, travel: Boolean = false) {
         priorityDecision = priority
+        travelDecision = travel
         walkChecks.clear()
         selectionDeferred = false
     }
@@ -116,9 +126,9 @@ constructor(
 
     private fun resourceSearch(search: () -> Route): Route {
         if (priorityDecision) return measureRoute(search)
-        if (!work.available || selectionSearches >= 32) throw SelectionDeferred()
+        if (!activeWork.available || selectionSearches >= 32) throw SelectionDeferred()
         selectionSearches++
-        return work.search { measureRoute(search) }
+        return activeWork.search { measureRoute(search) }
     }
 
     private fun <T> measureRoute(search: () -> T): T {
@@ -192,7 +202,7 @@ constructor(
                     destX = destination.x, destZ = destination.z, moveNear = false,
                 ).success
             }
-            if (priorityDecision) measureRoute(search) else work.search { measureRoute(search) }
+            if (priorityDecision) measureRoute(search) else activeWork.search { measureRoute(search) }
         }
     }
 
