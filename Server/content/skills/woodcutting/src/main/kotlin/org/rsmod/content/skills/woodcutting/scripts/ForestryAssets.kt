@@ -44,9 +44,10 @@ internal object ForestryAssets {
 
     // Decorative assets are optional, but they must be the actual gameval bees
     // and wild hive, never a substitute NPC with unrelated interactions.
+    // The OSRS friendly-bees NPC is 12168; it is shared with other Forestry
+    // scenery, so its gameval prefix is not necessarily gathering_event_bees.
     fun friendlyBees() = ServerCacheManager.getNpcs().values.firstOrNull {
-        it.internalName.startsWith("npc.gathering_event_bees_") &&
-            it.name.contains("Friendly Bees", ignoreCase = true)
+        it.id == 12168 && it.name.contains("Friendly Bees", ignoreCase = true)
     }
     fun wildHive() = ServerCacheManager.getNpcs().values.firstOrNull {
         it.internalName.startsWith("npc.gathering_event_bees_") &&
