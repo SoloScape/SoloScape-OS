@@ -81,7 +81,9 @@ constructor(
             return
         }
 
-        if (inv.isFull()) {
+        if (inv.isFull() &&
+            !(ForestryLogBasket.isOpen(player) && ForestryLogBasket.availableSpace(player) > 0 &&
+                type.treeLogs.internalName in ForestryRules.logs)) {
             val product = type.treeLogs
             mes("Your inventory is too full to hold any more ${product.name.lowercase()}.")
             soundSynth("synth.pillory_wrong")
@@ -117,7 +119,9 @@ constructor(
             return
         }
 
-        if (inv.isFull()) {
+        if (inv.isFull() &&
+            !(ForestryLogBasket.isOpen(player) && ForestryLogBasket.availableSpace(player) > 0 &&
+                type.treeLogs.internalName in ForestryRules.logs)) {
             val product = type.treeLogs
             mes("Your inventory is too full to hold any more ${product.name.lowercase()}.")
             soundSynth("synth.pillory_wrong")
