@@ -74,6 +74,27 @@ Wilderness and both clan populations. The default is `standard`.
 Population changes use the properties file; the spawn/removal commands are removed.
 Existing skilling, trading, progression and Castle Wars controllers remain separate.
 
+## Diverse skilling-bot starts
+
+New `skilling` bots start with independently varied Woodcutting, Fishing, Mining,
+Smithing, Cooking, Crafting and other skill levels (1–95); their preferred activity
+gets an experienced starting level. Combat-related levels retain the existing
+moderate starting range. Every bot identity rolls the same starter stats each time,
+so startup does not randomly change an existing identity before its saved XP loads.
+
+When `human.routines.expanded=true` (default), the first activity is balanced
+across eligible mining, fishing, woodcutting, smithing, smelting, cooking, crafting
+and other supported skilling kinds, then across locations within each kind.
+Only tasks permitted by the actual levels, membership and configured work-area
+capacity are considered. Basic-routines mode continues to start exclusively in
+mining, fishing and woodcutting. If a first destination is blocked or unsuitable,
+the existing planner falls back to an alternative task.
+
+Existing files under `.data/bots/worldbot_N.properties` are **not reset**:
+their stored XP, inventory, equipment and previous activity still take priority.
+Progressive, PvP and other bot modes keep their existing level and task seeding.
+Do not delete saved profiles unless you explicitly intend to reset their progress.
+
 ## PvM gravestones and recovering bots
 
 Ordinary overworld **PvM deaths** now keep the normal three valuable items (four with
