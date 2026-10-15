@@ -19,6 +19,44 @@ object BotTickWorkCheck {
         check(BotDecisionTiming.retryDelay(10, 9) == 109)
         check(BotDecisionTiming.retryDelay(1, 0) == 10)
 
+        // Travel gets first chance to move and both phases rotate fairly.
+        val population = (0 until 300).toList()
+        val travelSeen = mutableSetOf<Int>()
+        val planningSeen = mutableSetOf<Int>()
+        for (cycle in 0 until 300) {
+            val ordered = BotDecisionScheduling.ordered(population, cycle) { it % 2 == 0 }
+            check(ordered.size == 300 && ordered.toSet() == population.toSet())
+            check(ordered.take(150).all { it % 2 == 0 })
+            check(ordered.drop(150).all { it % 2 == 1 })
+            travelSeen += ordered.first()
+            planningSeen += ordered[150]
+        }
+        check(travelSeen.size == 150 && planningSeen.size == 150) {
+            "Every moving and planning bot must eventually get first access to its budget"
+        }
+        check(BotDecisionScheduling.ordered(emptyList<Int>(), 3) { true }.isEmpty())
+        check(BotDecisionScheduling.ordered(listOf(10, 11), -1) { it == 10 } ==
+            listOf(10, 11))
+
+        // A run of expensive new plans must never drain the separate capped
+        // travel budget; likewise movement must leave planning capacity.
+        var separatedClock = 0L
+        val planning = BotTickWork(maxSearches = 1, maxNanos = 15,
+            clock = { separatedClock })
+        val travelling = BotTickWork(maxSearches = 1, maxNanos = 15,
+            clock = { separatedClock })
+        planning.beginTick()
+        travelling.beginTick()
+        planning.search { separatedClock += 20 }
+        check(!planning.available && travelling.available)
+        travelling.search { separatedClock += 20 }
+        check(!travelling.available)
+        planning.beginTick()
+        travelling.beginTick()
+        check(planning.available && travelling.available)
+        planning.endTick()
+        travelling.endTick()
+
         val resources = listOf("first", "second", "third", "fourth")
         check(BotCandidateOrder.resume(resources, "fourth") { it } ==
             listOf("fourth", "first", "second", "third")) {
@@ -70,6 +108,7 @@ object BotTickWorkCheck {
         occupancy.remove(first)
         check("D" !in occupancy.excluding(null) && "E" !in occupancy.excluding(null))
         occupancy.release(first)
-        println("Bot tick work checks passed: 300-bot staggering, backoff, budgets and live occupancy.")
+        println("Bot tick work checks passed: fair travel-first 300-bot scheduling, " +
+            "independent routing budgets, backoff and live occupancy.")
     }
 }
