@@ -34,6 +34,14 @@ internal object EquipmentStatSupplement {
     ): List<Requirement> =
         requirementsFor(itemId).filter { it.internalName !in nativeSkills }
 
+    fun unmetRequirements(
+        itemId: Int,
+        nativeSkills: Set<String>,
+        baseLevel: (String) -> Int,
+    ): List<Requirement> =
+        additionalRequirements(itemId, nativeSkills)
+            .filter { baseLevel(it.internalName) < it.level }
+
     private fun load(): Map<Int, List<Requirement>> {
         val stream = checkNotNull(EquipmentStatSupplement::class.java.getResourceAsStream(RESOURCE)) {
             "Missing equipment stat supplement resource: $RESOURCE"
