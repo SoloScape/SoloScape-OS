@@ -30,6 +30,7 @@ import org.rsmod.api.script.onOpNpc4
 import org.rsmod.api.script.onOpNpc5
 import org.rsmod.game.MapClock
 import org.rsmod.content.skills.construction.house.HouseStore
+import org.rsmod.api.server.config.ServerConfig
 import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.treeLevelReq
 import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.treeXp
 import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.axeWoodcuttingAnim
@@ -66,6 +67,7 @@ class ForestryEventManager @Inject constructor(
     private val objects: ObjRepository,
     private val xpMods: XpModifiers,
     private val houses: HouseStore,
+    private val serverConfig: ServerConfig,
     flags: CollisionFlagMap,
 ) {
     private val placement = ForestryPlacement(flags)
@@ -147,7 +149,9 @@ class ForestryEventManager @Inject constructor(
             return
         }
         if (!ForestryRations.hasKit(player)) return
-        val choices = ForestryEventType.entries.filter { !it.members || player.members }
+        val choices = ForestryEventType.entries.filter {
+            !it.members || (serverConfig.membersWorld && player.members)
+        }
         val selected = choices[Random.nextInt(choices.size)]
         scheduled[tree] = TreeRoll(tree, selected, type.treeLevelReq, cycle + Random.nextInt(67, 201), cycle)
         if (fallen) attemptSpawn(tree)
@@ -194,7 +198,7 @@ class ForestryEventManager @Inject constructor(
         if (nearby.none { ForestryRations.hasKit(it) }) return
         if (Random.nextInt(100) >= ForestryRules.spawnPercent(roll.level, nearby.size)) return
         val eligible = nearby.filter { history[it]?.eligible(origin, clock.cycle) == true }.toSet()
-        if (roll.type.members && nearby.none { it.members }) return
+        if (roll.type.members && (!serverConfig.membersWorld || nearby.none { it.members })) return
         val event = Event(roll.type, origin, clock.cycle, clock.cycle + roll.type.ticks,
             eligible, nearby.first().coords, nearby.count {
                 history[it]?.activeAt(origin, clock.cycle) == true
@@ -215,8 +219,8 @@ class ForestryEventManager @Inject constructor(
     fun debugSpawn(player: Player, type: ForestryEventType): String? {
         if (active.any { forestryNear(it.origin, player.coords, 30) })
             return "A Forestry event is already active nearby. Wait for it to finish."
-        if (type.members && !player.members)
-            return "That Forestry event is only available to members."
+        if (type.members && (!serverConfig.membersWorld || !player.members))
+            return "That Forestry event is only available on members' worlds."
         // Debug command: treat test participants who are already within event
         // range as active choppers. Live events use their genuine chop history.
         val participants = players.findAll(ZoneKey.from(player.coords), zoneRadius = 4)
