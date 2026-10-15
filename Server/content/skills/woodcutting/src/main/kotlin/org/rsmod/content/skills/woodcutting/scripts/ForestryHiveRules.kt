@@ -36,7 +36,7 @@ internal object ForestryHiveRules {
     fun tier(symbol: String): Int = when (symbol) {
         "obj.logs", "obj.achey_tree_logs" -> 0
         "obj.oak_logs", "obj.willow_logs", "obj.teak_logs", "obj.maple_logs",
-        "obj.mahogany_logs" -> 1
+        "obj.mahogany_logs", "obj.jatoba_logs" -> 1
         else -> 2
     }
 
@@ -59,7 +59,14 @@ internal object ForestryHiveRules {
 
     fun completionBark(random: Random): Int = if (random.nextInt(5) < 2) 25 else 26
 
-    // Published reference gives 222.5 bonus Woodcutting XP at level 50.
+    /**
+     * PROVISIONAL completion XP curve, not the verified Jagex equation.
+     *
+     * This matches the published 222.5 XP at Woodcutting level 50.
+     * The August 2026 Wiki mirror omits the equation itself. Snapshot tests
+     * at 50/60/70/80/90/99 document *our* behaviour, not official values.
+     * Keep this isolated until additional OSRS measurements are available.
+     */
     fun completionXp(level: Int): Double =
         (5.45 * level - 0.02 * level * level).coerceAtLeast(0.0)
 }
