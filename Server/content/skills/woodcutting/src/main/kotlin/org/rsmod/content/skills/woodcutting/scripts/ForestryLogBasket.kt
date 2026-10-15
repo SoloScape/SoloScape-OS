@@ -104,11 +104,12 @@ internal object ForestryLogBasket {
         return moved
     }
 
-    fun consume(player: Player): String? {
+    fun consume(player: Player, requested: String? = null): String? {
         if (!hasBasket(player)) return null
         val values = stored(player).toMutableList()
-        if (values.isEmpty()) return null
-        val log = values.removeAt(0)
+        val index = values.indexOfFirst { requested == null || it == requested }
+        if (index < 0) return null
+        val log = values.removeAt(index)
         save(player, values)
         return log
     }
