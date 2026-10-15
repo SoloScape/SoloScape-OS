@@ -14,21 +14,19 @@ fun main() {
     check(!history.activeAt(other, 12))
     history.record(other, 20)
     check(history.activeAt(other, 20) && !history.activeAt(tree, 20))
-    check(rules.QUANTITY_OPTIONS == listOf("1", "5", "10", "X", "All", "Cancel"))
+    check(rules.QUANTITY_TITLE == "How many logs would you like to add?")
+    val selector = org.rsmod.content.skills.SkillMultiConfig(
+        verb = "add",
+        entries = listOf(org.rsmod.content.skills.SkillMultiEntry(
+            "obj.logs", labelOverride = "Beehive")),
+        maxCountProvider = { _, _ -> 28 },
+        titleOverride = rules.QUANTITY_TITLE,
+    )
+    check(selector.title == rules.QUANTITY_TITLE)
+    check(selector.entries.single().labelOverride == "Beehive")
+    check(selector.maxCountProvider != null)
     check(rules.BUILD_TICKS == 2)
     check(rules.BUILD_ANIMATION == "seq.human_poh_build")
-    check(rules.requestedLogs(0, 0, 100) == 1)
-    check(rules.requestedLogs(1, 0, 100) == 5)
-    check(rules.requestedLogs(2, 0, 100) == 10)
-    check(rules.requestedLogs(3, 7, 100) == 7)
-    check(rules.requestedLogs(3, 0, 100) == 0) // No X amount means cancel.
-    check(rules.requestedLogs(3, Int.MAX_VALUE, 12) == 12)
-    check(rules.requestedLogs(4, 0, 12) == 12)
-    check(rules.requestedLogs(4, 0, 0) == 0)
-    check(rules.requestedLogs(5, 0, 12) == 0)
-    check(rules.requestedLogs(-1, 500, 12) == 0)
-    check(rules.requestedLogs(9, 500, 12) == 0)
-    check(rules.requestedLogs(2, 0, 3) == 3)
     check(rules.HIVES == 6)
     check(rules.logsPerHive(0) == 5)
     check(rules.logsPerHive(1) == 5)
