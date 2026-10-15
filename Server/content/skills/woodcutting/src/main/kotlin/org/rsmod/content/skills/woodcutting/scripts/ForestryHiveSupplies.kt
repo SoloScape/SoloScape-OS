@@ -23,7 +23,9 @@ internal object ForestryHiveSupplies {
             .filterNotNull().map { getInvObj(it).internalName.lowercase() }.toSet()
         for ((storageKey, objectName) in basketContainers) {
             if (carried.none { objectName in it }) continue
-            val storage = player.invMap[storageKey] ?: continue
+            // Older caches have real basket items but no mapped basket inventory.
+            // The persistent ForestryLogBasket attribute is the primary storage.
+            val storage = runCatching { player.invMap[storageKey] }.getOrNull() ?: continue
             if (storage.type.scope == InvScope.Perm) total += count(storage)
         }
         return total
@@ -40,7 +42,9 @@ internal object ForestryHiveSupplies {
             .filterNotNull().map { getInvObj(it).internalName.lowercase() }.toSet()
         for ((storageKey, objectName) in basketContainers) {
             if (equipped.none { objectName in it }) continue
-            val storage = player.invMap[storageKey] ?: continue
+            // Older caches have real basket items but no mapped basket inventory.
+            // The persistent ForestryLogBasket attribute is the primary storage.
+            val storage = runCatching { player.invMap[storageKey] }.getOrNull() ?: continue
             if (storage.type.scope != InvScope.Perm) continue
             take(storage)?.let { return it }
         }
