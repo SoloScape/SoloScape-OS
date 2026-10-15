@@ -82,5 +82,24 @@ fun main() {
     check(ForestryLogBasket.empty(player) == 0)
     check(ForestryLogBasket.consume(player) == "obj.logs")
     check(ForestryLogBasket.count(player) == 0)
+    // A rejected/full-bank transaction must not consume any stored logs.
+    check(ForestryLogBasket.add(player, "obj.logs"))
+    check(ForestryLogBasket.add(player, "obj.magic_logs"))
+    check(ForestryLogBasket.add(player, "obj.oak_logs"))
+    check(ForestryLogBasket.count(player) == 3)
+    var received = 0
+    val moved = ForestryLogBasket.depositToBank(player) {
+        if (received >= 2) false else { received++; true }
+    }
+    check(moved == 2 && received == 2)
+    check(ForestryLogBasket.stored(player) == listOf("obj.oak_logs"))
+    check(ForestryLogBasket.depositToBank(player) { false } == 0)
+    check(ForestryLogBasket.count(player) == 1)
+    val last = mutableListOf<String>()
+    check(ForestryLogBasket.depositToBank(player) { last.add(it) } == 1)
+    check(last == listOf("obj.oak_logs"))
+    check(ForestryLogBasket.count(player) == 0)
+    player.inv[0] = null
+    check(ForestryLogBasket.depositToBank(player) { true } == 0)
     println("Forestry Log Basket checks passed: 28-log shared storage, native open/closed item transformations, worn variant, fill/empty and Beehive consumption.")
 }
