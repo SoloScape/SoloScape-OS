@@ -99,7 +99,7 @@ class ForestryLogBasketScript @Inject constructor(
         }
         if (logs.isEmpty()) return
         val option = menu("Would you like to empty your log basket?",
-            choices = listOf("Empty logs", "Keep logs"))
+            choices = arrayOf("Empty logs", "Keep logs"))
         if (option != 0) return
         val moved = ForestryLogBasket.empty(player)
         mes(if (moved > 0) "You take $moved logs out of your basket."
@@ -109,14 +109,14 @@ class ForestryLogBasketScript @Inject constructor(
     private suspend fun ProtectedAccess.viewBasket() {
         if (!ForestryLogBasket.hasBasket(player)) return
         when (menu("View Forestry basket",
-            choices = listOf("Check log basket", "Cancel"))) {
+            choices = arrayOf("Check log basket", "Cancel"))) {
             0 -> checkBasket()
         }
     }
 
     private suspend fun ProtectedAccess.configureBasket() {
         if (!ForestryLogBasket.hasBasket(player)) return
-        val option = menu("Configure Forestry basket", choices = listOf(
+        val option = menu("Configure Forestry basket", choices = arrayOf(
             if (ForestryLogBasket.isOpen(player)) "Close log basket" else "Open log basket",
             "Check log basket",
             "Cancel",
