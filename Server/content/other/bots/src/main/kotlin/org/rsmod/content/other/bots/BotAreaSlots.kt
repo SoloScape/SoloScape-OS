@@ -35,6 +35,10 @@ internal class BotAreaSlots<Owner : Any>(private val capacity: (BotWorkArea) -> 
 }
 
 internal object BotMovementState {
+    /** Count consecutive unchanged travel decisions so a blocked native route can be retried. */
+    fun nextStall(previous: CoordGrid, current: CoordGrid, stalled: Int): Int =
+        if (previous == current) (stalled + 1).coerceAtMost(20) else 0
+
     fun waiting(pending: Boolean, steps: Int, hasMoved: Boolean, stalled: Int): Boolean =
         (pending || steps > 0) && (hasMoved || stalled < 3)
 }
