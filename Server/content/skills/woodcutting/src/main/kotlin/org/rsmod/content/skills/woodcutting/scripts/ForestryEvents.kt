@@ -194,7 +194,9 @@ class ForestryEventManager @Inject constructor(
         val eligible = nearby.filter { history[it]?.eligible(origin, clock.cycle) == true }.toSet()
         if (roll.type.members && nearby.none { it.members }) return
         val event = Event(roll.type, origin, clock.cycle, clock.cycle + roll.type.ticks,
-            eligible, nearby.first().coords, eligible.size.coerceAtLeast(1))
+            eligible, nearby.first().coords, nearby.count {
+                history[it]?.activeAt(origin, clock.cycle) == true
+            }.coerceIn(1, 10))
         prepare(event)
         if (!playable(event)) {
             discard(event)
