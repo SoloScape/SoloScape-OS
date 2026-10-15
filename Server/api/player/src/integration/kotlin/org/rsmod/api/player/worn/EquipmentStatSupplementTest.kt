@@ -24,7 +24,7 @@ class EquipmentStatSupplementTest {
         assertEquals(40, level(1213, "attack")) // Rune dagger
         assertEquals(40, level(1373, "attack")) // Rune battleaxe
         assertEquals(40, level(1113, "defence")) // Rune chainbody
-        assertEquals(40, level(1079, "defence")) // Rune platelegs
+        assertEquals(30, level(1073, "defence")) // Adamant platelegs
     }
 
     @Test
