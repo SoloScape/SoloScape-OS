@@ -6,6 +6,23 @@ import kotlin.random.Random
 internal object ForestryHiveRules {
     const val HIVES = 6
     const val RESPAWN_TICKS = 3
+    const val BUILD_TICKS = 2
+    const val BUILD_ANIMATION = "seq.human_poh_build"
+    val QUANTITY_OPTIONS = listOf("1", "5", "10", "X", "All", "Cancel")
+
+    /** A cancelled/invalid dialog must never turn into an item-consuming action. */
+    fun requestedLogs(option: Int, entered: Int, available: Int): Int {
+        val requested = when (option) {
+            0 -> 1
+            1 -> 5
+            2 -> 10
+            3 -> entered
+            4 -> available
+            else -> 0
+        }
+        return requested.coerceAtLeast(0).coerceAtMost(available.coerceAtLeast(0))
+    }
+
 
     // Choppers are sampled at event spawn, not from spectators who arrive later.
     // The OSRS wiki confirms scaling to ten choppers but omits the formula in its
