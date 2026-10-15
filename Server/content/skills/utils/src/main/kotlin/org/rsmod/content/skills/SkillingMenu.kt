@@ -54,6 +54,12 @@ data class SkillMultiConfig(
     val entries: List<SkillMultiEntry>,
     val maxCountProvider: ((Inventory, SkillMultiEntry) -> Int)? = null,
     val titleOverride: String? = null,
+    /**
+     * Display a complete quantity bar even if only a few ingredients exist.
+     * The real per-product count still bounds the server-side selection.
+     * Leave zero for ordinary crafting interfaces.
+     */
+    val minimumQuantityDisplay: Int = 0,
 ) {
 
     val title: String
@@ -213,7 +219,10 @@ private fun skillmultiSetupArgs(
     available: List<Pair<SkillMultiEntry, Int>>,
 ): List<Any> {
 
-    val maxCount = available.maxOfOrNull { it.second } ?: 0
+    val maxCount = maxOf(
+        available.maxOfOrNull { it.second } ?: 0,
+        config.minimumQuantityDisplay,
+    )
 
     val itemIds = buildList {
         addAll(available.map { it.first.item.id })
