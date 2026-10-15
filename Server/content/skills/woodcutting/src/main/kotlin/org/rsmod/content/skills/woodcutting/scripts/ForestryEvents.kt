@@ -64,6 +64,7 @@ internal data class ForestryHiveBuildTask(
     val origin: CoordGrid,
     val phase: Int,
     val remaining: Int,
+    val logType: String,
 )
 
 /**
@@ -860,27 +861,31 @@ class ForestryEventManager @Inject constructor(
             return
         }
 
-        val available = ForestryHiveSupplies.availableLogs(player)
-        if (available <= 0) {
+        val available = ForestryHiveSupplies.availableByType(player)
+        if (available.isEmpty()) {
             mes("You need logs in your inventory or log basket to build this beehive.")
             return
         }
         val origin = player.coords
         val phase = e.phase
 
-        // The original game uses the native item/quantity interface: select
-        // 1, 5, X or All, then click the beehive item. Use the same SkillMulti
-        // interface and CS2 scripts as other SoloScape skilling activities.
-        // Prefer a real hive item icon when the cache exposes one.
-        val icon = ForestryAssets.hiveMenuItem()
+        // The OSRS chatbox shows the *logs* the player can use, not a
+        // Beehive/sturdy-parts icon. Include separate entries for each type in
+        // inventory or a real carried/worn log basket.
+        //
+        // The native client hides 5 and X when only a few logs are present.
+        // Display the full quantity bar, but keep all amounts server-clamped
+        // to the real count of the specifically selected log type.
         val config = SkillMultiConfig(
             verb = "add",
-            entries = listOf(SkillMultiEntry(icon, labelOverride = "Beehive")),
+            entries = available.keys.map(::SkillMultiEntry),
             titleOverride = ForestryHiveRules.QUANTITY_TITLE,
-            maxCountProvider = { _, _ -> available },
+            maxCountProvider = { _, entry -> available[entry.internal] ?: 0 },
+            minimumQuantityDisplay = 9,
         )
         openSkillMulti(config) { selection ->
-            startHiveBuild(ForestryHiveBuildTask(target, origin, phase, selection.amount))
+            startHiveBuild(ForestryHiveBuildTask(
+                target, origin, phase, selection.amount, selection.entry.internal))
         }
     }
 
@@ -896,7 +901,7 @@ class ForestryEventManager @Inject constructor(
         if (task.remaining <= 0 ||
             !hiveBuildActive(e, task.hive, task.phase, task.origin) ||
             !isWithinDistance(task.hive, 2) ||
-            ForestryHiveSupplies.availableLogs(player) <= 0) return
+            ForestryHiveSupplies.availableLogs(player, task.logType) <= 0) return
         faceEntitySquare(task.hive)
         anim(ForestryHiveRules.BUILD_ANIMATION)
         soundSynth(ForestryHiveRules.buildSound(e.hiveProgress, e.hiveLogsRequired))
@@ -914,9 +919,9 @@ class ForestryEventManager @Inject constructor(
             resetAnim()
             return
         }
-        if (ForestryHiveSupplies.availableLogs(player) <= 0) {
+        if (ForestryHiveSupplies.availableLogs(player, task.logType) <= 0) {
             resetAnim()
-            mes("You have run out of logs.")
+            mes("You have run out of those logs.")
             return
         }
         val c = contribution(e, player)
@@ -925,10 +930,10 @@ class ForestryEventManager @Inject constructor(
             resetAnim()
             return
         }
-        val before = ForestryHiveSupplies.availableLogs(player)
-        buildHive(e, c)
+        val before = ForestryHiveSupplies.availableLogs(player, task.logType)
+        buildHive(e, c, task.logType)
         if (e.nextHiveAt >= 0 || task.remaining <= 1 ||
-            ForestryHiveSupplies.availableLogs(player) >= before) {
+            ForestryHiveSupplies.availableLogs(player, task.logType) >= before) {
             resetAnim()
             return
         }
@@ -953,10 +958,12 @@ class ForestryEventManager @Inject constructor(
         e.phase == phase && e.nextHiveAt < 0 && hive.isSlotAssigned &&
         e.npcs[hive] == "hive" && player.coords == position
 
-    private fun ProtectedAccess.buildHive(e: Event, c: ForestryContribution) {
+    private fun ProtectedAccess.buildHive(
+        e: Event, c: ForestryContribution, selectedLog: String? = null,
+    ) {
         if (clock.cycle >= e.finish || e.nextHiveAt >= 0 ||
             e.phase >= ForestryHiveRules.HIVES) return
-        val log = ForestryHiveSupplies.consumeLog(player)
+        val log = ForestryHiveSupplies.consumeLog(player, selectedLog)
         if (log == null) {
             mes("You need logs in your inventory or log basket to build this beehive.")
             return
