@@ -31,6 +31,14 @@ fun main() {
     }.id)
     check(ForestryLogBasket.toggleOpen(player))
     check(ForestryLogBasket.isOpen(player))
+    // Item graphic, not a separately persisted flag, controls auto-collection.
+    player.inv[0] = InvObj(ForestryLogBasket.LOG_CLOSED)
+    check(!ForestryLogBasket.isOpen(player))
+    player.inv[0] = InvObj(ForestryLogBasket.LOG_OPEN)
+    check(ForestryLogBasket.isOpen(player))
+    player.inv[0] = InvObj(ForestryLogBasket.LOG_CLOSED)
+    ForestryLogBasket.restoreLegacyOpenState(player)
+    check(ForestryLogBasket.isOpen(player))
 
     player.inv[1] = InvObj("obj.logs")
     player.inv[2] = InvObj("obj.magic_logs")
