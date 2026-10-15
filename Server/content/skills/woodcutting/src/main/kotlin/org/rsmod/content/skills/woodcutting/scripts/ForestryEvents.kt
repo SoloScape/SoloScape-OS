@@ -28,6 +28,7 @@ import org.rsmod.api.script.onOpNpc2
 import org.rsmod.api.script.onOpNpc3
 import org.rsmod.api.script.onOpNpc4
 import org.rsmod.api.script.onOpNpc5
+import org.rsmod.api.script.onPlayerQueueWithArgs
 import org.rsmod.game.MapClock
 import org.rsmod.content.skills.construction.house.HouseStore
 import org.rsmod.content.skills.SkillMultiConfig
@@ -54,6 +55,15 @@ import org.rsmod.map.zone.ZoneKey
 import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
+
+private const val QUEUE_HIVE_BUILD = "queue.forestry_hive_build"
+
+internal data class ForestryHiveBuildTask(
+    val hive: Npc,
+    val origin: CoordGrid,
+    val phase: Int,
+    val remaining: Int,
+)
 
 /**
  * Forestry activity is world-shared, not an independent roll per player.
@@ -845,31 +855,65 @@ class ForestryEventManager @Inject constructor(
             maxCountProvider = { _, _ -> available },
         )
         openSkillMulti(config) { selection ->
-            val c = contribution(e, player)
-            for (i in 0 until selection.amount) {
-                if (!hiveBuildActive(e, target, phase, origin) ||
-                    !isWithinDistance(target, 2)) break
-                if (ForestryHiveSupplies.availableLogs(player) <= 0) {
-                    mes("You have run out of logs.")
-                    break
-                }
-                val wait = c.nextAction - clock.cycle
-                if (wait > 0) delay(wait)
-                if (!hiveBuildActive(e, target, phase, origin) ||
-                    !isWithinDistance(target, 2)) break
-                faceEntitySquare(target)
-                anim(ForestryHiveRules.BUILD_ANIMATION)
-                delay(ForestryHiveRules.BUILD_TICKS)
-                if (!hiveBuildActive(e, target, phase, origin) ||
-                    !isWithinDistance(target, 2)) break
-                if (!c.ready(clock.cycle, ForestryHiveRules.BUILD_TICKS)) continue
-                val remainingBefore = ForestryHiveSupplies.availableLogs(player)
-                buildHive(e, c)
-                if (e.nextHiveAt >= 0 ||
-                    ForestryHiveSupplies.availableLogs(player) == remainingBefore) break
-            }
-            resetAnim()
+            startHiveBuild(ForestryHiveBuildTask(target, origin, phase, selection.amount))
         }
+    }
+
+    /**
+     * Begin after the native Make-X selector has returned. Building uses a
+     * weak skilling queue, just like Fletching, so closing the chatbox doesn't
+     * cancel the action, while moving/starting another action interrupts it.
+     */
+    private fun ProtectedAccess.startHiveBuild(task: ForestryHiveBuildTask) {
+        val e = active.firstOrNull {
+            it.type == ForestryEventType.HIVE && it.npcs[task.hive] == "hive"
+        } ?: return
+        if (!hiveBuildActive(e, task.hive, task.phase, task.origin) ||
+            !isWithinDistance(task.hive, 2) ||
+            ForestryHiveSupplies.availableLogs(player) <= 0) return
+        faceEntitySquare(task.hive)
+        anim(ForestryHiveRules.BUILD_ANIMATION)
+        val queuedBeforeProcessing = player.currentMapClock != player.processedMapClock
+        val compensation = if (queuedBeforeProcessing) 1 else 0
+        weakQueue(QUEUE_HIVE_BUILD, ForestryHiveRules.BUILD_TICKS + compensation, task)
+    }
+
+    fun ProtectedAccess.continueHiveBuild(task: ForestryHiveBuildTask) {
+        val e = active.firstOrNull {
+            it.type == ForestryEventType.HIVE && it.npcs[task.hive] == "hive"
+        }
+        if (e == null || !hiveBuildActive(e, task.hive, task.phase, task.origin) ||
+            !isWithinDistance(task.hive, 2)) {
+            resetAnim()
+            return
+        }
+        if (ForestryHiveSupplies.availableLogs(player) <= 0) {
+            resetAnim()
+            mes("You have run out of logs.")
+            return
+        }
+        val c = contribution(e, player)
+        if (!c.ready(clock.cycle, ForestryHiveRules.BUILD_TICKS)) {
+            // Never let a stale cooldown consume materials at an invalid rate.
+            resetAnim()
+            return
+        }
+        val before = ForestryHiveSupplies.availableLogs(player)
+        buildHive(e, c)
+        if (e.nextHiveAt >= 0 || task.remaining <= 1 ||
+            ForestryHiveSupplies.availableLogs(player) >= before) {
+            resetAnim()
+            return
+        }
+        val rest = task.copy(remaining = task.remaining - 1)
+        if (!hiveBuildActive(e, task.hive, task.phase, task.origin) ||
+            !isWithinDistance(task.hive, 2)) {
+            resetAnim()
+            return
+        }
+        faceEntitySquare(task.hive)
+        anim(ForestryHiveRules.BUILD_ANIMATION)
+        weakQueue(QUEUE_HIVE_BUILD, ForestryHiveRules.BUILD_TICKS, rest)
     }
 
     private fun ProtectedAccess.hiveBuildActive(
@@ -1074,6 +1118,9 @@ class ForestryEventScript @Inject constructor(
     override fun ScriptContext.startup() {
         onEvent<GameLifecycle.LateCycle> { events.tick() }
         onEvent<SessionStateEvent.Logout> { events.onLogout(player) }
+        onPlayerQueueWithArgs<ForestryHiveBuildTask>(QUEUE_HIVE_BUILD) {
+            with(events) { continueHiveBuild(it.args) }
+        }
         onCommand("forestry") {
             desc = "Spawn a Forestry event for developer testing"
             invalidArgs = "Usage: ::forestry ROOTS|SAPLING|ENT|FLOWERS|LEPRECHAUN|HIVE|FOX|RITUAL|PHEASANT"
