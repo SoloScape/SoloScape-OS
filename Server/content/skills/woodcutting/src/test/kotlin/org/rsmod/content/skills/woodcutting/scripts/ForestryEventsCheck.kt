@@ -296,12 +296,12 @@ fun main() {
         var previousParts = 0
         repeat(ForestryHiveRules.HIVES) { round ->
             val hive = f.npc(ForestryAssets.HIVE)
-            check(hive.type.id == 12515)
+            check(hive.visType.id == 12515)
             repeat(ForestryHiveRules.logsPerHive(1)) { index ->
                 f.player.inv[2] = InvObj("obj.logs")
                 f.operate(hive, 1)
                 check(f.player.inv.count("obj.logs") == 0)
-                check(hive.type.id == when {
+                check(hive.visType.id == when {
                     index + 1 == ForestryHiveRules.logsPerHive(1) -> 12517
                     index + 1 >= 5 -> 12516
                     else -> 12515
@@ -339,13 +339,13 @@ fun main() {
             f.operate(hive, 1)
             f.ticks(2)
         }
-        check(hive.type.id == 12516 && f.npcList.any { it === hive })
+        check(hive.visType.id == 12516 && f.npcList.any { it === hive })
         repeat(10) {
             f.player.inv[2] = InvObj("obj.logs")
             f.operate(hive, 1)
             f.ticks(2)
         }
-        check(hive.type.id == 12517)
+        check(hive.visType.id == 12517)
     }
     run {
         val f = ForestryFixture()
