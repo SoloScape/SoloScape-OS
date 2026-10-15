@@ -62,6 +62,9 @@ class WoodcuttingHarvest @Inject constructor(private val xpMods: XpModifiers) {
             source = source,
         )
         if (awardSkillingProduct(product) != SkillingAwardResult.Success) return false
+        // When the basket is open, store only genuine logs already awarded by
+        // the skilling transaction. Never mint a second copy of a harvested log.
+        if (ForestryLogBasket.isOpen(player)) ForestryLogBasket.fill(player)
         if (ration) ForestryRations.consume(player)
         if (name == "obj.crystal_axe" || name == "obj.crystal_axe_2h") {
             WoodcuttingAxes.consume(player, axe)
