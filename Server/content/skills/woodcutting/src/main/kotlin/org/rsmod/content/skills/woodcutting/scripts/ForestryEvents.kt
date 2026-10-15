@@ -6,6 +6,7 @@ import dev.openrune.types.NpcMode
 import dev.openrune.types.ObjectServerType
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
+import kotlin.math.abs
 import kotlin.random.Random
 import org.rsmod.api.game.process.GameLifecycle
 import org.rsmod.api.invtx.invTransfer
@@ -122,6 +123,7 @@ class ForestryEventManager @Inject constructor(
         var hiveProgress = 0
         val hiveLogsRequired = ForestryHiveRules.logsPerHive(activeChoppers)
         var nextHiveAt = -1
+        var nextBeeWanderAt = start + 8
         var emptyNest = Random.nextInt(4)
         var infusedRoot = -1
         var rootPhase = -1
@@ -390,6 +392,24 @@ class ForestryEventManager @Inject constructor(
         }
     }
 
+    private fun wanderBees(e: Event) {
+        val destinations = mutableSetOf<CoordGrid>()
+        for ((bee, role) in e.npcs) {
+            if (role != "friendly-bees" || !bee.isSlotAssigned ||
+                bee.routeDestination.isNotEmpty()) continue
+            for (slot in (0 until 56).shuffled()) {
+                val at = tile(e, slot, bee.size, bee.size) ?: continue
+                if (at in destinations || abs(at.x - bee.coords.x) > 3 ||
+                    abs(at.z - bee.coords.z) > 3) continue
+                val path = placement.path(bee.coords, at) ?: continue
+                if (path.size !in 1..6) continue
+                bee.walk(path)
+                destinations.add(at)
+                break
+            }
+        }
+    }
+
     /** Public NPC headbar: green advances as logs are contributed, red recedes. */
     private fun showHiveProgress(e: Event) {
         val hive = e.npcs.entries.firstOrNull { it.value == "hive" }?.key
@@ -548,30 +568,36 @@ class ForestryEventManager @Inject constructor(
 
     private fun advance(e: Event, now: Int) {
         when (e.type) {
-            ForestryEventType.HIVE -> if (e.nextHiveAt >= 0 && now >= e.nextHiveAt) {
-                e.nextHiveAt = -1
-                if (e.phase >= ForestryHiveRules.HIVES) {
-                    e.completed = true
-                } else {
-                    val previous = e.npcs.entries.firstOrNull { it.value == "hive" }?.key
-                    val fallback = previous?.coords
-                    val type = ForestryAssets.npc(ForestryAssets.HIVE)
-                    val next = type?.let { tile(e, e.phase + 1, it.size, it.size) }
-                    if (previous != null) {
-                        if (previous.isSlotAssigned) npcs.del(previous, Int.MAX_VALUE)
-                        e.npcs.remove(previous)
-                    }
-                    if (type != null) {
-                        val at = next ?: fallback
-                        if (at != null) {
-                            val hive = Npc(type, at)
-                            hive.mode = NpcMode.None
-                            npcs.add(hive, (e.finish - now).coerceAtLeast(1))
-                            e.npcs[hive] = "hive"
-                            showHiveProgress(e)
+            ForestryEventType.HIVE -> {
+                if (e.nextHiveAt >= 0 && now >= e.nextHiveAt) {
+                    e.nextHiveAt = -1
+                    if (e.phase >= ForestryHiveRules.HIVES) {
+                        e.completed = true
+                    } else {
+                        val previous = e.npcs.entries.firstOrNull { it.value == "hive" }?.key
+                        val fallback = previous?.coords
+                        val type = ForestryAssets.npc(ForestryAssets.HIVE)
+                        val next = type?.let { tile(e, e.phase + 1, it.size, it.size) }
+                        if (previous != null) {
+                            if (previous.isSlotAssigned) npcs.del(previous, Int.MAX_VALUE)
+                            e.npcs.remove(previous)
                         }
+                        if (type != null) {
+                            val at = next ?: fallback
+                            if (at != null) {
+                                val hive = Npc(type, at)
+                                hive.mode = NpcMode.None
+                                npcs.add(hive, (e.finish - now).coerceAtLeast(1))
+                                e.npcs[hive] = "hive"
+                                showHiveProgress(e)
+                            }
+                        }
+                        if ("hive" !in e.npcs.values) e.completed = true
                     }
-                    if ("hive" !in e.npcs.values) e.completed = true
+                }
+                if (now >= e.nextBeeWanderAt) {
+                    wanderBees(e)
+                    e.nextBeeWanderAt = now + Random.nextInt(8, 13)
                 }
             }
             ForestryEventType.LEPRECHAUN -> {

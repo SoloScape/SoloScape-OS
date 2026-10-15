@@ -336,6 +336,22 @@ fun main() {
     }
     run {
         val f = ForestryFixture()
+        f.spawn(ForestryEventType.HIVE)
+        val friendly = ForestryAssets.friendlyBees()
+        if (friendly != null) {
+            val bees = f.npcList.filter { it.type.id == friendly.id }
+            check(bees.size == 3)
+            f.ticks(8)
+            check(bees.any { it.routeDestination.isNotEmpty() }) {
+                "Friendly bees should wander during the beehive event"
+            }
+            check(f.npc(ForestryAssets.KEEPER).routeDestination.isEmpty())
+            check(f.npc(ForestryAssets.HIVE).routeDestination.isEmpty())
+        }
+        f.manager.shutdown()
+    }
+    run {
+        val f = ForestryFixture()
         // Use the real stage IDs, not an arbitrary NPC named "Beehive".
         check(ForestryAssets.npc(ForestryAssets.HIVE)?.id == 12515)
         check(ForestryAssets.hiveHalf()?.id == 12516)
@@ -502,5 +518,5 @@ fun main() {
         f.move(f.origin); f.ticks(84)
         check(f.player.statMap.getFineXP("stat.woodcutting") == xp)
     }
-    println("PASS: all nine native spawns and cleanup; reachable placement, roots, visible mulch/egg inventory, ent menus/movement, rainbow bonus, hive/fox actions, ritual healing and pheasant rotation/stuns.")
+    println("PASS: all nine native spawns and cleanup; reachable placement, roots, visible mulch/egg inventory, ent menus/movement, rainbow bonus, hive/fox actions, roaming bees, ritual healing and pheasant rotation/stuns.")
 }
