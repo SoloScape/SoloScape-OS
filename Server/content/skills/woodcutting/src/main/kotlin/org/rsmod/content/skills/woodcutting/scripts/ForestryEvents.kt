@@ -823,7 +823,7 @@ class ForestryEventManager @Inject constructor(
                 give(participant, "obj.forestry_currency",
                     progress.takeBark(ForestryHiveRules.completionBark(Random)))
                 val xp = ForestryHiveRules.completionXp(
-                    participant.statMap.getCurrentLevel("stat.woodcutting"))
+                    participant.statMap.getCurrentLevel("stat.woodcutting").toInt())
                 participant.statAdvance("stat.woodcutting",
                     xp * xpMods.get(participant, "stat.woodcutting"))
                 if (ForestryHiveRules.sturdyPartDrop(Random))
@@ -849,7 +849,8 @@ class ForestryEventManager @Inject constructor(
         val e = active.firstOrNull { target in it.npcs } ?: return
         val role = e.npcs[target] ?: return
         val c = contribution(e, player)
-        if (!c.ready(clock.cycle)) return
+        if (!c.ready(clock.cycle, if (role == "hive" &&
+                e.type == ForestryEventType.HIVE) 2 else 4)) return
         when {
             role == "hive" && e.type == ForestryEventType.HIVE && option == 1 ->
                 buildHive(e, c)
