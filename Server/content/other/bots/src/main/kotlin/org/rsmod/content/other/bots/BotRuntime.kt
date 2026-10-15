@@ -414,7 +414,27 @@ class BotPopulation @Inject constructor(
                     }
                 }
                 bots[player] = bot
-                if (mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
+                if (mode == BotMode.Skilling && restoredTask == null &&
+                    areaSlots.available(player, BotWorkArea.forTask(task))) {
+                    // The opening activity is already level-eligible and balanced at
+                    // spawn. Do not force every fresh skiller through an expensive
+                    // second selection before allowing their first movement.
+                    setTask(bot, task)
+                    val atBank = player.coords.level == task.start.level &&
+                        player.coords.chebyshevDistance(task.start) <= 2
+                    if (atBank) {
+                        bot.phase = BotPhase.Banking
+                    } else {
+                        // Spawn points can be a few tiles from the bank when busy.
+                        // Walk there before trying the bank interaction.
+                        bot.phase = BotPhase.Changing
+                        bot.pathOrigin = player.coords
+                        bot.path = listOf(task.start)
+                        bot.waypoint = 0
+                    }
+                } else if (mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
+                    // Restored activities may be far from this session's spawn point
+                    // and must still be checked for supplies and reachable routes.
                     bot.phase = BotPhase.Planning
                 } else {
                     setTask(bot, task)
@@ -426,7 +446,9 @@ class BotPopulation @Inject constructor(
                 }
                 VarPlayerIntMapSetter.set(player, "varp.option_run", 1)
                 if (mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
-                    bot.nextThink = BotDecisionTiming.next(player.currentMapClock, identity, random.nextInt(1, 15))
+                    // Phase scheduling plus the route budgets already stagger work;
+                    // an extra random 1-15 tick wait delays cold starts unnecessarily.
+                    bot.nextThink = BotDecisionTiming.next(player.currentMapClock, identity, 0)
                 }
                 player.rebuildAppearance()
                 added++
@@ -671,10 +693,18 @@ class BotPopulation @Inject constructor(
     private fun tickBots(cycle: Int) {
         expirePlayerTeamInvitations(cycle)
         val population = bots.values.toList()
-        val start = if (population.isEmpty()) 0 else Math.floorMod(decisionCursor, population.size)
-        for (offset in population.indices) {
-            val index = (start + offset) % population.size
-            val bot = population[index]
+        val travelPhases = setOf(BotPhase.Changing, BotPhase.Outbound, BotPhase.Returning,
+            BotPhase.RecoveringGrave, BotPhase.GraveBanking)
+        // A rotating start position prevents the same handful of bots claiming each
+        // tick's capped native-routing budget. Travel goes ahead of planning, but both
+        // receive their own budget and every bot is still examined every tick.
+        val ordered = BotDecisionScheduling.ordered(population, decisionCursor) {
+            it.phase in travelPhases
+        }
+        if (population.isNotEmpty()) {
+            decisionCursor = (decisionCursor + 1) % population.size
+        }
+        for (bot in ordered) {
             val measured = BotMetrics.measuring
             val tickStart = if (measured) System.nanoTime() else 0L
             try {
@@ -697,9 +727,8 @@ class BotPopulation @Inject constructor(
                 // Handle this before normal work, banking, idle pauses and task interactions.
                 if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive) &&
                     player.hitpoints > 0 && recoverGrave(bot, cycle)) continue
-                actions.beginDecision()
+                actions.beginDecision(travel = bot.phase in travelPhases)
                 if (cycle < bot.nextThink || !actions.decisionAvailable) continue
-                decisionCursor = index + 1
                 bot.nextThink = BotDecisionTiming.next(cycle, bot.identity, 3)
                 if (player.hitpoints <= 0) {
                     actions.release(player)
