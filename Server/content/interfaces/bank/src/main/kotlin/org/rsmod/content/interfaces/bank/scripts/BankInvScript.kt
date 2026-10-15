@@ -39,6 +39,7 @@ import org.rsmod.content.interfaces.bank.configs.bank_comsubs
 import org.rsmod.content.interfaces.bank.configs.bank_constants
 import org.rsmod.content.interfaces.bank.insertMode
 import org.rsmod.content.interfaces.bank.lastQtyInput
+import org.rsmod.content.interfaces.bank.repairBankTabSizes
 import org.rsmod.content.interfaces.bank.leftClickQtyMode
 import org.rsmod.content.interfaces.bank.selectedTab
 import org.rsmod.content.interfaces.bank.setBankWornBonuses
@@ -119,17 +120,21 @@ constructor(
     }
 
     private suspend fun ProtectedAccess.mainInvWithdraw(slot: Int, op: IfButtonOp) {
-        val obj = bank[slot] ?: return resendSlot(bank, 0)
+        // Bank items can outlive the tab-size varbits in older player saves.
+        // Repair missing trailing Main slots *before* the source disappears.
+        player.repairBankTabSizes()
+        val sourceTab = BankTab.forSlot(this, slot) ?: return resendSlot(bank, slot)
+        val obj = bank[slot] ?: return resendSlot(bank, slot)
         val objType = getInvObj(obj)
         if (objType.isPlaceholder) {
             bank[slot] = null
-            notifySlotUpdate(slot)
+            notifySlotUpdate(sourceTab)
             return
         } else if (objType.isType("obj.bank_filler")) {
             if (op == IfButtonOp.Op7) {
                 bank[slot] = null
                 soundSynth("synth.paper_turn")
-                notifySlotUpdate(slot)
+                notifySlotUpdate(sourceTab)
             } else if (op == IfButtonOp.Op8) {
                 removeFillers()
             }
@@ -182,7 +187,7 @@ constructor(
         }
 
         if (bank[slot] == null) {
-            notifySlotUpdate(slot)
+            notifySlotUpdate(sourceTab)
         }
 
         setBanksideExtraOps()
@@ -864,7 +869,7 @@ constructor(
             mes("You don't have any placeholders to release.")
             return
         }
-        notifySlotUpdate(slots.first)
+        notifySlotUpdate(tab)
     }
 
     private fun ProtectedAccess.removePlaceholders() {
@@ -973,12 +978,6 @@ constructor(
         if (selectedTab == tab) {
             selectedTab = BankTab.Main
         }
-    }
-
-    private fun ProtectedAccess.notifySlotUpdate(slot: Int) {
-        val tab = BankTab.forSlot(this, slot)
-        checkNotNull(tab) { "`slot` was not associated with a valid bank tab: $slot" }
-        notifySlotUpdate(tab)
     }
 
     private fun ProtectedAccess.notifySlotUpdate(tab: BankTab) {
