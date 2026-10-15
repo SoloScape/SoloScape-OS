@@ -14,7 +14,7 @@ import org.rsmod.game.stat.PlayerSkillXPTable
 
 class BotProfileStore(private val directory: Path = Path.of(".data", "bots")) {
     fun load(player: Player): String? {
-        val file = path(player.username)
+        val file = resolveProfile(player)
         if (!Files.isRegularFile(file)) return null
         val data = Properties().apply { Files.newInputStream(file).use { load(it) } }
         for (skill in BotSkills.all) {
@@ -38,7 +38,7 @@ class BotProfileStore(private val directory: Path = Path.of(".data", "bots")) {
     }
 
     fun loadGoal(player: Player): BotTrainingGoal? {
-        val file = path(player.username)
+        val file = resolveProfile(player)
         if (!Files.isRegularFile(file)) return null
         val data = Properties().apply { Files.newInputStream(file).use { load(it) } }
         return BotTrainingGoal.parse(data.getProperty("goal"))
@@ -48,6 +48,8 @@ class BotProfileStore(private val directory: Path = Path.of(".data", "bots")) {
         Files.createDirectories(directory)
         val data = Properties()
         data.setProperty("snapshot.version", "2")
+        data.setProperty("profile.username", player.username)
+        data.setProperty("profile.display-name", player.displayName)
         for (skill in BotSkills.all) data.setProperty(skill, player.statMap.getFineXP(skill).toString())
         task?.let { data.setProperty("task", it) }
         goal?.let { data.setProperty("goal", it.toString()) }
@@ -55,7 +57,7 @@ class BotProfileStore(private val directory: Path = Path.of(".data", "bots")) {
         capture(player.inv, data, "inv")
         capture(bank, data, "bank")
         capture(player.worn, data, "worn")
-        val file = path(player.username)
+        val file = resolveProfile(player)
         val temporary = Files.createTempFile(directory, "bot-", ".tmp")
         try {
             Files.newOutputStream(temporary).use { data.store(it, "SoloScape progressive bot") }
@@ -69,9 +71,72 @@ class BotProfileStore(private val directory: Path = Path.of(".data", "bots")) {
         }
     }
 
-    private fun path(username: String): Path {
-        require(username.matches(Regex("[a-z0-9_]+")))
+    /**
+     * The first catalogue use of a display name gets a plain readable filename.
+     * Repeated names (and later recycled identities) keep the name first but add
+     * an ID suffix to avoid overwriting somebody else's progress.
+     */
+    internal fun profilePath(player: Player): Path {
+        val name = player.displayName.trim()
+        require(name.isNotEmpty() && name.length <= 80 &&
+            name.matches(Regex("[A-Za-z0-9][A-Za-z0-9 _-]*"))) {
+            "Unsafe bot display name for profile filename: $name"
+        }
+        val id = player.username.removePrefix("worldbot_").toIntOrNull()
+            ?.takeIf { player.username == "worldbot_$it" && it > 0 }
+        val expected = id?.let { SourceBotCatalog.names.getOrNull((it - 1) % SourceBotCatalog.names.size) }
+        val first = SourceBotCatalog.names.indexOfFirst { it.equals(name, ignoreCase = true) }
+        val reserved = name.uppercase() in setOf("CON", "PRN", "AUX", "NUL") ||
+            Regex("(?i)(COM|LPT)[1-9]").matches(name)
+        val needsSuffix = reserved || (id != null &&
+            (expected == null || !expected.equals(name, ignoreCase = true) ||
+                first != (id - 1)))
+        val filename = if (needsSuffix) "$name (\${player.username})" else name
+        return directory.resolve("$filename.properties")
+    }
+
+    private fun legacyPath(username: String): Path {
+        require(username.matches(Regex("[a-z0-9_]+"))) { "Invalid internal bot ID" }
         return directory.resolve("$username.properties")
+    }
+
+    private fun read(file: Path): Properties =
+        Properties().apply { Files.newInputStream(file).use { load(it) } }
+
+    /** Migrate only this internal ID's old save. Never overwrite a differently owned save. */
+    private fun resolveProfile(player: Player): Path {
+        val named = profilePath(player)
+        if (Files.exists(named)) {
+            check(Files.isRegularFile(named)) { "Bot profile path is not a file: $named" }
+            val owner = read(named).getProperty("profile.username")
+            check(owner == player.username) {
+                "Bot profile filename collision at $named (owner=$owner, requested=\${player.username})"
+            }
+            return named
+        }
+        val old = legacyPath(player.username)
+        if (!Files.isRegularFile(old)) return named
+
+        val data = read(old)
+        data.setProperty("profile.username", player.username)
+        data.setProperty("profile.display-name", player.displayName)
+        Files.createDirectories(directory)
+        val temporary = Files.createTempFile(directory, "bot-migrate-", ".tmp")
+        try {
+            Files.newOutputStream(temporary).use { data.store(it, "SoloScape bot profile") }
+            // The old file is deleted only after its full contents are written under
+            // the new name; no merge or overwrite of any existing named profile.
+            check(!Files.exists(named)) { "Bot profile filename already exists: $named" }
+            try {
+                Files.move(temporary, named, StandardCopyOption.ATOMIC_MOVE)
+            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                Files.move(temporary, named)
+            }
+            Files.delete(old)
+        } finally {
+            Files.deleteIfExists(temporary)
+        }
+        return named
     }
 
     private fun capture(inv: Inventory, data: Properties, prefix: String) {
