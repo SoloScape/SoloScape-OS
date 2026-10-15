@@ -303,7 +303,10 @@ class BotPopulation @Inject constructor(
                 BotPvpDifficulty.Standard
             }
             val name = SourceBotCatalog.names[(identity - 1) % SourceBotCatalog.names.size]
-            val initial = initialTask(mode) ?: return added
+            // Skilling levels must be generated before selecting an eligible opening
+            // activity. Other bot types retain their existing initial-task behaviour.
+            val preset = if (mode == BotMode.Skilling) null else
+                (initialTask(mode) ?: return added)
             val occupancy = if (mode == BotMode.Wilderness) {
                 bots.values.asSequence()
                     .filter { it.mode == BotMode.Wilderness }
@@ -361,11 +364,17 @@ class BotPopulation @Inject constructor(
                     }
                     BotMode.ClanOne -> CoordGrid(3217, 3682)
                     BotMode.ClanTwo -> CoordGrid(3232, 3682)
-                    BotMode.Skilling, BotMode.Progressive ->
-                        actions.spawnPoint(initial.start) ?: return added
-                    else -> initial.start
+                    BotMode.Skilling -> CoordGrid.ZERO // replaced before attaching a session
+                    BotMode.Progressive ->
+                        actions.spawnPoint(checkNotNull(preset).start) ?: return added
+                    else -> checkNotNull(preset).start
                 }
                 runEnergy = 10000
+            }
+            if (mode == BotMode.Skilling) initializeLevels(player, mode, null, identity)
+            val initial = preset ?: (initialTask(mode, player) ?: return added)
+            if (mode == BotMode.Skilling) {
+                player.coords = actions.spawnPoint(initial.start) ?: return added
             }
             sessions.attach(player)
             if (!registry.add(player).isSuccess()) {
@@ -377,7 +386,7 @@ class BotPopulation @Inject constructor(
                     BotAppearance.assign(player.appearance, identity)
                     supplies.setOutfitIdentity(player, identity)
                 }
-                initializeLevels(player, mode, initial)
+                if (mode != BotMode.Skilling) initializeLevels(player, mode, initial, identity)
                 if (mode.isPvp) {
                     check(pvpCombat.register(player, identity, effectiveDifficulty, hotspot?.id)) {
                         "Unable to seed PvP bot loadout"
@@ -464,38 +473,64 @@ class BotPopulation @Inject constructor(
         }
     }
 
-    private fun initialTask(mode: BotMode): BotTaskDefinition? {
-        val kind = when (mode) {
+    private fun initialTask(mode: BotMode, player: Player? = null): BotTaskDefinition? {
+        val kinds = when (mode) {
             BotMode.Trade -> setOf(BotTaskKind.Trade)
             BotMode.DropParty -> setOf(BotTaskKind.DropParty)
             BotMode.Combat, BotMode.Wilderness, BotMode.ClanOne, BotMode.ClanTwo ->
                 setOf(BotTaskKind.Combat)
+            BotMode.Skilling -> if (configured.getProperty("human.routines.expanded", "true")
+                    .toBoolean()) BotRoutinePlanner.expandedKinds else BotRoutinePlanner.basicKinds
             else -> setOf(BotTaskKind.Mining, BotTaskKind.Fishing, BotTaskKind.Woodcutting)
         }
-        val all = SourceBotCatalog.tasks.filter { it.kind in kind &&
+        val all = SourceBotCatalog.tasks.filter { it.kind in kinds &&
             (configured.getProperty("members", "true").toBoolean() || !it.members) }
-        return if (mode == BotMode.Progressive) {
-            all.firstOrNull { it.id == "DraynorTreeWoodcutting" }
-        } else if (mode == BotMode.Skilling) {
-            val occupancy = bots.values.groupingBy { it.task.id }.eachCount()
-            BotTaskPlanner.selectBalanced(all, occupancy, random)
-        } else all.randomOrNull(random)
+        return when (mode) {
+            BotMode.Progressive -> all.firstOrNull { it.id == "DraynorTreeWoodcutting" }
+            BotMode.Skilling -> {
+                val skiller = checkNotNull(player)
+                val levels = BotSkills.levels(skiller)
+                // Count bots still waiting to plan as well as bots with reserved area
+                // slots. This stops startup from placing too many players at one bank.
+                val areaCounts = bots.values.asSequence().filter { it.mode == BotMode.Skilling }
+                    .groupingBy { BotWorkArea.forTask(it.task) }.eachCount()
+                val eligible = all.filter { task ->
+                    if (!BotTaskPlanner.available(task, levels, skiller.members)) return@filter false
+                    val area = BotWorkArea.forTask(task)
+                    val limit = configured.getProperty("area.capacity.${area.x},${area.z},${area.level}",
+                        configured.getProperty("area.capacity", "16"))
+                        .toIntOrNull()?.coerceIn(0, MAX_BOTS) ?: 16
+                    limit == 0 || (areaCounts[area] ?: 0) < limit
+                }
+                val present = bots.values.filter { it.mode == BotMode.Skilling }
+                BotTaskPlanner.selectStarting(
+                    eligible,
+                    present.groupingBy { it.task.kind }.eachCount(),
+                    present.groupingBy { it.task.id }.eachCount(),
+                    random,
+                )
+            }
+            else -> all.randomOrNull(random)
+        }
     }
 
-    private fun initializeLevels(player: Player, mode: BotMode, task: BotTaskDefinition) {
+    private fun initializeLevels(player: Player, mode: BotMode,
+                                 task: BotTaskDefinition?, identity: Int) {
+        val initial = if (mode == BotMode.Skilling) {
+            BotStartingSkills.levels(identity, BotHumanity.personality(identity).focus)
+        } else emptyMap()
         for (skill in BotSkills.all) {
-            val bare = skill.removePrefix("stat.").let { if (it == "runecraft") "runecrafting" else it }
-            val base = if (mode == BotMode.Progressive) {
-                if (bare == "hitpoints") 10 else 1
-            } else {
-                maxOf(task.requiredLevels[bare] ?: 1,
-                    if (bare == task.skill) task.minimumLevel else 1,
-                    if (bare == "hitpoints") 30 else 1,
-                    random.nextInt(30, 80))
+            val bare = skill.removePrefix("stat.").let {
+                if (it == "runecraft") "runecrafting" else it
             }
-            val level = if (mode == BotMode.Skilling && bare == task.skill) {
-                base.coerceIn(task.minimumLevel, task.maximumLevel)
-            } else base.coerceIn(1, 99)
+            val base = when (mode) {
+                BotMode.Progressive -> if (bare == "hitpoints") 10 else 1
+                BotMode.Skilling -> initial.getValue(bare)
+                else -> maxOf(checkNotNull(task).requiredLevels[bare] ?: 1,
+                    if (bare == task.skill) task.minimumLevel else 1,
+                    if (bare == "hitpoints") 30 else 1, random.nextInt(30, 80))
+            }
+            val level = base.coerceIn(1, 99)
             player.statMap.setFineXP(skill, PlayerSkillXPTable.getFineXPFromLevel(level))
             player.statMap.setBaseLevel(skill, level.toByte())
             player.statMap.setCurrentLevel(skill, level.toByte())
@@ -578,7 +613,12 @@ class BotPopulation @Inject constructor(
                 bot.nextThink = BotDecisionTiming.next(player.currentMapClock, bot.identity)
                 return false
             }
-            val next = if (humanBehaviourEnabled) {
+            // The first activity was already spread across eligible kinds at spawn.
+            // Honour it when reachable, then use normal weighted replanning.
+            val next = if (bot.startedAt == 0 && bot.mode == BotMode.Skilling &&
+                remaining.any { it.id == bot.task.id }) {
+                remaining.first { it.id == bot.task.id }
+            } else if (humanBehaviourEnabled) {
                 BotHumanity.chooseTask(remaining.filter {
                     bot.mode != BotMode.Progressive ||
                         BotTaskPlanner.available(it, levels, player.members)
