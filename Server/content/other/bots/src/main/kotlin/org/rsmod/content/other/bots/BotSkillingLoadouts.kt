@@ -2,6 +2,9 @@ package org.rsmod.content.other.bots
 
 /** Ordinary, uncharged tools: no quest, charge or special-tool prerequisites. */
 internal object BotSkillingLoadouts {
+    // Matches the live Forestry system's worn back-slot item without depending on a
+    // woodcutting implementation class in the separately compiled bot test module.
+    const val FORESTRY_BACKPACK = "obj.forestry_kit"
     private data class Tier(val metal: String, val skill: Int, val attack: Int)
 
     private val tiers = listOf(
@@ -24,15 +27,31 @@ internal object BotSkillingLoadouts {
     fun outfit(task: BotTaskDefinition, levels: Map<String, Int>, style: Int): List<String> {
         val level = levels[task.skill] ?: 1
         val members = levels["members"] == 1
-        val experienced = members && level >= 40
-        val variant = style.mod(3)
+        val variant = style.mod(12)
+        // Most experienced characters own skill outfits; some still use ordinary clothing.
+        val experienced = members && level >= 40 && variant !in setOf(5, 8, 11)
         val clothes = when (task.kind) {
             BotTaskKind.Woodcutting -> if (experienced && level >= 44) set("ramble_lumberjack") else
-                listOf("obj.leather_armour", "obj.leather_chaps", "obj.leather_boots")
+                when (variant % 4) {
+                    0 -> listOf("obj.leather_armour", "obj.leather_chaps", "obj.leather_boots")
+                    1 -> listOf("obj.brown_apron", "obj.leather_chaps", "obj.leather_boots")
+                    2 -> if (members)
+                        listOf("obj.desert_shirt", "obj.desert_robe", "obj.leather_boots") else
+                        listOf("obj.leather_armour", "obj.leather_chaps", "obj.leather_boots")
+                    else -> if (members)
+                        listOf("obj.leather_armour", "obj.desert_robe", "obj.leather_boots") else
+                        listOf("obj.brown_apron", "obj.leather_chaps", "obj.leather_boots")
+                }
             BotTaskKind.Mining -> if (experienced) set("motherlode_reward") else
-                listOf("obj.brown_apron", "obj.leather_chaps", "obj.leather_boots")
-            BotTaskKind.Fishing -> if (experienced) set("trawler_reward") else if (members)
-                listOf("obj.desert_shirt", "obj.desert_robe", "obj.leather_boots") else
+                when (variant % 3) {
+                    0 -> listOf("obj.brown_apron", "obj.leather_chaps", "obj.leather_boots")
+                    1 -> listOf("obj.leather_armour", "obj.leather_chaps", "obj.leather_boots")
+                    else -> if (members)
+                        listOf("obj.brown_apron", "obj.desert_robe", "obj.leather_boots") else
+                        listOf("obj.brown_apron", "obj.leather_chaps", "obj.leather_boots")
+                }
+            BotTaskKind.Fishing -> if (experienced) set("trawler_reward") else if (members &&
+                variant % 2 == 0) listOf("obj.desert_shirt", "obj.desert_robe", "obj.leather_boots") else
                 listOf("obj.leather_armour", "obj.leather_chaps", "obj.leather_boots")
             BotTaskKind.Cooking -> listOf("obj.chefs_hat", "obj.white_apron",
                 "obj.leather_chaps", "obj.leather_boots")
@@ -49,11 +68,13 @@ internal object BotSkillingLoadouts {
                 listOf("obj.brown_apron", "obj.leather_chaps", "obj.leather_boots")
         }
         val cape = when {
+            // This back-slot kit is the forester's backpack: every woodcutter wears one,
+            // including F2P characters and level-99 woodcutters who own a skillcape.
+            task.kind == BotTaskKind.Woodcutting -> FORESTRY_BACKPACK
             members && level >= 99 && task.skill != null -> "obj.skillcape_${task.skill}"
             task.kind in setOf(BotTaskKind.Fishing, BotTaskKind.Cooking,
                 BotTaskKind.Smelting, BotTaskKind.Smithing) -> null
-            variant == 0 -> when (task.kind) {
-                BotTaskKind.Woodcutting -> "obj.green_cape"
+            variant in setOf(0, 3, 7) -> when (task.kind) {
                 BotTaskKind.Runecrafting -> "obj.blue_cape"
                 else -> "obj.black_cape"
             }

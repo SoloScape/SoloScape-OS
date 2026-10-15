@@ -14,12 +14,13 @@ import kotlin.io.path.writeText
 /**
  * Experience rate settings, read from `xp-rates.yml` next to `game.yml`.
  *
- * @param rate The per-player experience multiplier. `1.0` is authentic Old School RuneScape.
- * @param globalRate A second multiplier compounded on top of [rate], meant for temporary
- *   server-wide events such as a double xp weekend.
- * @param enforceOnLogin When `true`, [rate] is written onto every character as they log in,
- *   replacing whatever rate is stored on their account. Turn this off if you hand out individual
- *   rates with `::setxprate` and want them to stick.
+ * @param globalOnly When `true` (default), `global-rate` is the **only** XP multiplier for
+ *   every real player and simulated bot. Personal multipliers are fixed at 1x, including old
+ *   account rates and bot respawns.
+ * @param rate Legacy per-player experience multiplier, applied only if [globalOnly] is false.
+ * @param globalRate Server-wide XP multiplier applied to all players and bots.
+ * @param enforceOnLogin Legacy setting controlling whether [rate] overrides stored personal rates
+ *   when [globalOnly] is false. It cannot override the global-only policy.
  * @param resetExistingLevels When `true`, each character has their skills reset to fresh-account
  *   values the first time they log in, to clear levels earned at an old inflated rate. This is
  *   destructive and irreversible, so it defaults to `false`. Every character is flagged once it has
@@ -29,6 +30,7 @@ import kotlin.io.path.writeText
 data class XpRateConfig(
     val rate: Double = AUTHENTIC_RATE,
     @JsonProperty("global-rate") val globalRate: Double = AUTHENTIC_RATE,
+    @JsonProperty("global-only") val globalOnly: Boolean = true,
     @JsonProperty("enforce-on-login") val enforceOnLogin: Boolean = true,
     @JsonProperty("reset-existing-levels") val resetExistingLevels: Boolean = false,
 ) {
@@ -105,17 +107,19 @@ class XpRateConfigLoader {
             #   https://oldschool.runescape.wiki/w/Experience
             #   https://oldschool.runescape.wiki/w/Skills
             #
-            # `rate` is each player's personal multiplier. It is stored on the character, so it can
-            # also be set per player in game with `::setxprate <rate> [player]`.
-            rate: 1.0
-
-            # `global-rate` is compounded on top of `rate` and applies to everyone. It is meant for
-            # temporary events like a double xp weekend - set it to 2.0, then back to 1.0 after.
+            # This is the only XP rate used by all real players and bots when global-only is true.
+            # Set to 5.0 for 5x XP, or 1.0 for authentic OSRS XP.
             global-rate: 1.0
 
-            # Re-apply `rate` to every character as they log in, replacing the rate stored on their
-            # account. Leave this on to keep the whole server at `rate`; turn it off if you want
-            # `::setxprate` to grant lasting per-player rates.
+            # Prevent stored personal rates (including legacy 150x realm defaults) from stacking
+            # on top of the global rate. Applies instantly to newly registered bots and players.
+            global-only: true
+
+            # Legacy per-character XP rate. Ignored when global-only is true.
+            rate: 1.0
+
+            # Legacy option. Only used when global-only is false; then it overrides personal XP
+            # multipliers on player login, and permits ::setxprate to change individual rates.
             enforce-on-login: true
 
             # Wipe levels that were earned at an old, inflated rate.
@@ -126,7 +130,7 @@ class XpRateConfigLoader {
             # character and is safe to leave on afterwards.
             #
             # THIS IS DESTRUCTIVE AND CANNOT BE UNDONE. Turn it on deliberately, once, after you
-            # have settled on `rate` above. `::resetxp [player]` and `::resetxpall` do the same
+            # have settled on `global-rate` above. `::resetxp [player]` and `::resetxpall` do the same
             # thing on demand if you would rather pick who and when.
             reset-existing-levels: false
             """

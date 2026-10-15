@@ -269,9 +269,12 @@ public class BotSocial @Inject constructor(
         if (speaker in bots) return
         val text = message.trim().lowercase()
         val levels = text in LEVEL_REQUESTS
+        val greeting = text in GREETINGS
         val trading = text.startsWith("buy") || text.startsWith("sell")
-        if (!levels && !trading) return
-        for (bot in bots) {
+        if (!levels && !trading && !greeting) return
+        var responseCount = 0
+        // A whole crowd answering in unison is the opposite of believable chat.
+        for (bot in bots.shuffled()) {
             if (bot === speaker || !nearby(speaker, bot, 15) || bot in replies ||
                 cycle - (lastChat[bot] ?: -100) < 10
             ) continue
@@ -287,6 +290,8 @@ public class BotSocial @Inject constructor(
                     val strength = bot.statMap.getBaseLevel("stat.strength").toInt()
                     "atk: $attack def: $defence str: $strength"
                 }
+            } else if (greeting && Random.nextInt(4) == 0) {
+                response = listOf("hey", "hi", "yo", "hey there").random()
             } else if (trading && Random.nextInt(3) == 0) {
                 val offer = offers[bot] ?: continue
                 if (offer.remaining <= 0) continue
@@ -299,7 +304,11 @@ public class BotSocial @Inject constructor(
                     "${offer.remaining} ${item.name} ${offer.unitPrice}gp ea. " +
                     "::bottrade ${bot.username} <quantity>"
             }
-            if (response != null) replies[bot] = Reply(speaker, response, cycle + Random.nextInt(3, 6))
+            if (response != null) {
+                replies[bot] = Reply(speaker, response, cycle + Random.nextInt(3, 8))
+                responseCount++
+                if (responseCount >= if (levels) 2 else 1) break
+            }
         }
     }
 
@@ -324,6 +333,7 @@ public class BotSocial @Inject constructor(
     }
 
     private companion object {
+        val GREETINGS = setOf("hi", "hey", "hello", "hiya", "yo", "sup")
         val LEVEL_REQUESTS = setOf(
             "lvls?", "lvls", "lvl?", "lvl", "levels?", "levels", "level?", "level",
         )

@@ -1,0 +1,10 @@
+{
+  "revision": "5144f569d41a7c2cf77f2b44a8d6e5bca41366d0",
+  "version": "1.0.0-ALPHA-20260912",
+  "sources": {
+    "playerinfo/PlayerInfoProtocol.kt": "cdbce929d1e4634717c85c64cc78bba7ff7e028e05f85fcc2ca5c73467e2ebb5",
+    "npcinfo/NpcInfoProtocol.kt": "f572f0104933a1ad5e64ee4aaacb9e7417076a29047165ab23530e305c61ad1e",
+    "worldentityinfo/WorldEntityProtocol.kt": "7c11a52f13aea7800261cad8e4d2fb8d1c377a48b049711eb06fa6b31be1610e"
+  },
+  "modelSha256": "ee14b464bf851370c216e63e7d0ed98e1a01cfba83ade89493d948dd29da1e66"
+}

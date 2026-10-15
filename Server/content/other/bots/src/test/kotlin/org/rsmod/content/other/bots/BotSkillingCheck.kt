@@ -30,12 +30,69 @@ object BotSkillingCheck {
     @JvmStatic
     fun main(args: Array<String>) {
         ServerCacheManager.init(240).close()
+        val startSkills = listOf("woodcutting", "fishing", "smithing", "mining",
+            "cooking", "crafting", "runecrafting")
+        val profiles = (1..128).map { identity ->
+            val focus = BotHumanity.personality(identity).focus
+            val levels = BotStartingSkills.levels(identity, focus)
+            check(levels == BotStartingSkills.levels(identity, focus))
+            check(levels.keys == BotSkills.all.map { it.removePrefix("stat.") }.toSet())
+            check(startSkills.all { (levels[it] ?: 0) in 1..95 })
+            check(startSkills.map { levels.getValue(it) }.distinct().size >= 4) {
+                "Skiller $identity lacks independent starting skill levels"
+            }
+            levels
+        }
+        check(startSkills.all { skill ->
+            profiles.map { it.getValue(skill) }.distinct().size > 25
+        }) { "Starting skills must vary substantially between bot identities" }
+        val openingTasks = SourceBotCatalog.tasks.filter {
+            it.kind in BotRoutinePlanner.expandedKinds
+        }
+        val openingKinds = HashMap<BotTaskKind, Int>()
+        val openingLocations = HashMap<String, Int>()
+        for (identity in 1..128) {
+            val skillLevels = profiles[identity - 1]
+            val skiller = Player()
+            for ((skill, level) in skillLevels) {
+                skiller.statMap.setBaseLevel("stat.$skill", level.toByte())
+            }
+            skiller.appearance.combatLevel =
+                org.rsmod.api.player.stat.PlayerSkillXP.calculateCombatLevel(skiller)
+            val eligible = openingTasks.filter {
+                BotTaskPlanner.available(it, BotSkills.levels(skiller), members = true)
+            }
+            val first = checkNotNull(BotTaskPlanner.selectStarting(
+                eligible, openingKinds, openingLocations, kotlin.random.Random(identity),
+            )) { "No eligible opening task for skiller $identity" }
+            check(BotTaskPlanner.available(first, BotSkills.levels(skiller), true))
+            openingKinds[first.kind] = (openingKinds[first.kind] ?: 0) + 1
+            openingLocations[first.id] = (openingLocations[first.id] ?: 0) + 1
+        }
+        check(openingKinds.keys.containsAll(setOf(BotTaskKind.Woodcutting,
+            BotTaskKind.Fishing, BotTaskKind.Mining, BotTaskKind.Smithing))) {
+            "Opening tasks must cover distinct skills: $openingKinds"
+        }
+        val stats = org.rsmod.game.stat.PlayerStatMap()
+        stats.setBaseLevel("stat.mining", 2)
+        check(stats.levelVersion == 1L)
+        stats.setBaseLevel("stat.mining", 2)
+        stats.setFineXP("stat.mining", 100)
+        stats.setCurrentLevel("stat.mining", 3)
+        check(stats.levelVersion == 1L)
+        stats.setBaseLevel("stat.mining", 3)
+        check(stats.levelVersion == 2L)
         val events = EventBus()
         with(InvTransactionsScript(PlayerItemStorage(emptySet()))) {
             ScriptContext(events, CheatCommandMap(), EngineQueueCache()).startup()
         }
         val supplies = BotSupplies(HeldEquipOp(events, PlayerRestrictions(emptySet())),
             WornUnequipOp(events))
+        // The forestry backpack must exist in the installed cache and use the back slot.
+        val forestryKit = checkNotNull(ServerCacheManager.getItem(BotSkillingLoadouts.FORESTRY_BACKPACK.asRSCM()))
+        check(forestryKit.isEquipable && forestryKit.wearpos1 == Wearpos.Back.slot) {
+            "Forestry kit must be a wearable backpack"
+        }
         for (name in listOf("Oak tree", "Willow tree", "Yew tree", "Magic tree")) {
             val types = ServerCacheManager.getObjects().values.filter {
                 it.name.equals(name, true) && it.actions.getOpOrNull(0).equals("Chop down", true)
@@ -130,6 +187,11 @@ object BotSkillingCheck {
                     "${task.id} outfit missing torso: inv=${player.inv.objs.filterNotNull().map { getInvObj(it).name }} worn=${player.worn.objs.filterNotNull().map { getInvObj(it).name }}"
                 }
                 check(player.worn[Wearpos.Legs.slot] != null)
+                if (task.kind == BotTaskKind.Woodcutting) {
+                    check(player.worn[Wearpos.Back.slot]?.id == forestryKit.id) {
+                        "Woodcutting starter did not equip the Forestry backpack"
+                    }
+                }
                 val tool = player.worn[Wearpos.RightHand.slot]?.let(::getInvObj)?.name
                 check(tool == when (task.kind) {
                     BotTaskKind.Woodcutting -> "$metal axe"
@@ -168,18 +230,29 @@ object BotSkillingCheck {
                                 "obj.leather_chaps", "obj.leather_boots", "obj.brown_apron",
                                 "obj.white_apron", "obj.chefs_hat", "obj.leather_vambraces",
                                 "obj.wizards_robe", "obj.blue_skirt", "obj.bluewizhat",
-                                "obj.green_cape", "obj.blue_cape", "obj.black_cape",
-                                "obj.tiara_air", "obj.tiara_mind", "obj.tiara_water",
+                                BotSkillingLoadouts.FORESTRY_BACKPACK, "obj.green_cape", "obj.blue_cape",
+                                "obj.black_cape", "obj.tiara_air", "obj.tiara_mind", "obj.tiara_water",
                                 "obj.tiara_earth", "obj.tiara_fire", "obj.tiara_body"))
                         }
                         check(outfit.any { it.startsWith("obj.skillcape_") } ==
-                            (members && level == 99 && task.skill != null))
+                            (members && level == 99 && task.skill != null &&
+                                task.kind != BotTaskKind.Woodcutting))
+                        if (task.kind == BotTaskKind.Woodcutting) {
+                            check(outfit.count { it == BotSkillingLoadouts.FORESTRY_BACKPACK } == 1) {
+                                "All Woodcutting outfits must include the Forestry backpack"
+                            }
+                        }
                     }
                     check(supplies.equipOutfit(player, task)) {
                         "${task.id} outfit failed at $level, members=$members"
                     }
                     check(player.worn[Wearpos.Torso.slot]?.id != "obj.iron_chainbody".asRSCM())
                     check(player.worn[Wearpos.Back.slot]?.id != "obj.red_cape".asRSCM())
+                    if (task.kind == BotTaskKind.Woodcutting) {
+                        check(player.worn[Wearpos.Back.slot]?.id == forestryKit.id) {
+                            "Woodcutting outfit missing backpack at level $level, members=$members"
+                        }
+                    }
                     val bank = player.invMap.getOrPut("inv.bank")
                     val bankSize = bank.objs.filterNotNull().sumOf { it.count }
                     check(supplies.equipOutfit(player, task))
@@ -187,13 +260,21 @@ object BotSkillingCheck {
                     val nextTask = if (task.kind == BotTaskKind.Cooking) woodcutting else
                         SourceBotCatalog.tasks.first { it.kind == BotTaskKind.Cooking }
                     check(supplies.equipOutfit(player, nextTask))
+                    if (nextTask.kind == BotTaskKind.Woodcutting) {
+                        check(player.worn[Wearpos.Back.slot]?.id == forestryKit.id)
+                    }
                     check(supplies.equipOutfit(player, task))
+                    if (task.kind == BotTaskKind.Woodcutting) {
+                        check(player.worn[Wearpos.Back.slot]?.id == forestryKit.id) {
+                            "Returning to Woodcutting must re-equip the backpack"
+                        }
+                    }
                     check(bank.objs.filterNotNull().all { it.count == 1 }) {
                         "Outfit switching duplicated bank clothing"
                     }
                 }
             }
         }
-        println("Bot skilling checks passed: tool tiers, role outfits, mastery, F2P, job switching and gathering.")
+        println("Bot skilling checks passed: tool tiers, Forestry backpacks, role outfits, mastery, F2P, job switching and gathering.")
     }
 }

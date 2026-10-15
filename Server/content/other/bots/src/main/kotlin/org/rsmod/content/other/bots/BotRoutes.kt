@@ -1,7 +1,5 @@
 package org.rsmod.content.other.bots
 
-import kotlin.math.abs
-import kotlin.math.max
 import org.rsmod.map.CoordGrid
 
 public data class BotTraversal(
@@ -234,9 +232,6 @@ public object BotRoutes {
         put(CoordGrid(3208, 3399, 0) to CoordGrid(3209, 3399, 0), BotTraversal(setOf("door", "gate"), "open", null, false))
     }
 
-    private fun distance(a: CoordGrid, b: CoordGrid): Int =
-        max(abs(a.x - b.x), abs(a.z - b.z))
-
     public fun traversal(from: CoordGrid, to: CoordGrid): BotTraversal? =
         if (from to to in KHARID_CROSSINGS) {
             BotTraversal(setOf("loc.kharidmetalgateclosedl", "loc.kharidmetalgateclosedr"),
@@ -266,71 +261,14 @@ public object BotRoutes {
         worldRoads + SourceBotCatalog.tasks.map { listOf(it.start) + it.route }
     }
 
-    /** Dijkstra over imported road points and short native walking connections. */
-    public fun path(from: CoordGrid, to: CoordGrid,
-        canWalk: (CoordGrid, CoordGrid) -> Boolean = { _, _ -> true }): List<CoordGrid> {
-        if (from == to) return emptyList()
-        if (traversal(from, to) != null ||
-            (from.level == to.level && distance(from, to) <= 25 && canWalk(from, to))) return listOf(to)
-        val points = (roads.flatten() + crossings.keys.flatMap { listOf(it.first, it.second) } +
-            from + to).distinct()
-        val adjacency = Array(points.size) { mutableListOf<Pair<Int, Int>>() }
-        val index = points.withIndex().associate { it.value to it.index }
-        fun connect(a: CoordGrid, b: CoordGrid) {
-            if (a == b) return
-            val crossing = traversal(a, b)
-            if (crossing == null && (a.level != b.level || distance(a, b) > 50)) return
-            val cost = if (crossing == null) distance(a, b).coerceAtLeast(1) else 20
-            adjacency[index.getValue(a)].add(index.getValue(b) to cost)
-        }
-        for (road in roads) {
-            for ((a, b) in road.zipWithNext()) {
-                connect(a, b)
-                connect(b, a)
-            }
-        }
-        for ((a, b) in crossings.keys) connect(a, b)
-        for (i in points.indices) {
-            for (j in i + 1 until points.size) {
-                if (points[i].level != points[j].level || distance(points[i], points[j]) > 25) continue
-                connect(points[i], points[j])
-                connect(points[j], points[i])
-            }
-        }
-        val start = index.getValue(from)
-        val end = index.getValue(to)
-        val costs = IntArray(points.size) { Int.MAX_VALUE }
-        val previous = IntArray(points.size) { -1 }
-        val visited = BooleanArray(points.size)
-        costs[start] = 0
-        repeat(points.size) {
-            var current = -1
-            for (i in points.indices) {
-                if (!visited[i] && costs[i] != Int.MAX_VALUE &&
-                    (current == -1 || costs[i] < costs[current])) current = i
-            }
-            if (current == -1) return emptyList()
-            if (current == end) {
-                val result = mutableListOf<CoordGrid>()
-                var cursor = end
-                while (cursor != start) {
-                    result.add(points[cursor])
-                    cursor = previous[cursor]
-                    if (cursor < 0) return emptyList()
-                }
-                return result.asReversed()
-            }
-            visited[current] = true
-            for ((next, distance) in adjacency[current]) {
-                val cost = costs[current] + distance
-                if (cost < costs[next]) {
-                    if (traversal(points[current], points[next]) == null &&
-                        !canWalk(points[current], points[next])) continue
-                    costs[next] = cost
-                    previous[next] = current
-                }
-            }
-        }
-        return emptyList()
+    private val graph by lazy {
+        BotRoadGraph(roads, crossings.keys) { a, b -> traversal(a, b) != null }
     }
+
+    public fun path(
+        from: CoordGrid,
+        to: CoordGrid,
+        canWalk: (CoordGrid, CoordGrid) -> Boolean = { _, _ -> true },
+        blockedCrossings: Set<Pair<CoordGrid, CoordGrid>> = emptySet(),
+    ): List<CoordGrid> = graph.path(from, to, canWalk, blockedCrossings)
 }

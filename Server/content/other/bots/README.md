@@ -6,6 +6,44 @@ This is a native Kotlin adaptation, not a JavaScript runtime or a replacement co
 The workflow pins the TSPS PvP loadout and hotspot JSON blobs at that revision before running
 the port checks.
 
+## Player and bot highscores
+
+A standalone, **read-only** highscores page runs on the game server at
+**http://127.0.0.1:7072/highscores**, with a machine-readable feed at
+`http://127.0.0.1:7072/highscores.json`. It starts independently of whether
+world-bot spawning is enabled, and does not expose the existing bot debugger.
+The page uses a classic **OSRS-inspired** three-column layout (stone navigation,
+parchment rankings, and search/compare boxes). Like the reference URL,
+`/highscores?table=11` opens Fishing; `table=0` opens Overall. The responsive page
+offers an overall XP leaderboard, one leaderboard for each
+supported skill, search by character name, a player/bot filter, online indicators,
+and a full per-character skills profile. World bots are explicitly labeled.
+
+The game thread samples all online players and bots roughly every **30 seconds**
+(50 game cycles), so displayed levels and XP follow real training. Logout
+captures the final skill snapshot and marks the character offline. Snapshots are
+saved atomically under `.data/highscores/snapshot.json`, including on shutdown,
+and restored when the server restarts. The saved file contains **only** the
+character's public display name, public username, bot flag, skills, XP, and
+timestamps—never passwords, inventory, account IDs or session credentials.
+Rankings are based on actual XP, and the overall chart sums all supported skills.
+After a restart every restored entry starts offline until seen online again.
+
+To configure in `.data/bots.properties`:
+
+```properties
+highscores.enabled=true
+highscores.port=7072
+```
+
+The page binds to **127.0.0.1** by default. For a public site, reverse-proxy
+`/highscores` and `/highscores.json` from a web server, rather than exposing
+the private `/debug` endpoint. Do not proxy the rest of the bot debugger.
+This initial implementation indexes **characters seen online since the feature
+was enabled**; pre-existing offline accounts will appear after their next login.
+It also includes simulated bots only after they have appeared in the live world.
+No external hosting service or separate website build is required.
+
 ## Configure
 
 World bot population is controlled by `.data/bots.properties` under the server working
@@ -36,6 +74,214 @@ Wilderness and both clan populations. The default is `standard`.
 Population changes use the properties file; the spawn/removal commands are removed.
 Existing skilling, trading, progression and Castle Wars controllers remain separate.
 
+## Diverse skilling-bot starts
+
+New `skilling` bots start with independently varied Woodcutting, Fishing, Mining,
+Smithing, Cooking, Crafting and other skill levels (1–95); their preferred activity
+gets an experienced starting level. Combat-related levels retain the existing
+moderate starting range. Every bot identity rolls the same starter stats each time,
+so startup does not randomly change an existing identity before its saved XP loads.
+
+When `human.routines.expanded=true` (default), the first activity is balanced
+across eligible mining, fishing, woodcutting, smithing, smelting, cooking, crafting
+and other supported skilling kinds, then across locations within each kind.
+Only tasks permitted by the actual levels, membership and configured work-area
+capacity are considered. Basic-routines mode continues to start exclusively in
+mining, fishing and woodcutting. If a first destination is blocked or unsuitable,
+the existing planner falls back to an alternative task.
+
+Existing bot profiles retain their stored XP, inventory, equipment and previous
+activity. Old `.data/bots/worldbot_N.properties` files automatically migrate to
+**display-name filenames**, such as `stijnkessel.properties` or
+`mars noob.properties`, when the corresponding bot first loads. The internal
+`worldbot_N` username remains unchanged. Each saved profile records its internal
+owner ID, so different bots cannot overwrite one another's progress; a repeated
+display name gets a suffix such as `varduka (worldbot_123).properties`.
+Only the old file belonging to that exact bot ID is migrated, and it is deleted
+only after the named save has been written. Stop the server before manually
+editing or deleting saves; `.data/bots.properties` is a separate configuration file
+and must not be deleted. Progressive, PvP and other bot modes keep their existing
+level and task seeding.
+
+## PvM gravestones and recovering bots
+
+Ordinary overworld **PvM deaths** now keep the normal three valuable items (four with
+Protect Item) while the rest go into an owner-only, on-disk gravestone record under
+`.data/gravestones/<hashed-user-id>.properties`. The record is written **before** the death
+handler clears worn items and inventory. A save failure uses the existing ground-drop
+fallback rather than deleting the items. Graves last **1,500 game cycles (15 minutes) of
+time online**, pausing while their owner is logged out, and then roll over into persistent
+Death's Office recovery. A second ordinary PvM death merges into the existing record.
+The cache provides the visual gravestone model if a usable model exists; otherwise the
+coordinates remain available through the command below.
+
+Use `::grave` to see your grave location and the remaining time, then walk within
+three tiles and run `::grave` again to claim your items. A gravestone with a suitable
+first-option model can also be clicked directly. Use `::deathoffice` to retrieve items
+from an expired grave, including any overflow that could not fit in your inventory.
+Inventory capacity is respected: only successfully reclaimed slots are removed.
+This first implementation does **not** yet charge OSRS item-value-based fees or
+offer the official Death's Office interface; those require a dedicated UI and
+market-value payment integration. It also does not pause timers when players are
+AFK or interacting with the grave interface.
+
+The current **PvP/Wilderness, loot-key, instance, UIM, and safe-minigame death rules
+remain unchanged**, as those OSRS death modes have special handling. Skilling and
+progressive bots attempt to route back to their own grave using collision-aware
+walking; if one inventory cannot hold everything, they bank the partial claim and
+return for the remainder. After reclaiming their items, they flee the death location using
+the existing NPC-attack escape controller, block the dangerous task, and choose a safer
+activity.
+If a skilling bot cannot find a walkable route to its grave despite retrying for
+200 game cycles (about 2 minutes), the items are **persisted into Death's Office**
+before the inaccessible grave is cleared. The bot can then reclaim them without
+remaining frozen in `RecoveringGrave`. It never teleports to a blocked tile or
+deletes unrecovered items; this is a bot-only fail-safe, not standard OSRS timing.
+If the path cannot be reached or the timer expires, Death's Office storage remains
+available. No teleport is used to reach a grave. In-game validation should cover
+guard/wizard kills, route changes, grave recovery, a second death, multiple graves
+on the same tile, logout/restart, full inventories and PvP loot keys. The live
+visual marker is cache-dependent.
+
+## One global XP rate for players and bots
+
+The XP plugin now applies `xp-rates.yml` to **every registered Player**, whether
+a human account or a world bot. PlayerRegistry's Initialize event also fires for
+simulated bots, which do not use the normal account login flow. New spawns,
+rejoining skilling bots and Wilderness bots inherit the current global rate
+before they can gain XP. Existing players and bots update immediately on
+`::globalxprate <rate>` or `::reloadxprates`.
+
+Use the following in the server-working-directory `xp-rates.yml`:
+
+```yaml
+global-rate: 5.0
+global-only: true
+rate: 1.0
+enforce-on-login: true
+reset-existing-levels: false
+```
+
+`global-only: true` is now the default even for old configs missing the key.
+It forces the stored per-character XP multiplier to **1x**, so the effective rate
+is `global-rate` for everyone rather than personal-rate × global-rate.
+`::setxprate` is disabled while global-only is enabled. To restore the previous
+personal-plus-global behaviour, explicitly set `global-only: false`, which also
+restores the `rate` / `enforce-on-login` settings and `::setxprate`.
+Only XP **awarded by actions** is multiplied: starting bot levels and restored
+bot XP snapshots are assigned directly and are not retroactively multiplied.
+`::globalxprate` affects this session; edit the YAML file to persist a change
+across restarts. Use `::xprate` to inspect a real character's effective rate.
+Do not turn on `reset-existing-levels` unless intentionally resetting progress.
+
+## Run away when NPCs attack
+
+Ordinary skilling and progressive bots abandon noncombat activities when an NPC
+lands an attack (even a blocked 0-damage hit), including guards and dark wizards.
+The `PlayerHitEvents.Impact` handler records the real aggressor and interrupts the
+activity before the next skilling decision. The bot releases its resource reservation,
+clears the pending interaction, temporarily disables NPC auto-retaliation (restoring its
+previous setting after escaping), enables its existing run mode, optionally eats food,
+and uses the native routefinder to choose a reachable, unoccupied tile farther from
+the NPC. If several NPCs attack it, the escape chooser considers all recorded attackers.
+It does not teleport, walk through locked gates or ignore freezes or native action delays.
+
+Fleeing takes priority over wandering, dialogue, skilling, resource selection and
+task timeouts. After the bot is safely beyond the threat (or it has not been hit
+for 120 cycles and combat ends), it blocks that activity for 1,200 cycles, then
+selects a different eligible task rather than returning to the same danger. If it
+is trapped or frozen it keeps trying a legal escape: this is *not* invincibility
+and very low-level bots can still die. Dedicated Wilderness/Clan PvP controllers
+and intentionally trained progressive combat bots are deliberately excluded.
+Use `::botdebug on` to inspect `fleeing`, `fleeThreats`, `fleeTarget`, and
+`fleeFailedOrders` in the bot diagnostics JSON. The `BotFleeCheck` CI test
+validates attack scoping, safe distances, reachable tiles and recovery timing.
+
+## Human-like characters, schedules and routines
+
+Skilling and progressive bots now have **stable, deterministic personalities** derived from
+their identity: preferred job and region, efficiency, sociability, patience and curiosity.
+Their preferences affect activity selection while respecting eligibility, levels, membership,
+item supplies and resource crowding. Existing native movement, interactions, equipment rules
+and recovery remain in charge. Bots can take bounded short breaks *only when not busy*, and
+speak occasional contextual lines when a real player is nearby. Replies to greetings and
+level questions are staggered and limited so crowds do not respond together. Some compatible
+bots form loose friendships and favour each other's training tasks; they still reserve
+separate working tiles and never bypass the collision/interaction system.
+
+Level progression, bank, worn items, inventory and last task for both skilling and progressive
+world bots are stored under `.data/bots/worldbot_N.properties` at shutdown and simulated
+logout. Saved inventories are restored exactly, including empty containers. Character body
+appearance and outfit preferences are deterministic for a given identity; changing tasks
+updates equipment at bank. Existing save files remain supported.
+
+When `human.population.enabled=true`, skilling and progressive bots whose sessions
+have expired can log out safely while idle, and their identity is reused during subsequent
+arrival sweeps. Population sweeps run approximately every 50-110 game cycles, adding at most
+two bots per configured population at a time; they do **not** churn PvP squads or traders.
+Original startup spawn order is preserved by default to avoid switching old saved identities
+between populations. Set `human.population.stagger-startup=true` only if starting with fresh
+profiles or after deliberately migrating existing `worldbot_N` profile IDs.
+
+The values below are copied into `.data/bots.properties` only on a fresh install;
+on an existing server, manually add the keys or rely on the built-in defaults:
+
+```properties
+human.behaviour.enabled=true
+human.routines.expanded=true
+human.population.enabled=true
+human.population.stagger-startup=false
+```
+
+`human.routines.expanded` adds supported cooking, smelting, smithing, crafting, spinning,
+shearing, tanning and runecrafting
+jobs to ordinary skillers after their initial job. The planner still validates levels,
+materials and task restrictions. Set it to `false` to keep the initial three gathering jobs.
+`human.behaviour.enabled=false` disables preferences, ambient speech and idle breaks.
+`human.population.enabled=false` disables bot logouts/arrivals. World bot population
+counts remain controlled by the existing per-mode properties. All changes are server-side,
+no external text-generation service is required, and bots remain simulated characters;
+make this clear in any public server description.
+
+### Goals, materials and travel
+
+Both skilling and progressive characters keep a training goal such as `woodcutting:60`.
+The goal favors their specialization and survives bank trips, supply detours and logout.
+Goals advance when reached; old profiles without a goal acquire one automatically.
+Task scoring combines the goal, personality, crowding, approximate distance to the bank
+and the length of the task route. A distant reachable task remains possible, but nearby
+work is preferred. Reachability, membership and native level restrictions still apply.
+
+After fishing, supplied cooking jobs receive a follow-on preference. Cooking selects an
+actual, level-eligible fish from the inventory or bank, preferring the recent catch over
+starter stock. The same planning preference links mining to steel smelting, smelting to
+steel dagger smithing, shearing to spinning, and tanning to crafting. Production consumes
+real bank/inventory items through normal interactions; a steel batch requires an iron ore
+and two coal, and steel jobs require 30 Smithing. Partial batches are allowed. Native
+menus select the steel recipe for smelting.
+
+Running out of carried materials triggers banking even when more remain in the bank.
+Failed replenishment temporarily excludes that task and selects another supplied,
+eligible activity, retaining the training goal. If no reachable supplied task exists,
+the bot waits in `Planning` and retries after 100 cycles rather than resuming an old job.
+Lost gathering tools can fall back to the best owned, usable lower tier. New ordinary
+bot starter stocks include the six basic talismans; existing profiles are restored
+without adding them. Personalities now include all eleven supported skilling roles.
+Agility, thieving, farming and other activities outside the catalogue remain future work.
+
+`BotRoutineCheck` covers goal persistence, progression, travel preference, role diversity,
+recent-catch cooking, native recipe levels, batch materials and a supply fallback using
+the installed cache. Live acceptance should also observe repeated production/bank loops,
+an exhausted supply being abandoned, and the same goal after a server restart.
+
+`::botinfo` now includes each bot's personality and friend ID. `::botdebug on` captures
+the personality, training goal, friend ID, session expiry and pause timings, so intentional pauses can be
+distinguished from blocked pathfinding. Live acceptance should cover: two bots with distinct
+styles at one skilling spot; chat greetings answered by at most one nearby bot; varied
+working/banking times; changes of jobs after banking; logout/rejoin with identical skills,
+gear and items; resource crowding; and no pause during an active interaction. PvP combat
+should remain unaffected by these scheduling features.
+
 ## Skilling equipment and gathering
 
 Skilling bots wear job-specific worker clothes and leave the shield slot empty.
@@ -43,8 +289,13 @@ Members upgrade to lumberjack clothing at 44 Woodcutting, and prospector or angl
 clothing at 40 Mining or Fishing. Beginners and F2P bots use simple work clothes;
 cooks wear chef hats and white aprons, smiths and crafters wear brown aprons, and
 runecrafters wear robes with wizard hats or matching rune tiaras. Individual styles
-vary cape use and headwear. Fishing, cooking and smithing outfits normally omit capes.
-Members with 99 in their current task skill wear its skillcape. Outfits refresh at
+vary cape use and headwear, except woodcutters: **every Woodcutting bot wears the
+Forestry kit backpack** (`obj.forestry_kit`) in the back slot, including F2P and level-99
+characters. The kit overrides ordinary capes and the Woodcutting skillcape while
+woodcutting; the previously worn cape is banked and available for other activities.
+The native equipment handler equips a kit on spawn and at bank resupply, reusing
+one from the bank when possible. Fishing, cooking and smithing outfits normally omit capes.
+Other members with 99 in their current task skill wear its skillcape. Outfits refresh at
 bank resupply after job or level changes, reusing stored clothing. Saved armour is
 banked instead of covering the new outfit. Farming and thieving tasks are not yet
 part of this bot catalogue.
@@ -93,6 +344,18 @@ protected-action timeout, including movement/XP resets. Fishing names, options
 and the toll-gate operation are also checked against the installed cache.
 Confirm harvesting animations, inventory/XP gains and bank
 returns in a live game after restarting the rebuilt server.
+
+## Unreachable task and bank routes
+
+A bot no longer commits to a fresh task when the initial route is empty or
+collision-disconnected. It tries up to six different eligible tasks, temporarily
+blacklisting unreachable choices, then waits to retry. This prevents loops where
+a bot changes job but cannot leave a blocked tile or cross a non-traversable door.
+The gravestone fallback prevents long-term idle sessions in Lumbridge after a
+death in distant areas. Bot diagnostics now show `graveRouteWaitCycles` alongside
+the current phase and route state. Always retest known hotspots (especially
+`2934,3355` and the Lumbridge respawn) on a live server, because client-world
+collision, NPCs and scene objects can differ from unit test maps.
 
 ## Local bot debugger
 

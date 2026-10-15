@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SoloScape - Old School Hiscores</title>
+<meta name="theme-color" content="#191810">
+<style>
+:root{--ink:#272015;--parchment:#e1cfa1;--dark:#211f16;--gold:#ecc975;--link:#66501c}
+*{box-sizing:border-box}html{min-height:100%;background:#111}
+body{margin:0;color:#e0d4a6;font:12px Verdana,Arial,sans-serif;background:
+radial-gradient(ellipse at top,#423f31 0%,transparent 65%),
+repeating-linear-gradient(23deg,#1d1f1a 0 18px,#25271f 20px 39px,#171913 41px 60px);min-height:100vh}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.22;background:
+repeating-linear-gradient(88deg,transparent 0 94px,#010101 96px 100px,transparent 103px 202px),
+repeating-linear-gradient(0deg,transparent 0 70px,#010101 72px 75px,transparent 77px 154px)}
+a{color:#e6cb7e}button,input,select{font-family:inherit}button{cursor:pointer}
+.site{position:relative;max-width:1010px;margin:auto;padding:0 18px 35px}
+.topbar{height:25px;text-align:right;padding:7px 14px;color:#c6c19e;font-size:11px}
+.logo-wrap{height:130px;display:flex;align-items:center;justify-content:center;position:relative}
+.logo{font:small-caps bold clamp(40px,8vw,77px) Georgia,serif;letter-spacing:-.05em;line-height:1;
+color:#cda44a;text-shadow:-3px -3px #241c11,3px 3px #0a0b07,0 0 9px #000,0 3px 0 #604219;
+transform:rotate(-2deg);text-align:center}
+.logo small{display:block;font:bold 17px Georgia,serif;letter-spacing:.28em;color:#e4cd91;text-shadow:0 2px 3px #000;margin-top:1px}
+.home-link{display:block;text-align:center;color:#d9cb99;margin-top:-13px;margin-bottom:24px;text-decoration:none}
+.home-link:hover{text-decoration:underline}
+.tabs{display:flex;gap:4px;justify-content:center;flex-wrap:wrap;margin-bottom:10px}
+.tab{border:2px ridge #746e4a;background:linear-gradient(#384b27,#172516);padding:8px 14px;
+font-weight:bold;color:#e9ce91;text-shadow:0 2px #000;min-width:115px;text-align:center;border-radius:2px;box-shadow:0 2px 5px #000b}
+.tab.active{background:linear-gradient(#64744b,#35492c);color:#fff0b1}
+.tab:hover{filter:brightness(1.18)}
+.breadcrumb{color:#ddd1a4;margin:8px auto 17px;padding-left:10px;max-width:880px}
+.breadcrumb b{color:#f4d982}
+.layout{display:grid;grid-template-columns:165px minmax(330px,1fr) 185px;gap:14px;align-items:start}
+.skills{position:relative;border:8px ridge #58564b;border-radius:7px;background:linear-gradient(90deg,#2e3430,#26333a 50%,#232d33);
+box-shadow:inset 0 0 18px #000a,0 4px 8px #0008;padding:15px 7px 11px}
+.skills:before{content:"CATEGORY";display:block;text-align:center;background:#97814c;color:#2e2111;font:bold 11px Georgia,serif;
+padding:6px 0;transform:rotate(-5deg);margin:-8px 0 10px;box-shadow:2px 2px 3px #0009;letter-spacing:.1em}
+.skill-link{width:100%;border:0;background:transparent;padding:3px 5px;display:flex;gap:8px;
+align-items:center;text-align:left;color:#e9cd86;text-shadow:1px 2px #090c0c;font-size:11px;min-height:20px}
+.skill-link:hover,.skill-link.active{background:#59665591;color:#fff4b9}
+.skill-link.active{font-weight:bold}
+.skill-icon{width:17px;display:inline-grid;place-items:center;color:#e8bc64;font:bold 10px Georgia,serif;
+text-shadow:1px 1px #101010;background:radial-gradient(#545944,#21302d);border:1px solid #5b6358;border-radius:3px;flex-shrink:0;height:17px}
+.skill-link.active .skill-icon{background:#725c24}
+.paper-wrap{padding:10px;border:2px solid #887245;background:linear-gradient(#99815a,#725c38);
+box-shadow:0 6px 14px #0009;border-radius:1px;position:relative}
+.parchment{color:var(--ink);min-height:615px;padding:18px 13px 12px;border-radius:12px 8px 14px 11px;
+background:radial-gradient(ellipse at center,#f1dfb4 0%,#ebd8ab 48%,#c2aa75 100%);
+box-shadow:inset 0 0 34px #6e4b24a1,0 0 3px 2px #a58d5c}
+.paper-head{text-align:center;font:17px Georgia,serif;font-weight:bold;padding:1px 0 8px;color:#443018}
+.paper-sub{text-align:center;font:10px Verdana,Arial,sans-serif;color:#6c552b;margin-bottom:12px}
+table{border-collapse:collapse;width:100%;font:11px Verdana,Arial,sans-serif;color:#302717;table-layout:fixed}
+th{font-weight:bold;text-align:left;border-bottom:1px solid #ae976b;padding:3px 3px 7px}
+th:nth-child(1){width:45px}th:nth-child(3){width:66px}th:nth-child(4){width:92px}th.num,td.num{text-align:right}
+td{padding:4.5px 3px;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+tbody tr:nth-child(odd){background:#ab8d5323}tbody tr:hover{background:#9b824f48}
+.name{border:0;background:none;color:#42331b;font-weight:bold;text-align:left;padding:0;max-width:100%;
+overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;font-size:11px}
+.name:hover{text-decoration:underline;color:#000}
+.mark{color:#49631e;font-size:9px;font-weight:bold;margin-left:3px}
+.empty{text-align:center;margin:24px 0;color:#654a24}
+.pager{display:flex;justify-content:center;gap:6px;align-items:center;margin-top:18px}
+.pager button,.paper-btn{background:linear-gradient(#8c7048,#5a421e);color:#fff2c4;border:2px outset #aa9160;
+border-radius:2px;font:bold 11px Verdana,Arial,sans-serif;padding:5px 9px;text-shadow:1px 1px #372511}
+.pager button:disabled{opacity:.5;cursor:not-allowed}
+.pager span{font-size:11px;font-weight:bold;min-width:90px;text-align:center}
+.side{display:flex;flex-direction:column;gap:12px}
+.wood-box{border:7px ridge #524b33;background:linear-gradient(135deg,#372b1b,#5a492e 38%,#362919);
+padding:10px 9px;box-shadow:inset 0 0 8px #0009,0 4px 8px #0007;color:#f9e8b6;text-align:center}
+.wood-box h3{margin:-3px 0 11px;font:bold 12px Georgia,serif;text-shadow:1px 2px #080808;background:#695c37;padding:4px 1px}
+.wood-box label{display:block;text-align:left;color:#e5d69d;margin-bottom:4px;font-size:10px}
+.wood-box input,.wood-box select{width:100%;height:25px;padding:3px 5px;color:#221b13;background:#e9ddb9;
+border:2px inset #56422a;font-size:11px;margin-bottom:7px;border-radius:0}
+.wood-box .paper-btn{min-width:84px}
+.wood-box p{font-size:11px;line-height:1.6;margin:7px 0 0}
+.wood-box .status{color:#d5ca9c}
+.profile-table th:first-child{width:auto}.profile-table th{width:23%!important}
+.profile-table .skillName{text-align:left}
+.back{margin-bottom:9px;background:transparent;border:0;color:#6d501e;font-weight:bold;padding:3px 0;text-decoration:underline}
+.hidden{display:none!important}
+footer{text-align:center;margin:35px auto 0;color:#a99f81;line-height:1.8;font-size:10px}
+footer a{color:#dbc585}
+footer .update{color:#ded7b2}
+@media(max-width:820px){.layout{grid-template-columns:138px minmax(250px,1fr)}.side{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.skills{padding:10px 4px}}
+@media(max-width:560px){.site{padding:0 8px 22px}.logo-wrap{height:90px}.logo{font-size:45px}
+.layout{grid-template-columns:1fr;gap:12px}.skills{display:flex;flex-wrap:wrap;gap:3px;border-width:5px}
+.skills:before{flex-basis:100%;margin:0 0 4px}.skill-link{width:auto;font-size:10px;padding:3px 6px}
+.side{grid-column:auto;grid-template-columns:1fr}.parchment{min-height:420px;padding:12px 8px}
+td{padding:4px 2px}th:nth-child(4){width:79px}.paper-wrap{padding:6px}
+.topbar{padding-right:3px}}
+</style>
+</head>
+<body>
+<div class="site">
+  <div class="topbar">SoloScape Community · Live world rankings</div>
+  <header class="logo-wrap"><div class="logo">SoloScape<small>OLD SCHOOL HISCORES</small></div></header>
+  <a class="home-link" href="/highscores">Home</a>
+  <nav class="tabs" aria-label="Hiscores navigation">
+    <button class="tab active" type="button" id="navHiscores">Hiscores</button>
+    <button class="tab" type="button" id="navPlayers">Real players</button>
+    <button class="tab" type="button" id="navBots">World bots</button>
+    <button class="tab" type="button" id="navCompare">Compare users</button>
+  </nav>
+  <div class="breadcrumb">Home &gt; <b>Hiscores</b> &gt; <span id="breadcrumbSkill">Overall</span></div>
+  <main class="layout">
+    <nav class="skills" id="skillList" aria-label="Skill categories"></nav>
+    <section class="paper-wrap" aria-label="Hiscores">
+      <div class="parchment">
+        <div id="rankView">
+          <div class="paper-head" id="rankTitle">Overall Hiscores</div>
+          <div class="paper-sub" id="rankSub">SoloScape · All players and bots</div>
+          <table><thead><tr><th>Rank</th><th>Name</th><th class="num">Level</th><th class="num">XP</th></tr></thead>
+          <tbody id="rankRows"></tbody></table>
+          <p class="empty hidden" id="empty">No ranked adventurers yet.</p>
+          <div class="pager">
+            <button type="button" id="previous">Previous</button>
+            <span id="pagination">Page 1</span>
+            <button type="button" id="next">Next</button>
+          </div>
+        </div>
+        <div id="profileView" class="hidden">
+          <button type="button" class="back" id="backToRank">◀ Back to Hiscores</button>
+          <div class="paper-head" id="profileTitle">Character Hiscores</div>
+          <div class="paper-sub" id="profileSub"></div>
+          <table class="profile-table"><thead><tr><th>Skill</th><th class="num">Rank</th><th class="num">Level</th><th class="num">XP</th></tr></thead>
+          <tbody id="profileRows"></tbody></table>
+        </div>
+        <div id="compareView" class="hidden">
+          <button type="button" class="back" id="backFromCompare">◀ Back to Hiscores</button>
+          <div class="paper-head">Compare Users</div>
+          <div class="paper-sub" id="compareTitle">Choose two characters to compare</div>
+          <table class="profile-table"><thead><tr><th>Skill</th><th class="num" id="c1Name">User 1</th><th class="num" id="c2Name">User 2</th><th class="num">Difference</th></tr></thead>
+          <tbody id="compareRows"></tbody></table>
+        </div>
+      </div>
+    </section>
+    <aside class="side">
+      <div class="wood-box"><h3>Search by name</h3>
+        <form id="nameForm"><label for="nameSearch">Character name</label>
+          <input id="nameSearch" placeholder="Player or bot" autocomplete="off">
+          <button type="submit" class="paper-btn">Search</button>
+        </form>
+      </div>
+      <div class="wood-box"><h3>Search by rank</h3>
+        <form id="rankForm"><label for="rankSearch">Ranking position</label>
+          <input id="rankSearch" type="number" min="1" step="1" placeholder="e.g. 25">
+          <button type="submit" class="paper-btn">Search</button>
+        </form>
+      </div>
+      <div class="wood-box"><h3>Compare Users</h3>
+        <form id="compareForm">
+          <label for="compareOne">First character</label><input id="compareOne" placeholder="Player 1" autocomplete="off">
+          <label for="compareTwo">Second character</label><input id="compareTwo" placeholder="Player 2" autocomplete="off">
+          <button type="submit" class="paper-btn">Compare</button>
+          <p id="compareMessage" role="status"></p>
+        </form>
+      </div>
+      <div class="wood-box"><h3>World Rankings</h3>
+        <p id="population">Loading adventurers…</p>
+        <label for="kindFilter">Show characters</label>
+        <select id="kindFilter"><option value="all">Everyone</option><option value="players">Real players</option><option value="bots">World bots</option></select>
+        <p class="status">World bots are marked [BOT] beside their names.</p>
+      </div>
+    </aside>
+  </main>
+  <footer>
+    <div class="update" id="updated">Loading SoloScape rankings…</div>
+    <div>Live skill experience, updated every 30 seconds · Offline characters stay on the Hiscores.</div>
+    <div>SoloScape fan-style interface inspired by Old School RuneScape · <a href="/highscores.json">JSON rankings feed</a></div>
+  </footer>
+</div>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const skillKeys=["overall","attack","defence","strength","hitpoints","ranged","prayer","magic","cooking","woodcutting","fletching","fishing","firemaking","crafting","smithing","mining","herblore","agility","thieving","slayer","farming","runecrafting","hunter","construction"];
+const skillIcons=["★","⚔","◇","✦","♥","➶","✚","✧","♨","♣","➹","♒","♨","◆","⚒","⛏","⚗","➤","♢","☠","♧","☘","◎","⌂"];
+const titleOf=k=>k==="runecrafting"?"Runecraft":k.charAt(0).toUpperCase()+k.slice(1);
+const fmt=n=>Number(n||0).toLocaleString("en-GB");
+const PAGE_SIZE=25;
+let state={entries:[],skills:[]},skill="overall",kind="all",page=0,view="rank",selected=null,compareIds=[];
+function rank(entries,k){
+  return entries.slice().sort((a,b)=>{
+    const xp=e=>k==="overall"?e.totalXp:e.skills?.[k]?.xp||0;
+    const lvl=e=>k==="overall"?e.totalLevel:e.skills?.[k]?.level||1;
+    return xp(b)-xp(a)||lvl(b)-lvl(a)||a.name.localeCompare(b.name)||a.id.localeCompare(b.id);
+  });
+}
+function ranking(){return rank(state.entries,skill)}
+function setView(v){view=v;$("rankView").classList.toggle("hidden",v!=="rank");
+  $("profileView").classList.toggle("hidden",v!=="profile");
+  $("compareView").classList.toggle("hidden",v!=="compare")}
+function chooseSkill(k,reset=true){
+  if(!skillKeys.includes(k))k="overall";
+  skill=k;if(reset)page=0;setView("rank");
+  const q=new URL(window.location.href);q.searchParams.set("table",String(skillKeys.indexOf(k)));
+  window.history.replaceState(null,"",q.pathname+q.search+q.hash);
+  draw();
+}
+function drawNav(){
+  const nav=$("skillList");nav.replaceChildren();
+  skillKeys.forEach((key,i)=>{
+    const btn=document.createElement("button");btn.type="button";btn.className="skill-link"+(skill===key?" active":"");
+    const icon=document.createElement("span");icon.className="skill-icon";icon.textContent=skillIcons[i];
+    btn.append(icon,document.createTextNode(titleOf(key)));
+    btn.setAttribute("aria-current",skill===key?"page":"false");
+    btn.addEventListener("click",()=>chooseSkill(key));
+    nav.append(btn);
+  });
+}
+function draw(){
+  drawNav();
+  const entries=ranking();const fullRank=new Map(entries.map((entry,i)=>[entry.id,i+1]));
+  const filtered=entries.filter(e=>kind==="all"||(kind==="bots"?e.bot:!e.bot));
+  const pages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
+  page=Math.max(0,Math.min(page,pages-1));
+  $("breadcrumbSkill").textContent=titleOf(skill);
+  $("rankTitle").textContent=titleOf(skill)+" Hiscores";
+  $("rankSub").textContent="SoloScape • "+(kind==="all"?"Real players and world bots":kind==="bots"?"World bots":"Real players");
+  const rows=$("rankRows");rows.replaceChildren();
+  for(const e of filtered.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE)){
+    const tr=document.createElement("tr");
+    function cell(v,cls){const td=document.createElement("td");td.textContent=String(v);if(cls)td.className=cls;tr.append(td);return td}
+    cell(fmt(fullRank.get(e.id)));
+    const name=cell("");const button=document.createElement("button");button.type="button";button.className="name";button.textContent=e.name;
+    button.addEventListener("click",()=>showProfile(e.id));name.append(button);
+    if(e.bot){const tag=document.createElement("span");tag.className="mark";tag.textContent="[BOT]";name.append(tag)}
+    cell(fmt(skill==="overall"?e.totalLevel:e.skills?.[skill]?.level),"num");
+    cell(fmt(skill==="overall"?e.totalXp:e.skills?.[skill]?.xp),"num");
+    rows.append(tr);
+  }
+  $("empty").classList.toggle("hidden",filtered.length>0);
+  $("pagination").textContent="Page "+(page+1)+" of "+pages;
+  $("previous").disabled=page===0;$("next").disabled=page>=pages-1;
+  $("population").textContent=fmt(state.entries.length)+" characters, "+fmt(state.entries.filter(e=>e.bot).length)+" bots, "+fmt(state.entries.filter(e=>e.online).length)+" online.";
+  $("navHiscores").classList.toggle("active",kind==="all"&&view==="rank");
+  $("navPlayers").classList.toggle("active",kind==="players"&&view==="rank");
+  $("navBots").classList.toggle("active",kind==="bots"&&view==="rank");
+  $("navCompare").classList.toggle("active",view==="compare");
+  if(view==="profile"&&selected)showProfile(selected);
+  if(view==="compare"&&compareIds.length===2)showCompare(compareIds[0],compareIds[1]);
+}
+function showProfile(id){
+  const e=state.entries.find(x=>x.id===id);if(!e){setView("rank");return}
+  selected=id;setView("profile");
+  $("profileTitle").textContent=e.name;
+  $("profileSub").textContent=(e.bot?"World bot":"Real player")+" • "+(e.online?"Online":"Offline")+" • Total level "+fmt(e.totalLevel);
+  const rows=$("profileRows");rows.replaceChildren();
+  for(const key of skillKeys){
+    const row=document.createElement("tr");
+    const all=rank(state.entries,key);
+    const idx=all.findIndex(x=>x.id===id);
+    const stat=key==="overall"?{level:e.totalLevel,xp:e.totalXp}:e.skills?.[key]||{level:1,xp:0};
+    for(const v of [titleOf(key),fmt(idx+1),fmt(stat.level),fmt(stat.xp)]){
+      const td=document.createElement("td");td.textContent=v;row.append(td);
+    }
+    rows.append(row);
+  }
+}
+function findUser(text){
+ const needle=text.trim().toLowerCase();
+ return state.entries.find(e=>e.name.toLowerCase()===needle||e.id===needle) ||
+        state.entries.find(e=>e.name.toLowerCase().includes(needle)&&needle.length>0);
+}
+function showCompare(idA,idB){
+ const a=state.entries.find(e=>e.id===idA),b=state.entries.find(e=>e.id===idB);
+ if(!a||!b)return;
+ compareIds=[idA,idB];setView("compare");$("compareTitle").textContent="Comparing "+a.name+" and "+b.name;
+ $("c1Name").textContent=a.name;$("c2Name").textContent=b.name;
+ const rows=$("compareRows");rows.replaceChildren();
+ for(const key of skillKeys){
+   const xpA=key==="overall"?a.totalXp:a.skills?.[key]?.xp||0;
+   const xpB=key==="overall"?b.totalXp:b.skills?.[key]?.xp||0;
+   const tr=document.createElement("tr");
+   for(const text of [titleOf(key),fmt(xpA),fmt(xpB),(xpA>=xpB?"+":"−")+fmt(Math.abs(xpA-xpB))]){
+     const td=document.createElement("td");td.textContent=text;tr.append(td)
+   }
+   rows.append(tr);
+ }
+}
+$("navHiscores").addEventListener("click",()=>{kind="all";$("kindFilter").value=kind;setView("rank");draw()});
+$("navPlayers").addEventListener("click",()=>{kind="players";$("kindFilter").value=kind;setView("rank");draw()});
+$("navBots").addEventListener("click",()=>{kind="bots";$("kindFilter").value=kind;setView("rank");draw()});
+$("navCompare").addEventListener("click",()=>{$("compareOne").focus();$("compareMessage").textContent="Enter two names below to compare their XP."});
+$("kindFilter").addEventListener("change",()=>{kind=$("kindFilter").value;page=0;setView("rank");draw()});
+$("previous").addEventListener("click",()=>{page--;draw()});
+$("next").addEventListener("click",()=>{page++;draw()});
+$("backToRank").addEventListener("click",()=>{setView("rank");draw()});
+$("backFromCompare").addEventListener("click",()=>{setView("rank");draw()});
+$("nameForm").addEventListener("submit",event=>{
+ event.preventDefault();const user=findUser($("nameSearch").value);
+ if(user)showProfile(user.id);else{$("rankSub").textContent="No player or bot found by that name."}
+});
+$("rankForm").addEventListener("submit",event=>{
+ event.preventDefault();const target=Number($("rankSearch").value);
+ if(!Number.isInteger(target)||target<1)return;
+ const row=ranking()[target-1];if(!row)return;
+ kind="all";$("kindFilter").value="all";page=Math.floor((target-1)/PAGE_SIZE);setView("rank");draw();
+});
+$("compareForm").addEventListener("submit",event=>{
+ event.preventDefault();const a=findUser($("compareOne").value),b=findUser($("compareTwo").value);
+ if(!a||!b){$("compareMessage").textContent="Could not find both characters.";return}
+ $("compareMessage").textContent="";showCompare(a.id,b.id);
+});
+async function refresh(){
+ try{
+  const res=await fetch("/highscores.json",{cache:"no-store"});if(!res.ok)throw Error("HTTP "+res.status);
+  const data=await res.json();if(!Array.isArray(data.entries)||!Array.isArray(data.skills))throw Error("Invalid highscores data");
+  state=data;draw();
+  $("updated").textContent="Last updated: "+(data.updatedAt?new Date(data.updatedAt).toLocaleString():"just now");
+ }catch(error){$("updated").textContent="Server unavailable — showing last saved rankings."}
+}
+const tab=Number(new URLSearchParams(window.location.search).get("table"));
+if(Number.isInteger(tab)&&tab>=0&&tab<skillKeys.length)skill=skillKeys[tab];
+refresh();setInterval(refresh,30000);
+</script>
+</body>
+</html>

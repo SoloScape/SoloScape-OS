@@ -13,6 +13,9 @@ public class PlayerStatMap(
     private val baseLevels: Byte2ByteOpenHashMap = Byte2ByteOpenHashMap(),
     private val currLevels: Byte2ByteOpenHashMap = Byte2ByteOpenHashMap(),
 ) {
+    public var levelVersion: Long = 0
+        private set
+
     public fun getXP(stat: String): Int = getFineXP(stat) / XP_FINE_PRECISION
 
     public fun setXP(stat: String, xp: Int) {
@@ -32,7 +35,9 @@ public class PlayerStatMap(
     public fun getBaseLevel(stat: String): Byte = baseLevels.getOrDefault(stat.asRSCM(RSCMType.STAT).toByte(), 1)
 
     public fun setBaseLevel(stat: String, level: Byte) {
-        this.baseLevels[stat.asRSCM(RSCMType.STAT).toByte()] = level
+        val id = stat.asRSCM(RSCMType.STAT).toByte()
+        if (baseLevels.getOrDefault(id, 1) != level) levelVersion++
+        this.baseLevels[id] = level
     }
 
     @InternalApi

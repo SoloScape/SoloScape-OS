@@ -10,10 +10,12 @@ import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.protect.ProtectedAccessLauncher
 import org.rsmod.api.realm.Realm
 import org.rsmod.api.script.onCommand
+import org.rsmod.api.script.onEvent
 import org.rsmod.api.script.onPlayerLogin
 import org.rsmod.game.cheat.Cheat
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.PlayerList
+import org.rsmod.game.entity.player.SessionStateEvent
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
 
@@ -29,13 +31,13 @@ import org.rsmod.plugin.scripts.ScriptContext
  *   `player_xp_rate_in_hundreds` when the character is created and then persisted on the character
  *   row, so it survives a realm config change. The bundled development realm seeds it at **150x**,
  *   which is where "levels go by way too fast" comes from.
- * - [Player.globalXpRate] is a server-wide multiplier compounded on top, intended for events like a
- *   double xp weekend. Nothing currently assigns it, so it sits at `1.0`.
+ * - [Player.globalXpRate] is the server-wide multiplier from `xp-rates.yml`.
  *
- * This script owns both: it applies the rates from `xp-rates.yml` (default `1.0`, i.e. authentic)
- * on login, which overwrites the inflated value already stored on existing characters. Because
- * [Player.xpRate] is written back on save, a character only needs to log in once to be corrected
- * permanently.
+ * By default `global-only: true` enforces [Player.xpRate] = 1.0 and applies only the
+ * configured `global-rate`. The policy runs on registry initialisation, which includes
+ * both actual account logins and server-simulated bots (which do not emit a normal login).
+ * It also runs when admins change or reload the rate. Legacy personal multipliers remain
+ * available only when explicitly opting out of global-only mode.
  *
  * #### Why the rate is not per-skill
  * [org.rsmod.api.player.stat.statAdvance] takes a single multiplier and has no hook that sees which
@@ -68,10 +70,13 @@ constructor(
     override fun ScriptContext.startup() {
         config = loader.loadOrCreate()
         logger.info {
-            "Xp rates loaded: rate=${config.rate}x global=${config.globalRate}x " +
-                "enforceOnLogin=${config.enforceOnLogin}"
+            "Xp rates loaded: global=${config.globalRate}x globalOnly=${config.globalOnly} " +
+                "legacyPersonal=${config.rate}x enforceOnLogin=${config.enforceOnLogin}"
         }
 
+        // PlayerRegistry.add publishes Initialize for everyone, including world bots.
+        // Bots do not use onPlayerLogin; this must run before their first skilling tick.
+        onEvent<SessionStateEvent.Initialize> { XpRatePolicy.apply(player, config) }
         onPlayerLogin { player.applyRates() }
 
         onCommand("xprate") {
@@ -118,15 +123,12 @@ constructor(
     private fun Player.applyRates() {
         warnAboutRealmRateOnce()
 
-        // `globalXpRate` is not persisted on the character, so it is always re-applied.
-        globalXpRate = config.globalRate
-
-        if (config.enforceOnLogin && xpRate != config.rate) {
-            val previous = xpRate
-            xpRate = config.rate
+        val previousPersonal = xpRate
+        XpRatePolicy.apply(this, config)
+        if (previousPersonal != xpRate) {
             logger.info {
                 "Corrected stored xp rate for '$username': " +
-                    "${format(previous)}x -> ${format(config.rate)}x"
+                    "${format(previousPersonal)}x -> ${format(xpRate)}x"
             }
         }
 
@@ -164,17 +166,19 @@ constructor(
      * means the mismatch is invisible - so say it out loud once per boot.
      */
     private fun warnAboutRealmRateOnce() {
-        if (warnedAboutRealmRate || !config.enforceOnLogin) {
+        if (warnedAboutRealmRate || (!config.globalOnly && !config.enforceOnLogin)) {
             return
         }
         warnedAboutRealmRate = true
         val realmRate = runCatching { realm.config.baseXpRate }.getOrNull() ?: return
-        if (realmRate != config.rate) {
+        val desiredPersonal = if (config.globalOnly) XpRateConfig.AUTHENTIC_RATE else config.rate
+        if (realmRate != desiredPersonal) {
             logger.warn {
-                "Realm '${realm.name}' assigns new characters ${format(realmRate)}x xp, but " +
-                    "xp-rates.yml enforces ${format(config.rate)}x. Characters are corrected on " +
-                    "login; set the realm's `player_xp_rate_in_hundreds` to " +
-                    "${(config.rate * 100).roundToLong()} to fix it at the source."
+                "Realm '${realm.name}' assigns new characters ${format(realmRate)}x personal xp, " +
+                    "but xp-rates.yml enforces ${format(desiredPersonal)}x personal + " +
+                    "${format(config.globalRate)}x global. Characters are corrected on " +
+                    "registration/login; set `player_xp_rate_in_hundreds` to " +
+                    "${(desiredPersonal * 100).roundToLong()} at the source."
             }
         }
     }
@@ -183,7 +187,9 @@ constructor(
 
     private fun Player.reportRates() {
         mes("Your experience rate: <col=800000>${format(effectiveRate())}x</col>.")
-        if (globalXpRate != XpRateConfig.AUTHENTIC_RATE) {
+        if (config.globalOnly) {
+            mes("All players and bots use the server-wide global XP rate.")
+        } else if (globalXpRate != XpRateConfig.AUTHENTIC_RATE) {
             mes(
                 "(personal <col=800000>${format(xpRate)}x</col> " +
                     "x server-wide <col=800000>${format(globalXpRate)}x</col>)"
@@ -193,6 +199,10 @@ constructor(
 
     private fun setXpRate(cheat: Cheat) =
         with(cheat) {
+            if (config.globalOnly) {
+                player.mes("Personal XP rates are disabled; use ::globalxprate for everyone.")
+                return
+            }
             val rate = XpRateConfig.clampRate(args[0].toDouble())
             val targetName = args.getOrNull(1)
             val target =
@@ -224,7 +234,8 @@ constructor(
             val rate = XpRateConfig.clampRate(args[0].toDouble())
             config = config.copy(globalRate = rate)
             for (online in playerList) {
-                online.globalXpRate = rate
+                XpRatePolicy.apply(online, config)
+                // Bot clients discard chat packets; the same policy still applies to them.
                 online.mes("Server-wide experience rate is now <col=800000>${format(rate)}x</col>.")
             }
             player.mes("Edit xp-rates.yml to keep this across a reboot.")
@@ -235,14 +246,11 @@ constructor(
         with(cheat) {
             config = loader.loadOrCreate()
             for (online in playerList) {
-                online.globalXpRate = config.globalRate
-                if (config.enforceOnLogin) {
-                    online.xpRate = config.rate
-                }
+                XpRatePolicy.apply(online, config)
             }
             player.mes(
-                "Reloaded xp-rates.yml: rate <col=800000>${format(config.rate)}x</col>, " +
-                    "server-wide <col=800000>${format(config.globalRate)}x</col>."
+                "Reloaded xp-rates.yml: global <col=800000>${format(config.globalRate)}x</col> " +
+                    "(${if (config.globalOnly) "everyone, global-only" else "legacy personal rates enabled"})."
             )
         }
 
@@ -318,7 +326,7 @@ constructor(
         }
     }
 
-    private fun Player.effectiveRate(): Double = xpRate * globalXpRate
+    private fun Player.effectiveRate(): Double = XpRatePolicy.effective(this)
 
     private fun plural(count: Int, noun: String): String = if (count == 1) noun else "${noun}s"
 

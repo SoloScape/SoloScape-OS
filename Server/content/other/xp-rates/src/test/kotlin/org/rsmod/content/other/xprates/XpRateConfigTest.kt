@@ -17,6 +17,7 @@ class XpRateConfigTest {
         assertEquals(XpRateConfig.AUTHENTIC_RATE, config.rate)
         assertEquals(XpRateConfig.AUTHENTIC_RATE, config.globalRate)
         assertTrue(config.enforceOnLogin)
+        assertTrue(config.globalOnly)
     }
 
     /**
@@ -68,6 +69,26 @@ class XpRateConfigTest {
         assertEquals(5.0, config.rate)
         assertEquals(2.0, config.globalRate)
         assertEquals(false, config.enforceOnLogin)
+    }
+
+    @Test
+    fun `global only works when old personal xp rate is configured`(@TempDir dir: Path) {
+        val file = dir.resolve("xp-rates.yml")
+        file.writeText("rate: 150.0\\nglobal-rate: 6.0\\nglobal-only: true\\n".replace("\\n", "\n"))
+        val config = XpRateConfigLoader().load(file)
+        assertTrue(config.globalOnly)
+        assertEquals(6.0, config.globalRate)
+        assertEquals(150.0, config.rate)
+    }
+
+    @Test
+    fun `legacy personal rates can be opted into explicitly`(@TempDir dir: Path) {
+        val file = dir.resolve("xp-rates.yml")
+        file.writeText("global-only: false\\nrate: 5.0\\nglobal-rate: 2.0\\n".replace("\\n", "\n"))
+        val config = XpRateConfigLoader().load(file)
+        assertFalse(config.globalOnly)
+        assertEquals(5.0, config.rate)
+        assertEquals(2.0, config.globalRate)
     }
 
     @Test

@@ -4,6 +4,21 @@ import kotlin.random.Random
 
 /** Weighted activity selection and progressive training milestones. */
 public object BotTaskPlanner {
+    /** Start new skillers across activity types before balancing destinations within a type. */
+    public fun selectStarting(
+        tasks: List<BotTaskDefinition>,
+        kinds: Map<BotTaskKind, Int>,
+        occupancy: Map<String, Int>,
+        random: Random,
+    ): BotTaskDefinition? {
+        val eligible = tasks.filter { it.weight > 0 }
+        if (eligible.isEmpty()) return null
+        val possible = eligible.map { it.kind }.distinct()
+        val lowest = possible.minOf { kinds[it] ?: 0 }
+        val kind = possible.filter { (kinds[it] ?: 0) == lowest }.random(random)
+        return selectBalanced(eligible.filter { it.kind == kind }, occupancy, random)
+    }
+
     public fun selectBalanced(
         tasks: List<BotTaskDefinition>,
         occupancy: Map<String, Int>,
@@ -26,6 +41,9 @@ public object BotTaskPlanner {
         members: Boolean,
     ): Boolean {
         if (task.members && !members) return false
+        // Current native production actions make steel bars and steel daggers.
+        if (task.kind == BotTaskKind.Smelting && (levels["smithing"] ?: 1) < 30) return false
+        if (task.kind == BotTaskKind.Smithing && (levels["smithing"] ?: 1) < 30) return false
         val level = task.skill?.let { levels[it] ?: 1 } ?: 1
         if (level !in task.minimumLevel..task.maximumLevel) return false
         if (task.requiredLevels.any { (skill, minimum) -> (levels[skill] ?: 1) < minimum }) return false
@@ -45,11 +63,13 @@ public object BotTaskPlanner {
         members: Boolean,
         occupancy: Map<String, Int>,
         random: Random,
+        taskBias: Map<String, Double> = emptyMap(),
     ): BotTaskDefinition? {
         val candidates = tasks.filter { available(it, levels, members) && it.weight > 0 }
         if (candidates.isEmpty()) return null
         // Preserve source task weights while distributing crowds across locations.
-        val weights = candidates.map { it.weight.toDouble() / (1 + (occupancy[it.id] ?: 0).coerceAtLeast(0)) }
+        val weights = candidates.map { it.weight.toDouble() * (taskBias[it.id] ?: 1.0) /
+            (1 + (occupancy[it.id] ?: 0).coerceAtLeast(0)) }
         var roll = random.nextDouble() * weights.sum()
         for ((index, task) in candidates.withIndex()) {
             roll -= weights[index]
