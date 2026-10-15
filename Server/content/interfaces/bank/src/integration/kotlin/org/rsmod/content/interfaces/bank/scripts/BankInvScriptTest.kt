@@ -47,6 +47,33 @@ class BankInvScriptTest {
         }
 
     @Test
+    fun GameTestState.`withdraw orphaned bank slot 2 when tab size was not persisted`() =
+        runGameTest(BankInvScript::class) {
+            val bank = openBank(player)
+            bank[0] = InvObj(1, 1)
+            bank[1] = InvObj(2, 1)
+            bank[2] = InvObj(3, 1)
+            // Reproduce the production exception: physical item at slot 2,
+            // but no saved Main tab slot count.
+            player.bankTabSizeMain = 0
+
+            player.ifButton(bank_components.main_inventory, comsub = 2, op = MAIN_INV_WITHDRAW_1)
+            advance()
+
+            assertEquals(InvObj(3, 1), player.inv[0])
+            assertNull(bank[2])
+            assertEquals(2, player.bankTabSizeMain)
+            assertEquals(InvObj(1, 1), bank[0])
+            assertEquals(InvObj(2, 1), bank[1])
+
+            // A subsequent withdrawal must also stay within the recovered tab.
+            player.ifButton(bank_components.main_inventory, comsub = 1, op = MAIN_INV_WITHDRAW_1)
+            advance()
+            assertEquals(1, player.bankTabSizeMain)
+            assertEquals(InvObj(2, 1), player.inv[1])
+        }
+
+    @Test
     fun GameTestState.`withdraw obj with MAX_VALUE count`() =
         runGameTest(BankInvScript::class) {
             val stackable = objTypes.values.firstOrNull { it.isStackable }
