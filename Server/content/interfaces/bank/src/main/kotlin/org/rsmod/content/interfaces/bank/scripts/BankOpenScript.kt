@@ -21,6 +21,7 @@ import org.rsmod.content.interfaces.bank.configs.bank_comsubs
 import org.rsmod.content.interfaces.bank.configs.bank_constants
 import org.rsmod.content.interfaces.bank.disableIfEvents
 import org.rsmod.content.interfaces.bank.highlightNoClickClear
+import org.rsmod.content.interfaces.bank.repairBankTabSizes
 import org.rsmod.content.interfaces.bank.setBankWornBonuses
 import org.rsmod.content.interfaces.bank.setBanksideExtraOps
 import org.rsmod.content.interfaces.bank.syncSelectedBankTab
@@ -53,6 +54,9 @@ constructor(
             ifClose(eventBus)
             return
         }
+        // Recover orphaned bank slots from older/inconsistent player saves
+        // before the client renders tab counts or receives withdrawal clicks.
+        repairBankTabSizes()
         syncSelectedBankTab()
         if (!disableIfEvents) {
             val capacityIncrease = bank_constants.purchasable_capacity
