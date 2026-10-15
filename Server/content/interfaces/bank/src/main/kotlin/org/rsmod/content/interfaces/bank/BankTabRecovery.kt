@@ -20,7 +20,7 @@ fun Player.repairBankTabSizes(): Int {
     val tracked = BankTab.entries.sumOf { tab -> vars[tab.sizeVarBit] }
     val missing = (lastSlot + 1 - tracked).coerceAtLeast(0)
     if (missing > 0) {
-        vars[BankTab.Main.sizeVarBit] += missing
+        vars[BankTab.Main.sizeVarBit] = vars[BankTab.Main.sizeVarBit] + missing
     }
     return missing
 }
