@@ -715,7 +715,7 @@ constructor(
             intoTab.increaseSize(this, sizeExpansion)
         }
 
-        notifySlotUpdate(fromSlot)
+        notifySlotUpdate(fromTab)
         if (fromTab.isEmpty(this)) {
             compactEmptyTabs(fromTab.index)
         }
@@ -1087,7 +1087,9 @@ constructor(
             return
         }
         val slot = comsub - 1
-        val obj = bank[slot] ?: return resendSlot(bank, 0)
+        player.repairBankTabSizes()
+        val sourceTab = BankTab.forSlot(this, slot) ?: return resendSlot(bank, slot)
+        val obj = bank[slot] ?: return resendSlot(bank, slot)
 
         if (!obj.isType(objType)) {
             resendSlot(bank, slot)
@@ -1096,7 +1098,7 @@ constructor(
 
         bank[slot] = null
         soundSynth("synth.firebreath")
-        notifySlotUpdate(slot)
+        notifySlotUpdate(sourceTab)
 
         val dispose = HeldDropEvents.Dispose(player, "inv.bank", slot, obj)
         publish(dispose)
