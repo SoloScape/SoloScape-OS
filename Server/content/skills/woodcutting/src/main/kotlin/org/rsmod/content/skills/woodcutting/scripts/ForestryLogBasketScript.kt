@@ -1,6 +1,13 @@
 package org.rsmod.content.skills.woodcutting.scripts
 
 import dev.openrune.ServerCacheManager
+import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
+import jakarta.inject.Inject
+import org.rsmod.content.interfaces.bank.scripts.BankInvScript
+import org.rsmod.game.inv.Inventory
+import org.rsmod.game.inv.InvObj
+import org.rsmod.api.script.onIfModalButton
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.script.onOpHeld1
 import org.rsmod.api.script.onOpHeld3
@@ -16,8 +23,20 @@ import org.rsmod.plugin.scripts.ScriptContext
  * and option 5 (Destroy) are left to the standard item handlers.
  * The Forestry basket has a distinct View / Configure menu.
  */
-class ForestryLogBasketScript : PluginScript() {
+class ForestryLogBasketScript @Inject constructor(
+    private val bankInv: BankInvScript,
+) : PluginScript() {
     override fun ScriptContext.startup() {
+        // This cache's bank CS2 already draws a Deposit Containers control.
+        // Bind only when the gameval component actually exists (older caches
+        // must never fail plugin startup over a missing UI mapping).
+        if (runCatching {
+            "component.bankmain:depositcontainers".asRSCM(RSCMType.COMPONENT)
+        }.isSuccess) {
+            onIfModalButton("component.bankmain:depositcontainers") {
+                depositBasketToBank()
+            }
+        }
         val baskets = ServerCacheManager.getItems().values.filter {
             it.internalName in setOf(
                 ForestryLogBasket.LOG_CLOSED,
@@ -41,6 +60,23 @@ class ForestryLogBasketScript : PluginScript() {
                 onOpWorn3(symbol) { configureBasket() }
             }
         }
+    }
+
+    private fun ProtectedAccess.depositBasketToBank() {
+        if (!ForestryLogBasket.hasBasket(player)) return
+        val moved = ForestryLogBasket.depositToBank(player) { symbol ->
+            // Use the normal bank deposit flow so existing stacks, selected tabs,
+            // tab sizes, placeholders and bank capacity are updated normally.
+            // Temporary source is discarded only after a successful transaction.
+            val staging = Inventory.create("inv.inv")
+            staging[0] = InvObj(symbol)
+            with(bankInv) {
+                this@depositBasketToBank.invDeposit(0, 1, staging)
+            }
+        }
+        if (moved > 0) mes("You deposit $moved logs from your basket.")
+        else if (ForestryLogBasket.count(player) > 0)
+            mes("You don't have enough space in your bank for these logs.")
     }
 
     private fun ProtectedAccess.fillBasket() {
