@@ -17,6 +17,16 @@ import org.rsmod.game.type.getInvObj
 internal object ForestryLogBasket {
     const val CAPACITY = 28
     private val CONTENTS = AttributeKey<String>(persistenceKey = "forestry_log_basket_contents")
+    private val OPEN = AttributeKey<Int>(persistenceKey = "forestry_log_basket_open")
+
+    fun isOpen(player: Player): Boolean = hasBasket(player) && player.attr[OPEN] == 1
+
+    fun toggleOpen(player: Player): Boolean {
+        if (!hasBasket(player)) return false
+        val next = !isOpen(player)
+        player.attr[OPEN] = if (next) 1 else 0
+        return next
+    }
 
     fun hasBasket(player: Player): Boolean =
         (player.inv.objs.asSequence() + player.worn.objs.asSequence())
