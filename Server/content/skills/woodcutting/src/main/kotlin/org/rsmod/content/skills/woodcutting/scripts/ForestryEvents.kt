@@ -847,7 +847,8 @@ class ForestryEventManager @Inject constructor(
                     (e.finish - clock.cycle).coerceAtLeast(1))
             }
             mes("The beehive is finished! The bees will move to the next hive.")
-        } else if (ForestryHiveRules.halfway(e.hiveProgress, e.hiveLogsRequired)) {
+        } else if (ForestryHiveRules.halfway(e.hiveProgress, e.hiveLogsRequired) &&
+            !ForestryHiveRules.halfway(e.hiveProgress - 1, e.hiveLogsRequired)) {
             e.npcs.entries.firstOrNull { it.value == "hive" }?.key?.let {
                 it.transmog(checkNotNull(ForestryAssets.hiveHalf()),
                     (e.finish - clock.cycle).coerceAtLeast(1))
