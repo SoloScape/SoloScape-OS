@@ -81,6 +81,7 @@ class ForestryEventManager @Inject constructor(
         val finish: Int,
         val eligibleAtStart: Set<Player>,
         val accessFrom: CoordGrid,
+        val activeChoppers: Int = 1,
     ) {
         val locs = mutableMapOf<LocInfo, String>()
         val npcs = mutableMapOf<Npc, String>()
@@ -100,6 +101,8 @@ class ForestryEventManager @Inject constructor(
         var foxHits = 0
         var trapActive = false
         var hiveProgress = 0
+        val hiveLogsRequired = ForestryHiveRules.logsPerHive(activeChoppers)
+        var nextHiveAt = -1
         var emptyNest = Random.nextInt(4)
         var infusedRoot = -1
         var rootPhase = -1
@@ -142,7 +145,7 @@ class ForestryEventManager @Inject constructor(
             return
         }
         if (!ForestryRations.hasKit(player)) return
-        val choices = ForestryEventType.entries.toList()
+        val choices = ForestryEventType.entries.filter { !it.members || player.members }
         val selected = choices[Random.nextInt(choices.size)]
         scheduled[tree] = TreeRoll(tree, selected, type.treeLevelReq, cycle + Random.nextInt(67, 201), cycle)
         if (fallen) attemptSpawn(tree)
@@ -189,8 +192,9 @@ class ForestryEventManager @Inject constructor(
         if (nearby.none { ForestryRations.hasKit(it) }) return
         if (Random.nextInt(100) >= ForestryRules.spawnPercent(roll.level, nearby.size)) return
         val eligible = nearby.filter { history[it]?.eligible(origin, clock.cycle) == true }.toSet()
+        if (roll.type.members && nearby.none { it.members }) return
         val event = Event(roll.type, origin, clock.cycle, clock.cycle + roll.type.ticks,
-            eligible, nearby.first().coords)
+            eligible, nearby.first().coords, eligible.size.coerceAtLeast(1))
         prepare(event)
         if (!playable(event)) {
             discard(event)
@@ -207,6 +211,8 @@ class ForestryEventManager @Inject constructor(
     fun debugSpawn(player: Player, type: ForestryEventType): String? {
         if (active.any { forestryNear(it.origin, player.coords, 30) })
             return "A Forestry event is already active nearby. Wait for it to finish."
+        if (type.members && !player.members)
+            return "That Forestry event is only available to members."
         val event = Event(type, player.coords, clock.cycle, clock.cycle + type.ticks,
             setOf(player), player.coords)
         prepare(event)
@@ -230,7 +236,8 @@ class ForestryEventManager @Inject constructor(
             ForestryEventType.ENT -> npcRoles.count { it.startsWith("ent:") } == 5
             ForestryEventType.FLOWERS -> npcRoles.count { it.startsWith("bush:") } == 8
             ForestryEventType.LEPRECHAUN -> "bank" in npcRoles && locRoles.any { it.startsWith("rainbow:") }
-            ForestryEventType.HIVE -> "hive" in npcRoles && "keeper" in npcRoles
+            ForestryEventType.HIVE -> "hive" in npcRoles && "keeper" in npcRoles &&
+                ForestryAssets.hiveHalf() != null && ForestryAssets.hiveComplete() != null
             ForestryEventType.FOX -> "trap" in npcRoles && "fox" in npcRoles
             ForestryEventType.RITUAL -> "dryad" in npcRoles &&
                 npcRoles.count { it.startsWith("circle:") } == 5
@@ -274,6 +281,10 @@ class ForestryEventManager @Inject constructor(
             ForestryEventType.HIVE -> {
                 spawnNpc(e, "keeper", 0, ForestryAssets.KEEPER)
                 spawnNpc(e, "hive", 1, ForestryAssets.HIVE)
+                ForestryAssets.wildHive()?.let { spawnNpcType(e, "wild-hive", 2, it) }
+                ForestryAssets.friendlyBees()?.let { bees ->
+                    repeat(3) { spawnNpcType(e, "friendly-bees", it + 3, bees) }
+                }
             }
             ForestryEventType.FOX -> {
                 spawnNpc(e, "fox", 0, ForestryAssets.FOX)
@@ -483,6 +494,31 @@ class ForestryEventManager @Inject constructor(
 
     private fun advance(e: Event, now: Int) {
         when (e.type) {
+            ForestryEventType.HIVE -> if (e.nextHiveAt >= 0 && now >= e.nextHiveAt) {
+                e.nextHiveAt = -1
+                if (e.phase >= ForestryHiveRules.HIVES) {
+                    e.completed = true
+                } else {
+                    val previous = e.npcs.entries.firstOrNull { it.value == "hive" }?.key
+                    val fallback = previous?.coords
+                    val type = ForestryAssets.npc(ForestryAssets.HIVE)
+                    val next = type?.let { tile(e, e.phase + 1, it.size, it.size) }
+                    if (previous != null) {
+                        if (previous.isSlotAssigned) npcs.del(previous, Int.MAX_VALUE)
+                        e.npcs.remove(previous)
+                    }
+                    if (type != null) {
+                        val at = next ?: fallback
+                        if (at != null) {
+                            val hive = Npc(type, at)
+                            hive.mode = NpcMode.None
+                            npcs.add(hive, (e.finish - now).coerceAtLeast(1))
+                            e.npcs[hive] = "hive"
+                        }
+                    }
+                    if ("hive" !in e.npcs.values) e.completed = true
+                }
+            }
             ForestryEventType.LEPRECHAUN -> {
                 if (now >= e.finish - 38 && !e.rainbowWarning) {
                     e.rainbowWarning = true
@@ -586,13 +622,14 @@ class ForestryEventManager @Inject constructor(
         val success = when (e.type) {
             ForestryEventType.SAPLING -> e.growth >= 400
             ForestryEventType.FOX -> e.foxHits < 3
+            ForestryEventType.HIVE -> e.phase >= ForestryHiveRules.HIVES
             else -> true
         }
         val onlineNearby = players.findAll(ZoneKey.from(e.origin), zoneRadius = 4)
             .filter { forestryNear(it.coords, e.origin, 30) }.toSet()
         for ((player, c) in e.contributions) {
             if (player !in onlineNearby || !c.eligible || c.actions == 0) continue
-            if (success && e.type != ForestryEventType.PHEASANT) {
+            if (success && e.type !in setOf(ForestryEventType.PHEASANT, ForestryEventType.HIVE)) {
                 give(player, "obj.forestry_currency", c.takeBark(25 + c.actions * 2))
                 when (e.type) {
                     ForestryEventType.SAPLING -> giveLeaves(player)
@@ -604,14 +641,12 @@ class ForestryEventManager @Inject constructor(
                         if (Random.nextInt(5) < pruned)
                             objects.add(ordinaryBirdNest(Random.nextInt(3)), player.coords, 300, player, 1)
                     }
-                    ForestryEventType.HIVE -> if (c.hives.size >= e.phase && Random.nextInt(3) != 0)
-                        giveNamed(player, "Sturdy beehive parts")
                     ForestryEventType.FOX -> if (Random.nextInt(30) == 0) giveNamed(player, "Fox whistle")
                     ForestryEventType.RITUAL -> if (Random.nextInt(30) == 0) giveNamed(player, "Petal garland")
                     else -> Unit
                 }
             }
-            if (success && e.type != ForestryEventType.PHEASANT) {
+            if (success && e.type !in setOf(ForestryEventType.PHEASANT, ForestryEventType.HIVE)) {
                 // Bonus is proportional to completed actions and the visible Woodcutting level.
                 val bonus = if (e.type == ForestryEventType.RITUAL)
                     ForestryRules.ritualBonus(player.woodcuttingLvl, c.actions)
@@ -757,25 +792,57 @@ class ForestryEventManager @Inject constructor(
     }
 
     private fun ProtectedAccess.buildHive(e: Event, c: ForestryContribution) {
-                val slot = player.inv.indices.firstOrNull { index ->
-                    player.inv[index]?.let { getInvObj(it).internalName in ForestryRules.logs } == true
-                }
-                if (slot == null) {
-                    mes("You need logs to help build the beehive.")
-                } else {
-                    val logs = player.inv[slot]!!
-                    player.inv[slot] = if (logs.count > 1) logs.copy(count = logs.count - 1) else null
-                    e.hiveProgress++
-                    c.hives.add(e.phase)
-                    reward(c, player.woodcuttingLvl * 0.9)
-                    statAdvance("stat.construction", if (c.eligible) 12.0 else 1.0)
-                    if (e.hiveProgress >= 3) {
-                        e.hiveProgress = 0
-                        e.phase++
-                        mes("The beehive is finished!")
-                        if (e.phase >= 6) e.completed = true
-                    }
-                }
+        if (clock.cycle >= e.finish || e.nextHiveAt >= 0 ||
+            e.phase >= ForestryHiveRules.HIVES) return
+        val log = ForestryHiveSupplies.consumeLog(player)
+        if (log == null) {
+            mes("You need logs in your inventory or log basket to build this beehive.")
+            return
+        }
+        c.actions++
+        c.hives.add(e.phase)
+        e.hiveProgress++
+        if (c.eligible) {
+            statAdvance("stat.woodcutting", ForestryHiveRules.logXp(player.woodcuttingLvl) *
+                xpMods.get(player, "stat.woodcutting"))
+            statAdvance("stat.construction", ForestryHiveRules.CONSTRUCTION_XP_PER_LOG *
+                xpMods.get(player, "stat.construction"))
+            give(player, "obj.forestry_currency",
+                c.takeBark(ForestryHiveRules.barkForLog(log)))
+        } else {
+            statAdvance("stat.woodcutting", 1.0 * xpMods.get(player, "stat.woodcutting"))
+        }
+        if (ForestryHiveRules.completed(e.hiveProgress, e.hiveLogsRequired)) {
+            // Only a completed hive gives its participating players a rare roll.
+            val nearby = players.findAll(ZoneKey.from(e.origin), zoneRadius = 4)
+                .filter { forestryNear(it.coords, e.origin, 30) }.toSet()
+            for ((participant, progress) in e.contributions) {
+                val contributed = progress.hives.remove(e.phase)
+                if (participant !in nearby || !ForestryHiveRules.partEligible(
+                        contributed, true, progress.eligible)) continue
+                give(participant, "obj.forestry_currency",
+                    progress.takeBark(ForestryHiveRules.completionBark(Random)))
+                val xp = ForestryHiveRules.completionXp(
+                    participant.statMap.getCurrentLevel("stat.woodcutting"))
+                participant.statAdvance("stat.woodcutting",
+                    xp * xpMods.get(participant, "stat.woodcutting"))
+                if (ForestryHiveRules.sturdyPartDrop(Random))
+                    giveNamed(participant, "Sturdy beehive parts")
+            }
+            e.hiveProgress = 0
+            e.phase++
+            e.nextHiveAt = clock.cycle + ForestryHiveRules.RESPAWN_TICKS
+            e.npcs.entries.firstOrNull { it.value == "hive" }?.key?.let {
+                it.transmog(checkNotNull(ForestryAssets.hiveComplete()),
+                    (e.finish - clock.cycle).coerceAtLeast(1))
+            }
+            mes("The beehive is finished! The bees will move to the next hive.")
+        } else if (ForestryHiveRules.halfway(e.hiveProgress, e.hiveLogsRequired)) {
+            e.npcs.entries.firstOrNull { it.value == "hive" }?.key?.let {
+                it.transmog(checkNotNull(ForestryAssets.hiveHalf()),
+                    (e.finish - clock.cycle).coerceAtLeast(1))
+            }
+        }
     }
 
     fun ProtectedAccess.interactNpc(target: Npc, option: Int) {
@@ -784,7 +851,8 @@ class ForestryEventManager @Inject constructor(
         val c = contribution(e, player)
         if (!c.ready(clock.cycle)) return
         when {
-            role == "hive" && e.type == ForestryEventType.HIVE -> buildHive(e, c)
+            role == "hive" && e.type == ForestryEventType.HIVE && option == 1 ->
+                buildHive(e, c)
             role.startsWith("ent:") && e.type == ForestryEventType.ENT -> {
                 val i = role.substringAfter(":").toInt()
                 val wanted = ForestryRules.entOptions[e.entStyles[i]]
@@ -878,9 +946,10 @@ class ForestryEventManager @Inject constructor(
     fun eventLocNames(): List<String> = ForestryAssets.locNames.mapNotNull {
         ForestryAssets.loc(it)?.internalName
     }
-    fun eventNpcNames(): List<String> = ForestryAssets.npcNames.mapNotNull {
+    fun eventNpcNames(): List<String> = (ForestryAssets.npcNames.mapNotNull {
         ForestryAssets.npc(it)?.internalName
-    }
+    } + listOfNotNull(ForestryAssets.hiveHalf()?.internalName,
+        ForestryAssets.hiveComplete()?.internalName)).distinct()
 
     fun onLogout(player: Player) {
         ForestrySupplies.remove(player, ForestryAssets.mulch + ForestryAssets.EGG)
