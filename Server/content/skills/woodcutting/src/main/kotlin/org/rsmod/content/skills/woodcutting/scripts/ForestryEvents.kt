@@ -801,6 +801,67 @@ class ForestryEventManager @Inject constructor(
         opLoc1(BoundLocInfo(root, type))
     }
 
+    /**
+     * Server-owned quantity selection. Each log is consumed *after* a native
+     * building animation finishes, with the same safety checks repeated for
+     * every log. ProtectedAccess suspensions abort on movement/combat/new ops.
+     */
+    suspend fun ProtectedAccess.chooseHiveLogs(target: Npc) {
+        val e = active.firstOrNull { it.type == ForestryEventType.HIVE &&
+            it.npcs[target] == "hive" } ?: return
+        if (!target.isSlotAssigned || !isWithinDistance(target, 2) ||
+            e.nextHiveAt >= 0 || e.completed || clock.cycle >= e.finish) return
+        val at = player.coords
+        val hivePhase = e.phase
+        val available = ForestryHiveSupplies.availableLogs(player)
+        if (available == 0) {
+            mes("You need logs in your inventory or log basket to build this beehive.")
+            return
+        }
+
+        val selection = menu("How many logs would you like to use?",
+            hotkeys = false, choices = ForestryHiveRules.QUANTITY_OPTIONS)
+        if (selection == 5) return
+        val entered = if (selection == 3) countDialog("How many logs?") else 0
+        val amount = ForestryHiveRules.requestedLogs(selection, entered, available)
+        if (amount <= 0) return
+
+        val c = contribution(e, player)
+        for (i in 0 until amount) {
+            if (!hiveBuildActive(e, target, hivePhase, at) ||
+                !isWithinDistance(target, 2)) break
+            if (ForestryHiveSupplies.availableLogs(player) <= 0) {
+                mes("You have run out of logs.")
+                break
+            }
+            // A previous manual click may have started the contribution cooldown.
+            val wait = c.nextAction - clock.cycle
+            if (wait > 0) delay(wait)
+            if (!hiveBuildActive(e, target, hivePhase, at) ||
+                !isWithinDistance(target, 2)) break
+            faceEntitySquare(target)
+            anim(ForestryHiveRules.BUILD_ANIMATION)
+            delay(ForestryHiveRules.BUILD_TICKS)
+            if (!hiveBuildActive(e, target, hivePhase, at) ||
+                !isWithinDistance(target, 2)) break
+            if (!c.ready(clock.cycle, ForestryHiveRules.BUILD_TICKS)) continue
+            val remainingBefore = ForestryHiveSupplies.availableLogs(player)
+            buildHive(e, c)
+            if (e.nextHiveAt >= 0 ||
+                ForestryHiveSupplies.availableLogs(player) == remainingBefore) break
+        }
+        resetAnim()
+    }
+
+    private fun ProtectedAccess.hiveBuildActive(
+        e: Event,
+        hive: Npc,
+        phase: Int,
+        position: CoordGrid,
+    ): Boolean = e in active && !e.completed && clock.cycle < e.finish &&
+        e.phase == phase && e.nextHiveAt < 0 && hive.isSlotAssigned &&
+        e.npcs[hive] == "hive" && player.coords == position
+
     private fun ProtectedAccess.buildHive(e: Event, c: ForestryContribution) {
         if (clock.cycle >= e.finish || e.nextHiveAt >= 0 ||
             e.phase >= ForestryHiveRules.HIVES) return
@@ -1005,7 +1066,16 @@ class ForestryEventScript @Inject constructor(
             onOpLoc1(loc) { with(events) { interactLoc(it.loc) } }
         }
         for (npc in events.eventNpcNames()) {
-            onOpNpc1(npc) { with(events) { interactNpc(it.npc, 1) } }
+            onOpNpc1(npc) {
+                val target = it.npc
+                with(events) {
+                    if (target.type.internalName == ForestryAssets.HIVE) {
+                        chooseHiveLogs(target)
+                    } else {
+                        interactNpc(target, 1)
+                    }
+                }
+            }
             onOpNpc2(npc) { with(events) { interactNpc(it.npc, 2) } }
             onOpNpc3(npc) { with(events) { interactNpc(it.npc, 3) } }
             onOpNpc4(npc) { with(events) { interactNpc(it.npc, 4) } }
