@@ -41,6 +41,7 @@ import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.axeWoo
 import dev.openrune.rscm.RSCM
 import dev.openrune.rscm.RSCMType
 import org.rsmod.game.entity.Npc
+import org.rsmod.game.headbar.Headbar
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.player.SessionStateEvent
 import org.rsmod.game.inv.InvObj
@@ -192,6 +193,10 @@ class ForestryEventManager @Inject constructor(
         }
         for (event in active.toList()) {
             if (!event.completed) advance(event, now)
+            // Keep the native public bar visible even during pauses between
+            // contributions. It represents one shared hive, not personal HP.
+            if (event.type == ForestryEventType.HIVE && event.nextHiveAt < 0 &&
+                !event.completed && now % 15 == 0) showHiveProgress(event)
             if (event.type == ForestryEventType.LEPRECHAUN) collectRainbows(event)
             if (now >= event.finish || event.completed) {
                 finish(event)
@@ -306,6 +311,7 @@ class ForestryEventManager @Inject constructor(
             ForestryEventType.HIVE -> {
                 spawnNpc(e, "keeper", 0, ForestryAssets.KEEPER)
                 spawnNpc(e, "hive", 1, ForestryAssets.HIVE)
+                showHiveProgress(e)
                 val wild = ForestryAssets.wildHive()
                 if (wild != null) spawnNpcType(e, "wild-hive", 2, wild)
                 else ForestryAssets.wildHiveLoc()?.let {
@@ -381,6 +387,24 @@ class ForestryEventManager @Inject constructor(
             val index = role.substringAfter(":").toInt()
             entity.say(ForestryRules.entRequests[e.entStyles[index]])
         }
+    }
+
+    /** Public NPC headbar: green advances as logs are contributed, red recedes. */
+    private fun showHiveProgress(e: Event) {
+        val hive = e.npcs.entries.firstOrNull { it.value == "hive" }?.key
+            ?: return
+        if (!hive.isSlotAssigned) return
+        val filled = ForestryHiveRules.progressFill(e.hiveProgress, e.hiveLogsRequired)
+        hive.showHeadbar(
+            Headbar.fromNoSource(
+                self = ForestryHiveRules.PROGRESS_HEADBAR_ID,
+                public = ForestryHiveRules.PROGRESS_HEADBAR_ID,
+                startFill = filled,
+                endFill = filled,
+                startTime = 0,
+                endTime = 0,
+            )
+        )
     }
 
     private fun replaceLoc(e: Event, role: String, symbol: String) {
@@ -543,6 +567,7 @@ class ForestryEventManager @Inject constructor(
                             hive.mode = NpcMode.None
                             npcs.add(hive, (e.finish - now).coerceAtLeast(1))
                             e.npcs[hive] = "hive"
+                            showHiveProgress(e)
                         }
                     }
                     if ("hive" !in e.npcs.values) e.completed = true
@@ -831,7 +856,7 @@ class ForestryEventManager @Inject constructor(
         if (!target.isSlotAssigned || !isWithinDistance(target, 2) ||
             e.completed || clock.cycle >= e.finish) return
         if (e.nextHiveAt >= 0 || e.phase >= ForestryHiveRules.HIVES) {
-            mes("The hive is complete and won't benefit from any more wood.")
+            mesbox(ForestryHiveRules.COMPLETE_MESSAGE)
             return
         }
 
@@ -979,7 +1004,7 @@ class ForestryEventManager @Inject constructor(
                 it.transmog(checkNotNull(ForestryAssets.hiveComplete()),
                     (e.finish - clock.cycle).coerceAtLeast(1))
             }
-            mes("The beehive is finished! The bees will move to the next hive.")
+            mes(ForestryHiveRules.COMPLETE_MESSAGE)
         } else if (ForestryHiveRules.halfway(e.hiveProgress, e.hiveLogsRequired) &&
             !ForestryHiveRules.halfway(e.hiveProgress - 1, e.hiveLogsRequired)) {
             e.npcs.entries.firstOrNull { it.value == "hive" }?.key?.let {
@@ -987,6 +1012,9 @@ class ForestryEventManager @Inject constructor(
                     (e.finish - clock.cycle).coerceAtLeast(1))
             }
         }
+        // Send after halfway/completed NPC transformations so the player sees
+        // the updated green fill on every single log, including the final one.
+        showHiveProgress(e)
     }
 
     fun ProtectedAccess.interactNpc(target: Npc, option: Int) {
