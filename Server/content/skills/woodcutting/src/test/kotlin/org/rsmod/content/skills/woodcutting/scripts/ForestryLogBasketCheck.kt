@@ -85,6 +85,8 @@ fun main() {
     player.worn[1] = null
     player.inv[0] = InvObj(item.internalName)
     check(ForestryLogBasket.count(player) == 27)
+    // One non-log item occupies another slot, so one log must stay stored.
+    player.inv[1] = InvObj("obj.rune_axe")
     check(ForestryLogBasket.empty(player) == 26)
     check(ForestryLogBasket.count(player) == 1)
     check(ForestryLogBasket.empty(player) == 0)
