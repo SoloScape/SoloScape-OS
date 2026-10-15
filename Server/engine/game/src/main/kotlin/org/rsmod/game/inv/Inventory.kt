@@ -19,10 +19,14 @@ public class Inventory(public val type: InventoryServerType, objs: Array<InvObj?
     public var objs: Array<InvObj?> = objs
         private set
 
+    public var mutationVersion: Long = 0
+        private set
+
     public fun ensureCapacity(capacity: Int) {
         require(capacity in 0..32768)
         if (capacity > size) {
             objs = objs.copyOf(capacity)
+            mutationVersion++
         }
     }
 
@@ -81,8 +85,7 @@ public class Inventory(public val type: InventoryServerType, objs: Array<InvObj?
             if (objs[i] == null) {
                 continue
             }
-            objs[i] = null
-            modifiedSlots.set(i)
+            this[i] = null
         }
     }
 
@@ -98,6 +101,7 @@ public class Inventory(public val type: InventoryServerType, objs: Array<InvObj?
     public operator fun get(slot: Int): InvObj? = objs.getOrNull(slot)
 
     public operator fun set(slot: Int, obj: InvObj?) {
+        if (objs[slot] != obj) mutationVersion++
         objs[slot] = obj
         modifiedSlots.set(slot)
     }

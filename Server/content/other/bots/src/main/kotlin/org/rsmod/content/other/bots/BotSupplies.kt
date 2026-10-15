@@ -157,10 +157,13 @@ class BotSupplies @Inject constructor(
                 .maxByOrNull { stock[it.input.name.lowercase()] ?: 0 }?.input?.name
     }
 
-    fun rememberGathered(player: Player, task: BotTaskDefinition) {
-        if (task.kind != BotTaskKind.Fishing) return
-        player.inv.objs.filterNotNull().map(::getInvObj)
-            .firstOrNull { it.name.startsWith("Raw ", true) }?.let { recentCatch[player] = it.name }
+    fun rememberGathered(player: Player, task: BotTaskDefinition): Boolean {
+        if (task.kind != BotTaskKind.Fishing) return false
+        val caught = player.inv.objs.filterNotNull().map(::getInvObj)
+            .firstOrNull { it.name.startsWith("Raw ", true) }?.name ?: return false
+        if (recentCatch[player] == caught) return false
+        recentCatch[player] = caught
+        return true
     }
 
     fun requirements(player: Player, task: BotTaskDefinition): Map<String, Int> =

@@ -22,7 +22,9 @@ def main():
     output = Path(tempfile.mkdtemp(prefix="run-", dir=runs))
     module = server / "content/other/bots"
     sources = sorted((module / "src/main/kotlin").rglob("*.kt"))
-    names = ["BotTickWorkCheck", "BotMovementCheck", "BotActionsCheck", "BotCrowdingCheck",
+    sources += [server / "engine/game/src/main/kotlin/org/rsmod/game/inv/Inventory.kt",
+                server / "engine/game/src/main/kotlin/org/rsmod/game/stat/PlayerStatMap.kt"]
+    names = ["BotPerformanceCheck", "BotTickWorkCheck", "BotMovementCheck", "BotActionsCheck", "BotCrowdingCheck",
              "BotPlannerCheck", "BotSkillingCheck", "BotRoutineCheck", "BotFleeCheck",
              "BotGravestoneCheck", "BotPortCheck"]
     tests = [module / "src/test/kotlin/org/rsmod/content/other/bots" / (name + ".kt")

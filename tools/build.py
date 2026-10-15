@@ -290,6 +290,10 @@ def build_project(project_name, rebuild, home, compiler_lib):
     libraries = sorted(file for file in installed.glob("*.jar") if file.name not in internal_files)
     if not libraries:
         raise RuntimeError("The distribution has no external dependency libraries.")
+    if project_name == "Server":
+        import rsprot_observers
+        libraries = rsprot_observers.prepare(ROOT, libraries, home, compiler_lib)
+
 
     output = project / "build/direct"
     output.mkdir(parents=True, exist_ok=True)

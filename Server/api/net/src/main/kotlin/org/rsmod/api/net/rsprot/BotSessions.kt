@@ -6,6 +6,7 @@ import jakarta.inject.Singleton
 import net.rsprot.protocol.api.NetworkService
 import net.rsprot.protocol.common.client.OldSchoolClientType
 import net.rsprot.protocol.game.outgoing.info.Infos
+import net.rsprot.protocol.game.outgoing.info.InfoObserverAdmission
 import net.rsprot.protocol.game.outgoing.misc.player.MessageGame
 import org.rsmod.api.registry.region.RegionRegistry
 import org.rsmod.game.client.Client
@@ -26,19 +27,18 @@ constructor(private val service: NetworkService<Player>, private val regions: Re
 
     fun attach(player: Player) {
         val infos = service.infoProtocols.alloc(player.slotId, OldSchoolClientType.DESKTOP)
+        InfoObserverAdmission.disable(infos)
         allocated[player] = infos
         val cycle = RspCycle(session = null, infos = infos, regions = regions)
         player.client = BotClient(player)
         player.clientCycle = cycle
-        // Bots do not have a network session, so they must not create a login rebuild packet.
-        // Initialise only the player-info root coordinate; the regular post-tick update handles
-        // the rest of the avatar state and releases unsent packet buffers every cycle.
         infos.updateRootCoord(player.level, player.x, player.z)
     }
 
     fun detach(player: Player) {
         val infos = allocated.remove(player) ?: return
         service.infoProtocols.dealloc(infos)
+        InfoObserverAdmission.enable(infos)
         player.client = NoopClient
         player.clientCycle = NoopClientCycle
     }

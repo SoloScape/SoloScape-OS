@@ -39,8 +39,7 @@ import org.rsmod.map.zone.ZoneKey
 
 /**
  * Keeps a player's info avatar in step with the game each cycle and ships the result to their
- * client. A null [session] is a server-driven player (see [BotSessions]): other clients still see
- * the avatar, and the info packets computed for it are released unsent.
+ * client. Server-driven players retain visible avatar updates without encoding an observer view.
  */
 class RspCycle(
     private val session: Session<Player>?,
@@ -81,7 +80,7 @@ class RspCycle(
     override fun update(player: Player) {
         player.updateMoveSpeed()
         player.updateCoords()
-        player.rebuildArea()
+        if (session != null) player.rebuildArea()
         player.applyExactMove()
         player.applyPublicMessage()
         player.applyFacePathingEntity()
@@ -96,10 +95,7 @@ class RspCycle(
     }
 
     override fun flush(player: Player) {
-        if (session == null) {
-            release()
-            return
-        }
+        if (session == null) return
         val infoPackets = infos.getPackets()
         val rootPackets = infoPackets.rootWorldInfoPackets
 
@@ -119,6 +115,7 @@ class RspCycle(
     }
 
     override fun release() {
+        if (session == null) return
         val infoPackets = infos.getPackets()
         val rootPackets = infoPackets.rootWorldInfoPackets
 

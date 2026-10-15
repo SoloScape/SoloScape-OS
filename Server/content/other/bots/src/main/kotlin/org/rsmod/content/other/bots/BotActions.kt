@@ -115,10 +115,20 @@ constructor(
     private class SelectionDeferred : RuntimeException(null, null, false, false)
 
     private fun resourceSearch(search: () -> Route): Route {
-        if (priorityDecision) return search()
+        if (priorityDecision) return measureRoute(search)
         if (!work.available || selectionSearches >= 32) throw SelectionDeferred()
         selectionSearches++
-        return work.search(search)
+        return work.search { measureRoute(search) }
+    }
+
+    private fun <T> measureRoute(search: () -> T): T {
+        if (!BotMetrics.measuring) return search()
+        val start = System.nanoTime()
+        try {
+            return search()
+        } finally {
+            BotMetrics.route(System.nanoTime() - start)
+        }
     }
 
     private fun <T> candidates(player: Player, targets: Sequence<T>, key: (T) -> Any): List<T> =
@@ -182,7 +192,7 @@ constructor(
                     destX = destination.x, destZ = destination.z, moveNear = false,
                 ).success
             }
-            if (priorityDecision) search() else work.search(search)
+            if (priorityDecision) measureRoute(search) else work.search { measureRoute(search) }
         }
     }
 
@@ -218,6 +228,7 @@ constructor(
     ): Boolean {
         selectionDeferred = false
         selectionSearches = 0
+        BotMetrics.scan()
         return try {
             operateResource(player, names, option, radius, exclusive, sharedNpc, sharedLoc, eligibleLoc)
         } catch (_: SelectionDeferred) {

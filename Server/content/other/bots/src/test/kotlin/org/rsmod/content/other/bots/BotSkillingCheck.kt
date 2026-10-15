@@ -30,6 +30,15 @@ object BotSkillingCheck {
     @JvmStatic
     fun main(args: Array<String>) {
         ServerCacheManager.init(240).close()
+        val stats = org.rsmod.game.stat.PlayerStatMap()
+        stats.setBaseLevel("stat.mining", 2)
+        check(stats.levelVersion == 1L)
+        stats.setBaseLevel("stat.mining", 2)
+        stats.setFineXP("stat.mining", 100)
+        stats.setCurrentLevel("stat.mining", 3)
+        check(stats.levelVersion == 1L)
+        stats.setBaseLevel("stat.mining", 3)
+        check(stats.levelVersion == 2L)
         val events = EventBus()
         with(InvTransactionsScript(PlayerItemStorage(emptySet()))) {
             ScriptContext(events, CheatCommandMap(), EngineQueueCache()).startup()

@@ -87,6 +87,28 @@ class BotPopulationScript @Inject constructor(
                 }
             }
         }
+        onCommand("botstress") {
+            desc = "Measure bot performance: ::botstress [ticks] [warmup] or stop"
+            requiredRights = Rights.ADMINISTRATOR
+            cheat {
+                if (args.firstOrNull()?.equals("stop", true) == true) {
+                    BotMetrics.stop()
+                    player.mes("Bot performance measurement stopped.")
+                    return@cheat
+                }
+                val ticks = args.getOrNull(0)?.toIntOrNull() ?: if (args.isEmpty()) 500 else -1
+                val warmup = args.getOrNull(1)?.toIntOrNull() ?: if (args.size < 2) 100 else -1
+                if (args.size > 2 || ticks !in 1..5000 || warmup !in 0..1000) {
+                    player.mes("Usage: ::botstress [ticks 1..5000] [warmup 0..1000] or stop")
+                    return@cheat
+                }
+                val started = BotMetrics.start(clock.cycle, ticks, warmup) { lines ->
+                    if (player.isSlotAssigned) lines.forEach { player.mes(it) }
+                }
+                player.mes(if (started) "Bot measurement: $warmup warmup ticks, then $ticks ticks."
+                    else "A bot measurement is already running.")
+            }
+        }
         onCommand("bottasks") {
             desc = "List imported bot tasks, optionally filtered by kind"
             requiredRights = Rights.ADMINISTRATOR

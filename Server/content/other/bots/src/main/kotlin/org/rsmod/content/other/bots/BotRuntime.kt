@@ -70,6 +70,7 @@ private class WorldBot(
     var resourceWaits = 0
     var routeWaits = 0
     var planningWaits = 0
+    val activityCache = BotActivityCache<BotTaskDefinition>()
     var returnReason: String? = null
     var onlineSince = 0
     var sessionEndAt = Int.MAX_VALUE
@@ -143,6 +144,17 @@ class BotPopulation @Inject constructor(
         }
         Files.newInputStream(config).use { load(it) }
     }
+    private val areaSlots = BotAreaSlots<Player> { area ->
+        configured.getProperty("area.capacity.${area.x},${area.z},${area.level}",
+            configured.getProperty("area.capacity", "16")).toIntOrNull()
+            ?.coerceIn(0, MAX_BOTS) ?: 16
+    }
+    private data class EligibilityKey(val levels: Long, val members: Boolean, val combat: Int)
+    private data class SupplyKey(
+        val inv: org.rsmod.game.inv.Inventory, val invVersion: Long,
+        val worn: org.rsmod.game.inv.Inventory, val wornVersion: Long,
+        val bank: org.rsmod.game.inv.Inventory, val bankVersion: Long,
+    )
     private val debugMap = BotDebugMap()
     private val debugger = BotDebugger()
 
@@ -492,6 +504,9 @@ class BotPopulation @Inject constructor(
     }
 
     private fun setTask(bot: WorldBot, task: BotTaskDefinition) {
+        if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive)) {
+            check(areaSlots.assign(bot.player, BotWorkArea.forTask(task)))
+        }
         actions.release(bot.player)
         bot.task = task
         if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive, BotMode.Combat)) {
@@ -520,18 +535,35 @@ class BotPopulation @Inject constructor(
 
     private fun chooseTask(bot: WorldBot): Boolean {
         val player = bot.player
-        val occupancy = bots.values.filter { it !== bot }.groupingBy { it.task.id }.eachCount()
+        val occupancy = SourceBotCatalog.tasks.associate { task ->
+            task.id to areaSlots.count(BotWorkArea.forTask(task), player)
+        }
         bot.blockedTasks.entries.removeAll { it.value <= player.currentMapClock }
         val availableKinds = if (configured.getProperty("human.routines.expanded", "true")
             .toBoolean()) BotRoutinePlanner.expandedKinds else BotRoutinePlanner.basicKinds
         val levels = BotSkills.levels(player)
-        val eligible = SourceBotCatalog.tasks.filter {
-            (if (bot.mode == BotMode.Skilling) it.kind in availableKinds
-                else it.kind !in setOf(BotTaskKind.Trade, BotTaskKind.DropParty)) &&
-                BotTaskPlanner.available(it, levels, player.members)
+        val key = EligibilityKey(player.statMap.levelVersion, player.members,
+            player.appearance.combatLevel)
+        val eligible = bot.activityCache.eligible(key) {
+            BotMetrics.eligibilityRefresh()
+            SourceBotCatalog.tasks.filter {
+                (if (bot.mode == BotMode.Skilling) it.kind in availableKinds
+                    else it.kind !in setOf(BotTaskKind.Trade, BotTaskKind.DropParty)) &&
+                    BotTaskPlanner.available(it, levels, player.members)
+            }
         }
         bot.goal = BotRoutinePlanner.goal(bot.goal, bot.personality.focus, eligible, levels)
-        val candidates = eligible.filter { supplies.canSupply(player, it) && it.id !in bot.blockedTasks }
+        val bank = player.invMap.getOrPut("inv.bank")
+        val supplyKey = SupplyKey(player.inv, player.inv.mutationVersion,
+            player.worn, player.worn.mutationVersion, bank, bank.mutationVersion)
+        val supplied = bot.activityCache.supplied(supplyKey, player.currentMapClock,
+            50 + Math.floorMod(bot.identity * 13, 50)) {
+            BotMetrics.supplyRefresh()
+            eligible.filter { supplies.canSupply(player, it) }
+        }
+        val candidates = supplied.filter {
+            it.id !in bot.blockedTasks && areaSlots.available(player, BotWorkArea.forTask(it))
+        }
         val taskBias = candidates.associate { task -> task.id to
             BotRoutinePlanner.weight(task, player.coords, bot.goal) *
                 supplies.routineWeight(player, bot.task, task) }
@@ -553,6 +585,11 @@ class BotPopulation @Inject constructor(
                 }, occupancy, bot.personality, random, bot.task, friendTask, taskBias)
             } else BotTaskPlanner.select(remaining, levels, player.members, occupancy, random, taskBias)
             if (next == null) return@repeat
+            if (!supplies.canSupply(player, next)) {
+                bot.activityCache.invalidateSupplies()
+                remaining.remove(next)
+                return@repeat
+            }
             val atStart = player.coords.level == next.start.level &&
                 player.coords.chebyshevDistance(next.start) <= 2
             val route = if (atStart) emptyList() else
@@ -580,12 +617,14 @@ class BotPopulation @Inject constructor(
     }
 
     fun tick(cycle: Int) {
+        BotMetrics.beginTick(cycle)
         reconcilePopulation(cycle)
         actions.beginTick()
         try {
             tickBots(cycle)
         } finally {
             actions.endTick()
+            BotMetrics.endTick(bots.size)
         }
     }
 
@@ -596,67 +635,73 @@ class BotPopulation @Inject constructor(
         for (offset in population.indices) {
             val index = (start + offset) % population.size
             val bot = population[index]
-            actions.beginDecision(priority = true)
-            val player = bot.player
-            if (!player.isSlotAssigned) {
-                remove(player)
-                continue
-            }
-            if (bot.mode.isPvp) {
-                if (bot.mode == BotMode.Wilderness) offerWildernessTeam(player, cycle)
-                pvp(bot)
-                continue
-            }
-            // Emergency escape outranks skilling actions, pause timers, protection delays,
-            // menus and normal task decisions. Never resume working in active NPC combat.
-            if (bot.fleeLastHit >= 0 && flee(bot, cycle)) continue
-
-            // Normal PvM graves belong to players, and bots use the same ownership rules.
-            // Handle this before normal work, banking, idle pauses and task interactions.
-            if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive) &&
-                player.hitpoints > 0 && recoverGrave(bot, cycle)) continue
-            actions.beginDecision()
-            if (cycle < bot.nextThink || !actions.decisionAvailable) continue
-            decisionCursor = index + 1
-            bot.nextThink = BotDecisionTiming.next(cycle, bot.identity, 3)
-            if (player.hitpoints <= 0) {
-                actions.release(player)
-                continue
-            }
-            val totalXp = BotSkills.all.sumOf { player.statMap.getFineXP(it).toLong() }
-            val timedOut = bot.protectedTimeout.expired(cycle, player.coords, totalXp,
-                player.isDelayed || player.isAccessProtected)
-            if (timedOut && !player.isDelayed) {
-                player.clearPendingAction(events)
-                actions.release(player)
-                bot.protectedTimeout.expired(cycle, player.coords, totalXp, false)
-                bot.stalled = 0
-                bot.returnReason = "Protected action made no movement or XP progress for 120 seconds"
-                bot.status = "cancelled stalled protected action"
-                continue
-            }
-            if (menus.tick(player, supplies.recipe(bot.task))) continue
-            if (player.isDelayed || player.isAccessProtected) continue
-            if (cycle % 100 < 3 && bot.mode == BotMode.Progressive) save(bot)
-            if (eat(player)) continue
-            if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive, BotMode.Combat)) {
-                // All conversational replies are delivered through BotSocial, including skillers.
-                social.tick(player, "skilling", cycle)
-                if (bot.mode != BotMode.Combat && humanBehaviourEnabled &&
-                    tickHumanBehaviour(bot, cycle)) continue
-            }
-            when (bot.mode) {
-                BotMode.Trade, BotMode.DropParty -> {
-                    social.tick(player, if (bot.mode == BotMode.Trade) "trade" else "dropparty", cycle)
+            val measured = BotMetrics.measuring
+            val tickStart = if (measured) System.nanoTime() else 0L
+            try {
+                actions.beginDecision(priority = true)
+                val player = bot.player
+                if (!player.isSlotAssigned) {
+                    remove(player)
                     continue
                 }
-                BotMode.Wilderness, BotMode.ClanOne, BotMode.ClanTwo -> {
+                if (bot.mode.isPvp) {
+                    if (bot.mode == BotMode.Wilderness) offerWildernessTeam(player, cycle)
                     pvp(bot)
                     continue
                 }
-                else -> {}
+                // Emergency escape outranks skilling actions, pause timers, protection delays,
+                // menus and normal task decisions. Never resume working in active NPC combat.
+                if (bot.fleeLastHit >= 0 && flee(bot, cycle)) continue
+
+                // Normal PvM graves belong to players, and bots use the same ownership rules.
+                // Handle this before normal work, banking, idle pauses and task interactions.
+                if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive) &&
+                    player.hitpoints > 0 && recoverGrave(bot, cycle)) continue
+                actions.beginDecision()
+                if (cycle < bot.nextThink || !actions.decisionAvailable) continue
+                decisionCursor = index + 1
+                bot.nextThink = BotDecisionTiming.next(cycle, bot.identity, 3)
+                if (player.hitpoints <= 0) {
+                    actions.release(player)
+                    continue
+                }
+                val totalXp = BotSkills.all.sumOf { player.statMap.getFineXP(it).toLong() }
+                val timedOut = bot.protectedTimeout.expired(cycle, player.coords, totalXp,
+                    player.isDelayed || player.isAccessProtected)
+                if (timedOut && !player.isDelayed) {
+                    player.clearPendingAction(events)
+                    actions.release(player)
+                    bot.protectedTimeout.expired(cycle, player.coords, totalXp, false)
+                    bot.stalled = 0
+                    bot.returnReason = "Protected action made no movement or XP progress for 120 seconds"
+                    bot.status = "cancelled stalled protected action"
+                    continue
+                }
+                if (menus.tick(player, supplies.recipe(bot.task))) continue
+                if (player.isDelayed || player.isAccessProtected) continue
+                if (cycle % 100 < 3 && bot.mode == BotMode.Progressive) save(bot)
+                if (eat(player)) continue
+                if (bot.mode in setOf(BotMode.Skilling, BotMode.Progressive, BotMode.Combat)) {
+                    // All conversational replies are delivered through BotSocial, including skillers.
+                    social.tick(player, "skilling", cycle)
+                    if (bot.mode != BotMode.Combat && humanBehaviourEnabled &&
+                        tickHumanBehaviour(bot, cycle)) continue
+                }
+                when (bot.mode) {
+                    BotMode.Trade, BotMode.DropParty -> {
+                        social.tick(player, if (bot.mode == BotMode.Trade) "trade" else "dropparty", cycle)
+                        continue
+                    }
+                    BotMode.Wilderness, BotMode.ClanOne, BotMode.ClanTwo -> {
+                        pvp(bot)
+                        continue
+                    }
+                    else -> {}
+                }
+                think(bot, cycle)
+            } finally {
+                if (measured) BotMetrics.recordBot(System.nanoTime() - tickStart)
             }
-            think(bot, cycle)
         }
         updateDebugMap()
         updateDiagnostics(cycle)
@@ -1067,7 +1112,9 @@ class BotPopulation @Inject constructor(
             BotPhase.Changing, BotPhase.Outbound, BotPhase.Returning -> walkRoute(bot)
             BotPhase.RecoveringGrave, BotPhase.GraveBanking -> Unit
             BotPhase.Banking -> {
-                supplies.rememberGathered(player, bot.task)
+                if (supplies.rememberGathered(player, bot.task)) {
+                    bot.activityCache.invalidateSupplies()
+                }
                 val keep = supplies.requirements(player, bot.task).keys
                     .filter { item -> listOf("axe", "rod", "net", "hammer", "needle", "talisman")
                         .any { item.contains(it, ignoreCase = true) } || item.equals("Coins", true) }
@@ -1178,7 +1225,10 @@ class BotPopulation @Inject constructor(
                 bot.waypoint++
                 continue
             }
-            if (player.routeRequest != null && bot.stalled < 3) return
+            if (BotMovementState.waiting(player.routeRequest != null,
+                player.routeDestination.size, player.coords != bot.previousCoords, bot.stalled)) {
+                return
+            }
             val previous = bot.path.getOrNull(bot.waypoint - 1) ?: bot.pathOrigin
             val transition = BotRoutes.traversal(previous, target)
             if (transition != null && player.coords == previous) {
@@ -1310,6 +1360,7 @@ class BotPopulation @Inject constructor(
         nextPlayerTeamOffer.clear()
         nextOfferToPlayer.clear()
         minigames.removeAll()
+        BotMetrics.stop()
         debugMap.stop()
         debugger.stop()
         actions.debugEnabled = false
@@ -1333,6 +1384,7 @@ class BotPopulation @Inject constructor(
 
     private fun remove(player: Player) {
         actions.forget(player)
+        areaSlots.release(player)
         val bot = bots.remove(player)
         playerTeamInvitations.remove(player)
         declinedPlayerTeams.remove(player)
