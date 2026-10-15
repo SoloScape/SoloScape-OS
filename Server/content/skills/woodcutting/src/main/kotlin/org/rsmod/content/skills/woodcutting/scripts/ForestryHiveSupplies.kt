@@ -16,45 +16,64 @@ internal object ForestryHiveSupplies {
         "inv.forestry_basket" to "forestry_basket",
     )
 
-    /** Count only actual logs, including supported permanent basket inventories. */
-    fun availableLogs(player: Player): Int {
-        var total = count(player.inv) + ForestryLogBasket.count(player)
+    /**
+     * Inventory, persistent log basket, and any cache-backed native basket.
+     * Use actual per-type quantities to populate the native Beehive Make-X
+     * interface. Preserve inventory ordering and never invent missing logs.
+     */
+    fun availableByType(player: Player): Map<String, Int> {
+        val result = linkedMapOf<String, Int>()
+        fun include(symbol: String, count: Int) {
+            if (symbol in ForestryRules.logs && count > 0) {
+                result[symbol] = (result[symbol] ?: 0) + count
+            }
+        }
+        fun includeInventory(inventory: Inventory) {
+            for (obj in inventory.objs.filterNotNull()) {
+                include(getInvObj(obj).internalName, obj.count)
+            }
+        }
+        includeInventory(player.inv)
+        for (symbol in ForestryLogBasket.stored(player).takeIf {
+            ForestryLogBasket.hasBasket(player)
+        }.orEmpty()) {
+            include(symbol, 1)
+        }
         val carried = (player.inv.objs.asSequence() + player.worn.objs.asSequence())
             .filterNotNull().map { getInvObj(it).internalName.lowercase() }.toSet()
         for ((storageKey, objectName) in basketContainers) {
             if (carried.none { objectName in it }) continue
-            // Older caches have real basket items but no mapped basket inventory.
-            // The persistent ForestryLogBasket attribute is the primary storage.
             val storage = runCatching { player.invMap[storageKey] }.getOrNull() ?: continue
-            if (storage.type.scope == InvScope.Perm) total += count(storage)
+            if (storage.type.scope == InvScope.Perm) includeInventory(storage)
         }
-        return total
+        return result
     }
 
-    private fun count(inventory: Inventory): Int = inventory.objs.filterNotNull()
-        .filter { getInvObj(it).internalName in ForestryRules.logs }
-        .sumOf { it.count }
+    fun availableLogs(player: Player): Int = availableByType(player).values.sum()
 
-    fun consumeLog(player: Player): String? {
-        take(player.inv)?.let { return it }
-        ForestryLogBasket.consume(player)?.let { return it }
-        val equipped = (player.inv.objs.asSequence() + player.worn.objs.asSequence())
+    fun availableLogs(player: Player, symbol: String): Int =
+        availableByType(player)[symbol] ?: 0
+
+    /** Selection is material-specific: never silently take a different log. */
+    fun consumeLog(player: Player, symbol: String? = null): String? {
+        take(player.inv, symbol)?.let { return it }
+        ForestryLogBasket.consume(player, symbol)?.let { return it }
+        val carried = (player.inv.objs.asSequence() + player.worn.objs.asSequence())
             .filterNotNull().map { getInvObj(it).internalName.lowercase() }.toSet()
         for ((storageKey, objectName) in basketContainers) {
-            if (equipped.none { objectName in it }) continue
-            // Older caches have real basket items but no mapped basket inventory.
-            // The persistent ForestryLogBasket attribute is the primary storage.
+            if (carried.none { objectName in it }) continue
             val storage = runCatching { player.invMap[storageKey] }.getOrNull() ?: continue
             if (storage.type.scope != InvScope.Perm) continue
-            take(storage)?.let { return it }
+            take(storage, symbol)?.let { return it }
         }
         return null
     }
 
-    private fun take(inventory: Inventory): String? {
+    private fun take(inventory: Inventory, requested: String? = null): String? {
         val slot = inventory.indices.firstOrNull {
             inventory[it]?.let { item ->
-                getInvObj(item).internalName in ForestryRules.logs
+                val symbol = getInvObj(item).internalName
+                symbol in ForestryRules.logs && (requested == null || symbol == requested)
             } == true
         } ?: return null
         val current = inventory[slot] ?: return null
