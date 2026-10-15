@@ -24,7 +24,7 @@ fun main() {
     check(rules.barkForLog("obj.yew_logs") == 5)
     check(rules.barkForLog("obj.magic_logs") == 6)
     check(rules.completionXp(50) == 222.5)
-    check(rules.logXp(50) == 28.8)
+    check(kotlin.math.abs(rules.logXp(50) - 28.8) < 0.00001)
     check(rules.CONSTRUCTION_XP_PER_LOG == 15.0)
     val random = Random(413)
     val rolls = (0 until 900).count { rules.sturdyPartDrop(random) }
