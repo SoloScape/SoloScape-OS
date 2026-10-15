@@ -91,7 +91,7 @@ class BotProfileStore(private val directory: Path = Path.of(".data", "bots")) {
         val needsSuffix = reserved || (id != null &&
             (expected == null || !expected.equals(name, ignoreCase = true) ||
                 first != (id - 1)))
-        val filename = if (needsSuffix) "$name (\${player.username})" else name
+        val filename = if (needsSuffix) "$name (${player.username})" else name
         return directory.resolve("$filename.properties")
     }
 
@@ -110,7 +110,7 @@ class BotProfileStore(private val directory: Path = Path.of(".data", "bots")) {
             check(Files.isRegularFile(named)) { "Bot profile path is not a file: $named" }
             val owner = read(named).getProperty("profile.username")
             check(owner == player.username) {
-                "Bot profile filename collision at $named (owner=$owner, requested=\${player.username})"
+                "Bot profile filename collision at $named (owner=$owner, requested=${player.username})"
             }
             return named
         }
