@@ -1,6 +1,12 @@
 name: Bot port checks
 
 on:
+  push:
+    branches:
+      - feature/forestry-events
+    paths:
+      - "Server/content/other/bots/**"
+      - ".github/workflows/bots.yml"
   pull_request:
     paths:
       - "Server/content/other/bots/**"
