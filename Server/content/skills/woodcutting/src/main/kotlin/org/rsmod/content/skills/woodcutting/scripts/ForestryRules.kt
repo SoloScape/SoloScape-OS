@@ -31,6 +31,10 @@ internal class ForestryHistory {
     fun eligible(origin: CoordGrid, cycle: Int): Boolean = trees.any {
         cycle - it.cycle in 0 until 300 && forestryNear(it.coords, origin, 30)
     }
+    /** Count only choppers recently active on the event's specific tree. */
+    fun activeAt(tree: CoordGrid, cycle: Int): Boolean = trees.any {
+        it.coords == tree && cycle - it.cycle in 0..8
+    }
     fun expired(cycle: Int): Boolean = trees.all { cycle - it.cycle >= 300 }
 }
 
