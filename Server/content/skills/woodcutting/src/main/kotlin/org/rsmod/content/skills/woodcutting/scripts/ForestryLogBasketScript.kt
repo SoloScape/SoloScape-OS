@@ -8,6 +8,7 @@ import org.rsmod.content.interfaces.bank.scripts.BankInvScript
 import org.rsmod.game.inv.Inventory
 import org.rsmod.game.inv.InvObj
 import org.rsmod.api.script.onIfModalButton
+import org.rsmod.api.script.onPlayerLogin
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.script.onOpHeld1
 import org.rsmod.api.script.onOpHeld3
@@ -27,6 +28,7 @@ class ForestryLogBasketScript @Inject constructor(
     private val bankInv: BankInvScript,
 ) : PluginScript() {
     override fun ScriptContext.startup() {
+        onPlayerLogin { ForestryLogBasket.restoreLegacyOpenState(player) }
         // This cache's bank CS2 already draws a Deposit Containers control.
         // Bind only when the gameval component actually exists (older caches
         // must never fail plugin startup over a missing UI mapping).
