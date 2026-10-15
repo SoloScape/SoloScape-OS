@@ -9,9 +9,9 @@ package org.rsmod.api.player.worn
  * Source: runtime equipment export cross-checked with a community OSRS requirements snapshot.
  * Keep quest/activity checks in their dedicated restrictions; this is stat-only.
  */
-internal object EquipmentStatSupplement {
-    internal data class Requirement(val skill: String, val level: Int) {
-        val internalName: String
+public object EquipmentStatSupplement {
+    public data class Requirement(public val skill: String, public val level: Int) {
+        public val internalName: String
             get() = "stat.$skill"
     }
 
@@ -22,19 +22,19 @@ internal object EquipmentStatSupplement {
 
     private val byItemId: Map<Int, List<Requirement>> by lazy { load() }
 
-    fun requirementsFor(itemId: Int): List<Requirement> = byItemId[itemId].orEmpty()
+    public fun requirementsFor(itemId: Int): List<Requirement> = byItemId[itemId].orEmpty()
 
     /**
      * Preserves in-cache requirements, even if they differ from the supplement, and returns
      * only missing skills. This prevents stale supplemental data from replacing newer cache rules.
      */
-    fun additionalRequirements(
+    public fun additionalRequirements(
         itemId: Int,
         nativeSkills: Set<String>,
     ): List<Requirement> =
         requirementsFor(itemId).filter { it.internalName !in nativeSkills }
 
-    fun unmetRequirements(
+    public fun unmetRequirements(
         itemId: Int,
         nativeSkills: Set<String>,
         baseLevel: (String) -> Int,
