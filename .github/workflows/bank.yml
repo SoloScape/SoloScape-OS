@@ -1,0 +1,50 @@
+name: Bank inventory integrity
+
+on:
+  push:
+    branches:
+      - feature/forestry-events
+    paths:
+      - "Server/content/interfaces/bank/**"
+      - "tools/test_bank.py"
+      - ".github/workflows/bank.yml"
+  pull_request:
+    paths:
+      - "Server/content/interfaces/bank/**"
+      - "tools/test_bank.py"
+      - ".github/workflows/bank.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: bank-integrity-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bank:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Cache Kotlin compiler
+        uses: actions/cache@v5
+        with:
+          path: .build-tools/kotlinc
+          key: ${{ runner.os }}-kotlin-2.2.10
+      - name: Prepare Kotlin compiler
+        run: python -c "import sys; sys.path.insert(0, 'tools'); import build; build.compiler()"
+      - name: Compile standalone server
+        run: python tools/build.py Server
+      - name: Check bank tab recovery and capacity
+        run: python tools/test_bank.py
