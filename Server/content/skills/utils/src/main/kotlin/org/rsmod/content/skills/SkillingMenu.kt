@@ -22,6 +22,7 @@ data class SkillMultiSelection(
 data class SkillMultiEntry(
     val internal: String,
     val materials: List<Material> = emptyList(),
+    val labelOverride: String? = null,
 ) {
 
     val item: ItemServerType
@@ -227,7 +228,7 @@ private fun skillmultiSetupArgs(
 
         available.forEach { (entry, _) ->
             append('|')
-            append(entry.item.name)
+            append(entry.labelOverride ?: entry.item.name)
         }
     }
 
