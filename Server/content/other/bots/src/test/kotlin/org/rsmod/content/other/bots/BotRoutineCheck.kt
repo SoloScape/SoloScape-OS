@@ -124,6 +124,11 @@ object BotRoutineCheck {
         check(supplies.requirements(player, mine).keys == setOf("Bronze pickaxe"))
         check(supplies.canSupply(player, mine)) // losing a higher tool need not strand the miner
 
+        // Verify migration preserves a nonzero skill XP value, not just an empty seed.
+        player.statMap.setFineXP("stat.woodcutting",
+            org.rsmod.game.stat.PlayerSkillXPTable.getFineXPFromLevel(53))
+        player.statMap.setBaseLevel("stat.woodcutting", 53)
+        player.statMap.setCurrentLevel("stat.woodcutting", 53)
         val directory = Files.createTempDirectory("bot-goal-check-")
         try {
             val store = BotProfileStore(directory)
