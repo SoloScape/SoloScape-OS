@@ -285,7 +285,11 @@ class ForestryEventManager @Inject constructor(
             ForestryEventType.HIVE -> {
                 spawnNpc(e, "keeper", 0, ForestryAssets.KEEPER)
                 spawnNpc(e, "hive", 1, ForestryAssets.HIVE)
-                ForestryAssets.wildHive()?.let { spawnNpcType(e, "wild-hive", 2, it) }
+                val wild = ForestryAssets.wildHive()
+                if (wild != null) spawnNpcType(e, "wild-hive", 2, wild)
+                else ForestryAssets.wildHiveLoc()?.let {
+                    spawnLoc(e, "wild-hive", 2, it.internalName)
+                }
                 ForestryAssets.friendlyBees()?.let { bees ->
                     repeat(3) { spawnNpcType(e, "friendly-bees", it + 3, bees) }
                 }
