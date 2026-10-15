@@ -8,7 +8,17 @@ internal object ForestryHiveRules {
     const val RESPAWN_TICKS = 3
     const val BUILD_TICKS = 2
     const val BUILD_ANIMATION = "seq.human_poh_build"
+    const val BUILD_SECTION_SOUND = "synth.hammer_and_build"
+    const val BUILD_STRIKE_SOUND = "synth.hammering"
     const val QUANTITY_TITLE = "How many logs would you like to add?"
+
+    /** The opening and halfway stage use the section-building sound.
+     *  All other successful building starts use the repeated hammering sound.
+     *  Called before the corresponding log is consumed.
+     */
+    fun buildSound(progress: Int, required: Int): String =
+        if (progress == 0 || progress == (required + 1) / 2) BUILD_SECTION_SOUND
+        else BUILD_STRIKE_SOUND
 
     // The Wiki confirms ten active choppers and a hard ceiling of 50 logs.
     // Its mathematical formula isn't exposed by the text mirror; the linear
