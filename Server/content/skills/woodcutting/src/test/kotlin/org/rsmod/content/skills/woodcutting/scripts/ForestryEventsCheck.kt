@@ -2,6 +2,7 @@ package org.rsmod.content.skills.woodcutting.scripts
 
 import dev.openrune.ServerCacheManager
 import dev.openrune.rscm.RSCM.asRSCM
+import dev.openrune.rscm.RSCMType
 import org.rsmod.content.skills.construction.house.HouseStore
 import org.rsmod.api.server.config.ServerConfig
 import org.rsmod.api.player.interact.LocInteractions
@@ -179,6 +180,9 @@ fun main() {
         "The native Beehive SkillMulti item graphic must exist in this cache"
     }
     println("Beehive SkillMulti icon: " + ForestryAssets.hiveMenuItem())
+    println("Bank Deposit Containers mapping: " + runCatching {
+        "component.bankmain:depositcontainers".asRSCM(RSCMType.COMPONENT)
+    }.getOrNull())
     println("Forestry basket cache items: " + ServerCacheManager.getItems().values
         .filter { it.name.contains("Log basket", true) ||
             it.name.contains("Forestry basket", true) }
