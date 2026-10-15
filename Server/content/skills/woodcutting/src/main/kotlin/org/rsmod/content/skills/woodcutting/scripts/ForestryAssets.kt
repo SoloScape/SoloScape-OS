@@ -16,6 +16,10 @@ internal object ForestryAssets {
     const val LEPRECHAUN = "npc.gathering_event_woodcutting_leprechaun"
     const val KEEPER = "npc.gathering_event_bees_beekeeper"
     const val HIVE = "npc.gathering_event_bees_beebox_1"
+    // Verified OSRS NPC IDs: unfinished=12515, halfway=12516, complete=12517.
+    // Resolve by native IDs so a different name in the cache cannot switch stages.
+    private const val HIVE_HALF_ID = 12516
+    private const val HIVE_COMPLETE_ID = 12517
     const val FOX = "npc.gathering_event_poachers_fox_outdoors"
     const val POACHER = "npc.gathering_event_poachers_poacher01_outdoors"
     const val TRAP = "npc.gathering_event_poachers_trap"
@@ -34,6 +38,20 @@ internal object ForestryAssets {
         NEST, EMPTY_NEST) + ingredients
     val npcNames = listOf(ENTLING, PRUNED_ENTLING, LEPRECHAUN, KEEPER, HIVE, FOX,
         POACHER, TRAP, DRYAD, FORESTER, PHEASANT) + bushes + circles
+
+    fun hiveHalf() = ServerCacheManager.getNpcs().values.firstOrNull { it.id == HIVE_HALF_ID }
+    fun hiveComplete() = ServerCacheManager.getNpcs().values.firstOrNull { it.id == HIVE_COMPLETE_ID }
+
+    // Decorative assets are optional, but they must be the actual gameval bees
+    // and wild hive, never a substitute NPC with unrelated interactions.
+    fun friendlyBees() = ServerCacheManager.getNpcs().values.firstOrNull {
+        it.internalName.startsWith("npc.gathering_event_bees_") &&
+            it.name.contains("Friendly Bees", ignoreCase = true)
+    }
+    fun wildHive() = ServerCacheManager.getNpcs().values.firstOrNull {
+        it.internalName.startsWith("npc.gathering_event_bees_") &&
+            it.name.contains("Wild Beehive", ignoreCase = true)
+    }
 
     fun loc(symbol: String) = ServerCacheManager.getObjects().values.firstOrNull {
         it.internalName == symbol
