@@ -19,21 +19,43 @@ internal object ForestryLogBasket {
     private val CONTENTS = AttributeKey<String>(persistenceKey = "forestry_log_basket_contents")
     private val OPEN = AttributeKey<Int>(persistenceKey = "forestry_log_basket_open")
 
+    const val LOG_CLOSED = "obj.log_basket_closed"
+    const val LOG_OPEN = "obj.log_basket_open"
+    const val FORESTRY_CLOSED = "obj.forestry_basket_closed"
+    const val FORESTRY_OPEN = "obj.forestry_basket_open"
+    private val basketTypes = setOf(LOG_CLOSED, LOG_OPEN, FORESTRY_CLOSED, FORESTRY_OPEN)
+
+    /** Match physical items in either inventory or equipment, never banked-only items. */
+    fun hasBasket(player: Player): Boolean =
+        player.inv.objs.asSequence().plus(player.worn.objs.asSequence())
+            .filterNotNull().any { getInvObj(it).internalName in basketTypes }
+
     fun isOpen(player: Player): Boolean = hasBasket(player) && player.attr[OPEN] == 1
 
-    fun toggleOpen(player: Player): Boolean {
+    /** Changes the native item appearance as well as persistent auto-collection state. */
+    fun setOpen(player: Player, open: Boolean): Boolean {
         if (!hasBasket(player)) return false
-        val next = !isOpen(player)
-        player.attr[OPEN] = if (next) 1 else 0
-        return next
+        player.attr[OPEN] = if (open) 1 else 0
+        for (inventory in listOf(player.inv, player.worn)) {
+            for (slot in inventory.indices) {
+                val old = inventory[slot] ?: continue
+                val symbol = getInvObj(old).internalName
+                val updated = when (symbol) {
+                    LOG_CLOSED, LOG_OPEN -> if (open) LOG_OPEN else LOG_CLOSED
+                    FORESTRY_CLOSED, FORESTRY_OPEN ->
+                        if (open) FORESTRY_OPEN else FORESTRY_CLOSED
+                    else -> continue
+                }
+                if (updated != symbol) inventory[slot] = InvObj(updated, old.count, old.vars)
+            }
+        }
+        return true
     }
 
-    fun hasBasket(player: Player): Boolean =
-        (player.inv.objs.asSequence() + player.worn.objs.asSequence())
-            .filterNotNull().any {
-                val name = getInvObj(it).internalName.lowercase()
-                name.contains("log_basket") || name.contains("forestry_basket")
-            }
+    fun toggleOpen(player: Player): Boolean {
+        val open = !isOpen(player)
+        return setOpen(player, open) && open
+    }
 
     fun stored(player: Player): List<String> =
         player.attr[CONTENTS].orEmpty().split('|').filter { it in ForestryRules.logs }
