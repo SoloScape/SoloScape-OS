@@ -997,14 +997,19 @@ class ForestryEventManager @Inject constructor(
                     participant.mes("The temporary beehive was made so well you take some parts for building a permanent hive.")
                 }
             }
-            e.hiveProgress = 0
             e.phase++
             e.nextHiveAt = clock.cycle + ForestryHiveRules.RESPAWN_TICKS
             e.npcs.entries.firstOrNull { it.value == "hive" }?.key?.let {
                 it.transmog(checkNotNull(ForestryAssets.hiveComplete()),
                     (e.finish - clock.cycle).coerceAtLeast(1))
             }
+            // The completed hive needs to display a fully green bar for the
+            // three-tick completed-model stage, before resetting the counter
+            // for the following hive.
+            showHiveProgress(e)
+            e.hiveProgress = 0
             mes(ForestryHiveRules.COMPLETE_MESSAGE)
+            return
         } else if (ForestryHiveRules.halfway(e.hiveProgress, e.hiveLogsRequired) &&
             !ForestryHiveRules.halfway(e.hiveProgress - 1, e.hiveLogsRequired)) {
             e.npcs.entries.firstOrNull { it.value == "hive" }?.key?.let {
