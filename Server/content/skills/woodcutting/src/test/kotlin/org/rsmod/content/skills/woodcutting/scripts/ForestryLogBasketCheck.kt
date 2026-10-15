@@ -111,5 +111,33 @@ fun main() {
     check(ForestryLogBasket.count(player) == 0)
     player.inv[0] = null
     check(ForestryLogBasket.depositToBank(player) { true } == 0)
+
+    // The Make-X item tiles must represent actual logs, not a hive output
+    // item. Clicking a type never consumes some other log as a substitute.
+    val chosen = Player().apply {
+        inv = invMap.getOrPut("inv.inv")
+        worn = invMap.getOrPut("inv.worn")
+    }
+    chosen.inv[0] = InvObj(ForestryLogBasket.LOG_CLOSED)
+    chosen.inv[1] = InvObj("obj.oak_logs")
+    chosen.inv[2] = InvObj("obj.logs")
+    check(ForestryLogBasket.add(chosen, "obj.magic_logs"))
+    check(ForestryLogBasket.add(chosen, "obj.oak_logs"))
+    check(ForestryLogBasket.add(chosen, "obj.oak_logs"))
+    check(ForestryHiveSupplies.availableByType(chosen) ==
+        linkedMapOf("obj.oak_logs" to 3, "obj.logs" to 1, "obj.magic_logs" to 1))
+    check(ForestryHiveSupplies.availableLogs(chosen) == 5)
+    check(ForestryHiveSupplies.availableLogs(chosen, "obj.oak_logs") == 3)
+    check(ForestryHiveSupplies.consumeLog(chosen, "obj.magic_logs") == "obj.magic_logs")
+    check(ForestryHiveSupplies.availableLogs(chosen, "obj.magic_logs") == 0)
+    check(ForestryHiveSupplies.consumeLog(chosen, "obj.oak_logs") == "obj.oak_logs")
+    check(chosen.inv[1] == null)
+    check(ForestryHiveSupplies.consumeLog(chosen, "obj.oak_logs") == "obj.oak_logs")
+    check(ForestryHiveSupplies.consumeLog(chosen, "obj.oak_logs") == "obj.oak_logs")
+    check(ForestryHiveSupplies.consumeLog(chosen, "obj.oak_logs") == null)
+    check(ForestryHiveSupplies.availableByType(chosen) == mapOf("obj.logs" to 1))
+    check(ForestryLogBasket.count(chosen) == 0)
+    check(chosen.inv.count("obj.logs") == 1)
+
     println("Forestry Log Basket checks passed: 28-log shared storage, native open/closed item transformations, worn variant, fill/empty and Beehive consumption.")
 }
