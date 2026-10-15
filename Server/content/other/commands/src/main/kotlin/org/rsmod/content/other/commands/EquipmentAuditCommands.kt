@@ -11,6 +11,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import org.rsmod.api.config.refs.BaseParams
 import org.rsmod.api.player.output.mes
+import org.rsmod.api.player.worn.EquipmentStatSupplement
 import org.rsmod.game.cheat.Cheat
 import org.rsmod.plugin.scripts.PluginScript
 import org.rsmod.plugin.scripts.ScriptContext
@@ -44,6 +45,7 @@ class EquipmentAuditCommands @Inject constructor() : PluginScript() {
                 "item_id", "internal_name", "display_name", "wear_slot",
                 "statreq1_skill", "statreq1_level", "statreq2_skill", "statreq2_level",
                 "skill_use_levelrequire", "expected_attack_standard_family", "audit_flags",
+                "effective_equip_requirements", "supplemental_equip_requirements",
             )
             val csv = buildString {
                 appendLine(header.joinToString(","))
@@ -55,6 +57,8 @@ class EquipmentAuditCommands @Inject constructor() : PluginScript() {
                         row.useLevel?.toString().orEmpty(),
                         row.expectedAttack?.toString().orEmpty(),
                         row.flags.joinToString(";"),
+                        row.effectiveRequirements,
+                        row.supplementalRequirements,
                     )
                     appendLine(columns.joinToString(",") { it.csvCell() })
                 }
@@ -62,6 +66,8 @@ class EquipmentAuditCommands @Inject constructor() : PluginScript() {
             Files.writeString(csvFile, csv, StandardCharsets.UTF_8)
 
             val noStatReq = equipable.count { it.first.skill == null && it.second.skill == null }
+            val noEffectiveStatReq = equipable.count { it.effectiveRequirements.isBlank() }
+            val withSupplement = equipable.count { it.supplementalRequirements.isNotBlank() }
             val incomplete = equipable.count { row ->
                 row.flags.any { it.startsWith("incomplete") || it.startsWith("invalid") }
             }
@@ -73,9 +79,11 @@ class EquipmentAuditCommands @Inject constructor() : PluginScript() {
                 appendLine("Runtime equipment requirement audit")
                 appendLine("All loaded item definitions: " + definitions.size)
                 appendLine("Equippable item definitions: " + equipable.size)
-                appendLine("No stat skill requirement in loaded definition: " + noStatReq)
+                appendLine("No native stat skill requirement in loaded definition: " + noStatReq)
+                appendLine("Items with added supplemental combat requirements: " + withSupplement)
+                appendLine("No effective equip stat requirement: " + noEffectiveStatReq)
                 appendLine("Malformed stat requirement pairs: " + incomplete)
-                appendLine("Missing Attack metadata for known metal families: " + lowAttack)
+                appendLine("Missing effective Attack requirements in known metal families: " + lowAttack)
                 appendLine()
                 appendLine("Wear slot counts:")
                 for ((slot, count) in bySlot) appendLine("  " + slot + ": " + count)
@@ -102,10 +110,22 @@ class EquipmentAuditCommands @Inject constructor() : PluginScript() {
             skillName(item.paramOrNull(BaseParams.statreq2_skill)?.id),
             item.paramOrNull(BaseParams.statreq2_level),
         )
+        val nativeSkills = listOfNotNull(first.skill, second.skill).toSet()
+        val supplemental = EquipmentStatSupplement.additionalRequirements(item.id, nativeSkills)
+        val supplementalRequirements = supplemental.joinToString(";") {
+            it.internalName + ":" + it.level
+        }
+        val nativeRequirements = listOf(first, second)
+            .filter { it.skill != null && it.level != null }
+            .joinToString(";") { "${it.skill}:${it.level}" }
+        val effectiveRequirements =
+            listOf(nativeRequirements, supplementalRequirements)
+                .filter { it.isNotBlank() }
+                .joinToString(";")
         val expectedAttack = expectedMetalAttack(item.internalName)
         val actualAttack = listOf(first, second).firstOrNull {
             it.skill == "stat.attack"
-        }?.level
+        }?.level ?: supplemental.firstOrNull { it.skill == "attack" }?.level
         val flags = buildList {
             if ((first.skill == null) != (first.level == null)) add("incomplete_statreq1")
             if ((second.skill == null) != (second.level == null)) add("incomplete_statreq2")
@@ -125,6 +145,8 @@ class EquipmentAuditCommands @Inject constructor() : PluginScript() {
             useLevel = item.paramOrNull(BaseParams.levelrequire),
             expectedAttack = expectedAttack,
             flags = flags,
+            supplementalRequirements = supplementalRequirements,
+            effectiveRequirements = effectiveRequirements,
         )
     }
 
@@ -163,6 +185,8 @@ class EquipmentAuditCommands @Inject constructor() : PluginScript() {
         val useLevel: Int?,
         val expectedAttack: Int?,
         val flags: List<String>,
+        val supplementalRequirements: String,
+        val effectiveRequirements: String,
     )
 
     private companion object {
