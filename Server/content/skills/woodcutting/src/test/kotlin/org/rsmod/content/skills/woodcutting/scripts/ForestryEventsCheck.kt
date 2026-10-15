@@ -2,6 +2,7 @@ package org.rsmod.content.skills.woodcutting.scripts
 
 import dev.openrune.ServerCacheManager
 import dev.openrune.rscm.RSCM.asRSCM
+import org.rsmod.content.skills.construction.house.HouseStore
 import org.rsmod.api.player.interact.LocInteractions
 import org.rsmod.api.player.events.interact.NpcEvents
 import org.rsmod.api.player.protect.ProtectedAccess
@@ -69,8 +70,9 @@ private class ForestryFixture {
         LocRegistryRegion(updates, flags, zones, regions))
     val locs = LocRepository(clock, registry, regions)
     val npcs = NpcRepository(clock, npcRegistry, npcList)
+    val houseStore = HouseStore()
     val manager = ForestryEventManager(clock, PlayerRepository(playerRegistry), locs, npcs,
-        ObjRepository(clock, ObjRegistry(updates)), XpModifiers(emptySet()), flags)
+        ObjRepository(clock, ObjRegistry(updates)), XpModifiers(emptySet()), houseStore, flags)
     val player = Player().apply {
         members = true
         coords = origin
@@ -78,6 +80,7 @@ private class ForestryFixture {
         worn = invMap.getOrPut("inv.worn")
         inv[0] = InvObj("obj.rune_axe")
         inv[1] = InvObj(ForestryRations.KIT)
+        houseStore.update(this) { it.createStarterHouse() }
         for (skill in listOf("woodcutting", "fletching", "farming", "construction", "hunter", "thieving")) {
             statMap.setBaseLevel("stat.$skill", 99)
             statMap.setCurrentLevel("stat.$skill", 99)
@@ -306,7 +309,8 @@ fun main() {
                 check(f.player.inv.count("obj.logs") == 0)
                 check(hive.visType.id == when {
                     index + 1 == ForestryHiveRules.logsPerHive(1) -> 12517
-                    index + 1 >= 5 -> 12516
+                    ForestryHiveRules.halfway(index + 1,
+                        ForestryHiveRules.logsPerHive(1)) -> 12516
                     else -> 12515
                 })
                 if (index + 1 < ForestryHiveRules.logsPerHive(1)) {
@@ -328,7 +332,7 @@ fun main() {
         }
         check(completed == 6)
         check(f.player.statMap.getFineXP("stat.construction") ==
-            (ForestryHiveRules.CONSTRUCTION_XP_PER_LOG * 60 * 10).toInt())
+            (ForestryHiveRules.constructionXp(99, "obj.logs") * 30 * 10).toInt())
         check(f.player.statMap.getFineXP("stat.woodcutting") > 0)
     }
     run {
@@ -337,13 +341,13 @@ fun main() {
         f.addPlayer()
         f.spawn(ForestryEventType.HIVE)
         val hive = f.npc(ForestryAssets.HIVE)
-        repeat(10) {
+        repeat(5) {
             f.player.inv[2] = InvObj("obj.logs")
             f.operate(hive, 1)
             f.ticks(2)
         }
         check(hive.visType.id == 12516 && f.npcList.any { it === hive })
-        repeat(10) {
+        repeat(5) {
             f.player.inv[2] = InvObj("obj.logs")
             f.operate(hive, 1)
             f.ticks(2)
@@ -363,13 +367,24 @@ fun main() {
         check(late.inv.count("obj.logs") == 0)
         check(late.statMap.getFineXP("stat.woodcutting") == 10)
         check(late.statMap.getFineXP("stat.construction") == 0)
-        repeat(9) {
+        repeat(4) {
             f.player.inv[2] = InvObj("obj.logs")
             f.operate(hive, 1)
             f.ticks(2)
         }
         check(late.inv.count(partsSymbol) == 0)
         check(late.inv.count("obj.forestry_currency") == 0)
+    }
+    run {
+        // No player-owned house: build and contribute, but no Construction XP.
+        val f = ForestryFixture()
+        f.houseStore.update(f.player) { it.owned = false }
+        f.spawn(ForestryEventType.HIVE)
+        f.player.inv[2] = InvObj("obj.magic_logs")
+        f.operate(f.npc(ForestryAssets.HIVE), 1)
+        check(f.player.inv.count("obj.magic_logs") == 0)
+        check(f.player.statMap.getFineXP("stat.construction") == 0)
+        check(f.player.statMap.getFineXP("stat.woodcutting") > 0)
     }
     run {
         // Partial work times out without granting a 2/3 sturdy-parts roll.
