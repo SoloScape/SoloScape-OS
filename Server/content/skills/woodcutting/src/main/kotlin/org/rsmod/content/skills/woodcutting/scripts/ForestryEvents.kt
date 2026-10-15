@@ -213,8 +213,12 @@ class ForestryEventManager @Inject constructor(
             return "A Forestry event is already active nearby. Wait for it to finish."
         if (type.members && !player.members)
             return "That Forestry event is only available to members."
+        // Debug command: treat test participants who are already within event
+        // range as active choppers. Live events use their genuine chop history.
+        val participants = players.findAll(ZoneKey.from(player.coords), zoneRadius = 4)
+            .filter { forestryNear(it.coords, player.coords, 30) }.toSet() + player
         val event = Event(type, player.coords, clock.cycle, clock.cycle + type.ticks,
-            setOf(player), player.coords)
+            participants, player.coords, participants.size)
         prepare(event)
         if (!playable(event)) {
             discard(event)
