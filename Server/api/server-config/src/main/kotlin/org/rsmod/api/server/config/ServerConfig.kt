@@ -52,6 +52,8 @@ public data class ServerConfig(
     val revision: Int,
     val environment: String,
     val world: Int,
+    // Defaults to members for existing worlds; F2P worlds can set this false.
+    @JsonProperty("members-world") val membersWorld: Boolean = true,
     val gameplay: GameplayConfig = GameplayConfig(),
     val database: GameDatabaseYaml? = null,
     val central: OpenRuneCentralGameConfig? = null,
