@@ -172,6 +172,13 @@ fun main() {
     checkNotNull(ServerCacheManager.getAnim(ForestryHiveRules.BUILD_ANIMATION.asRSCM())) {
         "The native Construction building animation must exist in this cache"
     }
+    checkNotNull(ServerCacheManager.getInterface("interface.skillmulti".asRSCM())) {
+        "The original Make-X item/quantity interface must exist in this cache"
+    }
+    checkNotNull(ServerCacheManager.getItem(ForestryAssets.hiveMenuItem().asRSCM())) {
+        "The native Beehive SkillMulti item graphic must exist in this cache"
+    }
+    println("Beehive SkillMulti icon: " + ForestryAssets.hiveMenuItem())
     println("Forestry basket cache items: " + ServerCacheManager.getItems().values
         .filter { it.name.contains("Log basket", true) ||
             it.name.contains("Forestry basket", true) }
