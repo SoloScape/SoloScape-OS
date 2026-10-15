@@ -86,5 +86,16 @@ internal object ForestryRules {
             circles.count { it.second == circles[i].second } == 1
     }
     val leaves = listOf("obj.leaves", "obj.leaves_oak", "obj.leaves_willow", "obj.leaves_maple", "obj.leaves_yew", "obj.leaves_magic", "obj.oak_leaves", "obj.willow_leaves", "obj.maple_leaves", "obj.yew_leaves", "obj.magic_leaves")
-    val logs = listOf("obj.logs", "obj.oak_logs", "obj.willow_logs", "obj.teak_logs", "obj.maple_logs", "obj.mahogany_logs", "obj.arctic_pine_log", "obj.yew_logs", "obj.magic_logs", "obj.redwood_logs")
+    /**
+     * Accept every log in the August 2026 OSRS Beehive reward table.
+     * The four Sailing hardwoods depend on the connected cache revision:
+     * listing a gameval here does not manufacture an absent cache item.
+     */
+    val logs = listOf(
+        "obj.logs", "obj.achey_tree_logs",
+        "obj.oak_logs", "obj.willow_logs", "obj.teak_logs", "obj.maple_logs",
+        "obj.jatoba_logs", "obj.mahogany_logs",
+        "obj.arctic_pine_log", "obj.yew_logs", "obj.camphor_logs",
+        "obj.ironwood_logs", "obj.magic_logs", "obj.redwood_logs", "obj.rosewood_logs",
+    )
 }
