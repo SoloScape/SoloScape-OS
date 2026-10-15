@@ -1210,6 +1210,18 @@ class BotPopulation @Inject constructor(
 
     private fun walkRoute(bot: WorldBot) {
         val player = bot.player
+        // This phase does not call watchStall(). Previously the counter and previousCoords
+        // remained frozen while an unfinished native route blocked the next walk order.
+        val moved = player.coords != bot.previousCoords
+        bot.stalled = BotMovementState.nextStall(bot.previousCoords, player.coords, bot.stalled)
+        bot.previousCoords = player.coords
+        if (bot.stalled >= 20 && bot.phase in setOf(
+                BotPhase.Changing, BotPhase.Outbound, BotPhase.Returning,
+            )
+        ) {
+            recover(bot)
+            return
+        }
         if (bot.path.isEmpty() && bot.phase in setOf(BotPhase.Changing, BotPhase.Returning)) {
             if (player.coords.level != bot.task.start.level ||
                 player.coords.chebyshevDistance(bot.task.start) > 2) {
@@ -1226,7 +1238,7 @@ class BotPopulation @Inject constructor(
                 continue
             }
             if (BotMovementState.waiting(player.routeRequest != null,
-                player.routeDestination.size, player.coords != bot.previousCoords, bot.stalled)) {
+                player.routeDestination.size, moved, bot.stalled)) {
                 return
             }
             val previous = bot.path.getOrNull(bot.waypoint - 1) ?: bot.pathOrigin
