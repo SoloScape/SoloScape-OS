@@ -52,6 +52,10 @@ internal object ForestryAssets {
         it.internalName.startsWith("npc.gathering_event_bees_") &&
             it.name.contains("Wild Beehive", ignoreCase = true)
     }
+    fun wildHiveLoc() = ServerCacheManager.getObjects().values.firstOrNull {
+        it.internalName.startsWith("loc.gathering_event_bees_") &&
+            it.name.contains("Wild Beehive", ignoreCase = true)
+    }
 
     fun loc(symbol: String) = ServerCacheManager.getObjects().values.firstOrNull {
         it.internalName == symbol
