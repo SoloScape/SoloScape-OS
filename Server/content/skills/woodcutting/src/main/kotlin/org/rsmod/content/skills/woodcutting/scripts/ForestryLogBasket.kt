@@ -75,6 +75,23 @@ internal object ForestryLogBasket {
         return true
     }
 
+    /**
+     * Deposits using the bank's own transactional insertion callback. Nothing is
+     * removed from storage until the bank reports a successful deposit.
+     * Stop on full banks or any transaction rejection.
+     */
+    fun depositToBank(player: Player, deposit: (String) -> Boolean): Int {
+        if (!hasBasket(player)) return 0
+        var moved = 0
+        while (true) {
+            val symbol = stored(player).firstOrNull() ?: break
+            if (!deposit(symbol)) break
+            check(consume(player) == symbol)
+            moved++
+        }
+        return moved
+    }
+
     fun consume(player: Player): String? {
         if (!hasBasket(player)) return null
         val values = stored(player).toMutableList()
