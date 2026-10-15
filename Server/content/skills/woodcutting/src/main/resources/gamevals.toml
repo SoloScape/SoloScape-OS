@@ -1,2 +1,7 @@
 [gamevals.queue]
 forestry_hive_build = 66
+
+# Forestry Beehive hammer/build SFX (OSRS sound IDs supplied for event).
+[gamevals.synth]
+hammer_and_build = 1767
+hammering = 1770
