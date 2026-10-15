@@ -32,6 +32,7 @@ import org.rsmod.game.cheat.CheatCommandMap
 import org.rsmod.game.entity.ControllerList
 import org.rsmod.game.entity.Npc
 import org.rsmod.game.entity.NpcList
+import org.rsmod.game.headbar.Headbar
 import org.rsmod.game.entity.Player
 import org.rsmod.game.entity.PlayerList
 import org.rsmod.game.entity.npc.NoopNpcInfo
@@ -58,6 +59,7 @@ private class ForestryFixture(private val memberWorld: Boolean = true) {
     val flags = CollisionFlagMap()
     val bus = EventBus()
     val requests = mutableMapOf<Npc, String>()
+    val headbars = mutableMapOf<Npc, MutableList<Headbar>>()
     val npcList = NpcList()
     private val updates = ZoneUpdateMap()
     private val zones = LocZoneStorage()
@@ -107,6 +109,9 @@ private class ForestryFixture(private val memberWorld: Boolean = true) {
             val created = npc
             created.infoProtocol = object : NpcInfoProtocol by NoopNpcInfo {
                 override fun setSay(text: String) { requests[created] = text }
+                override fun showHeadbar(headbar: Headbar) {
+                    headbars.getOrPut(created) { mutableListOf() }.add(headbar)
+                }
                 override fun isActive() = true
             }
         }
@@ -344,10 +349,19 @@ fun main() {
         repeat(ForestryHiveRules.HIVES) { round ->
             val hive = f.npc(ForestryAssets.HIVE)
             check(hive.visType.id == 12515)
+            check(f.headbars[hive]?.lastOrNull()?.endFill == 0) {
+                "A fresh hive should show an empty green bar on red"
+            }
             repeat(ForestryHiveRules.logsPerHive(1)) { index ->
                 f.player.inv[2] = InvObj("obj.logs")
                 f.operate(hive, 1)
                 check(f.player.inv.count("obj.logs") == 0)
+                val headbar = checkNotNull(f.headbars[hive]?.lastOrNull())
+                check(headbar.self == ForestryHiveRules.PROGRESS_HEADBAR_ID)
+                check(headbar.public == ForestryHiveRules.PROGRESS_HEADBAR_ID)
+                check(headbar.startFill == ForestryHiveRules.progressFill(
+                    index + 1, ForestryHiveRules.logsPerHive(1)))
+                check(headbar.endFill == headbar.startFill)
                 check(hive.visType.id == when {
                     index + 1 == ForestryHiveRules.logsPerHive(1) -> 12517
                     ForestryHiveRules.halfway(index + 1,
