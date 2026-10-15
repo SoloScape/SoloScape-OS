@@ -30,6 +30,9 @@ import org.rsmod.api.script.onOpNpc4
 import org.rsmod.api.script.onOpNpc5
 import org.rsmod.game.MapClock
 import org.rsmod.content.skills.construction.house.HouseStore
+import org.rsmod.content.skills.SkillMultiConfig
+import org.rsmod.content.skills.SkillMultiEntry
+import org.rsmod.content.skills.openSkillMulti
 import org.rsmod.api.server.config.ServerConfig
 import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.treeLevelReq
 import org.rsmod.content.skills.woodcutting.scripts.Woodcutting.Companion.treeXp
@@ -816,47 +819,57 @@ class ForestryEventManager @Inject constructor(
         val e = active.firstOrNull { it.type == ForestryEventType.HIVE &&
             it.npcs[target] == "hive" } ?: return
         if (!target.isSlotAssigned || !isWithinDistance(target, 2) ||
-            e.nextHiveAt >= 0 || e.completed || clock.cycle >= e.finish) return
-        val at = player.coords
-        val hivePhase = e.phase
-        val available = ForestryHiveSupplies.availableLogs(player)
-        if (available == 0) {
-            mes("You need logs in your inventory or log basket to build this beehive.")
+            e.completed || clock.cycle >= e.finish) return
+        if (e.nextHiveAt >= 0 || e.phase >= ForestryHiveRules.HIVES) {
+            mes("The hive is complete and won't benefit from any more wood.")
             return
         }
 
-        val selection = menu("How many logs would you like to use?",
-            hotkeys = false, choices = ForestryHiveRules.QUANTITY_OPTIONS)
-        if (selection == 5) return
-        val entered = if (selection == 3) countDialog("How many logs?") else 0
-        val amount = ForestryHiveRules.requestedLogs(selection, entered, available)
-        if (amount <= 0) return
-
-        val c = contribution(e, player)
-        for (i in 0 until amount) {
-            if (!hiveBuildActive(e, target, hivePhase, at) ||
-                !isWithinDistance(target, 2)) break
-            if (ForestryHiveSupplies.availableLogs(player) <= 0) {
-                mes("You have run out of logs.")
-                break
-            }
-            // A previous manual click may have started the contribution cooldown.
-            val wait = c.nextAction - clock.cycle
-            if (wait > 0) delay(wait)
-            if (!hiveBuildActive(e, target, hivePhase, at) ||
-                !isWithinDistance(target, 2)) break
-            faceEntitySquare(target)
-            anim(ForestryHiveRules.BUILD_ANIMATION)
-            delay(ForestryHiveRules.BUILD_TICKS)
-            if (!hiveBuildActive(e, target, hivePhase, at) ||
-                !isWithinDistance(target, 2)) break
-            if (!c.ready(clock.cycle, ForestryHiveRules.BUILD_TICKS)) continue
-            val remainingBefore = ForestryHiveSupplies.availableLogs(player)
-            buildHive(e, c)
-            if (e.nextHiveAt >= 0 ||
-                ForestryHiveSupplies.availableLogs(player) == remainingBefore) break
+        val available = ForestryHiveSupplies.availableLogs(player)
+        if (available <= 0) {
+            mes("You need logs in your inventory or log basket to build this beehive.")
+            return
         }
-        resetAnim()
+        val origin = player.coords
+        val phase = e.phase
+
+        // The original game uses the native item/quantity interface: select
+        // 1, 5, X or All, then click the beehive item. Use the same SkillMulti
+        // interface and CS2 scripts as other SoloScape skilling activities.
+        // Prefer a real hive item icon when the cache exposes one.
+        val icon = ForestryAssets.hiveMenuItem()
+        val config = SkillMultiConfig(
+            verb = "add",
+            entries = listOf(SkillMultiEntry(icon, labelOverride = "Beehive")),
+            titleOverride = ForestryHiveRules.QUANTITY_TITLE,
+            maxCountProvider = { _, _ -> available },
+        )
+        openSkillMulti(config) { selection ->
+            val c = contribution(e, player)
+            for (i in 0 until selection.amount) {
+                if (!hiveBuildActive(e, target, phase, origin) ||
+                    !isWithinDistance(target, 2)) break
+                if (ForestryHiveSupplies.availableLogs(player) <= 0) {
+                    mes("You have run out of logs.")
+                    break
+                }
+                val wait = c.nextAction - clock.cycle
+                if (wait > 0) delay(wait)
+                if (!hiveBuildActive(e, target, phase, origin) ||
+                    !isWithinDistance(target, 2)) break
+                faceEntitySquare(target)
+                anim(ForestryHiveRules.BUILD_ANIMATION)
+                delay(ForestryHiveRules.BUILD_TICKS)
+                if (!hiveBuildActive(e, target, phase, origin) ||
+                    !isWithinDistance(target, 2)) break
+                if (!c.ready(clock.cycle, ForestryHiveRules.BUILD_TICKS)) continue
+                val remainingBefore = ForestryHiveSupplies.availableLogs(player)
+                buildHive(e, c)
+                if (e.nextHiveAt >= 0 ||
+                    ForestryHiveSupplies.availableLogs(player) == remainingBefore) break
+            }
+            resetAnim()
+        }
     }
 
     private fun ProtectedAccess.hiveBuildActive(
