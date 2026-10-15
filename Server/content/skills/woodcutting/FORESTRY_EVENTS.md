@@ -69,6 +69,35 @@ OSRS XP. The per-hive 25 (2/5) / 26 (3/5) bark and 2/3 sturdy-parts reward,
 and the requirement for at least one contributed log per completed hive,
 remain unchanged.
 
+### Beehive shared visual progress and completed-hive dialogue (15 October 2026)
+
+At [3:08 in the player's reference footage](https://youtu.be/zbGQtgRI3L4?t=188),
+the unfinished Beehive shows a **red-to-green progress bar above the NPC**:
+the red remainder shrinks from right to left as logs are added and the green
+fill increases left to right. The native NPC health headbar (`health_70`,
+ID 12 in this cache) is now reused as the hive's shared progress indicator.
+Its **70 discrete segments** are enough to visibly increase after every
+log even for a 50-log hive. We send 0% when the hive first appears,
+update after every log (including stage changes), show 100% on completion,
+and reset to 0% for each of the six new hives. While idle we re-send the
+bar every 15 game ticks to keep it visible. It is visible to all nearby
+players and represents shared hive progress, not damage or combat HP.
+
+The clip shows the exact completed-hive dialogue, **"The hive is complete
+and won't benefit from any more wood."**, with a **"Click here to continue"**
+pause when the completed hive is clicked. Clicking Build on a completed
+hive now uses native `mesbox` rather than a plain game message. When a
+player finishes the final log on a hive, that same text is also sent as a
+game message, without interrupting the repeated-build queue. This preserves
+the original click-to-continue interaction without blocking the automatic
+construction loop.
+
+`ForestryHiveCheck` tests the full red-to-green progression and verifies
+that every contributed log advances the fill, including at the 50-log cap.
+`ForestryEventsCheck` captures the actual public NPC headbar emitted at
+spawn and after each log across six hives. In-client positioning and
+persistence still need visual verification.
+
 ### Beehive native quantity interface (15 October 2026)
 
 Click **Build** on an unfinished Beehive to open the **native OSRS SkillMulti chatbox item/quantity interface** (`interface.skillmulti`, client script 2046) instead of the old plain-text options menu. Its exact title is **"How many logs would you like to add?"** as seen at 03:06 in the supplied OSRS gameplay footage. Select a quantity (native client choices include 1, 5, X, All, and may expose 10/remembered X depending on client state), then click the **Beehive** item image to begin building. The UI uses a cache-backed Beehive icon if there is one, otherwise sturdy parts or logs as a fallback; confirm the artwork in the actual client.
