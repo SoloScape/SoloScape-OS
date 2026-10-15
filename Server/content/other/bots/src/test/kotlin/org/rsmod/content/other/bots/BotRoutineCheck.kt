@@ -61,6 +61,7 @@ object BotRoutineCheck {
         val supplies = BotSupplies(HeldEquipOp(events, PlayerRestrictions(emptySet())), WornUnequipOp(events))
         val player = Player().apply {
             username = "worldbot_routine_test"
+            displayName = "profile tester"
             appearance.combatLevel = 50
             inv = invMap.getOrPut("inv.inv")
             worn = invMap.getOrPut("inv.worn")
@@ -126,14 +127,78 @@ object BotRoutineCheck {
         val directory = Files.createTempDirectory("bot-goal-check-")
         try {
             val store = BotProfileStore(directory)
+            val named = directory.resolve("profile tester.properties")
+            val legacy = directory.resolve("${player.username}.properties")
+            check(store.profilePath(player) == named)
             store.save(player, cook.id, goal)
+            check(Files.isRegularFile(named) && !Files.exists(legacy))
             check(store.loadGoal(player) == goal)
             check(store.load(player) == cook.id)
             check(store.loadGoal(player) == goal)
+            val savedXp = player.statMap.getFineXP("stat.woodcutting")
             store.save(player, cook.id)
             check(store.loadGoal(player) == null) // old profiles need no migration
+
+            // Old worldbot_ID saves must move once to the visible name without losing
+            // levels, inventory, bank, equipment, saved task or an existing training goal.
+            store.save(player, cook.id, goal)
+            Files.move(named, legacy)
+            val previous = java.util.Properties().apply {
+                Files.newInputStream(legacy).use { load(it) }
+                remove("profile.username")
+                remove("profile.display-name")
+            }
+            Files.newOutputStream(legacy).use { previous.store(it, "legacy bot profile") }
+            player.statMap.setFineXP("stat.woodcutting", 0)
+            check(store.load(player) == cook.id)
+            check(player.statMap.getFineXP("stat.woodcutting") == savedXp)
+            check(store.loadGoal(player) == goal)
+            check(Files.isRegularFile(named) && !Files.exists(legacy))
+            val migrated = java.util.Properties().apply {
+                Files.newInputStream(named).use { load(it) }
+            }
+            check(migrated.getProperty("profile.username") == player.username)
+            check(migrated.getProperty("profile.display-name") == player.displayName)
+            check(migrated.getProperty("bank.0") == previous.getProperty("bank.0"))
+            check(migrated.getProperty("inv.0") == previous.getProperty("inv.0"))
+            check(migrated.getProperty("task") == previous.getProperty("task"))
+
+            // Never claim another bot's named file, even if the display name matches.
+            val rival = Player().apply {
+                username = "worldbot_other"
+                displayName = player.displayName
+            }
+            check(runCatching { store.load(rival) }.exceptionOrNull() is IllegalStateException)
+            check(Files.isRegularFile(named))
+
+            // Spaces are preserved and only catalogue duplicates receive an ID suffix.
+            val spaced = Player().apply {
+                username = "worldbot_3"
+                displayName = "mars noob"
+            }
+            check(store.profilePath(spaced).fileName.toString() == "mars noob.properties")
+            val duplicate = "varduka"
+            val firstIndex = SourceBotCatalog.names.indexOfFirst { it == duplicate }
+            val repeatedIndex = SourceBotCatalog.names.indexOfLast { it == duplicate }
+            check(firstIndex >= 0 && repeatedIndex > firstIndex)
+            val first = Player().apply {
+                username = "worldbot_${firstIndex + 1}"
+                displayName = duplicate
+            }
+            val second = Player().apply {
+                username = "worldbot_${repeatedIndex + 1}"
+                displayName = duplicate
+            }
+            check(store.profilePath(first).fileName.toString() == "$duplicate.properties")
+            check(store.profilePath(second).fileName.toString() ==
+                "$duplicate (worldbot_${repeatedIndex + 1}).properties")
+            val invalid = Player().apply {
+                username = "worldbot_test"
+                displayName = "../invalid"
+            }
+            check(runCatching { store.profilePath(invalid) }.isFailure)
         } finally {
-            Files.deleteIfExists(directory.resolve("${player.username}.properties"))
+            Files.list(directory).use { files -> files.forEach { Files.delete(it) } }
             Files.delete(directory)
         }
         println("BotRoutineCheck OK: goals, travel, specializations, actual catch, material batches and supply detours")
