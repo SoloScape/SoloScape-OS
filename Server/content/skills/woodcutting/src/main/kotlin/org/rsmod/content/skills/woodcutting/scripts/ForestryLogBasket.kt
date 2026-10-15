@@ -30,7 +30,19 @@ internal object ForestryLogBasket {
         player.inv.objs.asSequence().plus(player.worn.objs.asSequence())
             .filterNotNull().any { getInvObj(it).internalName in basketTypes }
 
-    fun isOpen(player: Player): Boolean = hasBasket(player) && player.attr[OPEN] == 1
+    /** The OSRS item variant is authoritative, including after relogging. */
+    fun isOpen(player: Player): Boolean =
+        (player.inv.objs.asSequence() + player.worn.objs.asSequence())
+            .filterNotNull().any {
+                getInvObj(it).internalName in setOf(LOG_OPEN, FORESTRY_OPEN)
+            }
+
+    /** Migrate baskets saved by the earlier attribute-only implementation. */
+    fun restoreLegacyOpenState(player: Player) {
+        if (hasBasket(player) && player.attr[OPEN] == 1 && !isOpen(player)) {
+            setOpen(player, true)
+        }
+    }
 
     /** Changes the native item appearance as well as persistent auto-collection state. */
     fun setOpen(player: Player, open: Boolean): Boolean {
