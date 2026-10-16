@@ -28,13 +28,15 @@ internal class ForestryPlacement(private val flags: CollisionFlagMap) {
 
     fun candidates(origin: CoordGrid, slot: Int, roots: Boolean): List<CoordGrid> {
         val offsets = if (roots) {
-            (0..4).flatMap { x -> (0..4).map { z -> x to z } }
+            (-4..4).flatMap { x -> (-4..4).map { z -> x to z } }
+                .filter { (x, z) -> x != 0 || z != 0 }
+                .sortedBy { (x, z) -> x * x + z * z }
         } else {
             (-6..6).flatMap { x -> (-6..6).map { z -> x to z } }
                 .filter { (x, z) -> x != 0 || z != 0 }
                 .sortedBy { (x, z) -> x * x + z * z }
         }
-        val shift = slot * 3 % offsets.size
+        val shift = (if (roots) slot * 13 else slot * 3) % offsets.size
         return (offsets.drop(shift) + offsets.take(shift)).map { (x, z) ->
             origin.translate(x, z)
         }

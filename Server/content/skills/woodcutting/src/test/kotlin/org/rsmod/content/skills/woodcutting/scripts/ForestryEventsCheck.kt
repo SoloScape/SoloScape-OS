@@ -9,6 +9,7 @@ import org.rsmod.api.player.interact.LocInteractions
 import org.rsmod.api.player.events.interact.NpcEvents
 import org.rsmod.api.player.protect.ProtectedAccess
 import org.rsmod.api.player.protect.ProtectedAccessContextFactory
+import org.rsmod.api.player.vars.intVarp
 import org.rsmod.api.registry.controller.ControllerRegistry
 import org.rsmod.api.registry.loc.LocRegistry
 import org.rsmod.api.registry.loc.LocRegistryNormal
@@ -52,6 +53,8 @@ import org.rsmod.map.zone.ZoneKey
 import org.rsmod.plugin.scripts.ScriptContext
 import org.rsmod.routefinder.collision.CollisionFlagMap
 import org.rsmod.routefinder.flag.CollisionFlag
+
+private var Player.testLastCombat: Int by intVarp("varp.lastcombat")
 
 private class ForestryFixture(private val memberWorld: Boolean = true) {
     val origin = CoordGrid(3200, 3200)
@@ -132,8 +135,11 @@ private class ForestryFixture(private val memberWorld: Boolean = true) {
     fun loc(symbol: String) = locations().first { it.id == symbol.asRSCM() }
     fun npc(symbol: String) = npcList.first { it.type.internalName == symbol }
     fun operate(loc: LocInfo) {
+        operate(loc, access)
+    }
+    fun operate(loc: LocInfo, user: ProtectedAccess) {
         val type = checkNotNull(ServerCacheManager.getObject(loc.id))
-        with(manager) { access.interactLoc(BoundLocInfo(loc, type)) }
+        with(manager) { user.interactLoc(BoundLocInfo(loc, type)) }
     }
     fun operate(npc: Npc, option: Int) {
         with(manager) { access.interactNpc(npc, option) }
@@ -251,24 +257,94 @@ fun main() {
         val f = ForestryFixture()
         f.spawn(ForestryEventType.ROOTS)
         val root = f.loc(ForestryAssets.ROOT)
+        check(f.locations().count { it.id == ForestryAssets.ROOT.asRSCM() } == 6)
         f.operate(root)
         val firstXp = f.player.statMap.getFineXP("stat.woodcutting")
-        check(firstXp > 0 && f.player.interaction != null)
+        check(firstXp == (ForestryRules.rootXp(99, false) * 10).toInt())
+        check(f.player.interaction != null)
         f.operate(root)
         check(f.player.statMap.getFineXP("stat.woodcutting") == firstXp)
-        f.ticks(4); f.operate(root)
+        f.ticks(4)
+        f.operate(root)
         check(f.player.statMap.getFineXP("stat.woodcutting") > firstXp)
-        f.ticks(26)
+        var firstDelay = 4
+        while (f.locations().none { it.id == ForestryAssets.INFUSED_ROOT.asRSCM() }) {
+            f.ticks(1)
+            firstDelay++
+            check(firstDelay <= 35)
+        }
+        check(firstDelay in 25..35)
         val infused = f.loc(ForestryAssets.INFUSED_ROOT)
-        check(f.locations().count { it.id == infused.id } == 1)
         val before = f.player.statMap.getFineXP("stat.woodcutting")
         f.operate(infused)
-        check(f.player.statMap.getFineXP("stat.woodcutting") - before > firstXp)
-        f.ticks(17)
+        check(f.player.statMap.getFineXP("stat.woodcutting") - before ==
+            (ForestryRules.rootXp(99, true) * 10).toInt())
+        f.ticks(19)
         check(f.loc(ForestryAssets.INFUSED_ROOT).coords == infused.coords)
         f.ticks(1)
         check(f.loc(ForestryAssets.INFUSED_ROOT).coords != infused.coords)
-        check((f.player.interaction as InteractionLocOp).target.id == ForestryAssets.ROOT.asRSCM())
+        check((f.player.interaction as InteractionLocOp).target.id ==
+            ForestryAssets.ROOT.asRSCM())
+        check(f.locations().count { it.id == ForestryAssets.ROOT.asRSCM() ||
+            it.id == ForestryAssets.INFUSED_ROOT.asRSCM() } == 6)
+    }
+    run {
+        val f = ForestryFixture()
+        f.spawn(ForestryEventType.ROOTS)
+        val root = f.loc(ForestryAssets.ROOT)
+        f.player.testLastCombat = f.clock.cycle
+        f.operate(root)
+        val xp = f.player.statMap.getFineXP("stat.woodcutting")
+        f.ticks(2)
+        f.player.testLastCombat = f.clock.cycle
+        f.operate(root)
+        check(f.player.statMap.getFineXP("stat.woodcutting") > xp) {
+            "Combat-interrupted root chopping should support two-tick actions"
+        }
+    }
+    run {
+        val f = ForestryFixture()
+        f.spawn(ForestryEventType.ROOTS)
+        val (late, access) = f.addPlayer()
+        late.inv[0] = InvObj("obj.rune_axe")
+        f.operate(f.loc(ForestryAssets.ROOT), access)
+        check(late.inv.count("obj.forestry_currency") == 1)
+        check(late.statMap.getFineXP("stat.woodcutting") == 10)
+    }
+    run {
+        val f = ForestryFixture()
+        f.player.inv[0] = InvObj("obj.rune_axe_2h")
+        f.player.inv[2] = InvObj(ForestryRations.RATION, 3)
+        f.spawn(ForestryEventType.ROOTS)
+        f.operate(f.loc(ForestryAssets.ROOT))
+        check(f.player.statMap.getFineXP("stat.woodcutting") in 598..600)
+        check(f.player.inv.count(ForestryRations.RATION) == 2)
+    }
+    run {
+        val f = ForestryFixture()
+        f.player.statMap.setBaseLevel("stat.woodcutting", 14)
+        f.player.statMap.setCurrentLevel("stat.woodcutting", 14)
+        f.spawn(ForestryEventType.ROOTS)
+        f.operate(f.loc(ForestryAssets.ROOT))
+        check(f.player.statMap.getFineXP("stat.woodcutting") == 0)
+        check(f.player.inv.count("obj.forestry_currency") == 0)
+    }
+    run {
+        val f = ForestryFixture()
+        f.spawn(ForestryEventType.ROOTS)
+        f.ticks(35)
+        repeat(28) {
+            f.operate(f.loc(ForestryAssets.INFUSED_ROOT))
+            f.ticks(4)
+        }
+        val bark = f.player.inv.count("obj.forestry_currency") +
+            (f.player.invMap[ForestryRations.STORAGE]?.count("obj.forestry_currency") ?: 0)
+        check(bark > 256) { "Rising Roots must not use the generic 256-bark event cap" }
+        val xp = f.player.statMap.getFineXP("stat.woodcutting")
+        f.ticks(ForestryEventType.ROOTS.ticks)
+        check(f.player.statMap.getFineXP("stat.woodcutting") == xp) {
+            "Rising Roots must not award generic completion XP"
+        }
     }
     run {
         val f = ForestryFixture()

@@ -71,7 +71,22 @@ internal object ForestryRules {
     val entRequests = listOf("Short on top!", "A leafy mullet!",
         "Short back and sides!", "Breezy at the back!")
     val entOptions = listOf(setOf(3), setOf(3, 5), setOf(4, 5), setOf(4))
-    fun infusedPhase(elapsed: Int): Int = if (elapsed < 30) -1 else (elapsed - 30) / 18
+    fun firstInfusedDelay(random: kotlin.random.Random): Int = random.nextInt(25, 36)
+    fun infusedPhase(elapsed: Int, first: Int = 30): Int =
+        if (elapsed < first) -1 else ((elapsed - first) / 20).coerceAtMost(5)
+    fun rootXp(level: Int, infused: Boolean): Double =
+        level.coerceAtLeast(1) * if (infused) 1.2 else 0.55
+    fun rootBark(level: Int, infused: Boolean, eligible: Boolean): Int {
+        if (!eligible) return 1
+        val visibleLevel = level.coerceIn(15, 99)
+        return if (visibleLevel <= 40) {
+            if (infused) 8 + (visibleLevel - 15) * 2 / 25
+            else 2 + (visibleLevel - 15) / 25
+        } else {
+            if (infused) 11 + (visibleLevel - 41) * 2 / 58
+            else 3 + (visibleLevel - 41) / 58
+        }
+    }
     fun ritualXp(level: Int): Double = 2.0 * level + 60
     fun ritualBonus(level: Int, steps: Int): Double = 2.0 * steps * level + 55
     // Jagex does not publish the final tree-specific spawn odds. These are SoloScape tuning.

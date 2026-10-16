@@ -127,6 +127,8 @@ class ForestryEventManager @Inject constructor(
         var emptyNest = Random.nextInt(4)
         var infusedRoot = -1
         var rootPhase = -1
+        val firstInfusedAt = start + ForestryRules.firstInfusedDelay(Random)
+        var nextRootRefreshAt = start + Random.nextInt(12, 19)
         var ritualHealed = false
         var rainbowsSpawned = 0
         var nextRainbow = start
@@ -410,6 +412,28 @@ class ForestryEventManager @Inject constructor(
         }
     }
 
+    private fun refreshRegularRoot(e: Event) {
+        val rootType = ForestryAssets.loc(ForestryAssets.ROOT) ?: return
+        val interacting = players.findAll(ZoneKey.from(e.origin), zoneRadius = 4)
+            .mapNotNull { (it.interaction as? InteractionLocOp)?.target?.coords }.toSet()
+        val movable = e.locs.entries.filter { (loc, role) ->
+            role.startsWith("root:") && loc.id == rootType.id &&
+                loc.coords !in interacting
+        }
+        if (movable.isEmpty()) return
+        val (old, role) = movable.random()
+        val destination = tile(e, Random.nextInt(80), rootType.width, rootType.length)
+            ?: return
+        val replacement = locs.add(destination, rootType.internalName,
+            (e.finish - clock.cycle).coerceAtLeast(1),
+            LocAngle.West, LocShape.CentrepieceStraight)
+        if (locs.findExact(destination, rootType) != null) {
+            locs.del(old, Int.MAX_VALUE)
+            e.locs.remove(old)
+            e.locs[replacement] = role
+        }
+    }
+
     /** Public NPC headbar: green advances as logs are contributed, red recedes. */
     private fun showHiveProgress(e: Event) {
         val hive = e.npcs.entries.firstOrNull { it.value == "hive" }?.key
@@ -614,13 +638,18 @@ class ForestryEventManager @Inject constructor(
                 }
             }
             ForestryEventType.ROOTS -> {
-                val phase = ForestryRules.infusedPhase(now - e.start)
-                if (phase >= 0 && phase != e.rootPhase) {
-                    if (e.infusedRoot >= 0) replaceLoc(e, "root:${e.infusedRoot}", ForestryAssets.ROOT)
+                val phase = ForestryRules.infusedPhase(now - e.firstInfusedAt, 0)
+                if (now >= e.firstInfusedAt && phase != e.rootPhase) {
+                    if (e.infusedRoot >= 0)
+                        replaceLoc(e, "root:${e.infusedRoot}", ForestryAssets.ROOT)
                     e.rootPhase = phase
                     e.infusedRoot = if (e.infusedRoot < 0) Random.nextInt(6)
                         else (e.infusedRoot + Random.nextInt(1, 6)) % 6
                     replaceLoc(e, "root:${e.infusedRoot}", ForestryAssets.INFUSED_ROOT)
+                }
+                if (now >= e.nextRootRefreshAt) {
+                    refreshRegularRoot(e)
+                    e.nextRootRefreshAt = now + Random.nextInt(12, 19)
                 }
             }
             ForestryEventType.ENT -> if (now - e.lastPhase >= 10) {
@@ -710,7 +739,8 @@ class ForestryEventManager @Inject constructor(
             .filter { forestryNear(it.coords, e.origin, 30) }.toSet()
         for ((player, c) in e.contributions) {
             if (player !in onlineNearby || !c.eligible || c.actions == 0) continue
-            if (success && e.type !in setOf(ForestryEventType.PHEASANT, ForestryEventType.HIVE)) {
+            if (success && e.type !in setOf(ForestryEventType.PHEASANT,
+                    ForestryEventType.HIVE, ForestryEventType.ROOTS)) {
                 give(player, "obj.forestry_currency", c.takeBark(25 + c.actions * 2))
                 when (e.type) {
                     ForestryEventType.SAPLING -> giveLeaves(player)
@@ -727,7 +757,8 @@ class ForestryEventManager @Inject constructor(
                     else -> Unit
                 }
             }
-            if (success && e.type !in setOf(ForestryEventType.PHEASANT, ForestryEventType.HIVE)) {
+            if (success && e.type !in setOf(ForestryEventType.PHEASANT,
+                    ForestryEventType.HIVE, ForestryEventType.ROOTS)) {
                 // Bonus is proportional to completed actions and the visible Woodcutting level.
                 val bonus = if (e.type == ForestryEventType.RITUAL)
                     ForestryRules.ritualBonus(player.woodcuttingLvl, c.actions)
@@ -854,18 +885,32 @@ class ForestryEventManager @Inject constructor(
     private fun ProtectedAccess.chopRoot(e: Event, c: ForestryContribution, role: String) {
         val root = e.locs.entries.firstOrNull { it.value == role }?.key ?: return
         if (clock.cycle >= e.finish || e.completed) return
+        if (player.woodcuttingLvl < 15) {
+            mes("You need a Woodcutting level of 15 to chop these roots.")
+            resetAnim()
+            return
+        }
         val axe = Woodcutting.findAxeForSpecialResource(player)
         if (axe == null) {
             mes("You need an axe to chop down the roots.")
             resetAnim()
             return
         }
-        if (c.ready(clock.cycle)) {
+        val underAttack = player.vars["varp.lastcombat"] >= clock.cycle - 2
+        val chopDelay = if (underAttack) 2 else 4
+        if (c.ready(clock.cycle, chopDelay)) {
             anim(WoodcuttingAxes.animation(getInvObj(axe).internalName) ?: RSCM.getReverseMapping(
                 RSCMType.SEQ, WoodcuttingAxes.effectiveType(axe).axeWoodcuttingAnim.id))
             val infused = root.id == ForestryAssets.loc(ForestryAssets.INFUSED_ROOT)?.id
-            reward(c, (if (infused) 42 else 15) + player.woodcuttingLvl * 1.5)
-            if (infused) give(player, "obj.forestry_currency", c.takeBark(8))
+            val felling = WoodcuttingAxes.isFelling(getInvObj(axe).internalName) &&
+                ForestryRations.consume(player)
+            val xp = if (c.eligible) ForestryRules.rootXp(player.woodcuttingLvl, infused) *
+                (if (felling) 1.1 else 1.0) else 1.0
+            statAdvance("stat.woodcutting", xp * xpMods.get(player, "stat.woodcutting"))
+            c.actions++
+            if (!felling || Random.nextInt(5) != 0)
+                give(player, "obj.forestry_currency",
+                    ForestryRules.rootBark(player.woodcuttingLvl, infused, c.eligible))
             mes(if (infused) "You cut an anima-infused root." else "You cut a tree root.")
         }
         val type = ServerCacheManager.getObject(root.id) ?: return

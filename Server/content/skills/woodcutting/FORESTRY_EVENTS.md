@@ -8,7 +8,7 @@ Native client/map assets must exist in the configured cache for an event to spaw
 
 | Type | Mechanics | Rewards |
 |---|---|---|
-| Rising Roots | Six native roots in a reachable 5x5 area; one visibly anima-infused root rotates every 18 ticks after the opening 30 ticks. One click continues chopping while the root remains available; requires an axe. | Woodcutting XP, bark |
+| Rising Roots | Six native roots on reachable tiles around the tree, with ordinary roots periodically relocating. First anima-infused root at 25–35 ticks; then every 20 ticks, up to six appearances. Continuous chopping, Woodcutting 15 and an axe required. Felling-axe rations can add XP but reduce bark. | Woodcutting XP and per-chop bark (no completion payout) |
 | Struggling Sapling | Native 1x1 sapling; collecting three ordered ingredients visibly changes the inventory mulch through its three native stages. Packed mulch is consumed when applied; collective growth uses nutrition from 10% to 100%. | Woodcutting/Farming XP, bark, leaves on success |
 | Friendly Ent | Five entlings announce native haircut requests, walk along validated routes, and accept Prune-top/back/sides on options 3/4/5. Incorrect choices stun the player; completed entlings use the pruned model. | Woodcutting/Fletching XP, bark, leaves and an egg nest on the ground (guaranteed when all five are pruned) |
 | Flowering Tree | Eight differently coloured bush NPCs; five phases of two matching pollen bushes | Woodcutting XP and bark |
@@ -17,6 +17,13 @@ Native client/map assets must exist in the configured cache for an event to spaw
 | Poachers | Frightened fox, poachers, 15 possible timed traps; loss after three missed traps | Hunter/Woodcutting XP, bark, fox whistle chance |
 | Enchantment Ritual | Eight groups of five reachable, native coloured/shaped circles. Standing on the unique circle rewards each player once per step and heals the dryad once for the shared step. | Woodcutting XP (2 x level + 60 per step; 2 x correct steps x level + 55 at completion), bark, petal garland chance |
 | Pheasant Control | Four reachable nests; three visible pheasants guard occupied nests and one empty nest changes up to eight times. A real inventory egg is consumed by the forester. Returning pheasants stun nearby players and steal held eggs. | Thieving/Woodcutting XP, bark and feathers on delivery, golden egg chance on collection; no completion reward |
+
+### Rising Roots OSRS parity (16 October 2026)
+
+- [OSRS Wiki: Rising roots](https://oldschool.runescape.wiki/w/Rising_roots), August 2026 revision: 93-second duration; the first anima root emerges between ticks 25 and 35, changes at 20-tick intervals, and appears at most six times.
+- A regular chop grants 0.55 times visible Woodcutting level XP; an anima-root chop grants 1.2 times visible Woodcutting level XP, before outfit multipliers. Bark uses level-scaled brackets of 2–4 regular and 8–13 infused, with one bark for ineligible arrivals. Exact intra-bracket probabilities are not published; this implementation interpolates by level.
+- Felling axes with available Forester's rations consume one ration per chop, gain 10% XP and have a 20% chance of receiving no bark. Normal chopping remains four ticks; combat-interrupted two-tick chopping uses the player combat clock.
+- Roots receive no generic event-completion XP or bark, and the per-chop bark is not capped at 256 by the contribution tracker. Root placements are balanced around the tree and idle regular roots periodically move. Exact placement geometry and refresh cadence remain provisional pending live OSRS comparison.
 
 ## World rules
 
