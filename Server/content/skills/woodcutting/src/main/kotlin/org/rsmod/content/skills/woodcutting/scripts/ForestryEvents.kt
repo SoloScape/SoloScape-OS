@@ -422,7 +422,8 @@ class ForestryEventManager @Inject constructor(
         }
         if (movable.isEmpty()) return
         val (old, role) = movable.random()
-        val destination = tile(e, Random.nextInt(80), rootType.width, rootType.length)
+        val destination = tile(e, Random.nextInt(ForestryPlacement.ROOT_TILE_COUNT),
+            rootType.width, rootType.length)
             ?: return
         val replacement = locs.add(destination, rootType.internalName,
             (e.finish - clock.cycle).coerceAtLeast(1),

@@ -254,6 +254,50 @@ fun main() {
     }
 
     run {
+        // Normal roots and the single anima root must stay inside the 5x5
+        // footprint, including after regular relocations and anima rotations.
+        val f = ForestryFixture()
+        val placement = ForestryPlacement(f.flags)
+        val candidates = placement.candidates(f.origin, 0, roots = true)
+        check(candidates.size == 24 && candidates.toSet().size == 24)
+        check(f.origin !in candidates)
+        check(candidates.all {
+            (it.x - f.origin.x) in -2..2 && (it.z - f.origin.z) in -2..2
+        })
+        for (slot in 1 until 24) {
+            check(placement.candidates(f.origin, slot, roots = true)
+                .toSet() == candidates.toSet())
+        }
+
+        f.spawn(ForestryEventType.ROOTS)
+        var previousOrdinary = emptySet<CoordGrid>()
+        var ordinaryRelocated = false
+        for (elapsed in 0 until ForestryEventType.ROOTS.ticks) {
+            val roots = f.locations().filter {
+                it.id == ForestryAssets.ROOT.asRSCM() ||
+                    it.id == ForestryAssets.INFUSED_ROOT.asRSCM()
+            }
+            check(roots.size == 6) { "Root count changed at tick $elapsed" }
+            check(roots.map { it.coords }.toSet().size == 6)
+            check(roots.all { it.coords in candidates }) {
+                "Rising Roots escaped the 5x5 grid at tick $elapsed"
+            }
+            val infusedCount = roots.count { it.id == ForestryAssets.INFUSED_ROOT.asRSCM() }
+            check(infusedCount <= 1) { "More than one anima root at tick $elapsed" }
+            if (elapsed < 25) check(infusedCount == 0)
+            if (elapsed >= 35) check(infusedCount == 1)
+            val ordinary = roots.filter { it.id == ForestryAssets.ROOT.asRSCM() }
+                .map { it.coords }.toSet()
+            if (elapsed in 1..24 && previousOrdinary.isNotEmpty() &&
+                ordinary != previousOrdinary) ordinaryRelocated = true
+            previousOrdinary = ordinary
+            f.ticks(1)
+        }
+        check(ordinaryRelocated) { "Regular roots never relocated before the first anima phase" }
+        check(f.locations().isEmpty()) { "Roots must despawn at the event end" }
+    }
+
+    run {
         val f = ForestryFixture()
         f.spawn(ForestryEventType.ROOTS)
         val root = f.loc(ForestryAssets.ROOT)

@@ -28,7 +28,9 @@ internal class ForestryPlacement(private val flags: CollisionFlagMap) {
 
     fun candidates(origin: CoordGrid, slot: Int, roots: Boolean): List<CoordGrid> {
         val offsets = if (roots) {
-            (-4..4).flatMap { x -> (-4..4).map { z -> x to z } }
+            (-ROOT_RADIUS..ROOT_RADIUS).flatMap { x ->
+                (-ROOT_RADIUS..ROOT_RADIUS).map { z -> x to z }
+            }
                 .filter { (x, z) -> x != 0 || z != 0 }
                 .sortedBy { (x, z) -> x * x + z * z }
         } else {
@@ -42,8 +44,12 @@ internal class ForestryPlacement(private val flags: CollisionFlagMap) {
         }
     }
 
-    private companion object {
-        const val BLOCKED = CollisionFlag.LOC or CollisionFlag.GROUND_DECOR or
+    companion object {
+        // Rising Roots occupies a 5x5 grid centred on the tree, excluding its tile.
+        const val ROOT_RADIUS = 2
+        const val ROOT_TILE_COUNT = (ROOT_RADIUS * 2 + 1) * (ROOT_RADIUS * 2 + 1) - 1
+
+        private const val BLOCKED = CollisionFlag.LOC or CollisionFlag.GROUND_DECOR or
             CollisionFlag.BLOCK_WALK or CollisionFlag.BLOCK_PLAYERS
     }
 }
