@@ -896,11 +896,20 @@ class ForestryEventManager @Inject constructor(
             resetAnim()
             return
         }
-        val underAttack = player.vars["varp.lastcombat"] >= clock.cycle - 2
-        val chopDelay = if (underAttack) 2 else 4
-        if (c.ready(clock.cycle, chopDelay)) {
+        if (skillAnimDelay <= clock.cycle) {
+            skillAnimDelay = clock.cycle + 4
             anim(WoodcuttingAxes.animation(getInvObj(axe).internalName) ?: RSCM.getReverseMapping(
                 RSCMType.SEQ, WoodcuttingAxes.effectiveType(axe).axeWoodcuttingAnim.id))
+        }
+        // Share the normal Woodcutting skilling clock. A real auto-retaliate flinch
+        // can set actionDelay to the next tick, but only while the player is idle;
+        // cancelling the root interaction before an incoming hit and clicking
+        // again on that timer is what permits two-tick rolls. lastcombat alone
+        // does not prove a flinch and must not make chopping faster.
+        if (actionDelay < clock.cycle) {
+            actionDelay = clock.cycle + 3
+        } else if (actionDelay == clock.cycle && c.ready(clock.cycle, delay = 1)) {
+            // Prevent duplicate rewards from more than one operation in one tick.
             val infused = root.id == ForestryAssets.loc(ForestryAssets.INFUSED_ROOT)?.id
             val felling = WoodcuttingAxes.isFelling(getInvObj(axe).internalName) &&
                 ForestryRations.consume(player)

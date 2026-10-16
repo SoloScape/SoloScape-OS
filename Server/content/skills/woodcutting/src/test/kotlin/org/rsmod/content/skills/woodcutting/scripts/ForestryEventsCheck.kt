@@ -259,15 +259,26 @@ fun main() {
         val root = f.loc(ForestryAssets.ROOT)
         check(f.locations().count { it.id == ForestryAssets.ROOT.asRSCM() } == 6)
         f.operate(root)
+        check(f.player.statMap.getFineXP("stat.woodcutting") == 0)
+        check(f.player.actionDelay == f.clock.cycle + 3)
+        f.ticks(2)
+        f.operate(root)
+        check(f.player.statMap.getFineXP("stat.woodcutting") == 0)
+        f.ticks(1)
+        f.operate(root)
         val firstXp = f.player.statMap.getFineXP("stat.woodcutting")
         check(firstXp == (ForestryRules.rootXp(99, false) * 10).toInt())
-        check(f.player.interaction != null)
+        f.operate(root)
+        check(f.player.statMap.getFineXP("stat.woodcutting") == firstXp) {
+            "A root cannot double-roll within one game tick"
+        }
+        f.ticks(1)
         f.operate(root)
         check(f.player.statMap.getFineXP("stat.woodcutting") == firstXp)
-        f.ticks(4)
+        f.ticks(3)
         f.operate(root)
         check(f.player.statMap.getFineXP("stat.woodcutting") > firstXp)
-        var firstDelay = 4
+        var firstDelay = 7
         while (f.locations().none { it.id == ForestryAssets.INFUSED_ROOT.asRSCM() }) {
             f.ticks(1)
             firstDelay++
@@ -277,9 +288,12 @@ fun main() {
         val infused = f.loc(ForestryAssets.INFUSED_ROOT)
         val before = f.player.statMap.getFineXP("stat.woodcutting")
         f.operate(infused)
+        check(f.player.statMap.getFineXP("stat.woodcutting") == before)
+        f.ticks(3)
+        f.operate(infused)
         check(f.player.statMap.getFineXP("stat.woodcutting") - before ==
             (ForestryRules.rootXp(99, true) * 10).toInt())
-        f.ticks(19)
+        f.ticks(16)
         check(f.loc(ForestryAssets.INFUSED_ROOT).coords == infused.coords)
         f.ticks(1)
         check(f.loc(ForestryAssets.INFUSED_ROOT).coords != infused.coords)
@@ -294,12 +308,40 @@ fun main() {
         val root = f.loc(ForestryAssets.ROOT)
         f.player.testLastCombat = f.clock.cycle
         f.operate(root)
-        val xp = f.player.statMap.getFineXP("stat.woodcutting")
+        check(f.player.actionDelay == f.clock.cycle + 3) {
+            "A combat timestamp must not accelerate root rolls"
+        }
         f.ticks(2)
         f.player.testLastCombat = f.clock.cycle
         f.operate(root)
-        check(f.player.statMap.getFineXP("stat.woodcutting") > xp) {
-            "Combat-interrupted root chopping should support two-tick actions"
+        check(f.player.statMap.getFineXP("stat.woodcutting") == 0)
+    }
+    run {
+        val f = ForestryFixture()
+        f.spawn(ForestryEventType.ROOTS)
+        val root = f.loc(ForestryAssets.ROOT)
+        f.operate(root)
+        f.ticks(3)
+        f.operate(root)
+        val xp = f.player.statMap.getFineXP("stat.woodcutting")
+        check(xp > 0)
+        // Simulate cancelling the interaction before the combat engine's
+        // legitimate one-tick flinch (Rapid weapon and Auto Retaliate enabled).
+        // Merely changing lastcombat must not produce this faster roll.
+        f.player.clearInteraction()
+        f.ticks(1)
+        f.player.actionDelay = f.clock.cycle + 1
+        f.operate(root)
+        check(f.player.statMap.getFineXP("stat.woodcutting") == xp)
+        f.ticks(1)
+        f.operate(root)
+        val twoTickXp = f.player.statMap.getFineXP("stat.woodcutting")
+        check(twoTickXp > xp) {
+            "A genuine one-tick flinch should allow a root roll two ticks later"
+        }
+        f.operate(root)
+        check(f.player.statMap.getFineXP("stat.woodcutting") == twoTickXp) {
+            "Two-tick root chopping must not double-roll"
         }
     }
     run {
@@ -307,7 +349,10 @@ fun main() {
         f.spawn(ForestryEventType.ROOTS)
         val (late, access) = f.addPlayer()
         late.inv[0] = InvObj("obj.rune_axe")
-        f.operate(f.loc(ForestryAssets.ROOT), access)
+        val root = f.loc(ForestryAssets.ROOT)
+        f.operate(root, access)
+        f.ticks(3)
+        f.operate(root, access)
         check(late.inv.count("obj.forestry_currency") == 1)
         check(late.statMap.getFineXP("stat.woodcutting") == 10)
     }
@@ -316,7 +361,10 @@ fun main() {
         f.player.inv[0] = InvObj("obj.rune_axe_2h")
         f.player.inv[2] = InvObj(ForestryRations.RATION, 3)
         f.spawn(ForestryEventType.ROOTS)
-        f.operate(f.loc(ForestryAssets.ROOT))
+        val root = f.loc(ForestryAssets.ROOT)
+        f.operate(root)
+        f.ticks(3)
+        f.operate(root)
         check(f.player.statMap.getFineXP("stat.woodcutting") in 598..600)
         check(f.player.inv.count(ForestryRations.RATION) == 2)
     }
@@ -333,9 +381,11 @@ fun main() {
         val f = ForestryFixture()
         f.spawn(ForestryEventType.ROOTS)
         f.ticks(35)
-        repeat(28) {
+        // Run the regular automatic interaction every tick, including the
+        // idle ticks between the 4-tick rolls.
+        repeat(120) {
             f.operate(f.loc(ForestryAssets.INFUSED_ROOT))
-            f.ticks(4)
+            f.ticks(1)
         }
         val bark = f.player.inv.count("obj.forestry_currency") +
             (f.player.invMap[ForestryRations.STORAGE]?.count("obj.forestry_currency") ?: 0)

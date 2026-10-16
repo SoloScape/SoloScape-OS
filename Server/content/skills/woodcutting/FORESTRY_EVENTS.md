@@ -8,7 +8,7 @@ Native client/map assets must exist in the configured cache for an event to spaw
 
 | Type | Mechanics | Rewards |
 |---|---|---|
-| Rising Roots | Six native roots on reachable tiles around the tree, with ordinary roots periodically relocating. First anima-infused root at 25–35 ticks; then every 20 ticks, up to six appearances. Continuous chopping, Woodcutting 15 and an axe required. Felling-axe rations can add XP but reduce bark. | Woodcutting XP and per-chop bark (no completion payout) |
+| Rising Roots | Six native roots on reachable tiles around the tree, with ordinary roots periodically relocating. First anima-infused root at 25–35 ticks; then every 20 ticks, up to six appearances. Four-tick chopping by default; two-tick rolls require actual Auto Retaliate flinching with a fast weapon and cancel/re-click timing. Woodcutting 15 and an axe required. Felling-axe rations can add XP but reduce bark. | Woodcutting XP and per-chop bark (no completion payout) |
 | Struggling Sapling | Native 1x1 sapling; collecting three ordered ingredients visibly changes the inventory mulch through its three native stages. Packed mulch is consumed when applied; collective growth uses nutrition from 10% to 100%. | Woodcutting/Farming XP, bark, leaves on success |
 | Friendly Ent | Five entlings announce native haircut requests, walk along validated routes, and accept Prune-top/back/sides on options 3/4/5. Incorrect choices stun the player; completed entlings use the pruned model. | Woodcutting/Fletching XP, bark, leaves and an egg nest on the ground (guaranteed when all five are pruned) |
 | Flowering Tree | Eight differently coloured bush NPCs; five phases of two matching pollen bushes | Woodcutting XP and bark |
@@ -22,7 +22,7 @@ Native client/map assets must exist in the configured cache for an event to spaw
 
 - [OSRS Wiki: Rising roots](https://oldschool.runescape.wiki/w/Rising_roots), August 2026 revision: 93-second duration; the first anima root emerges between ticks 25 and 35, changes at 20-tick intervals, and appears at most six times.
 - A regular chop grants 0.55 times visible Woodcutting level XP; an anima-root chop grants 1.2 times visible Woodcutting level XP, before outfit multipliers. Bark uses level-scaled brackets of 2–4 regular and 8–13 infused, with one bark for ineligible arrivals. Exact intra-bracket probabilities are not published; this implementation interpolates by level.
-- Felling axes with available Forester's rations consume one ration per chop, gain 10% XP and have a 20% chance of receiving no bark. Normal chopping remains four ticks; combat-interrupted two-tick chopping uses the player combat clock.
+- Felling axes with available Forester's rations consume one ration per chop, gain 10% XP and have a 20% chance of receiving no bark. Normal chopping follows the same player actionDelay clock as ordinary Woodcutting. Two-tick rolls require the existing combat engine to flinch an idle player (Auto Retaliate enabled, a fast weapon, and correctly timed incoming hits), then a manually restarted root interaction; merely having a recent lastcombat value is insufficient, and double-rolls in one tick are blocked.
 - Roots receive no generic event-completion XP or bark, and the per-chop bark is not capped at 256 by the contribution tracker. Root placements are balanced around the tree and idle regular roots periodically move. Exact placement geometry and refresh cadence remain provisional pending live OSRS comparison.
 
 ## World rules
