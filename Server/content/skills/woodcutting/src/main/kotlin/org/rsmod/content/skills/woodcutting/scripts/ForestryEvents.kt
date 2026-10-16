@@ -19,6 +19,7 @@ import org.rsmod.api.repo.loc.LocRepository
 import org.rsmod.api.repo.npc.NpcRepository
 import org.rsmod.api.repo.obj.ObjRepository
 import org.rsmod.api.repo.player.PlayerRepository
+import org.rsmod.api.repo.world.WorldRepository
 import org.rsmod.api.stats.xpmod.XpModifiers
 import org.rsmod.api.npc.heal
 import org.rsmod.api.script.onCommand
@@ -81,6 +82,7 @@ class ForestryEventManager @Inject constructor(
     private val locs: LocRepository,
     private val npcs: NpcRepository,
     private val objects: ObjRepository,
+    private val world: WorldRepository,
     private val xpMods: XpModifiers,
     private val houses: HouseStore,
     private val serverConfig: ServerConfig,
@@ -94,6 +96,10 @@ class ForestryEventManager @Inject constructor(
         val fireAt: Int,
         var lastChopped: Int,
     )
+    private data class RootMove(val old: LocInfo, val role: String,
+        val destination: CoordGrid, val readyAt: Int)
+    private data class RootMorph(val role: String, val symbol: String, val readyAt: Int)
+
     private class Event(
         val type: ForestryEventType,
         val origin: CoordGrid,
@@ -129,6 +135,8 @@ class ForestryEventManager @Inject constructor(
         var rootPhase = -1
         val firstInfusedAt = start + ForestryRules.firstInfusedDelay(Random)
         var nextRootRefreshAt = start + Random.nextInt(12, 19)
+        var movingRoot: RootMove? = null
+        val morphingRoots = mutableListOf<RootMorph>()
         var ritualHealed = false
         var rainbowsSpawned = 0
         var nextRainbow = start
@@ -265,7 +273,8 @@ class ForestryEventManager @Inject constructor(
         val npcRoles = e.npcs.values
         return when (e.type) {
             ForestryEventType.ROOTS -> locRoles.count { it.startsWith("root:") } == 6 &&
-                ForestryAssets.loc(ForestryAssets.INFUSED_ROOT) != null
+                ForestryAssets.loc(ForestryAssets.INFUSED_ROOT) != null &&
+                ForestryAssets.rootAnimationsAvailable()
             ForestryEventType.SAPLING -> "sapling" in locRoles &&
                 locRoles.count { it.startsWith("ingredient:") } == 5
             ForestryEventType.ENT -> npcRoles.count { it.startsWith("ent:") } == 5
@@ -374,7 +383,11 @@ class ForestryEventManager @Inject constructor(
         val at = tile(e, slot, type.width, type.length) ?: return
         val placed = locs.add(at, type.internalName, (e.finish - clock.cycle).coerceAtLeast(1),
             LocAngle.West, LocShape.CentrepieceStraight)
-        if (locs.findExact(at, type) != null) e.locs[placed] = role
+        if (locs.findExact(at, type) != null) {
+            e.locs[placed] = role
+            if (role.startsWith("root:") && ForestryAssets.rootAnimationsAvailable())
+                world.locAnim(placed, ForestryAssets.ROOT_RISE_ANIM)
+        }
     }
 
     private fun spawnNpc(e: Event, role: String, slot: Int, label: String) {
@@ -412,26 +425,72 @@ class ForestryEventManager @Inject constructor(
         }
     }
 
+    /** Begin the native seven-tick sinking animation; only relocate after it finishes. */
     private fun refreshRegularRoot(e: Event) {
+        if (e.movingRoot != null) return
         val rootType = ForestryAssets.loc(ForestryAssets.ROOT) ?: return
         val interacting = players.findAll(ZoneKey.from(e.origin), zoneRadius = 4)
             .mapNotNull { (it.interaction as? InteractionLocOp)?.target?.coords }.toSet()
         val movable = e.locs.entries.filter { (loc, role) ->
             role.startsWith("root:") && loc.id == rootType.id &&
-                loc.coords !in interacting
+                loc.coords !in interacting && e.morphingRoots.none { it.role == role }
         }
         if (movable.isEmpty()) return
         val (old, role) = movable.random()
         val destination = tile(e, Random.nextInt(ForestryPlacement.ROOT_TILE_COUNT),
-            rootType.width, rootType.length)
-            ?: return
-        val replacement = locs.add(destination, rootType.internalName,
-            (e.finish - clock.cycle).coerceAtLeast(1),
-            LocAngle.West, LocShape.CentrepieceStraight)
-        if (locs.findExact(destination, rootType) != null) {
-            locs.del(old, Int.MAX_VALUE)
-            e.locs.remove(old)
-            e.locs[replacement] = role
+            rootType.width, rootType.length) ?: return
+        e.movingRoot = RootMove(old, role, destination,
+            clock.cycle + ForestryAssets.ROOT_ANIM_TICKS)
+        world.locAnim(old, ForestryAssets.ROOT_SINK_ANIM)
+    }
+
+    private fun finishRootMove(e: Event, now: Int) {
+        val move = e.movingRoot ?: return
+        if (now < move.readyAt) return
+        e.movingRoot = null
+        val type = ForestryAssets.loc(ForestryAssets.ROOT) ?: return
+        if (e.locs[move.old] != move.role ||
+            locs.findExact(move.old.coords, move.old.shape)?.id != move.old.id) return
+        // Another update might have occupied the reserved tile while this root sank.
+        // In that case, rise again at the old tile rather than losing a root.
+        if (!placement.clear(move.destination, type.width, type.length) ||
+            locs.findAll(move.destination).any { it.layer == 2 }) {
+            world.locAnim(move.old, ForestryAssets.ROOT_RISE_ANIM)
+            return
+        }
+        val replacement = locs.add(move.destination, type.internalName,
+            (e.finish - now).coerceAtLeast(1), move.old.angle, move.old.shape)
+        if (locs.findExact(move.destination, type) == null) {
+            world.locAnim(move.old, ForestryAssets.ROOT_RISE_ANIM)
+            return
+        }
+        locs.del(move.old, Int.MAX_VALUE)
+        e.locs.remove(move.old)
+        e.locs[replacement] = move.role
+        // Do not keep routing a player towards scenery that no longer exists.
+        for (player in players.findAll(ZoneKey.from(e.origin), zoneRadius = 4)) {
+            val interaction = player.interaction as? InteractionLocOp ?: continue
+            if (interaction.target.coords == move.old.coords &&
+                interaction.target.id == move.old.id) player.clearInteraction()
+        }
+        world.locAnim(replacement, ForestryAssets.ROOT_RISE_ANIM)
+    }
+
+    private fun beginRootMorph(e: Event, role: String, symbol: String, now: Int) {
+        val old = e.locs.entries.firstOrNull { it.value == role }?.key ?: return
+        if (e.morphingRoots.any { it.role == role }) return
+        e.morphingRoots += RootMorph(role, symbol, now + ForestryAssets.ROOT_ANIM_TICKS)
+        world.locAnim(old, ForestryAssets.ROOT_SINK_ANIM)
+    }
+
+    private fun finishRootMorphs(e: Event, now: Int) {
+        for (morph in e.morphingRoots.filter { now >= it.readyAt }.toList()) {
+            e.morphingRoots.remove(morph)
+            val old = e.locs.entries.firstOrNull { it.value == morph.role }?.key ?: continue
+            replaceLoc(e, morph.role, morph.symbol)
+            val replacement = e.locs.entries.firstOrNull { it.value == morph.role }?.key
+            if (replacement != null && replacement.id != old.id)
+                world.locAnim(replacement, ForestryAssets.ROOT_RISE_ANIM)
         }
     }
 
@@ -639,14 +698,23 @@ class ForestryEventManager @Inject constructor(
                 }
             }
             ForestryEventType.ROOTS -> {
-                val phase = ForestryRules.infusedPhase(now - e.firstInfusedAt, 0)
-                if (now >= e.firstInfusedAt && phase != e.rootPhase) {
-                    if (e.infusedRoot >= 0)
-                        replaceLoc(e, "root:${e.infusedRoot}", ForestryAssets.ROOT)
-                    e.rootPhase = phase
-                    e.infusedRoot = if (e.infusedRoot < 0) Random.nextInt(6)
-                        else (e.infusedRoot + Random.nextInt(1, 6)) % 6
-                    replaceLoc(e, "root:${e.infusedRoot}", ForestryAssets.INFUSED_ROOT)
+                finishRootMove(e, now)
+                finishRootMorphs(e, now)
+                // Start sinking seven ticks BEFORE the next anima-root appearance.
+                // The new green root rises at the original 25–35/20-tick schedule.
+                val phase = ForestryRules.infusedPhase(
+                    now - e.firstInfusedAt + ForestryAssets.ROOT_ANIM_TICKS, 0)
+                if (phase >= 0 && phase != e.rootPhase) {
+                    val candidates = (0 until 6).filter {
+                        it != e.infusedRoot && e.movingRoot?.role != "root:$it"
+                    }
+                    if (candidates.isNotEmpty()) {
+                        if (e.infusedRoot >= 0)
+                            beginRootMorph(e, "root:${e.infusedRoot}", ForestryAssets.ROOT, now)
+                        e.infusedRoot = candidates.random()
+                        beginRootMorph(e, "root:${e.infusedRoot}", ForestryAssets.INFUSED_ROOT, now)
+                        e.rootPhase = phase
+                    }
                 }
                 if (now >= e.nextRootRefreshAt) {
                     refreshRegularRoot(e)
@@ -895,6 +963,13 @@ class ForestryEventManager @Inject constructor(
         if (axe == null) {
             mes("You need an axe to chop down the roots.")
             resetAnim()
+            return
+        }
+        // The root is sinking underground; it cannot yield more chops until
+        // its relocation or appearance transition has finished.
+        if (e.movingRoot?.role == role || e.morphingRoots.any { it.role == role }) {
+            val type = ServerCacheManager.getObject(root.id) ?: return
+            opLoc1(BoundLocInfo(root, type))
             return
         }
         if (skillAnimDelay <= clock.cycle) {

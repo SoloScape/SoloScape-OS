@@ -1,10 +1,21 @@
 package org.rsmod.content.skills.woodcutting.scripts
 
 import dev.openrune.ServerCacheManager
+import dev.openrune.rscm.RSCM
+import dev.openrune.rscm.RSCMType
 
 internal object ForestryAssets {
     const val ROOT = "loc.gathering_event_rising_roots"
     const val INFUSED_ROOT = "loc.gathering_event_rising_roots_special"
+    // Native Forestry scenery animations (seven 600ms game cycles each in revision 240).
+    const val ROOT_RISE_ANIM = "seq.forestry_rising_roots_spawn"
+    const val ROOT_SINK_ANIM = "seq.forestry_rising_roots_despawn"
+    const val ROOT_ANIM_TICKS = 7
+
+    fun rootAnimationsAvailable(): Boolean = listOf(ROOT_RISE_ANIM, ROOT_SINK_ANIM).all {
+        val id = RSCM.getRSCMOrNull(it, RSCMType.SEQ)
+        id != null && ServerCacheManager.getAnim(id) != null
+    }
     const val SAPLING = "loc.gathering_event_sapling_1x1"
     const val THRIVING_SAPLING = "loc.gathering_event_sapling_saved_1x1"
     const val RAINBOW = "loc.gathering_event_woodcutting_leprechaun_rainbow"

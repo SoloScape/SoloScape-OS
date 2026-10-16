@@ -24,6 +24,8 @@ import org.rsmod.api.repo.loc.LocRepository
 import org.rsmod.api.repo.npc.NpcRepository
 import org.rsmod.api.repo.obj.ObjRepository
 import org.rsmod.api.repo.player.PlayerRepository
+import org.rsmod.api.repo.world.WorldRepository
+import net.rsprot.protocol.game.outgoing.zone.payload.LocAnim
 import org.rsmod.api.route.BoundValidator
 import org.rsmod.api.stats.xpmod.XpModifiers
 import org.rsmod.coroutine.GameCoroutine
@@ -65,6 +67,9 @@ private class ForestryFixture(private val memberWorld: Boolean = true) {
     val headbars = mutableMapOf<Npc, MutableList<Headbar>>()
     val npcList = NpcList()
     private val updates = ZoneUpdateMap()
+    fun rootAnimations(): List<Int> = updates.updatedZones.values.flatMap { zone ->
+        zone.filterIsInstance<LocAnim>().map { it.id }
+    }
     private val zones = LocZoneStorage()
     private val activity = ZonePlayerActivityBitSet()
     private val npcRegistry = NpcRegistry(npcList, flags, bus)
@@ -81,7 +86,7 @@ private class ForestryFixture(private val memberWorld: Boolean = true) {
     val serverConfig = ServerConfig("Forestry test", 0, 240, "test", 1,
         membersWorld = memberWorld)
     val manager = ForestryEventManager(clock, PlayerRepository(playerRegistry), locs, npcs,
-        ObjRepository(clock, ObjRegistry(updates)), XpModifiers(emptySet()),
+        ObjRepository(clock, ObjRegistry(updates)), WorldRepository(updates), XpModifiers(emptySet()),
         houseStore, serverConfig, flags)
     val player = Player().apply {
         members = true
@@ -181,6 +186,14 @@ fun main() {
     for (symbol in ForestryAssets.mulch + ForestryAssets.EGG)
         checkNotNull(ServerCacheManager.getItem(symbol.asRSCM()))
     check(ForestryAssets.loc(ForestryAssets.SAPLING)!!.width == 1)
+    for (animation in listOf(ForestryAssets.ROOT_RISE_ANIM, ForestryAssets.ROOT_SINK_ANIM)) {
+        val seq = checkNotNull(ServerCacheManager.getAnim(animation.asRSCM())) {
+            "Rising Roots transition must use a native animation: $animation"
+        }
+        check(seq.tickDuration == ForestryAssets.ROOT_ANIM_TICKS) {
+            "$animation must last seven server ticks, was ${seq.tickDuration}"
+        }
+    }
     checkNotNull(ServerCacheManager.getAnim(ForestryHiveRules.BUILD_ANIMATION.asRSCM())) {
         "The native Construction building animation must exist in this cache"
     }
@@ -270,6 +283,14 @@ fun main() {
         }
 
         f.spawn(ForestryEventType.ROOTS)
+        val initialRootCoords = f.locations().filter {
+            it.id == ForestryAssets.ROOT.asRSCM()
+        }.map { it.coords }.toSet()
+        val rising = ForestryAssets.ROOT_RISE_ANIM.asRSCM()
+        val sinking = ForestryAssets.ROOT_SINK_ANIM.asRSCM()
+        check(f.rootAnimations().count { it == rising } == 6) {
+            "Each of the six initial roots must play the native rising animation"
+        }
         var previousOrdinary = emptySet<CoordGrid>()
         var ordinaryRelocated = false
         for (elapsed in 0 until ForestryEventType.ROOTS.ticks) {
@@ -288,12 +309,25 @@ fun main() {
             if (elapsed >= 35) check(infusedCount == 1)
             val ordinary = roots.filter { it.id == ForestryAssets.ROOT.asRSCM() }
                 .map { it.coords }.toSet()
-            if (elapsed in 1..24 && previousOrdinary.isNotEmpty() &&
+            if (elapsed in 1..30 && previousOrdinary.isNotEmpty() &&
                 ordinary != previousOrdinary) ordinaryRelocated = true
+            if (elapsed == 18) {
+                check(roots.map { it.coords }.toSet() == initialRootCoords) {
+                    "A relocating root must remain in place while it sinks"
+                }
+                check(f.rootAnimations().any { it == sinking }) {
+                    "The first root move must trigger the native sinking animation"
+                }
+            }
+            if (elapsed == 26) {
+                check(f.rootAnimations().count { it == rising } > 6) {
+                    "Relocated roots must play the native rising animation"
+                }
+            }
             previousOrdinary = ordinary
             f.ticks(1)
         }
-        check(ordinaryRelocated) { "Regular roots never relocated before the first anima phase" }
+        check(ordinaryRelocated) { "Regular roots never relocated after their native sinking animation" }
         check(f.locations().isEmpty()) { "Roots must despawn at the event end" }
     }
 
@@ -424,11 +458,15 @@ fun main() {
     run {
         val f = ForestryFixture()
         f.spawn(ForestryEventType.ROOTS)
-        f.ticks(35)
-        // Run the regular automatic interaction every tick, including the
-        // idle ticks between the 4-tick rolls.
-        repeat(120) {
-            f.operate(f.loc(ForestryAssets.INFUSED_ROOT))
+        // Follow the visible OSRS lifecycle: while the infused root is sinking
+        // or emerging, ordinary roots remain available for normal chopping.
+        // Keep attempting chops through the full event instead of assuming
+        // a continuously choppable infused root at a fixed position.
+        repeat(ForestryEventType.ROOTS.ticks) {
+            val roots = f.locations()
+            val target = roots.firstOrNull { it.id == ForestryAssets.INFUSED_ROOT.asRSCM() }
+                ?: roots.firstOrNull { it.id == ForestryAssets.ROOT.asRSCM() }
+            if (target != null) f.operate(target)
             f.ticks(1)
         }
         val bark = f.player.inv.count("obj.forestry_currency") +
