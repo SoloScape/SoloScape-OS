@@ -52,6 +52,10 @@ public class BurnLogEvents @Inject constructor(
         FiremakingLogsRow.all().forEach { log ->
             onOpHeldU("obj.tinderbox", log.input) { startBurn(log, method = BurnMethod.Tinderbox) }
             onOpHeldU(log.input) {
+                if (it.second.internalName == "obj.tinderbox") {
+                    startBurn(log, method = BurnMethod.Tinderbox)
+                    return@onOpHeldU
+                }
                 val barbarianAnim = it.second.paramOrNull(params.barbarian_firemaking_anim)
                     ?: return@onOpHeldU
                 val animName = RSCM.getReverseMapping(RSCMType.SEQ, barbarianAnim.id)
